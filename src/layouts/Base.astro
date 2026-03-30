@@ -1,12 +1,18 @@
 ---
 import Header from '../components/Header.astro';
+import PaletteNav from '../components/PaletteNav.astro';
 import Footer from '../components/Footer.astro';
 
 interface Props {
   title: string;
   description?: string;
+  showPaletteNav?: boolean;
 }
-const { title, description = 'Dylan McCavitt — Software Engineer' } = Astro.props;
+const {
+  title,
+  description = 'Dylan McCavitt — Software Engineer',
+  showPaletteNav = false,
+} = Astro.props;
 ---
 
 <!doctype html>
@@ -26,8 +32,10 @@ const { title, description = 'Dylan McCavitt — Software Engineer' } = Astro.pr
   </head>
   <body>
     <Header />
+    {showPaletteNav && <PaletteNav />}
     <slot />
     <Footer />
+    <script src="../scripts/theme-switcher.ts"></script>
   </body>
 </html>
 

@@ -7,13 +7,10 @@ const projects = await getCollection('projects');
 const sorted = projects.sort((a, b) => a.data.order - b.data.order);
 ---
 
-<Base title="Dylan McCavitt">
+<Base title="Dylan McCavitt" showPaletteNav={true}>
   <main>
     <section class="hero">
-      <h1 class="hero__name">Dylan McCavitt</h1>
       <p class="hero__tagline">Software engineer building reliable systems.</p>
-      <hr class="hero__rule" />
-      <a href="#projects" class="hero__cta">View Projects</a>
     </section>
 
     <section class="projects" id="projects">
@@ -47,25 +44,11 @@ const sorted = projects.sort((a, b) => a.data.order - b.data.order);
 <style>
   .hero {
     text-align: center;
-    padding: var(--space-8) var(--space-5);
-    min-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    padding: 0 var(--space-5) var(--space-7);
   }
-  .hero__name { letter-spacing: -0.02em; }
   .hero__tagline {
     color: var(--text-muted);
     font-size: var(--text-lg);
-    margin-top: var(--space-3);
-  }
-  .hero__rule { width: 40px; margin: var(--space-6) auto; }
-  .hero__cta {
-    font-size: var(--text-sm);
-    color: var(--accent);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
   }
   .section-heading { margin-bottom: var(--space-6); }
   .projects {
