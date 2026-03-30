@@ -1,0 +1,152 @@
+/* ============================================================
+   Theme Definitions
+   Each theme provides palette + nav swatch colors.
+   Applied via [data-theme] on <html>.
+   ============================================================ */
+
+[data-theme="nord"] {
+  --bg: #d8dee9;
+  --surface: #c8d0dc;
+  --text: #2e3440;
+  --text-muted: #4c566a;
+  --accent: #5e81ac;
+  --border: #b8c2d0;
+  --nav-1: #8fbcbb;
+  --nav-2: #88c0d0;
+  --nav-3: #81a1c1;
+  --nav-4: #5e81ac;
+  --nav-5: #4c566a;
+  --nav-text-1: #2e3440;
+  --nav-text-2: #2e3440;
+  --nav-text-3: #2e3440;
+  --nav-text-4: #eceff4;
+  --nav-text-5: #eceff4;
+  --dropdown-bg: #2e3440;
+  --dropdown-text: #d8dee9;
+}
+
+[data-theme="dracula"] {
+  --bg: #282a36;
+  --surface: #44475a;
+  --text: #f8f8f2;
+  --text-muted: #6272a4;
+  --accent: #bd93f9;
+  --border: #6272a4;
+  --nav-1: #bd93f9;
+  --nav-2: #8be9fd;
+  --nav-3: #50fa7b;
+  --nav-4: #ff79c6;
+  --nav-5: #44475a;
+  --nav-text-1: #282a36;
+  --nav-text-2: #282a36;
+  --nav-text-3: #282a36;
+  --nav-text-4: #282a36;
+  --nav-text-5: #f8f8f2;
+  --dropdown-bg: #282a36;
+  --dropdown-text: #f8f8f2;
+}
+
+[data-theme="rose-pine"] {
+  --bg: #191724;
+  --surface: #1f1d2e;
+  --text: #e0def4;
+  --text-muted: #908caa;
+  --accent: #c4a7e7;
+  --border: #26233a;
+  --nav-1: #ebbcba;
+  --nav-2: #f6c177;
+  --nav-3: #c4a7e7;
+  --nav-4: #9ccfd8;
+  --nav-5: #26233a;
+  --nav-text-1: #191724;
+  --nav-text-2: #191724;
+  --nav-text-3: #191724;
+  --nav-text-4: #191724;
+  --nav-text-5: #e0def4;
+  --dropdown-bg: #191724;
+  --dropdown-text: #e0def4;
+}
+
+[data-theme="gruvbox"] {
+  --bg: #282828;
+  --surface: #3c3836;
+  --text: #ebdbb2;
+  --text-muted: #a89984;
+  --accent: #d79921;
+  --border: #504945;
+  --nav-1: #cc241d;
+  --nav-2: #d79921;
+  --nav-3: #689d6a;
+  --nav-4: #458588;
+  --nav-5: #3c3836;
+  --nav-text-1: #ebdbb2;
+  --nav-text-2: #282828;
+  --nav-text-3: #282828;
+  --nav-text-4: #ebdbb2;
+  --nav-text-5: #ebdbb2;
+  --dropdown-bg: #282828;
+  --dropdown-text: #ebdbb2;
+}
+
+[data-theme="everforest"] {
+  --bg: #2d353b;
+  --surface: #343f44;
+  --text: #d3c6aa;
+  --text-muted: #859289;
+  --accent: #a7c080;
+  --border: #475258;
+  --nav-1: #a7c080;
+  --nav-2: #dbbc7f;
+  --nav-3: #7fbbb3;
+  --nav-4: #d699b6;
+  --nav-5: #343f44;
+  --nav-text-1: #2d353b;
+  --nav-text-2: #2d353b;
+  --nav-text-3: #2d353b;
+  --nav-text-4: #2d353b;
+  --nav-text-5: #d3c6aa;
+  --dropdown-bg: #2d353b;
+  --dropdown-text: #d3c6aa;
+}
+
+[data-theme="night-owl"] {
+  --bg: #011627;
+  --surface: #0b2942;
+  --text: #d6deeb;
+  --text-muted: #637777;
+  --accent: #82aaff;
+  --border: #1d3b53;
+  --nav-1: #c792ea;
+  --nav-2: #82aaff;
+  --nav-3: #c3e88d;
+  --nav-4: #f78c6c;
+  --nav-5: #0b2942;
+  --nav-text-1: #011627;
+  --nav-text-2: #011627;
+  --nav-text-3: #011627;
+  --nav-text-4: #011627;
+  --nav-text-5: #d6deeb;
+  --dropdown-bg: #011627;
+  --dropdown-text: #d6deeb;
+}
+
+[data-theme="dark-plus"] {
+  --bg: #1e1e1e;
+  --surface: #252526;
+  --text: #d4d4d4;
+  --text-muted: #808080;
+  --accent: #569cd6;
+  --border: #3e3e3e;
+  --nav-1: #569cd6;
+  --nav-2: #4ec9b0;
+  --nav-3: #9cdcfe;
+  --nav-4: #ce9178;
+  --nav-5: #252526;
+  --nav-text-1: #1e1e1e;
+  --nav-text-2: #1e1e1e;
+  --nav-text-3: #1e1e1e;
+  --nav-text-4: #1e1e1e;
+  --nav-text-5: #d4d4d4;
+  --dropdown-bg: #1e1e1e;
+  --dropdown-text: #d4d4d4;
+}
