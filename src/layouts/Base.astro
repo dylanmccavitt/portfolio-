@@ -17,6 +17,12 @@ const { title, description = 'Dylan McCavitt — Software Engineer' } = Astro.pr
     <meta name="description" content={description} />
     <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script is:inline>
+      (function() {
+        var theme = localStorage.getItem('portfolio-theme') || 'nord';
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
   <body>
     <Header />

@@ -2,29 +2,5 @@
 ---
 
 <header class="header">
-  <nav class="header__nav">
-    <a href="/" class="header__wordmark">Dylan McCavitt</a>
-    <button class="header__toggle" aria-label="Toggle menu" aria-expanded="false">
-      <span class="header__toggle-bar"></span>
-      <span class="header__toggle-bar"></span>
-      <span class="header__toggle-bar"></span>
-    </button>
-    <ul class="header__links" id="nav-links">
-      <li><a href="/#projects">Projects</a></li>
-      <li><a href="/#about">About</a></li>
-      <li><a href="/#contact">Contact</a></li>
-    </ul>
-  </nav>
+  <a href="/" class="header__name">[Dylan McCavitt]</a>
 </header>
-
-<script>
-  const toggle = document.querySelector('.header__toggle');
-  const links = document.getElementById('nav-links');
-  if (toggle && links) {
-    toggle.addEventListener('click', () => {
-      const expanded = toggle.getAttribute('aria-expanded') === 'true';
-      toggle.setAttribute('aria-expanded', String(!expanded));
-      links.classList.toggle('header__links--open');
-    });
-  }
-</script>

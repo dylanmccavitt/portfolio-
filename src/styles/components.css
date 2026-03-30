@@ -3,23 +3,10 @@
    ============================================================ */
 
 .header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-5) var(--space-6);
 }
 
-.header__nav {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: var(--space-4) var(--space-5);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.header__wordmark {
+.header__name {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
@@ -27,67 +14,9 @@
   letter-spacing: -0.02em;
 }
 
-.header__wordmark:hover {
+.header__name:hover {
   color: var(--accent);
   text-decoration: none;
-}
-
-.header__links {
-  display: flex;
-  gap: var(--space-6);
-  list-style: none;
-}
-
-.header__links a {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  text-decoration: none;
-  letter-spacing: 0.02em;
-}
-
-.header__links a:hover {
-  color: var(--text);
-  text-decoration: none;
-}
-
-.header__toggle {
-  display: none;
-  flex-direction: column;
-  gap: 5px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-2);
-}
-
-.header__toggle-bar {
-  display: block;
-  width: 20px;
-  height: 2px;
-  background: var(--text);
-}
-
-@media (max-width: 640px) {
-  .header__toggle {
-    display: flex;
-  }
-
-  .header__links {
-    display: none;
-    flex-direction: column;
-    gap: var(--space-3);
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    padding: var(--space-4) var(--space-5);
-  }
-
-  .header__links--open {
-    display: flex;
-  }
 }
 
 /* ============================================================
