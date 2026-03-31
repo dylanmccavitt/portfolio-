@@ -1,20 +1,39 @@
 ---
+import Base from '../../layouts/Base.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
 import TopologyMap from '../../components/topology/TopologyMap.astro';
-import '../../styles/global.css';
 import '../../styles/topology.css';
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Interactive topology map of Dylan's homelab infrastructure" />
-    <title>Homelab Topology — Dylan McCavitt</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  </head>
-  <body class="topology-page">
-    <a href="/projects/homelab/" class="topology-back">&larr; Back to Homelab</a>
+<Base title="Homelab Topology — Dylan McCavitt" description="Interactive topology map of Dylan's homelab infrastructure">
+  <div class="topology-page">
+    <div class="topology-breadcrumb">
+      <Breadcrumb slug="topology" section="homelab" />
+    </div>
+
     <TopologyMap />
-  </body>
-</html>
+
+    <div class="topology-controls">
+      <button id="zoom-in" aria-label="Zoom in">+</button>
+      <button id="zoom-out" aria-label="Zoom out">-</button>
+      <button id="reset-view" aria-label="Reset view">Reset</button>
+    </div>
+
+    <div class="topology-legend">
+      <div class="topology-legend-item">
+        <span class="legend-swatch legend-swatch--physical"></span>
+        <span>Physical</span>
+      </div>
+      <div class="topology-legend-item">
+        <span class="legend-swatch legend-swatch--runtime"></span>
+        <span>Runtime</span>
+      </div>
+      <div class="topology-legend-item">
+        <span class="legend-swatch legend-swatch--policy"></span>
+        <span>Policy</span>
+      </div>
+    </div>
+
+    <div id="popcard-container"></div>
+  </div>
+</Base>

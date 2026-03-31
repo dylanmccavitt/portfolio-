@@ -1,17 +1,19 @@
 import type { EntityId } from "./entities";
 
-export type ViewMode = "overview" | "runtime" | "trust";
-
-export type FrameTone =
-  | "hardware"
-  | "compute"
-  | "management"
+export type FrameTone = "management" | "service" | "signal" | "automation";
+export type NodeTone =
+  | "edge"
+  | "network"
+  | "platform"
+  | "runtime"
+  | "device"
+  | "client";
+export type ChipTone =
   | "service"
-  | "signal"
-  | "automation";
-
-export type NodeTone = "edge" | "network" | "platform" | "runtime" | "device" | "client";
-export type ChipTone = "service" | "controller" | "monitoring" | "agent" | "utility";
+  | "controller"
+  | "monitoring"
+  | "agent"
+  | "utility";
 
 export type MapFrame = {
   id: string;
@@ -27,12 +29,8 @@ export type MapFrame = {
 
 export type MapChip = {
   id: EntityId;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+  label: string;
   tone: ChipTone;
-  lines?: string[];
 };
 
 export type MapNode = {
@@ -53,77 +51,68 @@ export type MapEdge = {
   from: EntityId;
   to: EntityId;
   kind: "physical" | "runtime" | "policy";
-  points: [number, number][];
+  path: string;
   label?: string;
   dashed?: boolean;
 };
 
-export const overviewLayout = {
-  viewBox: "0 0 6588.16666666667 4878.970184856642",
-  referenceSvg: "/reference/overview-map.svg",
+export const layout = {
+  viewBox: "0 0 2400 2800",
+
   frames: [
     {
       id: "management-frame",
-      label: "VLAN30 / Management",
-      x: 2065,
-      y: 3025,
-      w: 390,
-      h: 330,
+      label: "Management",
+      x: 120,
+      y: 850,
+      w: 480,
+      h: 440,
       tone: "management",
       entityId: "management-lane",
       members: ["unifi-vm", "unifi-controller"],
     },
     {
-      id: "compute-frame",
-      label: "Proxmox Runtime",
-      x: 2020,
-      y: 2980,
-      w: 4510,
-      h: 1770,
-      tone: "compute",
-      members: ["unifi-vm", "shared-vm", "hermes-vm", "kuma-lxc"],
-    },
-    {
       id: "service-frame",
-      label: "VLAN20 / Service Lane",
-      x: 2580,
-      y: 4334,
-      w: 1150,
-      h: 430,
+      label: "Services",
+      x: 680,
+      y: 850,
+      w: 680,
+      h: 640,
       tone: "service",
       entityId: "service-lane",
       members: ["shared-vm", "caddy", "ingress", "homepage", "vaultwarden"],
     },
     {
-      id: "automation-frame",
-      label: "VLAN20 / Agent Lane",
-      x: 4618,
-      y: 4110,
-      w: 440,
-      h: 335,
-      tone: "automation",
-      entityId: "automation-lane",
-      members: ["hermes-vm", "hermes"],
-    },
-    {
       id: "signal-frame",
-      label: "VLAN20 / Signal Lane",
-      x: 6158,
-      y: 3080,
-      w: 290,
-      h: 400,
+      label: "Monitoring",
+      x: 1440,
+      y: 850,
+      w: 420,
+      h: 440,
       tone: "signal",
       entityId: "signal-lane",
       members: ["kuma-lxc", "uptime-kuma"],
     },
-  ] satisfies MapFrame[],
+    {
+      id: "automation-frame",
+      label: "Automation",
+      x: 1940,
+      y: 850,
+      w: 360,
+      h: 440,
+      tone: "automation",
+      entityId: "automation-lane",
+      members: ["hermes-vm", "hermes"],
+    },
+  ],
+
   nodes: [
     {
       id: "isp",
-      x: 4788,
-      y: 1202,
-      w: 180,
-      h: 88,
+      x: 1100,
+      y: 80,
+      w: 200,
+      h: 100,
       tone: "edge",
       eyebrow: "WAN",
       label: "ISP",
@@ -131,87 +120,43 @@ export const overviewLayout = {
     },
     {
       id: "opnsense",
-      x: 4028,
-      y: 2348,
-      w: 250,
-      h: 144,
+      x: 480,
+      y: 400,
+      w: 280,
+      h: 140,
       tone: "edge",
-      eyebrow: "WAN / LAN",
+      eyebrow: "Firewall",
       label: "OPNsense",
-      caption: "Routing, DNS, and policy",
-    },
-    {
-      id: "proxmox",
-      x: 4365,
-      y: 2348,
-      w: 350,
-      h: 144,
-      tone: "platform",
-      eyebrow: "Hardware",
-      label: "Proxmox",
-      caption: "Primary virtualization host",
-    },
-    {
-      id: "unifi-ap",
-      x: 4738,
-      y: 2348,
-      w: 180,
-      h: 144,
-      tone: "device",
-      eyebrow: "Wireless",
-      label: "AP",
-      caption: "Managed by UniFi",
-    },
-    {
-      id: "bazzite-pc",
-      x: 5005,
-      y: 2348,
-      w: 192,
-      h: 144,
-      tone: "client",
-      eyebrow: "Client",
-      label: "PC",
-      caption: "Operator workstation",
-    },
-    {
-      id: "jetkvm",
-      x: 5254,
-      y: 2348,
-      w: 180,
-      h: 144,
-      tone: "device",
-      eyebrow: "Recovery",
-      label: "KVM",
-      caption: "Out-of-band console",
-    },
-    {
-      id: "nas",
-      x: 5484,
-      y: 2348,
-      w: 206,
-      h: 144,
-      tone: "device",
-      eyebrow: "Storage",
-      label: "NAS",
-      caption: "Future storage lane",
+      caption: "Routing, DNS, policy",
     },
     {
       id: "switch",
-      x: 4418,
-      y: 2820,
-      w: 470,
-      h: 188,
+      x: 960,
+      y: 400,
+      w: 240,
+      h: 140,
       tone: "network",
       eyebrow: "Core Fabric",
       label: "Switch",
-      caption: "Port map fans out from here",
+      caption: "Port map hub",
+    },
+    {
+      id: "proxmox",
+      x: 1400,
+      y: 400,
+      w: 280,
+      h: 140,
+      tone: "platform",
+      eyebrow: "Hypervisor",
+      label: "Proxmox",
+      caption: "VM & LXC host",
     },
     {
       id: "unifi-vm",
-      x: 2094,
-      y: 3060,
-      w: 304,
-      h: 250,
+      x: 160,
+      y: 940,
+      w: 400,
+      h: 160,
       tone: "runtime",
       eyebrow: "VM1",
       label: "UniFi VM",
@@ -219,21 +164,17 @@ export const overviewLayout = {
       chips: [
         {
           id: "unifi-controller",
-          x: 26,
-          y: 142,
-          w: 252,
-          h: 88,
+          label: "UniFi Controller",
           tone: "controller",
-          lines: ["UniFi", "Controller"],
         },
       ],
     },
     {
       id: "shared-vm",
-      x: 2618,
-      y: 4348,
-      w: 1080,
-      h: 384,
+      x: 720,
+      y: 940,
+      w: 600,
+      h: 460,
       tone: "runtime",
       eyebrow: "VM2",
       label: "Shared VM",
@@ -241,70 +182,32 @@ export const overviewLayout = {
       chips: [
         {
           id: "caddy",
-          x: 34,
-          y: 160,
-          w: 286,
-          h: 84,
+          label: "Caddy",
           tone: "service",
-          lines: ["Caddy"],
         },
         {
           id: "ingress",
-          x: 350,
-          y: 160,
-          w: 286,
-          h: 84,
+          label: "Ingress",
           tone: "utility",
-          lines: ["Ingress"],
-        },
-        {
-          id: "vaultwarden",
-          x: 664,
-          y: 160,
-          w: 382,
-          h: 84,
-          tone: "service",
-          lines: ["Vaultwarden"],
         },
         {
           id: "homepage",
-          x: 350,
-          y: 262,
-          w: 286,
-          h: 84,
+          label: "Homepage",
           tone: "utility",
-          lines: ["Homepage"],
         },
-      ],
-    },
-    {
-      id: "hermes-vm",
-      x: 4648,
-      y: 4140,
-      w: 380,
-      h: 250,
-      tone: "runtime",
-      eyebrow: "VM3",
-      label: "Hermes VM",
-      caption: "Agent lane",
-      chips: [
         {
-          id: "hermes",
-          x: 34,
-          y: 144,
-          w: 230,
-          h: 86,
-          tone: "agent",
-          lines: ["Hermes"],
+          id: "vaultwarden",
+          label: "Vaultwarden",
+          tone: "service",
         },
       ],
     },
     {
       id: "kuma-lxc",
-      x: 6192,
-      y: 3090,
-      w: 250,
-      h: 342,
+      x: 1480,
+      y: 940,
+      w: 340,
+      h: 260,
       tone: "runtime",
       eyebrow: "LXC",
       label: "Kuma",
@@ -312,28 +215,82 @@ export const overviewLayout = {
       chips: [
         {
           id: "uptime-kuma",
-          x: 24,
-          y: 188,
-          w: 202,
-          h: 98,
+          label: "Uptime Kuma",
           tone: "monitoring",
-          lines: ["Uptime", "Kuma"],
         },
       ],
     },
-  ] satisfies MapNode[],
+    {
+      id: "hermes-vm",
+      x: 1980,
+      y: 940,
+      w: 280,
+      h: 260,
+      tone: "runtime",
+      eyebrow: "VM3",
+      label: "Hermes VM",
+      caption: "Agent lane",
+      chips: [
+        {
+          id: "hermes",
+          label: "Hermes",
+          tone: "agent",
+        },
+      ],
+    },
+    {
+      id: "unifi-ap",
+      x: 280,
+      y: 2300,
+      w: 200,
+      h: 120,
+      tone: "device",
+      eyebrow: "Wireless",
+      label: "AP",
+      caption: "Managed by UniFi",
+    },
+    {
+      id: "bazzite-pc",
+      x: 700,
+      y: 2300,
+      w: 200,
+      h: 120,
+      tone: "client",
+      eyebrow: "Client",
+      label: "PC",
+      caption: "Operator workstation",
+    },
+    {
+      id: "jetkvm",
+      x: 1300,
+      y: 2300,
+      w: 200,
+      h: 120,
+      tone: "device",
+      eyebrow: "Recovery",
+      label: "KVM",
+      caption: "Out-of-band console",
+    },
+    {
+      id: "nas",
+      x: 1720,
+      y: 2300,
+      w: 200,
+      h: 120,
+      tone: "device",
+      eyebrow: "Storage",
+      label: "NAS",
+      caption: "Future storage lane",
+    },
+  ],
+
   edges: [
     {
       id: "wan-to-edge",
       from: "isp",
       to: "opnsense",
       kind: "physical",
-      points: [
-        [4878, 1290],
-        [4878, 1740],
-        [4226, 1740],
-        [4226, 2348],
-      ],
+      path: "M1200,180 L1200,280 L620,280 L620,400",
       label: "WAN uplink",
       dashed: true,
     },
@@ -342,77 +299,49 @@ export const overviewLayout = {
       from: "opnsense",
       to: "switch",
       kind: "physical",
-      points: [
-        [4154, 2492],
-        [4154, 2914],
-        [4418, 2914],
-      ],
+      path: "M760,470 L960,470",
     },
     {
       id: "switch-to-proxmox",
       from: "switch",
       to: "proxmox",
       kind: "physical",
-      points: [
-        [4582, 2820],
-        [4582, 2492],
-      ],
+      path: "M1200,470 L1400,470",
     },
     {
       id: "switch-to-ap",
       from: "switch",
       to: "unifi-ap",
       kind: "physical",
-      points: [
-        [4706, 2820],
-        [4706, 2620],
-        [4828, 2620],
-        [4828, 2492],
-      ],
+      path: "M1020,540 L1020,2120 L380,2120 L380,2300",
     },
     {
       id: "switch-to-pc",
       from: "switch",
       to: "bazzite-pc",
       kind: "physical",
-      points: [
-        [4792, 2898],
-        [5100, 2898],
-        [5100, 2492],
-      ],
+      path: "M1080,540 L1080,2160 L800,2160 L800,2300",
     },
     {
       id: "switch-to-kvm",
       from: "switch",
       to: "jetkvm",
       kind: "physical",
-      points: [
-        [4792, 2940],
-        [5344, 2940],
-        [5344, 2492],
-      ],
+      path: "M1140,540 L1140,2200 L1400,2200 L1400,2300",
     },
     {
       id: "switch-to-nas",
       from: "switch",
       to: "nas",
       kind: "physical",
-      points: [
-        [4792, 2980],
-        [5587, 2980],
-        [5587, 2492],
-      ],
+      path: "M1160,540 L1160,2240 L1820,2240 L1820,2300",
     },
     {
       id: "proxmox-to-unifi-vm",
       from: "proxmox",
       to: "unifi-vm",
       kind: "runtime",
-      points: [
-        [4424, 2492],
-        [4424, 3175],
-        [2398, 3175],
-      ],
+      path: "M1440,540 L1440,720 L360,720 L360,940",
       label: "VM placement",
     },
     {
@@ -420,48 +349,29 @@ export const overviewLayout = {
       from: "proxmox",
       to: "shared-vm",
       kind: "runtime",
-      points: [
-        [4520, 2492],
-        [4520, 4190],
-        [3158, 4190],
-        [3158, 4348],
-      ],
+      path: "M1500,540 L1500,760 L1020,760 L1020,940",
       label: "VM placement",
-    },
-    {
-      id: "proxmox-to-hermes-vm",
-      from: "proxmox",
-      to: "hermes-vm",
-      kind: "runtime",
-      points: [
-        [4608, 2492],
-        [4608, 3920],
-        [4838, 3920],
-        [4838, 4140],
-      ],
     },
     {
       id: "proxmox-to-kuma-lxc",
       from: "proxmox",
       to: "kuma-lxc",
       kind: "runtime",
-      points: [
-        [4698, 2492],
-        [4698, 3180],
-        [6192, 3180],
-      ],
+      path: "M1580,540 L1580,800 L1650,800 L1650,940",
+    },
+    {
+      id: "proxmox-to-hermes-vm",
+      from: "proxmox",
+      to: "hermes-vm",
+      kind: "runtime",
+      path: "M1640,540 L1640,760 L2120,760 L2120,940",
     },
     {
       id: "policy-to-management",
       from: "opnsense",
       to: "management-lane",
       kind: "policy",
-      points: [
-        [4028, 2418],
-        [3605, 2418],
-        [3605, 3140],
-        [2455, 3140],
-      ],
+      path: "M520,540 L520,680 L360,680 L360,850",
       label: "Admin reach",
       dashed: true,
     },
@@ -470,27 +380,8 @@ export const overviewLayout = {
       from: "opnsense",
       to: "service-lane",
       kind: "policy",
-      points: [
-        [4028, 2460],
-        [3505, 2460],
-        [3505, 4548],
-        [3730, 4548],
-      ],
+      path: "M580,540 L580,640 L1020,640 L1020,850",
       label: "Publish + trust",
-      dashed: true,
-    },
-    {
-      id: "policy-to-automation",
-      from: "opnsense",
-      to: "automation-lane",
-      kind: "policy",
-      points: [
-        [4152, 2492],
-        [4320, 2492],
-        [4320, 4272],
-        [4618, 4272],
-      ],
-      label: "Utility access",
       dashed: true,
     },
     {
@@ -498,14 +389,23 @@ export const overviewLayout = {
       from: "opnsense",
       to: "signal-lane",
       kind: "policy",
-      points: [
-        [4278, 2428],
-        [5950, 2428],
-        [5950, 3280],
-        [6158, 3280],
-      ],
+      path: "M640,540 L640,600 L1650,600 L1650,850",
       label: "Checks + alerts",
       dashed: true,
     },
-  ] satisfies MapEdge[],
-} as const;
+    {
+      id: "policy-to-automation",
+      from: "opnsense",
+      to: "automation-lane",
+      kind: "policy",
+      path: "M700,540 L700,560 L2120,560 L2120,850",
+      label: "Utility access",
+      dashed: true,
+    },
+  ],
+} satisfies {
+  viewBox: string;
+  frames: MapFrame[];
+  nodes: MapNode[];
+  edges: MapEdge[];
+};

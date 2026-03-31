@@ -1,154 +1,133 @@
 ---
-import { overviewLayout } from "../../data/topology/layout";
-
+import { layout } from "../../data/topology/layout";
 import type { NodeTone, ChipTone, FrameTone } from "../../data/topology/layout";
 
-const nodePalette: Record<NodeTone, { fill: string; stroke: string; eyebrow: string }> = {
-  edge:     { fill: "#162434", stroke: "#7ed0ff", eyebrow: "#9bdfff" },
-  network:  { fill: "#18283c", stroke: "#7fb2ff", eyebrow: "#9db9ff" },
-  platform: { fill: "#1b3124", stroke: "#9de07e", eyebrow: "#bfeb92" },
-  runtime:  { fill: "#2d2135", stroke: "#f2c779", eyebrow: "#f8ddb3" },
-  device:   { fill: "#352517", stroke: "#f7ae73", eyebrow: "#ffd8bc" },
-  client:   { fill: "#2d2338", stroke: "#e79cff", eyebrow: "#f1c0ff" },
+const { viewBox, frames, nodes, edges } = layout;
+
+const CARD_PAD = 16;
+const EYEBROW_SIZE = 14;
+const LABEL_SIZE = 22;
+const CAPTION_SIZE = 13;
+const CHIP_H = 36;
+const CHIP_GAP = 6;
+const CHIP_PAD = 10;
+
+const nodeToneVar: Record<NodeTone, string> = {
+  edge: "--nav-4",
+  network: "--nav-1",
+  platform: "--nav-2",
+  runtime: "--nav-3",
+  device: "--text-muted",
+  client: "--text-muted",
 };
 
-const chipPalette: Record<ChipTone, { fill: string; stroke: string }> = {
-  service:    { fill: "#143125", stroke: "#8ee49a" },
-  controller: { fill: "#162c44", stroke: "#8ec7ff" },
-  monitoring: { fill: "#17343c", stroke: "#85e0d8" },
-  agent:      { fill: "#382614", stroke: "#f1c575" },
-  utility:    { fill: "#282c49", stroke: "#b6b4ff" },
+const chipToneVar: Record<ChipTone, string> = {
+  service: "--nav-1",
+  controller: "--nav-2",
+  monitoring: "--nav-3",
+  agent: "--nav-4",
+  utility: "--text-muted",
 };
 
-const framePalette: Record<FrameTone, { fill: string; stroke: string; label: string }> = {
-  hardware:   { fill: "rgba(24,40,58,0.24)",   stroke: "#456886", label: "#b7cfe2" },
-  compute:    { fill: "rgba(7,18,29,0.08)",    stroke: "#314b63", label: "#9fb7c9" },
-  management: { fill: "rgba(17,52,78,0.12)",   stroke: "#75c7ff", label: "#b9e7ff" },
-  service:    { fill: "rgba(18,54,31,0.12)",   stroke: "#84db91", label: "#c7f4cf" },
-  signal:     { fill: "rgba(18,56,65,0.12)",   stroke: "#7fd8d0", label: "#beefe8" },
-  automation: { fill: "rgba(72,47,18,0.12)",   stroke: "#f1c575", label: "#ffe1a8" },
+const frameToneVar: Record<FrameTone, string> = {
+  management: "--nav-3",
+  service: "--nav-1",
+  signal: "--nav-2",
+  automation: "--nav-4",
 };
 
-const hardwareRowPalette: Record<string, { stroke: string; eyebrow: string }> = {
-  opnsense:   { stroke: "#7ed0ff", eyebrow: "#9bdfff" },
-  proxmox:    { stroke: "#9de07e", eyebrow: "#bfeb92" },
-  "unifi-ap": { stroke: "#7adfd1", eyebrow: "#a8eee5" },
-  "bazzite-pc": { stroke: "#d7a4ff", eyebrow: "#eccdff" },
-  jetkvm:     { stroke: "#ffb27d", eyebrow: "#ffd3b4" },
-  nas:        { stroke: "#f2d177", eyebrow: "#ffe8af" },
+const edgeKindVar: Record<string, string> = {
+  physical: "--nav-1",
+  runtime: "--nav-2",
+  policy: "--nav-3",
 };
-
-const hardwareRowFill = "#162434";
-
-// Hardware row node IDs (nodes that sit in the hardware row and get per-node color overrides)
-const hardwareRowIds = new Set(Object.keys(hardwareRowPalette));
-
-function edgeStroke(kind: "physical" | "runtime" | "policy"): string {
-  if (kind === "physical") return "#7d95ac";
-  if (kind === "runtime")  return "#f2c779";
-  return "#79d89c";
-}
-
-
-const { viewBox, frames, nodes, edges } = overviewLayout;
 ---
 
 <section class="topology-screen" id="topology-screen">
   <svg
     viewBox={viewBox}
     role="img"
-    aria-label="Interactive homelab overview map"
+    aria-label="Interactive homelab topology map"
     class="topology-svg"
     id="topology-svg"
   >
-    <defs>
-      <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="180%">
-        <feDropShadow dx="0" dy="24" stdDeviation="18" flood-color="#03111c" flood-opacity="0.35" />
-      </filter>
-    </defs>
+    <rect x="0" y="0" width="2400" height="2800" class="topo-bg" fill="var(--bg)" />
 
-    <!-- Background fill -->
-    <rect x="0" y="0" width="100%" height="100%" fill="#06121d" />
-
-    <!-- Camera transform group — JS will set transform here -->
     <g id="topology-camera">
-      <!-- Invisible click target for deselect -->
-      <rect x="0" y="0" width="100%" height="100%" fill="transparent" id="topology-bg" />
+      <rect x="0" y="0" width="2400" height="2800" fill="transparent" id="topology-bg" />
 
-      <!-- ── Frames ──────────────────────────────────────────── -->
       {frames.map((frame) => {
-        const pal = framePalette[frame.tone as FrameTone];
-        const isCompute = frame.tone === "compute";
-        const hasEntity = Boolean(frame.entityId);
+        const colorVar = frameToneVar[frame.tone];
         return (
           <g
+            class="topo-frame"
             data-frame-id={frame.id}
             data-entity-id={frame.entityId ?? ""}
           >
             <rect
+              class="topo-frame-bg"
               x={frame.x}
               y={frame.y}
               width={frame.w}
               height={frame.h}
-              rx={34}
-              fill={pal.fill}
-              stroke={pal.stroke}
-              stroke-width="2"
-              stroke-dasharray={isCompute ? "24 22" : undefined}
+              rx={8}
+              fill={`color-mix(in srgb, var(${colorVar}) 6%, transparent)`}
+              stroke={`var(${colorVar})`}
+              stroke-width="1.5"
+              stroke-dasharray="8 6"
+              stroke-opacity="0.4"
             />
-            <g
-              data-entity-click={hasEntity ? frame.entityId : undefined}
-              class={hasEntity ? "is-clickable" : undefined}
+            <text
+              class="topo-frame-label"
+              x={frame.x + 16}
+              y={frame.y + 24}
+              fill={`var(${colorVar})`}
+              fill-opacity="0.7"
+              text-anchor="start"
+              dominant-baseline="hanging"
             >
-              <text
-                x={frame.x + 28}
-                y={frame.y + 28}
-                font-size="20"
-                font-family="Inter, system-ui, sans-serif"
-                fill={pal.label}
-                font-weight="600"
-                text-anchor="start"
-                dominant-baseline="hanging"
-              >
-                {frame.label}
-              </text>
-            </g>
+              {frame.label}
+            </text>
           </g>
         );
       })}
 
-      <!-- ── Edges ───────────────────────────────────────────── -->
       {edges.map((edge) => {
-        const stroke = edgeStroke(edge.kind);
-        const strokeWidth = edge.kind === "policy" ? 8 : 10;
-        const pointsStr = edge.points.map(([x, y]) => `${x},${y}`).join(" ");
-        // Midpoint for label
-        const mid = edge.points[Math.floor(edge.points.length / 2)];
+        const colorVar = edgeKindVar[edge.kind] ?? "--nav-1";
+        const pathParts = edge.path.split(/[ML]\s*/);
+        const coords = pathParts.filter(Boolean).map((p) => {
+          const [x, y] = p.split(",").map(Number);
+          return { x, y };
+        });
+        const midIdx = Math.floor(coords.length / 2);
+        const mid = coords[midIdx] ?? coords[0];
+
         return (
           <g
+            class="topo-edge-group"
             data-edge-id={edge.id}
             data-edge-from={edge.from}
             data-edge-to={edge.to}
             data-edge-kind={edge.kind}
           >
-            <polyline
-              points={pointsStr}
+            <path
+              class="topo-edge"
+              d={edge.path}
               fill="none"
-              stroke={stroke}
-              stroke-width={strokeWidth}
-              stroke-opacity="0.7"
+              stroke={`var(${colorVar})`}
+              stroke-width="2"
+              stroke-opacity="0.5"
               stroke-linecap="round"
               stroke-linejoin="round"
-              stroke-dasharray={edge.dashed ? "28 18" : undefined}
+              stroke-dasharray={edge.dashed ? "12 8" : undefined}
             />
             {edge.label && mid && (
               <text
-                x={mid[0]}
-                y={mid[1] - 14}
-                font-size="18"
-                font-family="Inter, system-ui, sans-serif"
-                fill={stroke}
-                fill-opacity="0.8"
+                class="topo-edge-label"
+                x={mid.x}
+                y={mid.y - 8}
+                fill={`var(${colorVar})`}
+                fill-opacity="0.6"
                 text-anchor="middle"
                 dominant-baseline="auto"
               >
@@ -159,66 +138,53 @@ const { viewBox, frames, nodes, edges } = overviewLayout;
         );
       })}
 
-      <!-- ── Nodes ───────────────────────────────────────────── -->
       {nodes.map((node) => {
-        const isHardwareRow = hardwareRowIds.has(node.id);
-        const hwOverride = hardwareRowPalette[node.id];
-        const basePal = nodePalette[node.tone as NodeTone];
-        const fill   = isHardwareRow ? hardwareRowFill : basePal.fill;
-        const stroke = isHardwareRow ? hwOverride.stroke : basePal.stroke;
-        const eyebrowColor = isHardwareRow ? hwOverride.eyebrow : basePal.eyebrow;
-
-        // Typography layout inside the node card
+        const colorVar = nodeToneVar[node.tone];
         const px = node.x;
         const py = node.y;
-        const cardPad = 26;
+        const chipStartY = py + CARD_PAD
+          + (node.eyebrow ? EYEBROW_SIZE + 6 : 0)
+          + (node.label ? LABEL_SIZE + 4 : 0)
+          + (node.caption ? CAPTION_SIZE + 8 : 0)
+          + 8;
 
         return (
           <g
-            filter="url(#card-shadow)"
-            class="is-clickable"
+            class="topo-node is-clickable"
             data-entity-click={node.id}
             data-node-id={node.id}
           >
-            <!-- Card background -->
             <rect
+              class="topo-node-bg"
               x={px}
               y={py}
               width={node.w}
               height={node.h}
-              rx={30}
-              fill={fill}
-              stroke={stroke}
-              stroke-width="2.5"
+              rx={6}
+              fill="var(--surface)"
+              stroke={`var(${colorVar})`}
+              stroke-width="1.5"
             />
 
-            {/* Eyebrow */}
             {node.eyebrow && (
               <text
-                x={px + cardPad}
-                y={py + cardPad}
-                font-size="18"
-                font-family="Inter, system-ui, sans-serif"
-                fill={eyebrowColor}
-                font-weight="600"
+                class="topo-eyebrow"
+                x={px + CARD_PAD}
+                y={py + CARD_PAD}
+                fill={`var(${colorVar})`}
                 text-anchor="start"
                 dominant-baseline="hanging"
-                text-transform="uppercase"
-                letter-spacing="2"
               >
                 {node.eyebrow.toUpperCase()}
               </text>
             )}
 
-            {/* Label / title */}
             {node.label && (
               <text
-                x={px + cardPad}
-                y={py + cardPad + (node.eyebrow ? 32 : 0)}
-                font-size="28"
-                font-family="Inter, system-ui, sans-serif"
-                fill="#f6fbff"
-                font-weight="600"
+                class="topo-label"
+                x={px + CARD_PAD}
+                y={py + CARD_PAD + (node.eyebrow ? EYEBROW_SIZE + 6 : 0)}
+                fill="var(--text)"
                 text-anchor="start"
                 dominant-baseline="hanging"
               >
@@ -226,14 +192,12 @@ const { viewBox, frames, nodes, edges } = overviewLayout;
               </text>
             )}
 
-            {/* Caption */}
             {node.caption && (
               <text
-                x={px + cardPad}
-                y={py + cardPad + (node.eyebrow ? 32 : 0) + (node.label ? 38 : 0)}
-                font-size="18"
-                font-family="Inter, system-ui, sans-serif"
-                fill="#7d95ac"
+                class="topo-caption"
+                x={px + CARD_PAD}
+                y={py + CARD_PAD + (node.eyebrow ? EYEBROW_SIZE + 6 : 0) + (node.label ? LABEL_SIZE + 4 : 0)}
+                fill="var(--text-muted)"
                 text-anchor="start"
                 dominant-baseline="hanging"
               >
@@ -241,45 +205,39 @@ const { viewBox, frames, nodes, edges } = overviewLayout;
               </text>
             )}
 
-            {/* Chips */}
-            {node.chips?.map((chip) => {
-              const cPal = chipPalette[chip.tone as ChipTone];
-              const cx = px + chip.x;
-              const cy = py + chip.y;
-              const lineCount = chip.lines?.length ?? 1;
-              const lineH = 26;
-              const totalTextH = lineCount * lineH;
-              const centerY = cy + chip.h / 2 - totalTextH / 2 + lineH / 2;
+            {node.chips?.map((chip, i) => {
+              const chipColorVar = chipToneVar[chip.tone];
+              const chipY = chipStartY + i * (CHIP_H + CHIP_GAP);
+              const chipW = node.w - CARD_PAD * 2;
+
               return (
                 <g
-                  class="is-clickable"
+                  class="topo-chip is-clickable"
                   data-entity-click={chip.id}
                   data-chip-id={chip.id}
                 >
                   <rect
-                    x={cx}
-                    y={cy}
-                    width={chip.w}
-                    height={chip.h}
-                    rx={24}
-                    fill={cPal.fill}
-                    stroke={cPal.stroke}
-                    stroke-width="1.5"
+                    class="topo-chip-bg"
+                    x={px + CARD_PAD}
+                    y={chipY}
+                    width={chipW}
+                    height={CHIP_H}
+                    rx={4}
+                    fill="var(--bg)"
+                    stroke={`var(${chipColorVar})`}
+                    stroke-width="1"
+                    stroke-opacity="0.5"
                   />
-                  {chip.lines?.map((line, i) => (
-                    <text
-                      x={cx + chip.w / 2}
-                      y={centerY + i * lineH}
-                      font-size="20"
-                      font-family="Inter, system-ui, sans-serif"
-                      fill="#f6fbff"
-                      font-weight="500"
-                      text-anchor="middle"
-                      dominant-baseline="central"
-                    >
-                      {line}
-                    </text>
-                  ))}
+                  <text
+                    class="topo-chip-label"
+                    x={px + CARD_PAD + CHIP_PAD}
+                    y={chipY + CHIP_H / 2}
+                    fill="var(--text)"
+                    text-anchor="start"
+                    dominant-baseline="central"
+                  >
+                    {chip.label}
+                  </text>
                 </g>
               );
             })}
@@ -288,80 +246,6 @@ const { viewBox, frames, nodes, edges } = overviewLayout;
       })}
     </g>
   </svg>
-
-  <!-- ── HUD: Top Left — Intro + View Modes ─────────────────── -->
-  <div class="topology-overlay topology-overlay--top-left">
-    <div class="topology-hud">
-      <p class="topology-hud__eyebrow">Homelab</p>
-      <h1>Topology</h1>
-      <p>An overview of the physical, runtime, and policy layers of the lab.</p>
-    </div>
-
-    <div class="topology-hud">
-      <p class="topology-hud__eyebrow">View mode</p>
-      <div class="topology-toolbar" role="tablist" aria-label="View modes">
-        <button
-          data-view-mode="overview"
-          class="topology-button topology-button--active"
-          role="tab"
-          aria-selected="true"
-        >Overview</button>
-        <button
-          data-view-mode="runtime"
-          class="topology-button"
-          role="tab"
-          aria-selected="false"
-        >Runtime</button>
-        <button
-          data-view-mode="trust"
-          class="topology-button"
-          role="tab"
-          aria-selected="false"
-        >Trust</button>
-      </div>
-      <p class="topology-caption" id="view-mode-hint">Balanced physical, runtime, and policy context</p>
-    </div>
-  </div>
-
-  <!-- ── HUD: Top Right — Controls + Legend ─────────────────── -->
-  <div class="topology-overlay topology-overlay--top-right">
-    <div class="topology-hud">
-      <p class="topology-hud__eyebrow">Controls</p>
-      <div class="topology-toolbar">
-        <button class="topology-button" id="zoom-in" aria-label="Zoom in">+</button>
-        <button class="topology-button" id="zoom-out" aria-label="Zoom out">−</button>
-        <button class="topology-button" id="reset-view" aria-label="Reset view">Reset</button>
-      </div>
-      <div class="topology-legend">
-        <div class="topology-legend-item">
-          <span class="legend-swatch legend-swatch--physical"></span>
-          <span>Physical link</span>
-        </div>
-        <div class="topology-legend-item">
-          <span class="legend-swatch legend-swatch--runtime"></span>
-          <span>Runtime placement</span>
-        </div>
-        <div class="topology-legend-item">
-          <span class="legend-swatch legend-swatch--policy"></span>
-          <span>Policy / trust</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Detail Drawer ──────────────────────────────────────── -->
-  <div class="topology-overlay topology-overlay--drawer">
-    <aside class="drawer-panel drawer-panel--empty" id="detail-drawer">
-      <p class="drawer-eyebrow">Interactive overview</p>
-      <h2>The map is the page.</h2>
-      <p class="drawer-summary">Drag to pan, use the mouse wheel to zoom, and click a host, service, or VLAN lane to focus that part of the lab.</p>
-      <div class="drawer-badges">
-        <span class="drawer-badge">Drag to pan</span>
-        <span class="drawer-badge">Wheel to zoom</span>
-        <span class="drawer-badge">Click to focus</span>
-      </div>
-    </aside>
-  </div>
 </section>
 
 <script>

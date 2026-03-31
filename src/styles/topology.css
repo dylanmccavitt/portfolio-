@@ -1,28 +1,14 @@
-/* Topology Map — standalone dark-theme page styles */
+/* Topology Map — theme-aware styles using CSS custom properties */
 
 /* ─── Page & Layout ─────────────────────────────────────────── */
 
 .topology-page {
-  background: #06121d;
+  background: var(--bg);
   overflow: hidden;
   height: 100vh;
   width: 100vw;
   margin: 0;
   padding: 0;
-}
-
-.topology-back {
-  position: absolute;
-  top: var(--space-4);
-  left: var(--space-5);
-  color: #a9bfd1;
-  text-decoration: none;
-  font-size: var(--text-sm);
-  z-index: 200;
-}
-
-.topology-back:hover {
-  color: #f6fbff;
 }
 
 .topology-screen {
@@ -45,124 +31,71 @@
   cursor: pointer;
 }
 
-/* ─── HUD Overlays ───────────────────────────────────────────── */
+/* ─── Breadcrumb positioning ────────────────────────────────── */
 
-.topology-overlay {
+.topology-breadcrumb {
   position: absolute;
-  z-index: 100;
-  pointer-events: none;
+  top: var(--space-4);
+  left: var(--space-4);
+  right: var(--space-4);
+  z-index: 200;
 }
 
-.topology-overlay > * {
-  pointer-events: auto;
-}
-
-.topology-overlay--top-left {
-  top: var(--space-7);
-  left: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.topology-overlay--top-right {
-  top: var(--space-7);
-  right: var(--space-5);
-}
-
-.topology-overlay--drawer {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 380px;
-  max-width: 100vw;
-}
-
-@media (max-width: 640px) {
-  .topology-overlay--drawer {
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    max-height: 50vh;
-  }
-}
-
-/* ─── HUD Panels ─────────────────────────────────────────────── */
-
-.topology-hud {
-  background: rgba(6, 18, 29, 0.85);
+.topology-breadcrumb .breadcrumb-bar {
+  max-width: none;
+  margin: 0;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(169, 191, 209, 0.15);
-  padding: var(--space-4) var(--space-5);
-  color: #f6fbff;
 }
 
-.topology-hud h1 {
-  font-size: var(--text-xl);
-  color: #f6fbff;
-  font-weight: 600;
-  margin: 0;
-}
+/* ─── HUD Controls ──────────────────────────────────────────── */
 
-.topology-hud p {
-  font-size: var(--text-sm);
-  color: #a9bfd1;
-  margin: 0;
-}
-
-.topology-hud__eyebrow {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #7d95ac;
-}
-
-/* ─── Toolbar & Buttons ──────────────────────────────────────── */
-
-.topology-toolbar {
+.topology-controls {
+  position: absolute;
+  bottom: var(--space-5);
+  left: var(--space-5);
+  z-index: 100;
   display: flex;
   gap: var(--space-2);
 }
 
-.topology-button {
+.topology-controls button {
+  font-family: var(--font-body);
   font-size: var(--text-sm);
-  color: #a9bfd1;
-  background: rgba(6, 18, 29, 0.6);
-  border: 1px solid rgba(169, 191, 209, 0.2);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
-  border-radius: 0;
-  font-family: var(--font-body);
+  border-radius: 4px;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
-.topology-button:hover {
-  border-color: rgba(169, 191, 209, 0.4);
-  color: #f6fbff;
-}
-
-.topology-button--active {
-  border-color: #4a6fa5;
-  color: #f6fbff;
-  background: rgba(74, 111, 165, 0.2);
-}
-
-.topology-caption {
-  font-size: 0.75rem;
-  color: #7d95ac;
-  margin-top: var(--space-2);
+.topology-controls button:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 /* ─── Legend ─────────────────────────────────────────────────── */
 
 .topology-legend {
+  position: absolute;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  z-index: 100;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: var(--space-3);
   font-size: var(--text-sm);
-  color: #a9bfd1;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: var(--space-3) var(--space-4);
 }
 
 .topology-legend-item {
@@ -173,157 +106,243 @@
 
 .legend-swatch {
   display: inline-block;
-  width: 16px;
+  width: 20px;
   height: 3px;
   flex-shrink: 0;
+  border-radius: 1px;
 }
 
 .legend-swatch--physical {
-  background: #7d95ac;
+  background: var(--nav-1);
+  opacity: 0.6;
 }
-
 .legend-swatch--runtime {
-  background: #f2c779;
+  background: var(--nav-2);
+  opacity: 0.6;
 }
-
 .legend-swatch--policy {
-  background: #79d89c;
+  background: var(--nav-3);
+  opacity: 0.6;
 }
 
-/* ─── Detail Drawer ──────────────────────────────────────────── */
+/* ─── SVG Node Styling ──────────────────────────────────────── */
 
-.drawer-panel {
-  height: 100%;
-  background: rgba(6, 18, 29, 0.92);
-  backdrop-filter: blur(12px);
-  border-left: 1px solid rgba(169, 191, 209, 0.12);
-  padding: var(--space-6) var(--space-5);
-  overflow-y: auto;
-  color: #f6fbff;
+.topo-node-bg {
+  transition:
+    stroke-width 0.15s,
+    opacity 0.15s;
 }
 
-@media (max-width: 640px) {
-  .drawer-panel {
-    border-left: none;
-    border-top: 1px solid rgba(169, 191, 209, 0.12);
+.topo-node:hover .topo-node-bg {
+  stroke-width: 3.5;
+}
+
+.topo-eyebrow {
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.topo-label {
+  font-size: 22px;
+  font-family: var(--font-body);
+  font-weight: 600;
+}
+
+.topo-caption {
+  font-size: 13px;
+  font-family: var(--font-body);
+}
+
+.topo-chip-bg {
+  transition: stroke-width 0.15s;
+}
+
+.topo-chip-label {
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+
+.topo-frame-bg {
+  transition: stroke-width 0.15s;
+}
+
+.topo-frame-label {
+  font-size: 16px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.topo-edge {
+  transition:
+    stroke-opacity 0.15s,
+    stroke-width 0.15s;
+}
+
+.topo-edge-label {
+  font-size: 13px;
+  font-family: var(--font-body);
+}
+
+/* ─── Highlight states ──────────────────────────────────────── */
+
+.topology-svg.has-focus .topo-node-bg {
+  opacity: 0.3;
+}
+.topology-svg.has-focus .topo-node.is-highlighted .topo-node-bg {
+  opacity: 1;
+  stroke-width: 4;
+}
+.topology-svg.has-focus .topo-node.is-active .topo-node-bg {
+  opacity: 1;
+  stroke-width: 5;
+}
+
+.topology-svg.has-focus .topo-chip-bg {
+  opacity: 0.3;
+}
+.topology-svg.has-focus .topo-chip.is-highlighted .topo-chip-bg {
+  opacity: 1;
+  stroke-width: 3;
+}
+.topology-svg.has-focus .topo-chip.is-active .topo-chip-bg {
+  opacity: 1;
+  stroke-width: 4;
+}
+
+.topology-svg.has-focus .topo-frame-bg {
+  opacity: 0.15;
+}
+.topology-svg.has-focus .topo-frame.is-highlighted .topo-frame-bg {
+  opacity: 0.6;
+  stroke-width: 3;
+}
+
+.topology-svg.has-focus .topo-edge {
+  stroke-opacity: 0.1;
+}
+.topology-svg.has-focus .topo-edge.is-highlighted {
+  stroke-opacity: 0.9;
+  stroke-width: 3;
+}
+
+/* ─── Pop Card ──────────────────────────────────────────────── */
+
+.topo-popcard {
+  position: absolute;
+  z-index: 300;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: 320px;
+  min-width: 240px;
+  padding: var(--space-4) var(--space-5);
+  color: var(--text);
+  animation: popcard-in 0.15s ease;
+  pointer-events: auto;
+}
+
+@keyframes popcard-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.drawer-panel--empty {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.drawer-panel--hidden {
-  display: none;
-}
-
-.drawer-heading-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.drawer-eyebrow {
+.topo-popcard__eyebrow {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #7d95ac;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.topo-popcard__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.topo-popcard__summary {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 var(--space-3);
+}
+
+.topo-popcard__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.topo-popcard__badge {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--border) 50%, transparent);
+  border: 1px solid var(--border);
+  padding: 2px var(--space-2);
+  border-radius: 3px;
+}
+
+.topo-popcard__related-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
   margin-bottom: var(--space-2);
 }
 
-.drawer-panel h2 {
-  font-size: var(--text-xl);
-  color: #f6fbff;
-  margin: 0 0 var(--space-3);
+.topo-popcard__related-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 
-.drawer-summary {
+.topo-popcard__related-btn {
+  font-family: var(--font-body);
   font-size: var(--text-sm);
-  color: #a9bfd1;
-  line-height: 1.6;
-  margin: 0 0 var(--space-4);
-}
-
-.drawer-close {
-  font-size: var(--text-sm);
-  color: #7d95ac;
+  color: var(--accent);
   background: none;
-  border: 1px solid rgba(169, 191, 209, 0.2);
+  border: 1px solid var(--border);
   padding: var(--space-1) var(--space-3);
   cursor: pointer;
-  border-radius: 0;
-  font-family: var(--font-body);
-  flex-shrink: 0;
-  margin-left: var(--space-3);
+  border-radius: 4px;
+  transition: border-color 0.15s;
 }
 
-.drawer-close:hover {
-  color: #f6fbff;
-  border-color: rgba(169, 191, 209, 0.4);
-}
-
-.drawer-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.drawer-badge {
-  font-size: 0.75rem;
-  color: #a9bfd1;
-  background: rgba(169, 191, 209, 0.1);
-  border: 1px solid rgba(169, 191, 209, 0.15);
-  padding: var(--space-1) var(--space-3);
-  border-radius: 0;
-}
-
-.drawer-section {
-  margin-top: var(--space-5);
-}
-
-.drawer-section h3 {
-  font-size: var(--text-sm);
-  color: #7d95ac;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0 0 var(--space-3);
-}
-
-.drawer-section ul {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: 0;
-  margin: 0;
-}
-
-.drawer-section li {
-  font-size: var(--text-sm);
-  color: #a9bfd1;
-}
-
-.drawer-related {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.drawer-related-button {
-  font-size: var(--text-sm);
-  color: #a9bfd1;
-  background: rgba(74, 111, 165, 0.12);
-  border: 1px solid rgba(74, 111, 165, 0.25);
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-  border-radius: 0;
-  font-family: var(--font-body);
-}
-
-.drawer-related-button:hover {
+.topo-popcard__related-btn:hover {
   border-color: var(--accent);
-  color: #f6fbff;
+}
+
+/* ─── Responsive ────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .topology-controls {
+    bottom: var(--space-4);
+    left: var(--space-3);
+  }
+
+  .topology-legend {
+    display: none;
+  }
+
+  .topo-popcard {
+    left: var(--space-3) !important;
+    right: var(--space-3) !important;
+    max-width: none;
+    bottom: var(--space-4) !important;
+    top: auto !important;
+  }
 }

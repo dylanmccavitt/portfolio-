@@ -19,6 +19,8 @@ The system is split into separate zones: one for network management, one for app
 
 </div>
 
+[View the interactive topology map →](/homelab/topology/)
+
 ## Why I built it
 
 I wanted hands-on experience with the kind of infrastructure decisions that come up in professional environments — network segmentation, reverse proxies, monitoring, and service isolation — but at a scale where I could understand every piece end to end. Cloud services abstract away the parts I wanted to learn.
