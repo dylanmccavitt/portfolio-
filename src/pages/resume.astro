@@ -1,0 +1,32 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Resume — Dylan McCavitt">
+  <main class="resume">
+    <h1 class="resume__title">Resume</h1>
+    <p class="resume__placeholder">Content coming soon.</p>
+    <a href="/resume.pdf" class="resume__download">Download PDF &darr;</a>
+  </main>
+</Base>
+
+<style>
+  .resume {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: var(--space-8) var(--space-5);
+  }
+  .resume__title {
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-5);
+  }
+  .resume__placeholder {
+    color: var(--text-muted);
+    margin-bottom: var(--space-6);
+  }
+  .resume__download {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--accent);
+  }
+</style>
