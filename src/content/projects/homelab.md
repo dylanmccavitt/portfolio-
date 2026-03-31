@@ -13,9 +13,9 @@ The system is split into separate zones: one for network management, one for app
 
 <div class="screenshot-grid">
 
-![Proxmox dashboard](/screenshots/homelab/proxmox.png)
+![Homepage dashboard](/screenshots/homelab/homepage.png)
 
-![Grafana monitoring](/screenshots/homelab/grafana.png)
+![Proxmox dashboard](/screenshots/homelab/proxmox.png)
 
 </div>
 

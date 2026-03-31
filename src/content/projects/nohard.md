@@ -19,4 +19,4 @@ The community needed a central place for information that wasn't scattered acros
 
 Building for a community means building for people with very different levels of technical comfort. The most important feedback came from the least technical users — they found problems that power users worked around without noticing. Simplicity isn't a feature you add; it's what's left when you remove everything unnecessary.
 
-![Google Calendar API integration](/screenshots/nohard/google-cal.png)
+![Google Calendar API integration](/screenshots/nohard/gcal-integration.png)

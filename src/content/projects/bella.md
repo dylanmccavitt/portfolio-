@@ -21,4 +21,4 @@ I wanted to build something real — not a tutorial project, but an application 
 
 Full-stack development is mostly about the seams between systems. The hardest parts weren't the individual features but the integration points: making Stripe webhooks reliable, keeping Supabase auth in sync with the frontend, and setting up error tracking with Sentry so problems are visible before users report them.
 
-![Stripe checkout integration](/screenshots/bella/stripe-checkout.png)
+![Stripe checkout integration](/screenshots/bella/stripe.png)
