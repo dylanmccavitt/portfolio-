@@ -131,13 +131,11 @@
 /* ─── SVG Node Styling ──────────────────────────────────────── */
 
 .topo-node-bg {
-  transition:
-    stroke-width 0.15s,
-    opacity 0.15s;
+  transition: opacity 0.15s;
 }
 
 .topo-node:hover .topo-node-bg {
-  stroke-width: 3.5;
+  opacity: 0.85;
 }
 
 .topo-eyebrow {
@@ -160,7 +158,7 @@
 }
 
 .topo-chip-bg {
-  transition: stroke-width 0.15s;
+  transition: opacity 0.15s;
 }
 
 .topo-chip-label {
@@ -195,43 +193,37 @@
 /* ─── Highlight states ──────────────────────────────────────── */
 
 .topology-svg.has-focus .topo-node-bg {
-  opacity: 0.3;
+  opacity: 0.2;
 }
 .topology-svg.has-focus .topo-node.is-highlighted .topo-node-bg {
   opacity: 1;
-  stroke-width: 4;
 }
 .topology-svg.has-focus .topo-node.is-active .topo-node-bg {
   opacity: 1;
-  stroke-width: 5;
 }
 
 .topology-svg.has-focus .topo-chip-bg {
-  opacity: 0.3;
+  opacity: 0.2;
 }
 .topology-svg.has-focus .topo-chip.is-highlighted .topo-chip-bg {
   opacity: 1;
-  stroke-width: 3;
 }
 .topology-svg.has-focus .topo-chip.is-active .topo-chip-bg {
   opacity: 1;
-  stroke-width: 4;
 }
 
-.topology-svg.has-focus .topo-frame-bg {
+.topology-svg.has-focus .topo-frame-label {
   opacity: 0.15;
 }
-.topology-svg.has-focus .topo-frame.is-highlighted .topo-frame-bg {
+.topology-svg.has-focus .topo-frame.is-highlighted .topo-frame-label {
   opacity: 0.6;
-  stroke-width: 3;
 }
 
 .topology-svg.has-focus .topo-edge {
-  stroke-opacity: 0.1;
+  stroke-opacity: 0.05;
 }
 .topology-svg.has-focus .topo-edge.is-highlighted {
-  stroke-opacity: 0.9;
-  stroke-width: 3;
+  stroke-opacity: 0.5;
 }
 
 /* ─── Pop Card ──────────────────────────────────────────────── */

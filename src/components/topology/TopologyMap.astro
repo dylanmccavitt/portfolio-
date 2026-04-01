@@ -1,6 +1,6 @@
 ---
 import { layout } from "../../data/topology/layout";
-import type { NodeTone, ChipTone, FrameTone } from "../../data/topology/layout";
+import type { NodeTone, FrameTone } from "../../data/topology/layout";
 
 const { viewBox, frames, nodes, edges } = layout;
 
@@ -19,14 +19,6 @@ const nodeToneVar: Record<NodeTone, string> = {
   runtime: "--nav-3",
   device: "--text-muted",
   client: "--text-muted",
-};
-
-const chipToneVar: Record<ChipTone, string> = {
-  service: "--nav-1",
-  controller: "--nav-2",
-  monitoring: "--nav-3",
-  agent: "--nav-4",
-  utility: "--text-muted",
 };
 
 const frameToneVar: Record<FrameTone, string> = {
@@ -72,20 +64,17 @@ const edgeKindVar: Record<string, string> = {
               width={frame.w}
               height={frame.h}
               rx={8}
-              fill={`color-mix(in srgb, var(${colorVar}) 6%, transparent)`}
-              stroke={`var(${colorVar})`}
-              stroke-width="1.5"
-              stroke-dasharray="8 6"
-              stroke-opacity="0.4"
+              fill="transparent"
+              stroke="none"
             />
             <text
               class="topo-frame-label"
               x={frame.x + 16}
-              y={frame.y + 24}
+              y={frame.y - 8}
               fill={`var(${colorVar})`}
-              fill-opacity="0.7"
+              fill-opacity="0.4"
               text-anchor="start"
-              dominant-baseline="hanging"
+              dominant-baseline="auto"
             >
               {frame.label}
             </text>
@@ -116,8 +105,8 @@ const edgeKindVar: Record<string, string> = {
               d={edge.path}
               fill="none"
               stroke={`var(${colorVar})`}
-              stroke-width="2"
-              stroke-opacity="0.5"
+              stroke-width="1.5"
+              stroke-opacity="0.2"
               stroke-linecap="round"
               stroke-linejoin="round"
               stroke-dasharray={edge.dashed ? "12 8" : undefined}
@@ -163,8 +152,7 @@ const edgeKindVar: Record<string, string> = {
               height={node.h}
               rx={6}
               fill="var(--surface)"
-              stroke={`var(${colorVar})`}
-              stroke-width="1.5"
+              stroke="none"
             />
 
             {node.eyebrow && (
@@ -207,7 +195,6 @@ const edgeKindVar: Record<string, string> = {
             )}
 
             {node.chips?.map((chip, i) => {
-              const chipColorVar = chipToneVar[chip.tone];
               const chipY = chipStartY + i * (CHIP_H + CHIP_GAP);
               const chipW = node.w - CARD_PAD * 2;
 
@@ -225,9 +212,7 @@ const edgeKindVar: Record<string, string> = {
                     height={CHIP_H}
                     rx={4}
                     fill="var(--bg)"
-                    stroke={`var(${chipColorVar})`}
-                    stroke-width="1"
-                    stroke-opacity="0.5"
+                    stroke="none"
                   />
                   <text
                     class="topo-chip-label"
