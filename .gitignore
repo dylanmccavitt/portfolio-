@@ -27,3 +27,4 @@ pnpm-debug.log*
 .superpowers/
 .claude/
 docs/
+docs/superpowers/
