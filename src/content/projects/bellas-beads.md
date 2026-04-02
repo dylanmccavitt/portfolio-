@@ -5,20 +5,32 @@ order: 2
 liveUrl: "https://bellasbeads.shop"
 ---
 
+![Bella's Beads landing page](/screenshots/bella/landing.png)
+
 ## What it is
 
-A full-featured ecommerce platform for selling handmade beaded jewelry. Customers can browse the catalog, add items to a cart, create accounts, and check out — with both guest and authenticated flows. Logged-in users get order history, shipment tracking, and saved addresses. An admin dashboard handles product management and inventory.
+A full-featured ecommerce platform for selling handmade beaded jewelry. Customers can browse products, create accounts, and check out with both guest and authenticated flows. Logged-in users get order history, shipment tracking, and saved addresses. An admin dashboard handles product management and inventory.
 
-Built as a monorepo with a React + TypeScript frontend (Vite, Tailwind, Radix UI) and a Node/Express backend. PostgreSQL via Supabase handles data and auth, Stripe processes payments, and Shippo generates shipping labels automatically through a Zapier integration.
-
-![Bella's Beads landing page](/screenshots/bella/landing.png)
+Built as a monorepo with a React + TypeScript frontend and a Node/Express backend. PostgreSQL via Supabase handles data and auth, Stripe processes payments, and Shippo automates shipping label generation.
 
 ## Why I built it
 
-This was a freelance project for a real client — a jewelry maker who needed a way to sell online. It had to handle the full lifecycle: browsing, payments, shipping, order tracking. No shortcuts, no "coming soon" pages.
+This was a freelance project for a jewelry maker who needed a way to sell online. It had to handle the full lifecycle: browsing, payments, shipping, order tracking.
 
 ## What I learned
 
-The hardest parts were the integration seams. Getting Stripe webhooks to verify signatures correctly with raw request bodies, wiring up the Shippo label flow through Zapier (order → Zapier → Shippo → webhook callback), and keeping session-based auth in sync across guest and authenticated carts all took more thought than the features themselves. I also spent real time on security — CSRF protection, rate limiting at multiple tiers (global, auth, payment, webhook), and HMAC token hashing.
+The challenge was building the whole thing from the ground up and getting all the third-party pieces to work in unison. Stripe for payments, Shippo for automated shipping, Supabase for data and auth, Resend for transactional emails. Each one has its own webhook patterns, auth flows, and failure modes. Making them all talk to each other reliably, took more thought than any individual feature. I also spent time on security: CSRF protection, rate limiting at multiple tiers, and HMAC token hashing.
 
-![Stripe checkout integration](/screenshots/bella/stripe.png)
+<div class="screenshot-strip">
+
+![Product page](/screenshots/bella/product-page.png)
+
+![Cart](/screenshots/bella/cart.png)
+
+![Stripe checkout](/screenshots/bella/stripe.png)
+
+![Shipping](/screenshots/bella/shipping.png)
+
+![Admin dashboard](/screenshots/bella/admin-dash.png)
+
+</div>

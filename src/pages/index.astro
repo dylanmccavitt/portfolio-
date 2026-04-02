@@ -10,7 +10,7 @@ import Base from '../layouts/Base.astro';
         Software engineer who likes to move around. I've built SaaS products,
         written CLI tools, automated deployments, and run my own infrastructure
         from scratch. I'd rather learn the whole system than own one slice of
-        it — always picking up new tools along the way. Brooklyn, looking for
+        it, always picking up new tools along the way. Brooklyn, looking for
         my next role.
       </p>
     </section>
@@ -46,27 +46,27 @@ import Base from '../layouts/Base.astro';
         <div class="projects__row">
           <span class="projects__chevron">{'>'}</span>
           <a href="/projects/homeserver/" class="projects__link projects__link--1">homeserver/</a>
-          <span class="projects__desc">— self-hosted infrastructure and automation</span>
+          <span class="projects__desc">-self-hosted infrastructure and automation</span>
         </div>
         <div class="projects__row">
           <span class="projects__chevron">{'>'}</span>
           <a href="/projects/bellas-beads/" class="projects__link projects__link--2">bellas-beads/</a>
-          <span class="projects__desc">— ecommerce site for jewelry</span>
+          <span class="projects__desc">-ecommerce site for jewelry</span>
         </div>
         <div class="projects__row">
           <span class="projects__chevron">{'>'}</span>
           <a href="/projects/nhf/" class="projects__link projects__link--3">nhf/</a>
-          <span class="projects__desc">— website for a band</span>
+          <span class="projects__desc">-website for a band</span>
         </div>
         <div class="projects__row">
           <span class="projects__chevron">{'>'}</span>
           <a href="/projects/work-orders/" class="projects__link projects__link--4">work-orders/</a>
-          <span class="projects__desc">— work order management system, school project</span>
+          <span class="projects__desc">-work order management system, school project</span>
         </div>
         <div class="projects__row">
           <span class="projects__chevron">{'>'}</span>
           <a href="/projects/epl-ml-model/" class="projects__link projects__link--5">epl-ml-model/</a>
-          <span class="projects__desc">— predicting football match outcomes with ML</span>
+          <span class="projects__desc">-predicting football match outcomes with ML</span>
         </div>
       </div>
     </section>
@@ -204,4 +204,11 @@ import Base from '../layouts/Base.astro';
     color: var(--text-muted);
   }
   .contact__links a:hover { color: var(--text); }
+
+  @media (max-width: 600px) {
+    .skills__row,
+    .projects__row {
+      white-space: normal;
+    }
+  }
 </style>

@@ -24,98 +24,114 @@ export type Entity = {
 };
 
 export const entities = {
-  "management-lane": {
-    id: "management-lane",
-    title: "VLAN30 / Management",
-    kind: "zone",
-    summary: "Admin-only lane for infrastructure control surfaces and controller traffic.",
-    badges: ["VLAN30", "admin", "controllers"],
-    related: ["opnsense", "proxmox", "unifi-vm", "unifi-controller", "unifi-ap"],
+  vlans: {
+    id: "vlans",
+    title: "VLANs",
+    kind: "network",
+    summary:
+      "The network is split into separate lanes so different types of traffic stay isolated from each other.",
+    badges: ["segmentation"],
+    related: [
+      "opnsense",
+      "switch",
+      "management-lane",
+      "service-lane",
+      "signal-lane",
+    ],
     sections: [
       {
-        title: "Role",
+        title: "Lanes",
         items: [
-          "Keeps control-plane access separate from the published app lane.",
-          "Holds infrastructure management surfaces and the UniFi controller path.",
+          "VLAN10 Trusted: everyday devices like my PC",
+          "VLAN20 Service: apps and monitoring tools",
+          "VLAN30 Management: admin-only access",
+          "VLAN40 Guest: visitor Wi-Fi, fully isolated",
+          "VLAN50 IoT: smart devices, locked down",
         ],
       },
+    ],
+  },
+  "management-lane": {
+    id: "management-lane",
+    title: "Management",
+    kind: "zone",
+    summary:
+      "A restricted zone for admin tools. Only I can access what's in here.",
+    badges: ["VLAN30", "admin"],
+    related: [
+      "opnsense",
+      "proxmox",
+      "unifi-vm",
+      "unifi-controller",
+      "unifi-ap",
+    ],
+    sections: [
       {
-        title: "Policy shape",
+        title: "What's here",
         items: [
-          "Admin clients are allowed into this lane.",
-          "Guest and broad internal access stay constrained by firewall policy.",
+          "Wi-Fi controller and network management tools.",
+          "Separated from the rest so a problem with an app can't affect network admin access.",
         ],
       },
     ],
   },
   "service-lane": {
     id: "service-lane",
-    title: "VLAN20 / Service Lane",
+    title: "Service Lane",
     kind: "zone",
-    summary: "Shared application lane for the reverse proxy and public-facing internal services.",
-    badges: ["VLAN20", "apps", "ingress"],
-    related: ["opnsense", "shared-vm", "caddy", "ingress", "homepage", "vaultwarden"],
+    summary:
+      "Where the apps live. Services I use day-to-day are hosted here behind a single entry point.",
+    badges: ["VLAN20", "apps"],
+    related: [
+      "opnsense",
+      "shared-vm",
+      "caddy",
+      "ingress",
+      "homepage",
+      "vaultwarden",
+    ],
     sections: [
       {
-        title: "Role",
+        title: "What's here",
         items: [
-          "Carries the shared VM and the services it publishes.",
-          "Presents a clean front door for service discovery and app access.",
-        ],
-      },
-      {
-        title: "Policy shape",
-        items: [
-          "Published services are reached through the ingress layer instead of direct host exposure.",
-          "Trusted and management paths are the intended audience for this lane.",
+          "Password manager, dashboard, and reverse proxy.",
+          "All services are accessed through one front door instead of separate ports.",
         ],
       },
     ],
   },
   "signal-lane": {
     id: "signal-lane",
-    title: "VLAN20 / Signal Lane",
+    title: "Signal Lane",
     kind: "zone",
-    summary: "Dedicated monitoring lane so health checks do not live in the same blast radius as the app VM.",
-    badges: ["VLAN20", "monitoring", "independent"],
+    summary:
+      "Monitoring runs separately so it can still tell me when something else breaks.",
+    badges: ["VLAN20", "monitoring"],
     related: ["opnsense", "proxmox", "kuma-lxc", "uptime-kuma"],
     sections: [
       {
-        title: "Role",
+        title: "What's here",
         items: [
-          "Hosts Uptime Kuma outside the shared app VM.",
-          "Keeps service checks useful even when the shared VM has problems.",
-        ],
-      },
-      {
-        title: "Policy shape",
-        items: [
-          "Needs reachability into published services and selected management paths.",
-          "Acts as the observation layer rather than a user-facing app lane.",
+          "Uptime Kuma watches all other services and sends alerts if something goes down.",
+          "Runs on its own container so it stays up even if the app server has issues.",
         ],
       },
     ],
   },
   "automation-lane": {
     id: "automation-lane",
-    title: "VLAN20 / Agent Lane",
+    title: "Agent Lane",
     kind: "zone",
-    summary: "Space for utility and automation workloads that support the rest of the lab.",
-    badges: ["VLAN20", "agents", "automation"],
+    summary:
+      "A dedicated space for automation and background tasks, kept separate from the main apps.",
+    badges: ["VLAN20", "automation"],
     related: ["opnsense", "proxmox", "hermes-vm", "hermes"],
     sections: [
       {
-        title: "Role",
+        title: "What's here",
         items: [
-          "Keeps experimental or utility workloads visible without crowding the shared app VM.",
-          "Makes room for future automations and helper services.",
-        ],
-      },
-      {
-        title: "Policy shape",
-        items: [
-          "Shares the services VLAN but represents a separate function from the main app lane.",
-          "Useful for background jobs, agents, and future orchestration helpers.",
+          "Hermes agent handles automated tasks like browser automation.",
+          "Has its own VM so experiments don't interfere with the services people actually use.",
         ],
       },
     ],
@@ -124,16 +140,13 @@ export const entities = {
     id: "isp",
     title: "ISP",
     kind: "edge",
-    summary: "Upstream WAN handoff that feeds the firewall edge.",
-    badges: ["wan", "upstream"],
+    summary: "The internet connection. Everything starts here.",
+    badges: ["wan"],
     related: ["opnsense"],
     sections: [
       {
         title: "Role",
-        items: [
-          "Represents the internet boundary rather than a directly managed homelab component.",
-          "Terminates at the firewall before any internal routing occurs.",
-        ],
+        items: ["Feeds into the firewall, which decides what gets through."],
       },
     ],
   },
@@ -141,8 +154,9 @@ export const entities = {
     id: "opnsense",
     title: "OPNsense",
     kind: "edge",
-    summary: "Firewall, routing, DNS, and policy boundary for the entire lab.",
-    badges: ["firewall", "routing", "dns", "policy"],
+    summary:
+      "The firewall. Controls what can talk to what and enforces the VLAN boundaries.",
+    badges: ["firewall", "routing"],
     related: [
       "isp",
       "switch",
@@ -153,17 +167,10 @@ export const entities = {
     ],
     sections: [
       {
-        title: "Responsibilities",
+        title: "What it does",
         items: [
-          "Owns the WAN edge and the internal trust boundaries.",
-          "Controls which VLANs can reach services, controllers, and monitoring paths.",
-        ],
-      },
-      {
-        title: "Why it matters",
-        items: [
-          "Everything in the map flows through the firewall's policy model.",
-          "It is the anchor point for published apps, admin access, and lane separation.",
+          "Routes traffic between the internet and internal networks.",
+          "Enforces rules about which VLANs can reach each other.",
         ],
       },
     ],
@@ -172,21 +179,16 @@ export const entities = {
     id: "switch",
     title: "Switch",
     kind: "network",
-    summary: "Core wired fabric that fans the firewall edge out to compute, clients, and management devices.",
-    badges: ["fabric", "ports", "lan"],
+    summary:
+      "The central hub that connects everything physically. All devices and the server plug into it.",
+    badges: ["switching"],
     related: ["opnsense", "proxmox", "unifi-ap", "bazzite-pc", "jetkvm", "nas"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Acts as the central handoff between edge, compute, and attached devices.",
-          "Carries the port map that gives the physical floor its shape.",
-        ],
-      },
-      {
-        title: "Design note",
-        items: [
-          "The map keeps the switch central because nearly every physical path fans out from it.",
+          "Connects the firewall, server, and all client devices together.",
+          "Handles VLAN tagging so traffic stays in its lane across the wire.",
         ],
       },
     ],
@@ -195,8 +197,9 @@ export const entities = {
     id: "proxmox",
     title: "Proxmox",
     kind: "platform",
-    summary: "Primary hypervisor that hosts the VM and LXC lanes shown in the map.",
-    badges: ["hypervisor", "compute", "parent host"],
+    summary:
+      "The server itself. Runs virtual machines and containers that host everything else on this map.",
+    badges: ["hypervisor"],
     related: [
       "switch",
       "management-lane",
@@ -210,17 +213,10 @@ export const entities = {
     ],
     sections: [
       {
-        title: "Placement role",
+        title: "What it does",
         items: [
-          "Provides the runtime parent for the lab's controller, app, signal, and agent lanes.",
-          "Turns the physical host into several independently understandable slices.",
-        ],
-      },
-      {
-        title: "Why the map centers it",
-        items: [
-          "It bridges the physical floor and the runtime topology.",
-          "Most drill-down journeys naturally pass through Proxmox on the way to a service.",
+          "One physical machine split into multiple virtual ones, each with its own job.",
+          "Makes it easy to add, remove, or restart services without affecting the rest.",
         ],
       },
     ],
@@ -229,15 +225,15 @@ export const entities = {
     id: "unifi-ap",
     title: "AP",
     kind: "device",
-    summary: "Wireless access point that extends the network lanes into Wi-Fi.",
-    badges: ["wireless", "access point"],
+    summary: "The Wi-Fi access point. Provides wireless for all VLANs.",
+    badges: ["wireless"],
     related: ["switch", "management-lane", "unifi-controller"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Handles wireless client access while remaining managed from the controller lane.",
-          "Represents the bridge between the wired floor and the Wi-Fi experience.",
+          "Broadcasts separate Wi-Fi networks for trusted, guest, and IoT devices.",
+          "Managed remotely through the UniFi Controller.",
         ],
       },
     ],
@@ -246,15 +242,15 @@ export const entities = {
     id: "bazzite-pc",
     title: "PC",
     kind: "client",
-    summary: "Primary admin workstation used to validate management and published-service paths.",
-    badges: ["client", "admin"],
+    summary:
+      "My main workstation. Used for development and managing the server.",
+    badges: ["VLAN10", "client"],
     related: ["switch", "management-lane", "service-lane"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Acts as the human operator point of view for the map.",
-          "Useful as the reference client when verifying routes, TLS, and admin reachability.",
+          "Runs Bazzite Linux. Primary device for coding, admin access, and testing services.",
         ],
       },
     ],
@@ -263,15 +259,16 @@ export const entities = {
     id: "jetkvm",
     title: "KVM",
     kind: "device",
-    summary: "Out-of-band console path for recovery and break-glass access.",
-    badges: ["oob", "recovery"],
+    summary:
+      "Emergency access to the server. If everything else is down, this still works.",
+    badges: ["VLAN30", "recovery"],
     related: ["switch", "proxmox"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Keeps a console path available even when normal management access is in trouble.",
-          "Adds resilience to the platform side of the map.",
+          "Provides keyboard/video/mouse access to the server over the network.",
+          "A backup plan when normal remote management isn't reachable.",
         ],
       },
     ],
@@ -280,15 +277,16 @@ export const entities = {
     id: "nas",
     title: "NAS",
     kind: "device",
-    summary: "Storage-side placeholder in the floor plan for future heavier data workloads.",
-    badges: ["storage", "future growth"],
+    summary:
+      "Network storage for backups and media. Planned expansion with TrueNAS.",
+    badges: ["VLAN10", "storage"],
     related: ["switch"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Marks where shared storage and backup capacity can grow into the topology.",
-          "Shown in the overview so compute placement decisions keep future storage in mind.",
+          "Will handle backups, media serving (Jellyfin), and file storage.",
+          "Kept separate from the compute server so storage and apps don't compete for resources.",
         ],
       },
     ],
@@ -297,15 +295,15 @@ export const entities = {
     id: "unifi-vm",
     title: "UniFi VM",
     kind: "runtime",
-    summary: "Management-lane VM dedicated to the controller stack.",
-    badges: ["VM1", "controller lane"],
+    summary: "A virtual machine just for managing the Wi-Fi network.",
+    badges: ["VLAN30", "VM"],
     related: ["management-lane", "proxmox", "unifi-controller", "unifi-ap"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Keeps wireless management separate from shared application services.",
-          "Shows the pattern of placing controllers in the management plane instead of the app lane.",
+          "Runs the UniFi Controller in its own isolated environment.",
+          "Kept in the management zone so it's only accessible by admin devices.",
         ],
       },
     ],
@@ -314,15 +312,16 @@ export const entities = {
     id: "unifi-controller",
     title: "UniFi Controller",
     kind: "service",
-    summary: "Controller surface for the AP and wireless management path.",
-    badges: ["controller", "management only"],
+    summary:
+      "Software that manages the Wi-Fi access point. Handles SSIDs, clients, and network settings.",
+    badges: ["VLAN30", "controller"],
     related: ["unifi-vm", "management-lane", "unifi-ap"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Owns access-point management and wireless control-plane visibility.",
-          "Intentionally sits in the management lane instead of the shared public app lane.",
+          "Configures and monitors the access point remotely.",
+          "Lives in the management zone, not the app zone, for security.",
         ],
       },
     ],
@@ -331,21 +330,23 @@ export const entities = {
     id: "shared-vm",
     title: "Shared VM",
     kind: "runtime",
-    summary: "Shared Ubuntu VM that carries the reverse proxy and light user-facing services.",
-    badges: ["VM2", "docker", "shared lane"],
-    related: ["proxmox", "service-lane", "caddy", "ingress", "homepage", "vaultwarden"],
+    summary:
+      "The main app server. Runs Docker containers for the services I use every day.",
+    badges: ["VLAN20", "docker"],
+    related: [
+      "proxmox",
+      "service-lane",
+      "caddy",
+      "ingress",
+      "homepage",
+      "vaultwarden",
+    ],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Groups together light services that can share the same maintenance window.",
-          "Acts as the public-facing app lane behind the ingress layer.",
-        ],
-      },
-      {
-        title: "Design note",
-        items: [
-          "The map presents this VM as a cluster because several services are intentionally colocated here.",
+          "Hosts multiple services in Docker containers on one VM.",
+          "All services share a reverse proxy so they're accessible through clean URLs.",
         ],
       },
     ],
@@ -354,15 +355,23 @@ export const entities = {
     id: "caddy",
     title: "Caddy",
     kind: "service",
-    summary: "Reverse proxy and TLS front door for the published service lane.",
-    badges: ["proxy", "tls", "front door"],
-    related: ["shared-vm", "ingress", "homepage", "vaultwarden", "service-lane", "opnsense"],
+    summary:
+      "The reverse proxy. Gives each service its own URL and handles HTTPS certificates automatically.",
+    badges: ["VLAN20", "proxy"],
+    related: [
+      "shared-vm",
+      "ingress",
+      "homepage",
+      "vaultwarden",
+      "service-lane",
+      "opnsense",
+    ],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Provides the common front door instead of exposing each app directly.",
-          "Makes the service lane feel like one coherent system rather than a pile of containers.",
+          "Routes incoming requests to the right service based on the URL.",
+          "Automatically sets up and renews HTTPS certificates.",
         ],
       },
     ],
@@ -371,15 +380,15 @@ export const entities = {
     id: "ingress",
     title: "Ingress",
     kind: "service",
-    summary: "Public-facing entry pattern that collects internal services behind a single path.",
-    badges: ["routing", "entrypoint"],
+    summary:
+      "The single entry point for all services. Instead of remembering ports, everything goes through one door.",
+    badges: ["VLAN20", "entrypoint"],
     related: ["shared-vm", "caddy", "service-lane", "homepage", "vaultwarden"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Shows the architectural idea behind the proxy layer, not just the software name.",
-          "Useful in the overview because it explains how the published apps stay tidy.",
+          "Keeps things simple by funneling all access through the reverse proxy.",
         ],
       },
     ],
@@ -388,15 +397,16 @@ export const entities = {
     id: "homepage",
     title: "Homepage",
     kind: "service",
-    summary: "Operator-facing dashboard and the first visual stop once ingress is working.",
-    badges: ["dashboard", "portal"],
+    summary:
+      "A dashboard that shows all running services in one place. The first thing I see when I open the lab.",
+    badges: ["VLAN20", "dashboard"],
     related: ["shared-vm", "service-lane", "caddy", "ingress"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Acts as the control-room style surface for browsing the lab.",
-          "Makes a strong portfolio example because it sits at the intersection of UX and operations.",
+          "Links to every service with status indicators.",
+          "Makes the lab feel like a real product instead of a pile of containers.",
         ],
       },
     ],
@@ -405,15 +415,16 @@ export const entities = {
     id: "vaultwarden",
     title: "Vaultwarden",
     kind: "service",
-    summary: "Password manager published through the shared ingress path.",
-    badges: ["secrets", "https", "published"],
+    summary:
+      "Self-hosted password manager. Works like Bitwarden but runs on my own server.",
+    badges: ["VLAN20", "secrets"],
     related: ["shared-vm", "service-lane", "caddy", "ingress", "opnsense"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Flagship example of a user-facing service that still respects trust boundaries.",
-          "Good drill-down target because it connects ingress, app hosting, backup thinking, and policy design.",
+          "Stores and syncs passwords across all my devices.",
+          "Accessible through HTTPS with automatic certificate management.",
         ],
       },
     ],
@@ -422,15 +433,15 @@ export const entities = {
     id: "kuma-lxc",
     title: "Kuma LXC",
     kind: "runtime",
-    summary: "Dedicated lightweight runtime for monitoring so checks stay independent from the shared app VM.",
-    badges: ["LXC", "monitoring", "independent"],
+    summary:
+      "A lightweight container dedicated to monitoring. Runs separately from everything it watches.",
+    badges: ["VLAN20", "LXC"],
     related: ["proxmox", "signal-lane", "uptime-kuma", "opnsense"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Separates the monitoring plane from the services it observes.",
-          "Makes outages easier to reason about because the observer is not sharing the same runtime.",
+          "Hosts Uptime Kuma on its own so monitoring stays up even when the app VM is down.",
         ],
       },
     ],
@@ -439,15 +450,23 @@ export const entities = {
     id: "uptime-kuma",
     title: "Uptime Kuma",
     kind: "service",
-    summary: "Health-check and alerting surface for network, service, and management-path validation.",
-    badges: ["checks", "alerts", "visibility"],
-    related: ["kuma-lxc", "signal-lane", "opnsense", "shared-vm", "homepage", "vaultwarden"],
+    summary:
+      "Watches all services and sends Telegram alerts if something goes down.",
+    badges: ["VLAN20", "alerts"],
+    related: [
+      "kuma-lxc",
+      "signal-lane",
+      "opnsense",
+      "shared-vm",
+      "homepage",
+      "vaultwarden",
+    ],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Turns the topology from a static diagram into something that can be validated.",
-          "Useful in the portfolio because it shows how architecture and signals fit together.",
+          "Pings every service on a schedule and tracks uptime history.",
+          "Sends a notification if anything stops responding.",
         ],
       },
     ],
@@ -456,15 +475,16 @@ export const entities = {
     id: "hermes-vm",
     title: "Hermes VM",
     kind: "runtime",
-    summary: "Separate VM reserved for automation and helper workloads.",
-    badges: ["VM3", "agents"],
+    summary:
+      "A separate VM for automation tasks. Kept isolated so experiments don't affect anything else.",
+    badges: ["VLAN20", "VM"],
     related: ["proxmox", "automation-lane", "hermes"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Keeps automation experiments and agents visible without muddying the shared app lane.",
-          "Demonstrates how the lab can scale into more specialized slices over time.",
+          "Runs the Hermes agent for browser automation and background jobs.",
+          "Connected via Tailscale for remote access.",
         ],
       },
     ],
@@ -473,15 +493,16 @@ export const entities = {
     id: "hermes",
     title: "Hermes",
     kind: "service",
-    summary: "Agent-style workload living in its own lane rather than the primary shared service cluster.",
-    badges: ["agent", "automation"],
+    summary:
+      "An automation agent that handles background tasks like browser automation and scheduled jobs.",
+    badges: ["VLAN20", "agent"],
     related: ["hermes-vm", "automation-lane"],
     sections: [
       {
-        title: "Role",
+        title: "What it does",
         items: [
-          "Represents the next step beyond static services: automation that acts on the environment.",
-          "Its dedicated lane suggests where future orchestration or assistant workflows could live.",
+          "Runs automated workflows in its own isolated environment.",
+          "Future home for more orchestration and helper services.",
         ],
       },
     ],

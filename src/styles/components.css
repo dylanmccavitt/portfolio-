@@ -422,3 +422,44 @@ a.breadcrumb-bar__segment:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   Screenshot Scroll Strip
+   ============================================================ */
+
+.screenshot-strip {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  margin: var(--space-6) 0;
+  padding-bottom: var(--space-2);
+}
+
+.screenshot-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.screenshot-strip img {
+  flex: 0 0 70%;
+  scroll-snap-align: start;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  height: 300px;
+  object-fit: contain;
+  background: var(--surface);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin: 0;
+}
+
+.screenshot-strip img:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 600px) {
+  .screenshot-strip img {
+    flex: 0 0 85%;
+  }
+}

@@ -7,12 +7,24 @@
 ---
 
 <div class="topo" id="topology-map">
+  <!-- Legend -->
+  <details class="topo__legend">
+    <summary class="topo__legend-toggle">key</summary>
+    <div class="topo__legend-items">
+      <span class="topo__legend-item topo__legend-item--infra">infrastructure</span>
+      <span class="topo__legend-item topo__legend-item--management">management</span>
+      <span class="topo__legend-item topo__legend-item--service">services</span>
+      <span class="topo__legend-item topo__legend-item--monitoring">monitoring</span>
+      <span class="topo__legend-item topo__legend-item--client">clients</span>
+    </div>
+  </details>
+
   <!-- Edge tier -->
   <div class="topo__tier">
-    <div class="topo__node" data-entity="isp">
+    <div class="topo__node topo__node--edge" data-entity="isp" data-category="infra">
       <span class="topo__eyebrow">WAN</span>
       <span class="topo__label">ISP</span>
-      <span class="topo__caption">Upstream handoff</span>
+      <span class="topo__caption">Internet connection</span>
     </div>
   </div>
 
@@ -22,20 +34,39 @@
 
   <!-- Infrastructure tier -->
   <div class="topo__tier topo__tier--infra">
-    <div class="topo__node" data-entity="opnsense">
+    <div class="topo__node topo__node--edge" data-entity="opnsense" data-category="infra">
       <span class="topo__eyebrow">Firewall</span>
       <span class="topo__label">OPNsense</span>
-      <span class="topo__caption">Routing, DNS, policy</span>
+      <span class="topo__caption">Traffic rules & routing</span>
     </div>
-    <div class="topo__node" data-entity="switch">
-      <span class="topo__eyebrow">Core Fabric</span>
+    <div class="topo__node topo__node--edge" data-entity="switch" data-category="infra">
+      <span class="topo__eyebrow">Network</span>
       <span class="topo__label">Switch</span>
-      <span class="topo__caption">Port map hub</span>
+      <span class="topo__caption">Connects everything</span>
     </div>
-    <div class="topo__node" data-entity="proxmox">
-      <span class="topo__eyebrow">Hypervisor</span>
+    <div class="topo__node topo__node--edge" data-entity="proxmox" data-category="infra">
+      <span class="topo__eyebrow">Server</span>
       <span class="topo__label">Proxmox</span>
-      <span class="topo__caption">VM & LXC host</span>
+      <span class="topo__caption">Runs VMs & containers</span>
+    </div>
+  </div>
+
+  <div class="topo__connector">
+    <div class="topo__line"></div>
+  </div>
+
+  <!-- VLAN segmentation -->
+  <div class="topo__tier">
+    <div class="topo__node topo__node--vlan" data-entity="vlans" data-category="infra">
+      <span class="topo__eyebrow">Network Segmentation</span>
+      <span class="topo__label">VLANs</span>
+      <div class="topo__vlan-lanes">
+        <span class="topo__vlan-tag">10 trusted</span>
+        <span class="topo__vlan-tag">20 service</span>
+        <span class="topo__vlan-tag">30 management</span>
+        <span class="topo__vlan-tag">40 guest</span>
+        <span class="topo__vlan-tag">50 iot</span>
+      </div>
     </div>
   </div>
 
@@ -46,43 +77,43 @@
   <!-- Service zones tier -->
   <div class="topo__tier topo__tier--zones">
     <!-- Management -->
-    <div class="topo__zone" data-entity="management-lane">
+    <div class="topo__zone topo__zone--management" data-entity="management-lane" data-category="management">
       <span class="topo__zone-label">Management</span>
-      <div class="topo__node topo__node--vm" data-entity="unifi-vm">
-        <span class="topo__eyebrow">VM1</span>
+      <div class="topo__node topo__node--vm" data-entity="unifi-vm" data-category="management">
+        <span class="topo__eyebrow">VM</span>
         <span class="topo__label">UniFi VM</span>
-        <span class="topo__caption">Controller lane</span>
+        <span class="topo__caption">Wi-Fi management</span>
         <div class="topo__chips">
-          <div class="topo__chip" data-entity="unifi-controller">UniFi Controller</div>
+          <div class="topo__chip" data-entity="unifi-controller" data-category="management">UniFi Controller</div>
         </div>
       </div>
     </div>
 
     <!-- Services -->
-    <div class="topo__zone topo__zone--wide" data-entity="service-lane">
+    <div class="topo__zone topo__zone--wide topo__zone--service" data-entity="service-lane" data-category="service">
       <span class="topo__zone-label">Services</span>
-      <div class="topo__node topo__node--vm" data-entity="shared-vm">
-        <span class="topo__eyebrow">VM2</span>
+      <div class="topo__node topo__node--vm" data-entity="shared-vm" data-category="service">
+        <span class="topo__eyebrow">VM</span>
         <span class="topo__label">Shared VM</span>
-        <span class="topo__caption">Ubuntu + Docker Compose</span>
+        <span class="topo__caption">Docker apps</span>
         <div class="topo__chips">
-          <div class="topo__chip" data-entity="caddy">Caddy</div>
-          <div class="topo__chip" data-entity="ingress">Ingress</div>
-          <div class="topo__chip" data-entity="homepage">Homepage</div>
-          <div class="topo__chip" data-entity="vaultwarden">Vaultwarden</div>
+          <div class="topo__chip" data-entity="caddy" data-category="service">Caddy</div>
+          <div class="topo__chip" data-entity="ingress" data-category="service">Ingress</div>
+          <div class="topo__chip" data-entity="homepage" data-category="service">Homepage</div>
+          <div class="topo__chip" data-entity="vaultwarden" data-category="service">Vaultwarden</div>
         </div>
       </div>
     </div>
 
     <!-- Monitoring -->
-    <div class="topo__zone" data-entity="signal-lane">
+    <div class="topo__zone topo__zone--monitoring" data-entity="signal-lane" data-category="monitoring">
       <span class="topo__zone-label">Monitoring</span>
-      <div class="topo__node topo__node--vm" data-entity="kuma-lxc">
+      <div class="topo__node topo__node--vm" data-entity="kuma-lxc" data-category="monitoring">
         <span class="topo__eyebrow">LXC</span>
         <span class="topo__label">Kuma</span>
-        <span class="topo__caption">Independent checks</span>
+        <span class="topo__caption">Health checks</span>
         <div class="topo__chips">
-          <div class="topo__chip" data-entity="uptime-kuma">Uptime Kuma</div>
+          <div class="topo__chip" data-entity="uptime-kuma" data-category="monitoring">Uptime Kuma</div>
         </div>
       </div>
     </div>
@@ -95,19 +126,19 @@
 
   <!-- Client tier -->
   <div class="topo__tier topo__tier--clients">
-    <div class="topo__node topo__node--small" data-entity="unifi-ap">
+    <div class="topo__node topo__node--small topo__node--client" data-entity="unifi-ap" data-category="client">
       <span class="topo__eyebrow">Wireless</span>
       <span class="topo__label">AP</span>
     </div>
-    <div class="topo__node topo__node--small" data-entity="bazzite-pc">
-      <span class="topo__eyebrow">Client</span>
+    <div class="topo__node topo__node--small topo__node--client" data-entity="bazzite-pc" data-category="client">
+      <span class="topo__eyebrow">Workstation</span>
       <span class="topo__label">PC</span>
     </div>
-    <div class="topo__node topo__node--small" data-entity="jetkvm">
+    <div class="topo__node topo__node--small topo__node--client" data-entity="jetkvm" data-category="client">
       <span class="topo__eyebrow">Recovery</span>
       <span class="topo__label">KVM</span>
     </div>
-    <div class="topo__node topo__node--small" data-entity="nas">
+    <div class="topo__node topo__node--small topo__node--client" data-entity="nas" data-category="client">
       <span class="topo__eyebrow">Storage</span>
       <span class="topo__label">NAS</span>
     </div>

@@ -100,8 +100,22 @@ function showPopCard(entityId: string, anchorEl: HTMLElement): void {
 
   // Position near the clicked element
   const rect = anchorEl.getBoundingClientRect();
-  const left = rect.right + 12;
-  const top = rect.top;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Start to the right, fall back to below if no room
+  let left = rect.right + 12;
+  let top = rect.top;
+
+  // If right side would overflow, try left side
+  if (left + 320 > vw - 16) {
+    left = rect.left - 320 - 12;
+  }
+  // If still off screen, center below the element
+  if (left < 16) {
+    left = Math.max(16, Math.min(rect.left, vw - 336));
+    top = rect.bottom + 12;
+  }
 
   popcardEl.innerHTML = `
     <div class="topo-popcard" style="left:${left}px;top:${top}px">
@@ -111,21 +125,19 @@ function showPopCard(entityId: string, anchorEl: HTMLElement): void {
       </div>
       <h3 class="topo-popcard__title">${escHtml(entity.title)}</h3>
       <p class="topo-popcard__summary">${escHtml(entity.summary)}</p>
-      <div class="topo-popcard__badges">${badgesHtml}</div>
+      ${badgesHtml ? `<div class="topo-popcard__badges">${badgesHtml}</div>` : ""}
       ${relatedHtml}
     </div>
   `;
 
-  // Keep pop card in viewport
+  // Final viewport clamp
   const card = popcardEl.querySelector<HTMLElement>(".topo-popcard");
   if (card) {
     const cr = card.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    if (cr.right > vw - 16) card.style.left = `${rect.left - cr.width - 12}px`;
     if (cr.bottom > vh - 16) card.style.top = `${vh - cr.height - 16}px`;
-    if (cr.left < 16) card.style.left = "16px";
     if (cr.top < 16) card.style.top = "16px";
+    if (cr.right > vw - 16) card.style.left = `${vw - cr.width - 16}px`;
+    if (cr.left < 16) card.style.left = "16px";
   }
 
   // Wire up close button
