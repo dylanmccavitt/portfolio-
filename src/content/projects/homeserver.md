@@ -9,7 +9,7 @@ topologyUrl: "/homelab/topology/"
 
 ## What it is
 
-I run a small server setup at home that handles most things a cloud service usually would: password management, network monitoring, service dashboards, and automated tasks. Everything runs on a single physical server using virtual machines and containers, managed through a firewall that controls what can talk to what.
+I run a small server setup at home that handles most things a cloud service usually would: password management, network monitoring, service dashboards, storage, and automated tasks. Everything runs on a single physical server using virtual machines and containers, managed through a firewall that controls what can talk to what.
 
 The system is split into separate zones: one for network management, one for applications people actually use, one for monitoring, and one for automation. This separation means a problem in one area doesn't cascade into others.
 
