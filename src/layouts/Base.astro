@@ -26,7 +26,9 @@ const {
     <script is:inline>
       (function() {
         const theme = localStorage.getItem('portfolio-theme') || 'nord';
+        const mode = localStorage.getItem('portfolio-mode') || 'dark';
         document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-mode', mode);
       })();
     </script>
   </head>

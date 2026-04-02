@@ -67,12 +67,8 @@ function getToggleLabel(themeId: string): string {
   return `${THEME_NAMES[themeId] || themeId} ▾`;
 }
 
-function updateModeToggles(mode: string): void {
-  document
-    .querySelectorAll<HTMLElement>("[data-mode-toggle]")
-    .forEach((btn) => {
-      btn.textContent = mode === "dark" ? "light" : "dark";
-    });
+function updateModeToggles(_mode: string): void {
+  // Header toggle uses SVG icons controlled by CSS, no text update needed
 }
 
 function updateAllInstances(themeId: string): void {
