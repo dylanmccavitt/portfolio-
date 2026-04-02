@@ -63,6 +63,11 @@ import Base from '../layouts/Base.astro';
           <a href="/projects/work-orders/" class="projects__link projects__link--4">work-orders/</a>
           <span class="projects__desc">— work order management system, school project</span>
         </div>
+        <div class="projects__row">
+          <span class="projects__chevron">{'>'}</span>
+          <a href="/projects/epl-ml-model/" class="projects__link projects__link--5">epl-ml-model/</a>
+          <span class="projects__desc">— predicting football match outcomes with ML</span>
+        </div>
       </div>
     </section>
 
@@ -70,8 +75,8 @@ import Base from '../layouts/Base.astro';
       <h2 class="section-heading section-heading--contact">contact</h2>
       <div class="contact__links">
         <a href="https://github.com/DylanMcCavitt" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <a href="https://linkedin.com/in/dylanmccavitt" target="_blank" rel="noopener noreferrer">LinkedIn</a>
-        <a href="mailto:dylan@example.com">Email</a>
+        <a href="https://www.linkedin.com/in/dylanmccavitt" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+        <a href="mailto:dylanmccavitt@outlook.com">Email</a>
       </div>
     </section>
   </main>
@@ -178,6 +183,7 @@ import Base from '../layouts/Base.astro';
   .projects__link--2 { color: var(--nav-2); }
   .projects__link--3 { color: var(--nav-3); }
   .projects__link--4 { color: var(--nav-4); }
+  .projects__link--5 { color: var(--accent); }
   .projects__desc {
     color: var(--text-muted);
     margin-left: var(--space-3);

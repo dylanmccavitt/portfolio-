@@ -1,10 +1,17 @@
 ---
+interface ProjectLink {
+  slug: string;
+  title: string;
+}
+
 interface Props {
   slug: string;
   section?: string;
+  siblings?: ProjectLink[];
+  parent?: { label: string; href: string };
 }
 
-const { slug, section = 'projects' } = Astro.props;
+const { slug, section = 'projects', siblings = [], parent } = Astro.props;
 
 const themes = [
   { id: 'nord', name: 'Nord', swatches: ['#8fbcbb', '#88c0d0', '#81a1c1', '#5e81ac'] },
@@ -15,16 +22,11 @@ const themes = [
   { id: 'night-owl', name: 'Night Owl', swatches: ['#c792ea', '#82aaff', '#c3e88d', '#f78c6c'] },
   { id: 'dark-plus', name: 'Dark+', swatches: ['#569cd6', '#4ec9b0', '#9cdcfe', '#ce9178'] },
 ];
+
+const hasSiblings = siblings.length > 0;
 ---
 
-<nav class="breadcrumb-bar" aria-label="Breadcrumb">
-  <div class="breadcrumb-bar__path">
-    <a href="/" class="breadcrumb-bar__segment breadcrumb-bar__segment--1">~</a>
-    <span class="breadcrumb-bar__sep">/</span>
-    <a href={`/#${section}`} class="breadcrumb-bar__segment breadcrumb-bar__segment--2">{section}</a>
-    <span class="breadcrumb-bar__sep">/</span>
-    <span class="breadcrumb-bar__segment breadcrumb-bar__segment--3">{slug}</span>
-  </div>
+<div class="breadcrumb-wrapper">
   <div class="breadcrumb-bar__theme">
     <button
       class="breadcrumb-bar__theme-toggle"
@@ -51,4 +53,30 @@ const themes = [
       ))}
     </div>
   </div>
-</nav>
+  <nav class="breadcrumb-bar" aria-label="Breadcrumb">
+    <div class="breadcrumb-bar__path">
+      <a href="/" class="breadcrumb-bar__segment breadcrumb-bar__segment--1">~</a>
+      <span class="breadcrumb-bar__sep">/</span>
+      <a href={`/#${section}`} class="breadcrumb-bar__segment breadcrumb-bar__segment--2">{section}</a>
+      {parent && (
+        <>
+          <span class="breadcrumb-bar__sep">/</span>
+          <a href={parent.href} class="breadcrumb-bar__segment breadcrumb-bar__segment--3">{parent.label}</a>
+        </>
+      )}
+      <span class="breadcrumb-bar__sep">/</span>
+      <span class={`breadcrumb-bar__segment ${parent ? 'breadcrumb-bar__segment--3' : 'breadcrumb-bar__segment--3'}`}>{slug}</span>
+    </div>
+  </nav>
+  {hasSiblings && (
+    <nav class="breadcrumb-tabs" aria-label="Project navigation">
+      {siblings.map((project) => (
+        project.slug === slug ? (
+          <span class="breadcrumb-tabs__tab breadcrumb-tabs__tab--active">{project.slug}</span>
+        ) : (
+          <a href={`/projects/${project.slug}/`} class="breadcrumb-tabs__tab">{project.slug}</a>
+        )
+      ))}
+    </nav>
+  )}
+</div>

@@ -1,12 +1,123 @@
 ---
 import Base from '../layouts/Base.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
 ---
 
 <Base title="Resume — Dylan McCavitt">
   <main class="resume">
-    <h1 class="resume__title">Resume</h1>
-    <p class="resume__placeholder">Content coming soon.</p>
-    <a href="/resume.pdf" class="resume__download">Download PDF &darr;</a>
+    <Breadcrumb slug="resume" section="resume" />
+
+    <div class="resume__header">
+      <h1 class="resume__title">Dylan McCavitt</h1>
+      <p class="resume__subtitle">Full-Stack Engineer | API Development & Integrations | Security-Minded Delivery</p>
+      <a href="/resume.pdf" class="resume__download" target="_blank">Download PDF</a>
+    </div>
+
+    <section class="resume__section">
+      <h2 class="resume__heading">experience</h2>
+
+      <div class="resume__entry">
+        <div class="resume__entry-header">
+          <div>
+            <h3 class="resume__company">Bella's Beads</h3>
+            <p class="resume__role">Freelance Full-Stack Developer</p>
+          </div>
+          <div class="resume__meta">
+            <span>Remote</span>
+            <span>Summer 2025</span>
+          </div>
+        </div>
+        <ul class="resume__list">
+          <li>Sole developer for a live e-commerce site, delivering catalog, account, and order management workflows end to end.</li>
+          <li>Built a React + TypeScript frontend and Node/Express service layer with Supabase Postgres for relational data and auth.</li>
+          <li>Implemented Stripe payment flows and Shippo shipping-label automation to reduce manual post-checkout operations.</li>
+          <li>Added Vitest unit/integration tests and Sentry monitoring; deployed on Vercel and Render.</li>
+        </ul>
+      </div>
+
+      <div class="resume__entry">
+        <div class="resume__entry-header">
+          <div>
+            <h3 class="resume__company">Manhattan Board of Elections</h3>
+            <p class="resume__role">Technical Support Intern, MIS Department</p>
+          </div>
+          <div class="resume__meta">
+            <span>New York, NY</span>
+            <span>Summer 2025</span>
+          </div>
+        </div>
+        <ul class="resume__list">
+          <li>Re-imaged and rebuilt Windows workstations, configured peripherals, and resolved endpoint/network support incidents.</li>
+          <li>Handled user-account, permission, and printer support while documenting repeatable fixes for the MIS team.</li>
+        </ul>
+      </div>
+
+      <div class="resume__entry">
+        <div class="resume__entry-header">
+          <div>
+            <h3 class="resume__company">Kroll, Inc.</h3>
+            <p class="resume__role">Associate, Cyber Strategy & Risk Consulting</p>
+          </div>
+          <div class="resume__meta">
+            <span>Remote</span>
+            <span>Jun 2023 – Aug 2024</span>
+          </div>
+        </div>
+        <ul class="resume__list">
+          <li>Assessed cybersecurity posture across third-party environments and analyzed control gaps in identity, infrastructure, and application layers.</li>
+          <li>Produced structured technical reports and remediation roadmaps for enterprise stakeholders.</li>
+          <li>Collaborated across teams to sequence remediation based on risk exposure and implementation effort.</li>
+        </ul>
+      </div>
+
+      <div class="resume__entry">
+        <div class="resume__entry-header">
+          <div>
+            <h3 class="resume__company">Paul, Weiss, Rifkind, Wharton & Garrison</h3>
+            <p class="resume__role">Practice Assistant, Private Funds Group</p>
+          </div>
+          <div class="resume__meta">
+            <span>New York, NY</span>
+            <span>Mar 2020 – Jun 2023</span>
+          </div>
+        </div>
+        <ul class="resume__list">
+          <li>Maintained internal data repositories and reporting trackers used across legal deal workflows.</li>
+          <li>Assisted validation testing for workflow tooling, including document automation and database-interface upgrades.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="resume__section">
+      <h2 class="resume__heading">education</h2>
+
+      <div class="resume__entry">
+        <div class="resume__entry-header">
+          <div>
+            <h3 class="resume__company">Stevens Institute of Technology</h3>
+            <p class="resume__role">M.S. in Computer Science</p>
+          </div>
+          <div class="resume__meta">
+            <span>Hoboken, NJ</span>
+            <span>Jan 2026</span>
+          </div>
+        </div>
+        <p class="resume__coursework">Data Structures & Algorithms, Algorithms, Database Management Systems, Web Programming, Data Mining</p>
+      </div>
+
+      <div class="resume__entry">
+        <div class="resume__entry-header">
+          <div>
+            <h3 class="resume__company">Syracuse University</h3>
+            <p class="resume__role">B.S. in Economics</p>
+          </div>
+          <div class="resume__meta">
+            <span>Syracuse, NY</span>
+            <span>May 2019</span>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 </Base>
 
@@ -14,19 +125,120 @@ import Base from '../layouts/Base.astro';
   .resume {
     max-width: 680px;
     margin: 0 auto;
-    padding: var(--space-8) var(--space-5);
+    padding: var(--space-5) var(--space-5) var(--space-8);
+  }
+
+  /* Header */
+  .resume__header {
+    margin-bottom: var(--space-7);
   }
   .resume__title {
+    font-size: var(--text-2xl);
     letter-spacing: -0.02em;
-    margin-bottom: var(--space-5);
+    margin-bottom: var(--space-2);
   }
-  .resume__placeholder {
+  .resume__subtitle {
     color: var(--text-muted);
-    margin-bottom: var(--space-6);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-4);
   }
   .resume__download {
     font-size: var(--text-sm);
     font-weight: 600;
     color: var(--accent);
+    border-bottom: 1px dashed var(--accent);
+    padding-bottom: 1px;
+  }
+  .resume__download:hover {
+    text-decoration: none;
+    border-bottom-style: solid;
+  }
+
+  /* Sections */
+  .resume__section {
+    margin-bottom: var(--space-7);
+  }
+  .resume__heading {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--accent);
+    opacity: 0.7;
+    text-transform: lowercase;
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Entries */
+  .resume__entry {
+    margin-bottom: var(--space-6);
+  }
+  .resume__entry:last-child {
+    margin-bottom: 0;
+  }
+  .resume__entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-4);
+    margin-bottom: var(--space-3);
+  }
+  .resume__company {
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+  .resume__role {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    margin-top: var(--space-1);
+  }
+  .resume__meta {
+    text-align: right;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  /* Lists */
+  .resume__list {
+    list-style: none;
+    padding: 0;
+  }
+  .resume__list li {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    padding-left: var(--space-4);
+    position: relative;
+    margin-bottom: var(--space-2);
+  }
+  .resume__list li::before {
+    content: "·";
+    position: absolute;
+    left: var(--space-2);
+    color: var(--border);
+  }
+
+  /* Coursework */
+  .resume__coursework {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    line-height: 1.7;
+  }
+
+  /* Mobile */
+  @media (max-width: 600px) {
+    .resume__entry-header {
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .resume__meta {
+      text-align: left;
+      flex-direction: row;
+      gap: var(--space-3);
+    }
   }
 </style>

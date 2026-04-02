@@ -1,6 +1,6 @@
 ---
 title: "Homeserver"
-subtitle: "Home server infrastructure with monitoring and automation"
+subtitle: "Self-hosted infrastructure and automation"
 order: 1
 topologyUrl: "/homelab/topology/"
 ---

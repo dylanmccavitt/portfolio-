@@ -1,22 +1,24 @@
 ---
 title: "No Hard Feelings"
-subtitle: "Community platform and informational site"
+subtitle: "Website for a band"
 order: 3
 liveUrl: "https://nohardfeelings.app"
 ---
 
 ## What it is
 
-Nohard is a community-focused site that serves as a hub for information and resources. It's designed to be fast, easy to navigate, and useful for people who want to find what they need without digging through forums or social media.
+A website for No Hard Feelings, a classic rock cover band based in NJ/NY. The site gives fans a place to find show dates, learn about the band, watch live videos, and get in touch for booking — all in one spot instead of scattered across social media.
 
-![Nohard landing page](/screenshots/nohard/landing.png)
+Built with Astro, React, and Tailwind. The hero section is a 3D-flippable album cover — the front has navigation styled as album tracklist items, the back reveals band member bios with tap-to-reveal dialogs. Motion.js handles the flip and dialog animations.
+
+![No Hard Feelings landing page](/screenshots/nohard/landing.png)
 
 ## Why I built it
 
-The community needed a central place for information that wasn't scattered across Discord channels and Reddit threads. I saw an opportunity to build something clean and focused that people would actually use.
+The band needed a home base on the web. Show dates were buried in Instagram posts, band info was word-of-mouth, and booking meant texting around. I built them something clean and centralized.
 
 ## What I learned
 
-Building for a community means building for people with very different levels of technical comfort. The most important feedback came from the least technical users — they found problems that power users worked around without noticing. Simplicity isn't a feature you add; it's what's left when you remove everything unnecessary.
+The most interesting piece was the Google Calendar integration — a server-side API route proxies the Google Calendar v3 API so show dates stay current without anyone manually updating the site. The 3D album card navigation was a fun design challenge too — getting CSS 3D transforms and Motion.js to play nicely together across devices took iteration. Radix UI handled the accessible dialog primitives so the band member popups work properly on mobile.
 
-![Google Calendar API integration](/screenshots/nohard/gcal-integration.png)
+![Google Calendar integration](/screenshots/nohard/gcal-integration.png)

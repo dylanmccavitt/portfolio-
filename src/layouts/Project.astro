@@ -1,6 +1,7 @@
 ---
 import Base from './Base.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
+import { getCollection } from 'astro:content';
 
 interface Props {
   title: string;
@@ -12,12 +13,20 @@ interface Props {
 }
 
 const { title, subtitle, slug, liveUrl, repoUrl, topologyUrl } = Astro.props;
+
+const allProjects = await getCollection('projects');
+const siblings = allProjects
+  .sort((a, b) => (a.data.order ?? 99) - (b.data.order ?? 99))
+  .map((p) => ({ slug: p.id, title: p.data.title }));
+
+const indexedSiblings = siblings.map((p, i) => ({ ...p, colorIndex: i + 1 }));
+const otherProjects = indexedSiblings.filter((p) => p.slug !== slug);
 ---
 
 <Base title={`${title} — Dylan McCavitt`} description={subtitle}>
   <article>
     <header class="project-header">
-      <Breadcrumb slug={slug} />
+      <Breadcrumb slug={slug} siblings={siblings} />
       <h1 class="project-header__title">{title}</h1>
       <p class="project-header__subtitle">{subtitle}</p>
       <div class="project-header__links">
@@ -30,6 +39,17 @@ const { title, subtitle, slug, liveUrl, repoUrl, topologyUrl } = Astro.props;
     <div class="project-content">
       <slot />
     </div>
+    <nav class="project-siblings" aria-label="Other projects">
+      <div class="project-siblings__label">~/projects/</div>
+      <div class="project-siblings__listing">
+        {otherProjects.map((project) => (
+          <div class="project-siblings__row">
+            <span class="project-siblings__chevron">&gt;</span>
+            <a href={`/projects/${project.slug}/`} class={`project-siblings__link project-siblings__link--${project.colorIndex}`}>{project.slug}/</a>
+          </div>
+        ))}
+      </div>
+    </nav>
   </article>
   <script src="../scripts/lightbox.ts"></script>
 </Base>

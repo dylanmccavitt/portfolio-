@@ -253,6 +253,7 @@
 .breadcrumb-bar__segment--2 {
   color: var(--nav-2);
 }
+
 .breadcrumb-bar__segment--3 {
   color: var(--nav-3);
 }
@@ -263,6 +264,84 @@ a.breadcrumb-bar__segment:hover {
 
 .breadcrumb-bar__sep {
   color: var(--nav-5);
+}
+
+/* Breadcrumb wrapper */
+.breadcrumb-wrapper {
+  max-width: 680px;
+  margin: 0 auto var(--space-5);
+}
+
+.breadcrumb-wrapper .breadcrumb-bar {
+  max-width: none;
+  margin: 0;
+  border-radius: 6px 6px 0 0;
+}
+
+/* Tab strip */
+.breadcrumb-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.breadcrumb-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.breadcrumb-tabs__tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.breadcrumb-tabs__tab:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.breadcrumb-tabs__tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Desktop: theme toggle floats right inside breadcrumb bar */
+.breadcrumb-wrapper .breadcrumb-bar__theme {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-4);
+}
+
+.breadcrumb-wrapper {
+  position: relative;
+}
+
+@media (max-width: 600px) {
+  .breadcrumb-bar {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .breadcrumb-wrapper .breadcrumb-bar__theme {
+    position: static;
+    align-self: flex-end;
+    margin-bottom: var(--space-2);
+  }
+
+  .breadcrumb-tabs__tab {
+    padding: var(--space-2) var(--space-3);
+    font-size: 10px;
+  }
 }
 
 .breadcrumb-bar__theme {
