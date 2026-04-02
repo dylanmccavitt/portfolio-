@@ -5,7 +5,7 @@ order: 2
 liveUrl: "https://bellasbeads.shop"
 ---
 
-![Bella's Beads landing page](/screenshots/bella/landing.png)
+![Bella's Beads landing page](/screenshots/bella/landing.webp)
 
 ## What it is
 
@@ -23,14 +23,14 @@ The challenge was building the whole thing from the ground up and getting all th
 
 <div class="screenshot-strip">
 
-![Product page](/screenshots/bella/product-page.png)
+![Product page](/screenshots/bella/product-page.webp)
 
-![Cart](/screenshots/bella/cart.png)
+![Cart](/screenshots/bella/cart.webp)
 
-![Stripe checkout](/screenshots/bella/stripe.png)
+![Stripe checkout](/screenshots/bella/stripe.webp)
 
-![Shipping](/screenshots/bella/shipping.png)
+![Shipping](/screenshots/bella/shipping.webp)
 
-![Admin dashboard](/screenshots/bella/admin-dash.png)
+![Admin dashboard](/screenshots/bella/admin-dash.webp)
 
 </div>

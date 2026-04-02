@@ -10,7 +10,7 @@ interface Props {
 }
 const {
   title,
-  description = 'Dylan McCavitt — Software Engineer',
+  description = 'Dylan McCavitt — Portfolio',
   showPaletteNav = false,
 } = Astro.props;
 ---
@@ -21,6 +21,14 @@ const {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/screenshots/image-preview.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/screenshots/image-preview.webp" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
     <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script is:inline>

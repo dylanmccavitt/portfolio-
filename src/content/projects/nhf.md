@@ -5,7 +5,7 @@ order: 3
 liveUrl: "https://nohardfeelings.app"
 ---
 
-![No Hard Feelings landing page](/screenshots/nohard/landing.png)
+![No Hard Feelings landing page](/screenshots/nohard/landing.webp)
 
 ## What it is
 
@@ -23,10 +23,10 @@ An interesting piece was the Google Calendar integration. I wanted a way for the
 
 <div class="screenshot-strip">
 
-![Album card flipped](/screenshots/nohard/backcard.png)
+![Album card flipped](/screenshots/nohard/backcard.webp)
 
-![Band member popup](/screenshots/nohard/popout.png)
+![Band member popup](/screenshots/nohard/popout.webp)
 
-![Google Calendar integration](/screenshots/nohard/gcal-integration.png)
+![Google Calendar integration](/screenshots/nohard/gcal-integration.webp)
 
 </div>

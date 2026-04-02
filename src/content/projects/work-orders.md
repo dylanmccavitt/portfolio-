@@ -5,7 +5,7 @@ order: 4
 repoUrl: "https://github.com/apolydore/Work-Order-Management-System"
 ---
 
-![Work order landing page](/screenshots/work-order/work-order-landing.png)
+![Work order landing page](/screenshots/work-order/work-order-landing.webp)
 
 ## What it is
 
@@ -25,10 +25,10 @@ Working with a team of four on a shared codebase meant making real decisions abo
 
 <div class="screenshot-strip">
 
-![Job request form](/screenshots/work-order/jobreqform.png)
+![Job request form](/screenshots/work-order/jobreqform.webp)
 
-![Admin dashboard](/screenshots/work-order/woadmin.png)
+![Admin dashboard](/screenshots/work-order/woadmin.webp)
 
-![Invoice](/screenshots/work-order/invoice.png)
+![Invoice](/screenshots/work-order/invoice.webp)
 
 </div>

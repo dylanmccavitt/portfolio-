@@ -5,7 +5,7 @@ order: 5
 notebookUrl: "https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX"
 ---
 
-![Model accuracy comparison](/screenshots/epl-ml-model/accuracy-comparison.png)
+![Model accuracy comparison](/screenshots/epl-ml-model/accuracy-comparison.webp)
 
 ## What it is
 
@@ -23,10 +23,10 @@ The most useful part of this project wasn't the modeling, it was the data work. 
 
 <div class="screenshot-strip">
 
-![Correlation heatmap](/screenshots/epl-ml-model/correlation-heatmap.png)
+![Correlation heatmap](/screenshots/epl-ml-model/correlation-heatmap.webp)
 
-![Decision tree visualization](/screenshots/epl-ml-model/decision-tree.png)
+![Decision tree visualization](/screenshots/epl-ml-model/decision-tree.webp)
 
-![XGBoost results](/screenshots/epl-ml-model/xgboost.png)
+![XGBoost results](/screenshots/epl-ml-model/xgboost.webp)
 
 </div>

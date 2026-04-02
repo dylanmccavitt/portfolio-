@@ -5,7 +5,7 @@ order: 1
 topologyUrl: "/homelab/topology/"
 ---
 
-![Homepage dashboard](/screenshots/homelab/homepage.png)
+![Homepage dashboard](/screenshots/homelab/homepage.webp)
 
 ## What it is
 
@@ -27,10 +27,10 @@ To design for failure. It was tempting to rush into adding multiple services, bu
 
 <div class="screenshot-strip">
 
-![Proxmox dashboard](/screenshots/homelab/proxmox.png)
+![Proxmox dashboard](/screenshots/homelab/proxmox.webp)
 
-![OPNsense firewall](/screenshots/homelab/opnsense.png)
+![OPNsense firewall](/screenshots/homelab/opnsense.webp)
 
-![Uptime Kuma monitoring](/screenshots/homelab/kuma.png)
+![Uptime Kuma monitoring](/screenshots/homelab/kuma.webp)
 
 </div>
