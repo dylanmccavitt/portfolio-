@@ -7,8 +7,7 @@ import Base from '../layouts/Base.astro';
     <section class="about" id="about">
       <h2 class="section-heading section-heading--about">about</h2>
       <p class="about__text">
-        Software engineer in NYC. I build web apps, manage infrastructure,
-        and always expanding what I can work with. Currently open to opportunities.
+        Software engineer in NYC building web apps and infrastructure, always expanding what I can work with. Open to opportunities. <a href="/resume/" class="about__link">jump to experience &rarr;</a>
       </p>
     </section>
 
@@ -114,6 +113,17 @@ import Base from '../layouts/Base.astro';
   .about__text {
     color: var(--text-muted);
     line-height: 1.8;
+  }
+  .about__link {
+    font-size: var(--text-sm);
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .about__link:hover {
+    text-decoration: none;
+    opacity: 0.8;
   }
 
   /* Skills — dotfile listing */
