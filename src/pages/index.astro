@@ -7,37 +7,27 @@ import Base from '../layouts/Base.astro';
     <section class="about" id="about">
       <h2 class="section-heading section-heading--about">about</h2>
       <p class="about__text">
-        Software engineer who likes to move around. I've built SaaS products,
-        written CLI tools, automated deployments, and run my own infrastructure
-        from scratch. I'd rather learn the whole system than own one slice of
-        it, always picking up new tools along the way. Brooklyn, looking for
-        my next role.
+        Software engineer in NYC. I build web apps, manage infrastructure,
+        and pick up whatever tools the problem needs. Open to work.
       </p>
     </section>
 
     <section class="skills" id="skills">
-      <details class="skills__reveal">
-        <summary class="skills__toggle">
-          <h2 class="section-heading section-heading--skills">.skills</h2>
-        </summary>
-        <div class="skills__content">
-          <div class="skills__prompt">$ ls -a</div>
-          <div class="skills__listing">
-            <div class="skills__row">
-              <span class="skills__name skills__name--1">languages</span>
-              <span class="skills__items">typescript  python  go  c++  bash</span>
-            </div>
-            <div class="skills__row">
-              <span class="skills__name skills__name--2">infrastructure</span>
-              <span class="skills__items">linux  docker  terraform</span>
-            </div>
-            <div class="skills__row">
-              <span class="skills__name skills__name--3">web</span>
-              <span class="skills__items">next.js  astro  express  postgresql  stripe</span>
-            </div>
-          </div>
+      <h2 class="section-heading section-heading--skills">.skills</h2>
+      <div class="skills__listing">
+        <div class="skills__row">
+          <span class="skills__name skills__name--1">languages</span>
+          <span class="skills__items">typescript  python  go  c++  bash</span>
         </div>
-      </details>
+        <div class="skills__row">
+          <span class="skills__name skills__name--2">infrastructure</span>
+          <span class="skills__items">linux  docker  terraform</span>
+        </div>
+        <div class="skills__row">
+          <span class="skills__name skills__name--3">web</span>
+          <span class="skills__items">next.js  astro  express  postgresql  stripe</span>
+        </div>
+      </div>
     </section>
 
     <section class="projects" id="projects">
@@ -117,23 +107,6 @@ import Base from '../layouts/Base.astro';
     max-width: 600px;
     margin: 0 auto;
     padding: var(--space-5) var(--space-5) var(--space-6);
-  }
-  .skills__reveal {
-    border: none;
-  }
-  .skills__toggle {
-    list-style: none;
-    cursor: pointer;
-  }
-  .skills__toggle::-webkit-details-marker {
-    display: none;
-  }
-  .skills__toggle:hover .section-heading {
-    opacity: 1;
-  }
-  .skills__prompt {
-    color: var(--border);
-    margin-bottom: var(--space-2);
   }
   .skills__listing {
     line-height: 2.4;

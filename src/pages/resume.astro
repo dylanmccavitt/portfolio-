@@ -9,8 +9,8 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 
     <div class="resume__header">
       <h1 class="resume__title">Dylan McCavitt</h1>
-      <p class="resume__subtitle">Full-Stack Engineer | API Development & Integrations | Security-Minded Delivery</p>
-      <a href="/resume.pdf" class="resume__download" target="_blank">Download PDF</a>
+      <p class="resume__subtitle">Software Engineer, NYC</p>
+      <a href="/resume.pdf" class="resume__download" target="_blank">Download Resume</a>
     </div>
 
     <section class="resume__section">
@@ -22,69 +22,39 @@ import Breadcrumb from '../components/Breadcrumb.astro';
             <h3 class="resume__company">Bella's Beads</h3>
             <p class="resume__role">Freelance Full-Stack Developer</p>
           </div>
-          <div class="resume__meta">
-            <span>Remote</span>
-            <span>Summer 2025</span>
-          </div>
+          <span class="resume__date">2025</span>
         </div>
-        <ul class="resume__list">
-          <li>Sole developer for a live e-commerce site, delivering catalog, account, and order management workflows end to end.</li>
-          <li>Built a React + TypeScript frontend and Node/Express service layer with Supabase Postgres for relational data and auth.</li>
-          <li>Implemented Stripe payment flows and Shippo shipping-label automation to reduce manual post-checkout operations.</li>
-          <li>Added Vitest unit/integration tests and Sentry monitoring; deployed on Vercel and Render.</li>
-        </ul>
+        <p class="resume__desc">Built a live ecommerce site end to end. React + TypeScript frontend, Node/Express backend, Supabase, Stripe payments, Shippo shipping automation.</p>
       </div>
 
       <div class="resume__entry">
         <div class="resume__entry-header">
           <div>
             <h3 class="resume__company">Manhattan Board of Elections</h3>
-            <p class="resume__role">Technical Support Intern, MIS Department</p>
+            <p class="resume__role">Technical Support Intern</p>
           </div>
-          <div class="resume__meta">
-            <span>New York, NY</span>
-            <span>Summer 2025</span>
-          </div>
+          <span class="resume__date">2025</span>
         </div>
-        <ul class="resume__list">
-          <li>Re-imaged and rebuilt Windows workstations, configured peripherals, and resolved endpoint/network support incidents.</li>
-          <li>Handled user-account, permission, and printer support while documenting repeatable fixes for the MIS team.</li>
-        </ul>
       </div>
 
       <div class="resume__entry">
         <div class="resume__entry-header">
           <div>
             <h3 class="resume__company">Kroll, Inc.</h3>
-            <p class="resume__role">Associate, Cyber Strategy & Risk Consulting</p>
+            <p class="resume__role">Associate, Cyber Strategy & Risk</p>
           </div>
-          <div class="resume__meta">
-            <span>Remote</span>
-            <span>Jun 2023 – Aug 2024</span>
-          </div>
+          <span class="resume__date">2023 - 2024</span>
         </div>
-        <ul class="resume__list">
-          <li>Assessed cybersecurity posture across third-party environments and analyzed control gaps in identity, infrastructure, and application layers.</li>
-          <li>Produced structured technical reports and remediation roadmaps for enterprise stakeholders.</li>
-          <li>Collaborated across teams to sequence remediation based on risk exposure and implementation effort.</li>
-        </ul>
       </div>
 
       <div class="resume__entry">
         <div class="resume__entry-header">
           <div>
-            <h3 class="resume__company">Paul, Weiss, Rifkind, Wharton & Garrison</h3>
-            <p class="resume__role">Practice Assistant, Private Funds Group</p>
+            <h3 class="resume__company">Paul, Weiss</h3>
+            <p class="resume__role">Practice Assistant, Private Funds</p>
           </div>
-          <div class="resume__meta">
-            <span>New York, NY</span>
-            <span>Mar 2020 – Jun 2023</span>
-          </div>
+          <span class="resume__date">2020 - 2023</span>
         </div>
-        <ul class="resume__list">
-          <li>Maintained internal data repositories and reporting trackers used across legal deal workflows.</li>
-          <li>Assisted validation testing for workflow tooling, including document automation and database-interface upgrades.</li>
-        </ul>
       </div>
     </section>
 
@@ -95,26 +65,19 @@ import Breadcrumb from '../components/Breadcrumb.astro';
         <div class="resume__entry-header">
           <div>
             <h3 class="resume__company">Stevens Institute of Technology</h3>
-            <p class="resume__role">M.S. in Computer Science</p>
+            <p class="resume__role">M.S. Computer Science</p>
           </div>
-          <div class="resume__meta">
-            <span>Hoboken, NJ</span>
-            <span>Jan 2026</span>
-          </div>
+          <span class="resume__date">2026</span>
         </div>
-        <p class="resume__coursework">Data Structures & Algorithms, Algorithms, Database Management Systems, Web Programming, Data Mining</p>
       </div>
 
       <div class="resume__entry">
         <div class="resume__entry-header">
           <div>
             <h3 class="resume__company">Syracuse University</h3>
-            <p class="resume__role">B.S. in Economics</p>
+            <p class="resume__role">B.S. Economics</p>
           </div>
-          <div class="resume__meta">
-            <span>Syracuse, NY</span>
-            <span>May 2019</span>
-          </div>
+          <span class="resume__date">2019</span>
         </div>
       </div>
     </section>
@@ -128,7 +91,6 @@ import Breadcrumb from '../components/Breadcrumb.astro';
     padding: var(--space-5) var(--space-5) var(--space-8);
   }
 
-  /* Header */
   .resume__header {
     margin-bottom: var(--space-7);
   }
@@ -154,7 +116,6 @@ import Breadcrumb from '../components/Breadcrumb.astro';
     border-bottom-style: solid;
   }
 
-  /* Sections */
   .resume__section {
     margin-bottom: var(--space-7);
   }
@@ -169,9 +130,8 @@ import Breadcrumb from '../components/Breadcrumb.astro';
     border-bottom: 1px solid var(--border);
   }
 
-  /* Entries */
   .resume__entry {
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-5);
   }
   .resume__entry:last-child {
     margin-bottom: 0;
@@ -179,9 +139,8 @@ import Breadcrumb from '../components/Breadcrumb.astro';
   .resume__entry-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: baseline;
     gap: var(--space-4);
-    margin-bottom: var(--space-3);
   }
   .resume__company {
     font-size: var(--text-base);
@@ -192,53 +151,25 @@ import Breadcrumb from '../components/Breadcrumb.astro';
     font-size: var(--text-sm);
     margin-top: var(--space-1);
   }
-  .resume__meta {
-    text-align: right;
+  .resume__date {
     font-size: var(--text-sm);
     color: var(--text-muted);
     white-space: nowrap;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
   }
-
-  /* Lists */
-  .resume__list {
-    list-style: none;
-    padding: 0;
-  }
-  .resume__list li {
+  .resume__desc {
     color: var(--text-muted);
     font-size: var(--text-sm);
     line-height: 1.7;
-    padding-left: var(--space-4);
-    position: relative;
-    margin-bottom: var(--space-2);
-  }
-  .resume__list li::before {
-    content: "·";
-    position: absolute;
-    left: var(--space-2);
-    color: var(--border);
+    margin-top: var(--space-2);
   }
 
-  /* Coursework */
-  .resume__coursework {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    line-height: 1.7;
-  }
-
-  /* Mobile */
   @media (max-width: 600px) {
     .resume__entry-header {
       flex-direction: column;
-      gap: var(--space-1);
+      gap: 0;
     }
-    .resume__meta {
-      text-align: left;
-      flex-direction: row;
-      gap: var(--space-3);
+    .resume__date {
+      margin-top: var(--space-1);
     }
   }
 </style>

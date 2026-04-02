@@ -172,3 +172,122 @@
   --dropdown-bg: #1e1e1e;
   --dropdown-text: #d4d4d4;
 }
+
+/* ============================================================
+   Light Mode Overrides
+   Flips bg/surface/text while preserving accent + nav colors.
+   Applied via [data-mode="light"] on <html>.
+   ============================================================ */
+
+[data-mode="light"],
+[data-mode="light"][data-theme="nord"] {
+  --bg: #eceff4;
+  --surface: #e5e9f0;
+  --text: #2e3440;
+  --text-muted: #4c566a;
+  --border: #d8dee9;
+  --nav-5: #d8dee9;
+  --nav-text-1: #eceff4;
+  --nav-text-2: #eceff4;
+  --nav-text-3: #eceff4;
+  --nav-text-4: #eceff4;
+  --nav-text-5: #2e3440;
+  --dropdown-bg: #e5e9f0;
+  --dropdown-text: #2e3440;
+}
+
+[data-mode="light"][data-theme="dracula"] {
+  --bg: #f8f8f2;
+  --surface: #eee8d5;
+  --text: #282a36;
+  --text-muted: #6272a4;
+  --border: #d6d0c4;
+  --nav-5: #d6d0c4;
+  --nav-text-1: #f8f8f2;
+  --nav-text-2: #282a36;
+  --nav-text-3: #282a36;
+  --nav-text-4: #f8f8f2;
+  --nav-text-5: #282a36;
+  --dropdown-bg: #eee8d5;
+  --dropdown-text: #282a36;
+}
+
+[data-mode="light"][data-theme="rose-pine"] {
+  --bg: #faf4ed;
+  --surface: #f2e9e1;
+  --text: #575279;
+  --text-muted: #797593;
+  --border: #dfdad9;
+  --nav-5: #dfdad9;
+  --nav-text-1: #faf4ed;
+  --nav-text-2: #575279;
+  --nav-text-3: #faf4ed;
+  --nav-text-4: #575279;
+  --nav-text-5: #575279;
+  --dropdown-bg: #f2e9e1;
+  --dropdown-text: #575279;
+}
+
+[data-mode="light"][data-theme="gruvbox"] {
+  --bg: #fbf1c7;
+  --surface: #f2e5bc;
+  --text: #3c3836;
+  --text-muted: #7c6f64;
+  --border: #d5c4a1;
+  --nav-5: #d5c4a1;
+  --nav-text-1: #fbf1c7;
+  --nav-text-2: #3c3836;
+  --nav-text-3: #fbf1c7;
+  --nav-text-4: #fbf1c7;
+  --nav-text-5: #3c3836;
+  --dropdown-bg: #f2e5bc;
+  --dropdown-text: #3c3836;
+}
+
+[data-mode="light"][data-theme="everforest"] {
+  --bg: #fdf6e3;
+  --surface: #f4eed8;
+  --text: #5c6a72;
+  --text-muted: #829181;
+  --border: #e0dcc7;
+  --nav-5: #e0dcc7;
+  --nav-text-1: #fdf6e3;
+  --nav-text-2: #5c6a72;
+  --nav-text-3: #fdf6e3;
+  --nav-text-4: #fdf6e3;
+  --nav-text-5: #5c6a72;
+  --dropdown-bg: #f4eed8;
+  --dropdown-text: #5c6a72;
+}
+
+[data-mode="light"][data-theme="night-owl"] {
+  --bg: #fbfbfb;
+  --surface: #f0f0f0;
+  --text: #403f53;
+  --text-muted: #7a7a8e;
+  --border: #d9d9d9;
+  --nav-5: #d9d9d9;
+  --nav-text-1: #fbfbfb;
+  --nav-text-2: #403f53;
+  --nav-text-3: #403f53;
+  --nav-text-4: #fbfbfb;
+  --nav-text-5: #403f53;
+  --dropdown-bg: #f0f0f0;
+  --dropdown-text: #403f53;
+}
+
+[data-mode="light"][data-theme="dark-plus"] {
+  --bg: #ffffff;
+  --surface: #f3f3f3;
+  --text: #1e1e1e;
+  --text-muted: #6a6a6a;
+  --border: #d4d4d4;
+  --nav-5: #d4d4d4;
+  --nav-text-1: #ffffff;
+  --nav-text-2: #1e1e1e;
+  --nav-text-3: #1e1e1e;
+  --nav-text-4: #1e1e1e;
+  --nav-text-5: #1e1e1e;
+  --dropdown-bg: #f3f3f3;
+  --dropdown-text: #1e1e1e;
+}

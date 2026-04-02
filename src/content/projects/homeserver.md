@@ -9,21 +9,21 @@ topologyUrl: "/homelab/topology/"
 
 ## What it is
 
-I run a small server setup at home that handles things most people use cloud services for: password management, network monitoring, service dashboards, and automated tasks. Everything runs on a single physical server using virtual machines and containers, managed through a firewall that controls what can talk to what.
+I run a small server setup at home that handles most things a cloud service usually would: password management, network monitoring, service dashboards, and automated tasks. Everything runs on a single physical server using virtual machines and containers, managed through a firewall that controls what can talk to what.
 
 The system is split into separate zones: one for network management, one for applications people actually use, one for monitoring, and one for automation. This separation means a problem in one area doesn't cascade into others.
 
-This is a continuous project. The core infrastructure is live and running, but I'm still building it out. TrueNAS for dedicated storage, Jellyfin for media, Grafana for observability, and a Tailscale subnet router for remote management access are all planned next.
+This is a continuous project. The core infrastructure is live and running, but I'm still building it out. Some things in scope: a NAS for dedicated storage, Grafana for visibility, Jellyfin for media and a Tailscale subnet router for remote management acess.
 
 [View the interactive topology map →](/homelab/topology/)
 
 ## Why I built it
 
-I wanted hands-on experience with the kind of infrastructure decisions that come up in professional environments: network segmentation, reverse proxies, monitoring, and service isolation, but at a scale where I could understand every piece end to end. Cloud services abstract away the parts I wanted to learn.
+I wanted to learn the parts that cloud services were abstracting away. I also wanted more control over the tools I was using. Open source software allows me to be as creative as possible with what I actually own. It's also just a continuous learning environment. With how fast things move today, there's always something new to try or improve.
 
 ## What I learned
 
-Designing for failure is more important than designing for features. The most valuable decisions were about separation: keeping monitoring independent from the services it watches, isolating management access from public-facing apps, and giving each workload its own space to fail without taking everything else down.
+To design for failure. It's tempting to rush into adding the flashy services, but getting the core infrastructure right first matters more. Solid separation, good monitoring, and clean network boundaries mean I can add new services later without backtracking and reconfiguring everything that was already working. The most valuable decisions were the boring ones: keeping monitoring independent from the things it watches, isolating admin access from user-facing apps, and giving each workload room to break without taking everything else down.
 
 <div class="screenshot-strip">
 

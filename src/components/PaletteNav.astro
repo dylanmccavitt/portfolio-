@@ -48,15 +48,18 @@ const navLinks = [
 
 <nav class="palette-nav">
   <div class="palette-nav__wrapper">
-    <button
-      class="palette-nav__theme-toggle"
-      data-theme-toggle
-      id="theme-toggle"
-      aria-expanded="false"
-      aria-haspopup="true"
-    >
-      [/theme]
-    </button>
+    <div class="palette-nav__controls">
+      <button class="palette-nav__mode-toggle" data-mode-toggle>light</button>
+      <button
+        class="palette-nav__theme-toggle"
+        data-theme-toggle
+        id="theme-toggle"
+        aria-expanded="false"
+        aria-haspopup="true"
+      >
+        [/theme]
+      </button>
+    </div>
     <div class="palette-nav__dropdown" data-theme-dropdown id="theme-dropdown" hidden>
       {themes.map((theme) => (
         <button
