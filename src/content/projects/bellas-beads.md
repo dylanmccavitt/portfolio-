@@ -19,7 +19,7 @@ This was a freelance project for a jewelry maker who needed a way to sell online
 
 ## What I learned
 
-The challenge was building the whole thing from the ground up and getting all the third-party pieces to work in unison. Stripe for payments, Shippo for automated shipping, Supabase for data and auth, Resend for transactional emails. Each one has its own webhook patterns, auth flows, and failure modes. Making them all talk to each other reliably, took more thought than any individual feature. I also spent time on security: CSRF protection, rate limiting at multiple tiers, and HMAC token hashing.
+The challenge was building the whole thing from the ground up and getting all the third-party pieces to work in unison. Stripe for payments, Shippo for automated shipping, Supabase for data and auth, Resend for transactional emails. Each one has its own webhook patterns, auth flows, and failure modes. Making them all talk to each other reliably, took more thought than any individual feature. I also spent time on security: CSRF protection to make sure form submissions actually come from the site, rate limiting to prevent abuse, and HMAC token hashing so sensitive tokens are never stored in plain text.
 
 <div class="screenshot-strip">
 

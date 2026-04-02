@@ -59,6 +59,19 @@
   opacity: 0.9;
 }
 
+/* Image captions */
+.img-caption {
+  position: relative;
+  margin: 0;
+}
+
+.img-caption__text {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  opacity: 0.6;
+  margin-top: var(--space-2);
+}
+
 /* Lightbox */
 .lightbox {
   position: fixed;
@@ -130,6 +143,25 @@
 }
 .project-siblings__link--5 {
   color: var(--accent);
+}
+
+.project-siblings__pages {
+  display: flex;
+  gap: var(--space-5);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.project-siblings__page-link {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.project-siblings__page-link:hover {
+  color: var(--text);
+  text-decoration: none;
 }
 
 .lightbox img {

@@ -15,11 +15,11 @@ Built with Astro, React, and Tailwind. The hero section is a 3D-flippable album 
 
 ## Why I built it
 
-The band needed a home base on the web. Show dates were buried in Instagram posts, band info was word-of-mouth, and booking meant texting around. I built them something clean and centralized.
+The band needed a home base on the web. Show dates were scattered across socials and info was more word-of-mouth. I helped to build them something more centralized.
 
 ## What I learned
 
-The most interesting piece was the Google Calendar integration. A server-side API route proxies the Google Calendar v3 API so show dates stay current without anyone manually updating the site. The 3D album card navigation was a fun design challenge too. Getting CSS 3D transforms and Motion.js to play nicely together across devices took iteration. Radix UI handled the accessible dialog primitives so the band member popups work properly on mobile.
+An interesting piece was the Google Calendar integration. I wanted a way for the band to add upcoming show dates without me having to go into the code or manage a separate database. The site pulls from their Google Calendar behind the scenes, so when they add a gig it shows up on the website automatically. The 3D album card navigation was something new I played around with too. Getting CSS 3D transforms and Motion.js to work together across devices took multiple iterations.
 
 <div class="screenshot-strip">
 

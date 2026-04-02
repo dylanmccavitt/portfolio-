@@ -10,9 +10,10 @@ interface Props {
   liveUrl?: string;
   repoUrl?: string;
   topologyUrl?: string;
+  notebookUrl?: string;
 }
 
-const { title, subtitle, slug, liveUrl, repoUrl, topologyUrl } = Astro.props;
+const { title, subtitle, slug, liveUrl, repoUrl, topologyUrl, notebookUrl } = Astro.props;
 
 const allProjects = await getCollection('projects');
 const siblings = allProjects
@@ -32,7 +33,8 @@ const otherProjects = indexedSiblings.filter((p) => p.slug !== slug);
       <div class="project-header__links">
         {liveUrl && <a href={liveUrl} target="_blank" rel="noopener noreferrer">View live site &rarr;</a>}
         {repoUrl && <a href={repoUrl} target="_blank" rel="noopener noreferrer">GitHub &rarr;</a>}
-        {topologyUrl && <a href={topologyUrl}>View topology map &rarr;</a>}
+        {topologyUrl && <a href={topologyUrl}>View the map &rarr;</a>}
+        {notebookUrl && <a href={notebookUrl} target="_blank" rel="noopener noreferrer">View notebook &rarr;</a>}
       </div>
       <hr class="project-header__rule" />
     </header>
@@ -48,6 +50,11 @@ const otherProjects = indexedSiblings.filter((p) => p.slug !== slug);
             <a href={`/projects/${project.slug}/`} class={`project-siblings__link project-siblings__link--${project.colorIndex}`}>{project.slug}/</a>
           </div>
         ))}
+      </div>
+      <div class="project-siblings__pages">
+        <a href="/" class="project-siblings__page-link">home</a>
+        <a href="/resume/" class="project-siblings__page-link">experience</a>
+        <a href="/#contact" class="project-siblings__page-link">contact</a>
       </div>
     </nav>
   </article>

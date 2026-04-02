@@ -29,4 +29,23 @@ function initLightbox(): void {
   });
 }
 
+function initCaptions(): void {
+  document
+    .querySelectorAll<HTMLImageElement>(
+      ".project-content img, .screenshot-strip img",
+    )
+    .forEach((img) => {
+      if (!img.alt) return;
+      const wrapper = document.createElement("figure");
+      wrapper.className = "img-caption";
+      img.parentNode!.insertBefore(wrapper, img);
+      wrapper.appendChild(img);
+      const caption = document.createElement("figcaption");
+      caption.className = "img-caption__text";
+      caption.textContent = img.alt;
+      wrapper.appendChild(caption);
+    });
+}
+
 initLightbox();
+initCaptions();

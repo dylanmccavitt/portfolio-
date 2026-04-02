@@ -8,6 +8,12 @@ const VALID_THEMES = [
   "everforest",
   "night-owl",
   "dark-plus",
+  "retro",
+  "heeler",
+  "purple-rain",
+  "monochrome",
+  "tokyo-night",
+  "catppuccin",
 ];
 
 const THEME_NAMES: Record<string, string> = {
@@ -18,6 +24,12 @@ const THEME_NAMES: Record<string, string> = {
   everforest: "everforest",
   "night-owl": "night owl",
   "dark-plus": "dark+",
+  retro: "retro",
+  heeler: "heeler",
+  "purple-rain": "purple rain",
+  monochrome: "monochrome",
+  "tokyo-night": "tokyo night",
+  catppuccin: "catppuccin",
 };
 
 function hasUserChosenTheme(): boolean {

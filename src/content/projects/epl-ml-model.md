@@ -2,7 +2,7 @@
 title: "EPL ML Model"
 subtitle: "Predicting football match outcomes with machine learning"
 order: 5
-gistUrl: "https://gist.github.com/DylanMcCavitt/c3ead5e9ee4867308e326eb1799478e7"
+notebookUrl: "https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX"
 ---
 
 ![Model accuracy comparison](/screenshots/epl-ml-model/accuracy-comparison.png)
@@ -30,5 +30,3 @@ The most useful part of this project wasn't the modeling, it was the data work. 
 ![XGBoost results](/screenshots/epl-ml-model/xgboost.png)
 
 </div>
-
-[View the full notebook →](https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX)

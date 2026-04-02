@@ -21,6 +21,12 @@ const themes = [
   { id: 'everforest', name: 'Everforest', swatches: ['#a7c080', '#dbbc7f', '#7fbbb3', '#d699b6'] },
   { id: 'night-owl', name: 'Night Owl', swatches: ['#c792ea', '#82aaff', '#c3e88d', '#f78c6c'] },
   { id: 'dark-plus', name: 'Dark+', swatches: ['#569cd6', '#4ec9b0', '#9cdcfe', '#ce9178'] },
+  { id: 'retro', name: 'Retro', swatches: ['#33ff33', '#66ff66', '#00cc00', '#009900'] },
+  { id: 'heeler', name: 'Heeler', swatches: ['#e63232', '#8cc832', '#3296f0', '#f0a030'] },
+  { id: 'purple-rain', name: 'Purple Rain', swatches: ['#b464f0', '#e63264', '#3296f0', '#32e6e6'] },
+  { id: 'monochrome', name: 'Monochrome', swatches: ['#c0c0c0', '#a0a0a0', '#888888', '#666666'] },
+  { id: 'tokyo-night', name: 'Tokyo Night', swatches: ['#7aa2f7', '#9ece6a', '#bb9af7', '#f7768e'] },
+  { id: 'catppuccin', name: 'Catppuccin', swatches: ['#f38ba8', '#a6e3a1', '#89b4fa', '#fab387'] },
 ];
 
 const hasSiblings = siblings.length > 0;
@@ -57,8 +63,12 @@ const hasSiblings = siblings.length > 0;
   <nav class="breadcrumb-bar" aria-label="Breadcrumb">
     <div class="breadcrumb-bar__path">
       <a href="/" class="breadcrumb-bar__segment breadcrumb-bar__segment--1">~</a>
-      <span class="breadcrumb-bar__sep">/</span>
-      <a href={`/#${section}`} class="breadcrumb-bar__segment breadcrumb-bar__segment--2">{section}</a>
+      {section !== slug && (
+        <>
+          <span class="breadcrumb-bar__sep">/</span>
+          <a href={`/#${section}`} class="breadcrumb-bar__segment breadcrumb-bar__segment--2">{section}</a>
+        </>
+      )}
       {parent && (
         <>
           <span class="breadcrumb-bar__sep">/</span>
