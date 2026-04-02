@@ -15,7 +15,7 @@ The system is split into separate zones: one for network management, one for app
 
 This is a continuous project. The core infrastructure is live and running, but I'm still building it out. Some things in scope: a NAS for dedicated storage, Grafana for visibility, Jellyfin for media and a Tailscale subnet router for remote management acess.
 
-[View the interactive topology map →](/homelab/topology/)
+[Interactive map →](/homelab/topology/)
 
 ## Why I built it
 
