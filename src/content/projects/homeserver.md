@@ -19,7 +19,7 @@ This is a continuous project. The core infrastructure is live and running, but I
 
 ## Why I built it
 
-I wanted to learn the parts that cloud services were abstracting away. I also wanted more control over the tools I was using. Open source software allows me to be as creative as possible with what I actually own. It's also just a continuous learning environment. With how fast things move today, there's always something new to try or improve.
+I wanted to understand what cloud services were abstracting away, but I also just wanted more control. Open source tools allow me to build what I want. It's also just a continuous learning environment. With how fast things move today, there's always something new to try or improve.
 
 ## What I learned
 
