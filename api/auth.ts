@@ -8,7 +8,7 @@ interface AuthQuery {
 const ALLOWED_ORIGIN = 'https://dylanmccavitt.xyz';
 
 export default async function handler(req: Request): Promise<Response> {
-  const url = new URL(req.url);
+  const url = new URL(req.url, ALLOWED_ORIGIN);
   const params = Object.fromEntries(url.searchParams) as AuthQuery;
 
   if (!params.code) {
