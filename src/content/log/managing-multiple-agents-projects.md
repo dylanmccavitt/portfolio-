@@ -21,7 +21,7 @@ Before I send any issue, it has to be clear enough to execute. I make sure it ha
 
 From there, I delegate work by strengths. In my setup right now, Codex is handling most, if not all,  non-UI tasks, while Claude handles UI-heavy tasks. Each issue gets its own worktree and branch for full isolation. I mark dependencies as non-blocking wherever possible so I can run multiple issues in parallel.
 
-![](/log/uploads/pasted-image-1776452348684.png)
+![](/log/uploads/pasted-image-1776452637415.png)
 
 #### iv. 
 
