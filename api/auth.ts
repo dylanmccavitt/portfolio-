@@ -56,22 +56,23 @@ export default async function handler(req: Request): Promise<Response> {
     ? { token: tokenData.access_token, provider: 'github' }
     : { error: tokenData.error_description ?? tokenData.error ?? 'oauth_failed' };
 
+  const message = `authorization:github:${status}:` + JSON.stringify(payload);
+
   const html = `<!doctype html>
 <html><body><script>
 (function() {
-  function send() {
-    window.opener && window.opener.postMessage(
-      'authorization:github:${status}:' + ${JSON.stringify(JSON.stringify(payload))},
-      ${JSON.stringify(ALLOWED_ORIGIN)}
-    );
+  var allowedOrigin = ${JSON.stringify(ALLOWED_ORIGIN)};
+  var message = ${JSON.stringify(message)};
+  function receive(e) {
+    if (!e || !e.data) return;
+    if (typeof e.data === 'string' && e.data.indexOf('authorizing:github') === 0) {
+      window.removeEventListener('message', receive, false);
+      e.source.postMessage(message, e.origin);
+      setTimeout(function() { window.close(); }, 250);
+    }
   }
-  window.addEventListener('message', function once() {
-    window.removeEventListener('message', once, false);
-    send();
-    setTimeout(function() { window.close(); }, 100);
-  }, false);
-  send();
-  setTimeout(function() { window.close(); }, 1000);
+  window.addEventListener('message', receive, false);
+  window.opener && window.opener.postMessage('authorizing:github', '*');
 })();
 </script></body></html>`;
 
