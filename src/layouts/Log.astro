@@ -1,0 +1,194 @@
+---
+import Base from './Base.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
+import { getCollection } from 'astro:content';
+
+interface Props {
+  title: string;
+  date: Date;
+  subtitle?: string;
+  slug: string;
+}
+
+const { title, date, subtitle, slug } = Astro.props;
+
+const allEntries = (await getCollection('log'))
+  .filter((e) => !e.data.draft || import.meta.env.DEV)
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+const currentIndex = allEntries.findIndex((e) => e.id === slug);
+const newer = currentIndex > 0 ? allEntries[currentIndex - 1] : null;
+const older = currentIndex < allEntries.length - 1 ? allEntries[currentIndex + 1] : null;
+
+const others = allEntries
+  .filter((e) => e.id !== slug)
+  .slice(0, 6)
+  .map((e, i) => ({ slug: e.id, title: e.data.title, colorIndex: (i % 5) + 1 }));
+
+const formattedDate = date.toISOString().slice(0, 10);
+---
+
+<Base title={`${title} — Dylan McCavitt`} description={subtitle ?? title}>
+  <article>
+    <header class="log-header">
+      <Breadcrumb slug={slug} section="log" sectionHref="/log/" />
+      <h1 class="log-header__title">{title}</h1>
+      <p class="log-header__date">{formattedDate}</p>
+      {subtitle && <p class="log-header__subtitle">{subtitle}</p>}
+      <hr class="log-header__rule" />
+    </header>
+    <div class="project-content">
+      <slot />
+    </div>
+    <nav class="log-prevnext" aria-label="Previous and next entry">
+      {older ? (
+        <a href={`/log/${older.id}/`} class="log-prevnext__link">&larr; {older.data.title}</a>
+      ) : (
+        <span class="log-prevnext__placeholder"></span>
+      )}
+      {newer ? (
+        <a href={`/log/${newer.id}/`} class="log-prevnext__link log-prevnext__link--right">{newer.data.title} &rarr;</a>
+      ) : (
+        <span class="log-prevnext__placeholder"></span>
+      )}
+    </nav>
+
+    {others.length > 0 && (
+      <nav class="log-siblings" aria-label="Other entries">
+        <div class="log-siblings__label">~/log/</div>
+        <div class="log-siblings__listing">
+          {others.map((entry) => (
+            <div class="log-siblings__row">
+              <span class="log-siblings__chevron">&gt;</span>
+              <a href={`/log/${entry.slug}/`} class={`log-siblings__link log-siblings__link--${entry.colorIndex}`}>{entry.slug}</a>
+            </div>
+          ))}
+        </div>
+        <div class="log-siblings__pages">
+          <a href="/" class="log-siblings__page-link">home</a>
+          <a href="/log/" class="log-siblings__page-link">log index</a>
+          <a href="/#contact" class="log-siblings__page-link">contact</a>
+        </div>
+      </nav>
+    )}
+  </article>
+  <script src="../scripts/lightbox.ts"></script>
+</Base>
+
+<style>
+  article {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-5);
+  }
+
+  .log-header {
+    margin-bottom: var(--space-6);
+  }
+  .log-header__title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    margin: var(--space-4) 0 var(--space-2);
+  }
+  .log-header__date {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    margin: 0 0 var(--space-3);
+  }
+  .log-header__subtitle {
+    color: var(--text-muted);
+    font-size: var(--text-base);
+    margin: 0 0 var(--space-4);
+    line-height: 1.6;
+  }
+  .log-header__rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-5) 0 0;
+  }
+
+  .log-prevnext {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-top: var(--space-7);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+    font-size: var(--text-sm);
+  }
+  .log-prevnext__link {
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .log-prevnext__link:hover {
+    color: var(--text);
+  }
+  .log-prevnext__link--right {
+    margin-left: auto;
+  }
+  .log-prevnext__placeholder {
+    flex: 1;
+  }
+
+  .log-siblings {
+    margin-top: var(--space-6);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+  }
+  .log-siblings__label {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-3);
+  }
+  .log-siblings__listing {
+    line-height: 2.2;
+    margin-bottom: var(--space-4);
+  }
+  .log-siblings__row {
+    white-space: nowrap;
+  }
+  .log-siblings__chevron {
+    color: var(--accent);
+    margin-right: var(--space-2);
+  }
+  .log-siblings__link {
+    text-decoration: none;
+    font-weight: 600;
+    border-bottom: 1px dashed currentColor;
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+  }
+  .log-siblings__link:hover {
+    border-bottom-style: solid;
+    border-bottom-color: currentColor;
+  }
+  .log-siblings__link--1 { color: var(--nav-1); }
+  .log-siblings__link--2 { color: var(--nav-2); }
+  .log-siblings__link--3 { color: var(--nav-3); }
+  .log-siblings__link--4 { color: var(--nav-4); }
+  .log-siblings__link--5 { color: var(--nav-5); }
+
+  .log-siblings__pages {
+    display: flex;
+    gap: var(--space-4);
+    font-size: var(--text-sm);
+  }
+  .log-siblings__page-link {
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .log-siblings__page-link:hover {
+    color: var(--text);
+  }
+
+  @media (max-width: 600px) {
+    .log-header__title {
+      font-size: var(--text-xl);
+    }
+    .log-prevnext {
+      flex-direction: column;
+    }
+    .log-prevnext__link--right {
+      margin-left: 0;
+    }
+  }
+</style>

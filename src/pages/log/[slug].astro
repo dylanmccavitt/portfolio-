@@ -1,0 +1,25 @@
+---
+import { getCollection, render } from 'astro:content';
+import Log from '../../layouts/Log.astro';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('log');
+  const visible = entries.filter((e) => !e.data.draft || import.meta.env.DEV);
+  return visible.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<Log
+  title={entry.data.title}
+  date={entry.data.date}
+  subtitle={entry.data.subtitle}
+  slug={entry.id}
+>
+  <Content />
+</Log>

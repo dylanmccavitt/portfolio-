@@ -1,0 +1,24 @@
+backend:
+  name: github
+  repo: DylanMcCavitt/portfolio-
+  branch: main
+  base_url: https://dylanmccavitt.xyz
+  auth_endpoint: api/auth
+
+media_folder: "public/log/uploads"
+public_folder: "/log/uploads"
+
+collections:
+  - name: log
+    label: Log
+    folder: "src/content/log"
+    create: true
+    slug: "{{slug}}"
+    extension: md
+    format: frontmatter
+    fields:
+      - { name: title,    label: Title,    widget: string }
+      - { name: date,     label: Date,     widget: datetime, format: "YYYY-MM-DD" }
+      - { name: subtitle, label: Subtitle, widget: string,   required: false }
+      - { name: draft,    label: Draft,    widget: boolean,  default: true }
+      - { name: body,     label: Body,     widget: markdown }

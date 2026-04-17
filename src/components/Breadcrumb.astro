@@ -7,11 +7,13 @@ interface ProjectLink {
 interface Props {
   slug: string;
   section?: string;
+  sectionHref?: string;
   siblings?: ProjectLink[];
   parent?: { label: string; href: string };
 }
 
-const { slug, section = 'projects', siblings = [], parent } = Astro.props;
+const { slug, section = 'projects', sectionHref, siblings = [], parent } = Astro.props;
+const resolvedSectionHref = sectionHref ?? `/#${section}`;
 
 const themes = [
   { id: 'nord', name: 'Nord', swatches: ['#8fbcbb', '#88c0d0', '#81a1c1', '#5e81ac'] },
@@ -65,7 +67,7 @@ const hasSiblings = siblings.length > 0;
       {section !== slug && (
         <>
           <span class="breadcrumb-bar__sep">/</span>
-          <a href={`/#${section}`} class="breadcrumb-bar__segment breadcrumb-bar__segment--2">{section}</a>
+          <a href={resolvedSectionHref} class="breadcrumb-bar__segment breadcrumb-bar__segment--2">{section}</a>
         </>
       )}
       {parent && (

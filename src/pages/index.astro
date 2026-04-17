@@ -1,5 +1,12 @@
 ---
 import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+const recentLog = (await getCollection('log'))
+  .filter((e) => !e.data.draft || import.meta.env.DEV)
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime())
+  .slice(0, 3)
+  .map((e) => ({ slug: e.id, title: e.data.title }));
 ---
 
 <Base title="Dylan McCavitt" showPaletteNav={true}>
@@ -60,6 +67,23 @@ import Base from '../layouts/Base.astro';
       </div>
     </section>
 
+    <section class="log" id="log">
+      <h2 class="section-heading section-heading--log">log</h2>
+      {recentLog.length === 0 ? (
+        <p class="log__empty">No entries yet.</p>
+      ) : (
+        <div class="log__listing">
+          {recentLog.map((entry) => (
+            <div class="log__row">
+              <span class="log__chevron">{'>'}</span>
+              <a href={`/log/${entry.slug}/`} class="log__link">{entry.title}</a>
+            </div>
+          ))}
+        </div>
+      )}
+      <a href="/log/" class="log__view-all">view all &rarr;</a>
+    </section>
+
     <section class="contact" id="contact">
       <h2 class="section-heading section-heading--contact">contact</h2>
       <p class="contact__blurb">Open to opportunities or collaboration. Reach out wherever works.</p>
@@ -103,6 +127,7 @@ import Base from '../layouts/Base.astro';
   .section-heading--about { color: var(--nav-2); }
   .section-heading--contact { color: var(--nav-3); }
   .section-heading--skills { color: var(--nav-4); }
+  .section-heading--log { color: var(--nav-5); }
 
   /* About */
   .about {
@@ -184,6 +209,56 @@ import Base from '../layouts/Base.astro';
   .projects__desc {
     color: var(--text-muted);
     margin-left: var(--space-3);
+  }
+
+  /* Log — terminal listing */
+  .log {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: var(--space-5) var(--space-5) var(--space-6);
+  }
+  .log__listing {
+    line-height: 2.4;
+    margin-bottom: var(--space-3);
+  }
+  .log__row {
+    white-space: nowrap;
+  }
+  .log__chevron {
+    color: var(--accent);
+    margin-right: var(--space-2);
+  }
+  .log__link {
+    text-decoration: none;
+    font-weight: 600;
+    color: var(--nav-5);
+    border-bottom: 1px dashed currentColor;
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+  }
+  .log__link:hover {
+    text-decoration: none;
+    border-bottom-style: solid;
+    border-bottom-color: currentColor;
+  }
+  .log__view-all {
+    display: inline-block;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-top: var(--space-2);
+  }
+  .log__view-all:hover {
+    color: var(--text);
+  }
+  .log__empty {
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+
+  @media (max-width: 600px) {
+    .log__row {
+      white-space: normal;
+    }
   }
 
   /* Contact */

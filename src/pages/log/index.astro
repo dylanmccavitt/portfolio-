@@ -1,0 +1,142 @@
+---
+import Base from '../../layouts/Base.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import { getCollection } from 'astro:content';
+
+const entries = (await getCollection('log'))
+  .filter((e) => !e.data.draft || import.meta.env.DEV)
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime())
+  .map((e, i) => ({
+    slug: e.id,
+    title: e.data.title,
+    subtitle: e.data.subtitle,
+    date: e.data.date.toISOString().slice(0, 10),
+    colorIndex: (i % 5) + 1,
+  }));
+---
+
+<Base title="Log — Dylan McCavitt" description="Notes, write-ups, and things I'm learning.">
+  <article>
+    <header class="log-index-header">
+      <Breadcrumb slug="log" section="log" sectionHref="/log/" />
+      <h1 class="log-index-header__title">log</h1>
+      <p class="log-index-header__blurb">Notes, write-ups, and things I'm learning.</p>
+      <hr class="log-index-header__rule" />
+    </header>
+
+    {entries.length === 0 ? (
+      <p class="log-index__empty">No entries yet.</p>
+    ) : (
+      <div class="log-index__listing">
+        {entries.map((entry) => (
+          <div class="log-index__row">
+            <span class="log-index__chevron">&gt;</span>
+            <span class="log-index__date">{entry.date}</span>
+            <a href={`/log/${entry.slug}/`} class={`log-index__link log-index__link--${entry.colorIndex}`}>{entry.slug}</a>
+            {entry.subtitle && <span class="log-index__subtitle">-{entry.subtitle}</span>}
+          </div>
+        ))}
+      </div>
+    )}
+  </article>
+</Base>
+
+<style>
+  article {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-5);
+  }
+
+  .log-index-header__title {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    text-transform: lowercase;
+    margin: var(--space-4) 0 var(--space-2);
+    color: var(--nav-5);
+  }
+  .log-index-header__title::before {
+    content: "/";
+    color: var(--border);
+    margin-right: var(--space-1);
+  }
+  .log-index-header__blurb {
+    color: var(--text-muted);
+    margin: 0 0 var(--space-4);
+    line-height: 1.6;
+  }
+  .log-index-header__rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-5) 0;
+  }
+
+  .log-index__listing {
+    line-height: 2.4;
+  }
+  .log-index__row {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    gap: var(--space-2);
+    align-items: baseline;
+    white-space: nowrap;
+  }
+  .log-index__chevron {
+    color: var(--accent);
+  }
+  .log-index__date {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
+  }
+  .log-index__link {
+    text-decoration: none;
+    font-weight: 600;
+    border-bottom: 1px dashed currentColor;
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+  }
+  .log-index__link:hover {
+    border-bottom-style: solid;
+    border-bottom-color: currentColor;
+  }
+  .log-index__link--1 { color: var(--nav-1); }
+  .log-index__link--2 { color: var(--nav-2); }
+  .log-index__link--3 { color: var(--nav-3); }
+  .log-index__link--4 { color: var(--nav-4); }
+  .log-index__link--5 { color: var(--nav-5); }
+  .log-index__subtitle {
+    color: var(--text-muted);
+    margin-left: var(--space-3);
+    font-size: var(--text-sm);
+  }
+  .log-index__empty {
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 600px) {
+    .log-index__row {
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto;
+      white-space: normal;
+      margin-bottom: var(--space-3);
+      line-height: 1.6;
+    }
+    .log-index__chevron {
+      grid-row: 1;
+    }
+    .log-index__link {
+      grid-row: 1;
+    }
+    .log-index__date {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      padding-left: var(--space-4);
+    }
+    .log-index__subtitle {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      padding-left: var(--space-4);
+      margin-left: 0;
+    }
+  }
+</style>
