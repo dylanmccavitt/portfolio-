@@ -1,5 +1,3 @@
-export const config = { runtime: 'nodejs22.x' };
-
 interface AuthQuery {
   code?: string;
   state?: string;
