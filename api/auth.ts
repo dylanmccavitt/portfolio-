@@ -59,15 +59,43 @@ export default async function handler(req: Request): Promise<Response> {
   const message = `authorization:github:${status}:` + JSON.stringify(payload);
 
   const html = `<!doctype html>
-<html><body><script>
+<html><body style="font-family:monospace;padding:16px;">
+<h2>Auth debug</h2>
+<pre id="log"></pre>
+<script>
 (function() {
   var message = ${JSON.stringify(message)};
+  var logEl = document.getElementById('log');
+  function log(s) {
+    logEl.textContent += s + '\\n';
+    console.log('[auth-popup]', s);
+  }
+  log('popup loaded at: ' + location.href);
+  log('window.opener: ' + (window.opener ? 'present' : 'NULL'));
+  log('document.referrer: ' + document.referrer);
+  log('payload status: ' + ${JSON.stringify(status)});
+  log('message length: ' + message.length);
   window.addEventListener('message', function(e) {
+    log('received msg origin=' + e.origin + ' data=' + (typeof e.data === 'string' ? e.data.slice(0,80) : typeof e.data));
     if (e.data === 'authorizing:github') {
-      window.opener && window.opener.postMessage(message, e.origin);
+      try {
+        window.opener.postMessage(message, e.origin);
+        log('posted success message to opener at ' + e.origin);
+      } catch (err) {
+        log('FAILED to post: ' + err.message);
+      }
     }
   });
-  window.opener && window.opener.postMessage('authorizing:github', '*');
+  if (window.opener) {
+    try {
+      window.opener.postMessage('authorizing:github', '*');
+      log('posted authorizing:github to opener with target=*');
+    } catch (err) {
+      log('FAILED initial post: ' + err.message);
+    }
+  } else {
+    log('NO opener — cannot continue');
+  }
 })();
 </script></body></html>`;
 
