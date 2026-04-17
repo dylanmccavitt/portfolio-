@@ -21,6 +21,8 @@ Before I send any issue, it has to be clear enough to execute. I make sure it ha
 
 From there, I delegate work by strengths. In my setup right now, Codex is handling most, if not all,  non-UI tasks, while Claude handles UI-heavy tasks. Each issue gets its own worktree and branch for full isolation. I mark dependencies as non-blocking wherever possible so I can run multiple issues in parallel.
 
+![](/log/uploads/pasted-image-1776453951207.png)
+
 #### iv. 
 
 When an agent (or subagent) finishes a task, it opens a PR and links it back to Linear. I tend to keep PRs small (around under \~500 changed lines) so review quality stays high. Then I do the real work: review every changed line, run checks,  validate, and either merge or send it back with specific feedback.
