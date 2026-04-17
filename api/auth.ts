@@ -61,17 +61,12 @@ export default async function handler(req: Request): Promise<Response> {
   const html = `<!doctype html>
 <html><body><script>
 (function() {
-  var allowedOrigin = ${JSON.stringify(ALLOWED_ORIGIN)};
   var message = ${JSON.stringify(message)};
-  function receive(e) {
-    if (!e || !e.data) return;
-    if (typeof e.data === 'string' && e.data.indexOf('authorizing:github') === 0) {
-      window.removeEventListener('message', receive, false);
-      e.source.postMessage(message, e.origin);
-      setTimeout(function() { window.close(); }, 250);
+  window.addEventListener('message', function(e) {
+    if (e.data === 'authorizing:github') {
+      window.opener && window.opener.postMessage(message, e.origin);
     }
-  }
-  window.addEventListener('message', receive, false);
+  });
   window.opener && window.opener.postMessage('authorizing:github', '*');
 })();
 </script></body></html>`;
