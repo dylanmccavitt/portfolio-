@@ -25,7 +25,7 @@ if (!project) {
 const { prev, next } = getProjectNeighbors(project.slug);
 ---
 
-<Base title={`${project.name} Dylan McCavitt`} description={project.blurb}>
+<Base title={`${project.name} — Dylan McCavitt`} description={project.blurb}>
   <main class="project-detail">
     <div class="project-detail__crumb">
       <a href="/projects/" class="project-detail__crumb-link">&larr; Projects</a>
@@ -71,7 +71,11 @@ const { prev, next } = getProjectNeighbors(project.slug);
             <dd class="project-detail__links">
               {
                 project.links.map((link) => (
-                  <a href={link.url} target="_blank" rel="noreferrer">
+                  <a
+                    href={link.url}
+                    target={link.url.startsWith('http') ? '_blank' : undefined}
+                    rel={link.url.startsWith('http') ? 'noreferrer' : undefined}
+                  >
                     {link.label} ↗
                   </a>
                 ))
@@ -82,9 +86,13 @@ const { prev, next } = getProjectNeighbors(project.slug);
       }
     </dl>
 
-    <div class="project-detail__cover ph proj-cover">
-      <span class="project-detail__cover-label">[ cover &middot; {project.slug} ]</span>
-    </div>
+    <figure class="project-detail__cover">
+      <img
+        src={project.cover.src}
+        alt={project.cover.alt}
+        class="project-detail__cover-image"
+      />
+    </figure>
 
     <section class="project-detail__section">
       <SeraLabel tone="muted">.summary</SeraLabel>
@@ -106,6 +114,27 @@ const { prev, next } = getProjectNeighbors(project.slug);
         }
       </ul>
     </section>
+
+    {
+      project.gallery.length > 0 && (
+        <section class="project-detail__section">
+          <SeraLabel tone="muted">.gallery</SeraLabel>
+          <div class="project-detail__gallery">
+            {project.gallery.map((image) => (
+              <figure class="project-detail__gallery-item">
+                <img
+                  src={image.src}
+                  alt={image.alt}
+                  class="project-detail__gallery-image"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+            ))}
+          </div>
+        </section>
+      )
+    }
 
     <div class="project-detail__pager">
       <ProjectPager prev={prev} next={next} />
@@ -215,17 +244,35 @@ const { prev, next } = getProjectNeighbors(project.slug);
     color: var(--accent);
   }
   .project-detail__cover {
-    aspect-ratio: 16 / 9;
-    display: grid;
-    place-items: center;
-    margin-top: 40px;
+    margin: 40px 0 0;
+    border: 1px solid var(--line);
+    background: rgba(17, 14, 12, 0.04);
+    overflow: hidden;
   }
-  .project-detail__cover-label {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
+  .project-detail__cover-image {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: block;
+    object-fit: cover;
+  }
+  .project-detail__gallery {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .project-detail__gallery-item {
+    margin: 0;
+    border: 1px solid var(--line);
+    background: rgba(17, 14, 12, 0.04);
+    overflow: hidden;
+  }
+  .project-detail__gallery-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
   }
   .project-detail__section {
     margin-top: 40px;
@@ -274,6 +321,9 @@ const { prev, next } = getProjectNeighbors(project.slug);
     .project-detail__meta-row {
       grid-template-columns: 1fr;
       gap: 8px;
+    }
+    .project-detail__gallery {
+      grid-template-columns: 1fr;
     }
   }
 </style>
