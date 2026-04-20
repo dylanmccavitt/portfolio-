@@ -1,0 +1,156 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/sera/PageHeader.astro';
+import SeraLabel from '../components/sera/SeraLabel.astro';
+import RowLink from '../components/sera/RowLink.astro';
+import Pager from '../components/sera/Pager.astro';
+
+const SKILLS: Array<[string, string]> = [
+  ['languages', 'typescript  python  go  c++  bash'],
+  ['infrastructure', 'linux  docker  terraform'],
+  ['web', 'next.js  astro  express  postgresql  stripe'],
+];
+
+const CONTACTS = [
+  {
+    label: 'Email',
+    href: 'mailto:dylanmccavitt@outlook.com',
+    handle: 'dylanmccavitt@outlook.com',
+  },
+  {
+    label: 'GitHub',
+    href: 'https://github.com/DylanMcCavitt',
+    handle: 'DylanMcCavitt',
+  },
+  {
+    label: 'LinkedIn',
+    href: 'https://www.linkedin.com/in/dylan-mccavitt',
+    handle: 'dylan-mccavitt',
+  },
+  {
+    label: 'X',
+    href: 'https://x.com/dylanmccavitt_',
+    handle: '@dylanmccavitt_',
+  },
+];
+---
+
+<Base
+  title="About — Dylan McCavitt"
+  description="Software engineer in NYC building web apps, infrastructure, and tooling."
+>
+  <main class="about-page">
+    <PageHeader
+      kicker="01 / about"
+      title="Dylan McCavitt"
+      sub="Software engineer in NYC."
+    />
+
+    <section class="about-page__bio">
+      <p>
+        Software engineer in NYC building web apps, infrastructure, and tooling.
+        Always expanding what I can work with. Open to opportunities.
+      </p>
+    </section>
+
+    <section class="about-page__skills" aria-label="Skills">
+      <SeraLabel tone="muted" as="h2">.skills</SeraLabel>
+      <dl class="about-page__skills-grid">
+        {
+          SKILLS.map(([name, items]) => (
+            <>
+              <dt class="about-page__skills-name">{name}</dt>
+              <dd class="about-page__skills-items">{items}</dd>
+            </>
+          ))
+        }
+      </dl>
+    </section>
+
+    <section class="about-page__contact" aria-label="Contact">
+      <ul class="about-page__contact-list">
+        {
+          CONTACTS.map((c) => (
+            <li class="about-page__contact-row">
+              <RowLink
+                href={c.href}
+                title={c.label}
+                trailing={`${c.handle} ↗`}
+                external={c.href.startsWith('http')}
+              />
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <div class="about-page__pager">
+      <Pager next={{ href: '/projects', label: 'projects' }} />
+    </div>
+  </main>
+</Base>
+
+<style>
+  .about-page {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 64px 24px;
+  }
+  .about-page__bio {
+    margin-top: 40px;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--ink);
+  }
+  .about-page__bio p {
+    max-width: 62ch;
+    text-wrap: pretty;
+    text-align: left;
+  }
+  .about-page__skills {
+    margin-top: 56px;
+  }
+  .about-page__skills-grid {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    column-gap: 24px;
+    row-gap: 12px;
+    margin: 28px 0 0;
+  }
+  .about-page__skills-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 2px;
+  }
+  .about-page__skills-items {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .about-page__contact {
+    margin-top: 64px;
+  }
+  .about-page__contact-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .about-page__pager {
+    margin-top: 64px;
+  }
+
+  @media (max-width: 600px) {
+    .about-page__skills-grid {
+      grid-template-columns: 1fr;
+      row-gap: 4px;
+    }
+    .about-page__skills-items {
+      margin-bottom: 8px;
+    }
+  }
+</style>
