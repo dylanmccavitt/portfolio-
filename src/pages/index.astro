@@ -9,7 +9,7 @@ const recentLog = (await getCollection('log'))
   .map((e) => ({ slug: e.id, title: e.data.title }));
 ---
 
-<Base title="Dylan McCavitt" showPaletteNav={true}>
+<Base title="Dylan McCavitt" showPaletteNav={true} showTopBar={false}>
   <main>
     <section class="about" id="about">
       <h2 class="section-heading section-heading--about">about</h2>

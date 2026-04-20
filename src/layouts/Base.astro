@@ -2,16 +2,19 @@
 import Header from '../components/Header.astro';
 import PaletteNav from '../components/PaletteNav.astro';
 import Footer from '../components/Footer.astro';
+import TopBar from '../components/sera/TopBar.astro';
 
 interface Props {
   title: string;
   description?: string;
   showPaletteNav?: boolean;
+  showTopBar?: boolean;
 }
 const {
   title,
   description = 'Dylan McCavitt — Portfolio',
   showPaletteNav = false,
+  showTopBar = true,
 } = Astro.props;
 ---
 
@@ -50,7 +53,7 @@ const {
   </head>
   <body class="paper">
     <div class="site">
-      <Header />
+      {showTopBar ? <TopBar /> : <Header />}
       {showPaletteNav && <PaletteNav />}
       <slot />
       <Footer />

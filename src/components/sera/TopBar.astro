@@ -1,0 +1,87 @@
+---
+import TopNavLink from './TopNavLink.astro';
+import TopActions from './TopActions.astro';
+
+const NAV = [
+  { to: '/about', label: 'about' },
+  { to: '/projects', label: 'projects' },
+  { to: '/experience', label: 'experience' },
+  { to: '/log', label: 'log' },
+  { to: '/contact', label: 'contact' },
+];
+
+const pathname = Astro.url.pathname.replace(/\/$/, '') || '/';
+const isActive = (to: string) =>
+  pathname === to || pathname.startsWith(`${to}/`);
+---
+
+<header class="top-bar">
+  <div class="top-bar__inner">
+    <a href="/" class="top-bar__brand">Dylan McCavitt</a>
+    <div class="top-bar__right">
+      <nav class="top-bar__nav" aria-label="Primary">
+        {
+          NAV.map((item, i) => (
+            <TopNavLink
+              index={i + 1}
+              label={item.label}
+              to={item.to}
+              active={isActive(item.to)}
+            />
+          ))
+        }
+      </nav>
+      <div class="top-bar__actions">
+        <TopActions />
+      </div>
+    </div>
+  </div>
+</header>
+
+<style>
+  .top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: color-mix(in oklch, var(--bg) 80%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top-bar__inner {
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .top-bar__brand {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    text-decoration: none;
+    transition: color 0.2s var(--ease);
+  }
+  .top-bar__brand:hover {
+    text-decoration: none;
+    color: var(--accent);
+  }
+  .top-bar__right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .top-bar__nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .top-bar__actions {
+    padding-left: 12px;
+    border-left: 1px solid var(--line);
+  }
+</style>
