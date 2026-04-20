@@ -7,6 +7,18 @@ export default [
   ...tseslint.configs.recommended,
   ...astro.configs.recommended,
   {
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+  {
     ignores: ["dist/", ".astro/", "node_modules/"],
   },
 ];

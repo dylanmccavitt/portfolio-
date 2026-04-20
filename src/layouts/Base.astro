@@ -33,23 +33,42 @@ const {
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script is:inline>
-      (function() {
-        const theme = localStorage.getItem('portfolio-theme') || 'nord';
-        const mode = localStorage.getItem('portfolio-mode') || 'dark';
-        document.documentElement.setAttribute('data-theme', theme);
-        document.documentElement.setAttribute('data-mode', mode);
+      (function () {
+        try {
+          const stored = localStorage.getItem("theme");
+          const prefersDark = window.matchMedia(
+            "(prefers-color-scheme: dark)"
+          ).matches;
+          const isDark =
+            stored === "dark" || (stored === null && prefersDark);
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch {
+          /* noop — pre-paint theme application is best-effort. */
+        }
       })();
     </script>
   </head>
-  <body>
-    <Header />
-    {showPaletteNav && <PaletteNav />}
-    <slot />
-    <Footer />
+  <body class="paper">
+    <div class="site">
+      <Header />
+      {showPaletteNav && <PaletteNav />}
+      <slot />
+      <Footer />
+    </div>
     <script src="../scripts/theme-switcher.ts"></script>
   </body>
 </html>
 
 <style is:global>
   @import '../styles/global.css';
+  .site {
+    position: relative;
+    z-index: 2;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .site > main {
+    flex: 1;
+  }
 </style>
