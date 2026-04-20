@@ -1,27 +1,279 @@
 ---
-import { getCollection, render } from 'astro:content';
-import Project from '../../layouts/Project.astro';
+import Base from '../../layouts/Base.astro';
+import ProjectPager from '../../components/sera/ProjectPager.astro';
+import SeraLabel from '../../components/sera/SeraLabel.astro';
+import {
+  PROJECTS,
+  getProjectBySlug,
+  getProjectNeighbors,
+} from '../../data/projects';
 
-export async function getStaticPaths() {
-  const projects = await getCollection('projects');
-  return projects.map((project) => ({
-    params: { slug: project.id },
-    props: { project },
+export function getStaticPaths() {
+  return PROJECTS.map((project) => ({
+    params: { slug: project.slug },
+    props: { slug: project.slug },
   }));
 }
 
-const { project } = Astro.props;
-const { Content } = await render(project);
+const { slug } = Astro.props;
+const project = getProjectBySlug(slug);
+
+if (!project) {
+  throw new Error(`Unknown project slug: ${slug}`);
+}
+
+const { prev, next } = getProjectNeighbors(project.slug);
 ---
 
-<Project
-  title={project.data.title}
-  subtitle={project.data.subtitle}
-  slug={project.id}
-  liveUrl={project.data.liveUrl}
-  repoUrl={project.data.repoUrl}
-  topologyUrl={project.data.topologyUrl}
-  notebookUrl={project.data.notebookUrl}
->
-  <Content />
-</Project>
+<Base title={`${project.name} Dylan McCavitt`} description={project.blurb}>
+  <main class="project-detail">
+    <div class="project-detail__crumb">
+      <a href="/projects/" class="project-detail__crumb-link">&larr; Projects</a>
+      <span class="project-detail__crumb-sep">/</span>
+      <span>{project.slug}</span>
+    </div>
+
+    <header class="project-detail__header">
+      <div class="project-detail__title-row">
+        <h1>{project.name}</h1>
+        <span class="project-detail__year">&middot; {project.year}</span>
+      </div>
+      <p class="project-detail__blurb">{project.blurb}</p>
+    </header>
+
+    <dl class="project-detail__meta">
+      <div class="project-detail__meta-row">
+        <dt><SeraLabel tone="muted">Role</SeraLabel></dt>
+        <dd>{project.role}</dd>
+      </div>
+      <div class="project-detail__meta-row">
+        <dt><SeraLabel tone="muted">Kind</SeraLabel></dt>
+        <dd>{project.kind}</dd>
+      </div>
+      <div class="project-detail__meta-row">
+        <dt><SeraLabel tone="muted">Status</SeraLabel></dt>
+        <dd>{project.status}</dd>
+      </div>
+      <div class="project-detail__meta-row">
+        <dt><SeraLabel tone="muted">Stack</SeraLabel></dt>
+        <dd class="project-detail__stack">
+          {
+            project.stack.map((item) => (
+              <span class="project-detail__chip">{item}</span>
+            ))
+          }
+        </dd>
+      </div>
+      {
+        project.links.length > 0 && (
+          <div class="project-detail__meta-row">
+            <dt><SeraLabel tone="muted">Links</SeraLabel></dt>
+            <dd class="project-detail__links">
+              {
+                project.links.map((link) => (
+                  <a href={link.url} target="_blank" rel="noreferrer">
+                    {link.label} ↗
+                  </a>
+                ))
+              }
+            </dd>
+          </div>
+        )
+      }
+    </dl>
+
+    <div class="project-detail__cover ph proj-cover">
+      <span class="project-detail__cover-label">[ cover &middot; {project.slug} ]</span>
+    </div>
+
+    <section class="project-detail__section">
+      <SeraLabel tone="muted">.summary</SeraLabel>
+      <p class="project-detail__summary">{project.summary}</p>
+    </section>
+
+    <section class="project-detail__section">
+      <SeraLabel tone="muted">.highlights</SeraLabel>
+      <ul class="project-detail__highlights">
+        {
+          project.highlights.map((highlight, index) => (
+            <li class="project-detail__highlight">
+              <span class="project-detail__highlight-index">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span>{highlight}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+
+    <div class="project-detail__pager">
+      <ProjectPager prev={prev} next={next} />
+    </div>
+  </main>
+</Base>
+
+<style>
+  .project-detail {
+    max-width: 768px;
+    margin: 0 auto;
+    padding: 64px 24px;
+  }
+  .project-detail__crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .project-detail__crumb-link {
+    color: inherit;
+  }
+  .project-detail__crumb-link:hover {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .project-detail__crumb-sep {
+    opacity: 0.4;
+  }
+  .project-detail__header {
+    margin-top: 24px;
+  }
+  .project-detail__title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .project-detail__year {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .project-detail__blurb {
+    margin-top: 16px;
+    max-width: 62ch;
+    font-size: 15.5px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+  .project-detail__meta {
+    margin-top: 32px;
+    padding: 24px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .project-detail__meta-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  .project-detail__meta-row + .project-detail__meta-row {
+    margin-top: 12px;
+  }
+  .project-detail__meta dd {
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+  .project-detail__stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .project-detail__chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .project-detail__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .project-detail__links a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .project-detail__links a:hover {
+    color: var(--accent);
+  }
+  .project-detail__cover {
+    aspect-ratio: 16 / 9;
+    display: grid;
+    place-items: center;
+    margin-top: 40px;
+  }
+  .project-detail__cover-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .project-detail__section {
+    margin-top: 40px;
+  }
+  .project-detail__summary {
+    margin-top: 16px;
+    max-width: 62ch;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--ink);
+  }
+  .project-detail__highlights {
+    margin-top: 16px;
+    list-style: none;
+  }
+  .project-detail__highlight {
+    display: flex;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+  .project-detail__highlight + .project-detail__highlight {
+    margin-top: 12px;
+  }
+  .project-detail__highlight-index {
+    flex-shrink: 0;
+    width: 24px;
+    padding-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .project-detail__pager {
+    margin-top: 64px;
+  }
+
+  @media (max-width: 720px) {
+    .project-detail {
+      padding-top: 48px;
+    }
+    .project-detail__meta-row {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+  }
+</style>
