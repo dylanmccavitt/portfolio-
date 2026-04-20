@@ -1,327 +1,242 @@
 ---
-import Base from '../layouts/Base.astro';
-import { getCollection } from 'astro:content';
+import NavLink from '../components/sera/NavLink.astro';
+import IconButton from '../components/sera/IconButton.astro';
 
-const recentLog = (await getCollection('log'))
-  .filter((e) => !e.data.draft || import.meta.env.DEV)
-  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime())
-  .slice(0, 3)
-  .map((e) => ({ slug: e.id, title: e.data.title }));
+const NAV = [
+  { to: '/about', label: 'about' },
+  { to: '/projects', label: 'projects' },
+  { to: '/experience', label: 'experience' },
+  { to: '/log', label: 'log' },
+  { to: '/contact', label: 'contact' },
+];
 ---
 
-<Base title="Dylan McCavitt" showPaletteNav={true} showTopBar={false}>
-  <main>
-    <section class="about" id="about">
-      <h2 class="section-heading section-heading--about">about</h2>
-      <p class="about__text">
-        Software engineer in NYC building web apps, infrastructure, and tooling. Always expanding what I can work with. Open to opportunities.
-      </p>
-    </section>
-
-    <section class="skills" id="skills">
-      <h2 class="section-heading section-heading--skills">.skills</h2>
-      <div class="skills__listing">
-        <div class="skills__row">
-          <span class="skills__name skills__name--1">languages</span>
-          <span class="skills__items">typescript  python  go  c++  bash</span>
-        </div>
-        <div class="skills__row">
-          <span class="skills__name skills__name--2">infrastructure</span>
-          <span class="skills__items">linux  docker  terraform</span>
-        </div>
-        <div class="skills__row">
-          <span class="skills__name skills__name--3">web</span>
-          <span class="skills__items">next.js  astro  express  postgresql  stripe</span>
-        </div>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Dylan McCavitt — software engineer in NYC." />
+    <meta property="og:title" content="Dylan McCavitt | Portfolio" />
+    <meta property="og:description" content="Portfolio" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://dylanmccavitt.xyz/screenshots/image-preview.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://dylanmccavitt.xyz/screenshots/image-preview.webp" />
+    <meta name="twitter:title" content="Dylan McCavitt" />
+    <meta name="twitter:description" content="Dylan McCavitt — software engineer in NYC." />
+    <title>Dylan McCavitt</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script is:inline>
+      (function () {
+        try {
+          const stored = localStorage.getItem('theme');
+          const prefersDark = window.matchMedia(
+            '(prefers-color-scheme: dark)'
+          ).matches;
+          const isDark = stored === 'dark' || (stored === null && prefersDark);
+          if (isDark) document.documentElement.classList.add('dark');
+        } catch {
+          /* noop — pre-paint theme application is best-effort. */
+        }
+      })();
+    </script>
+  </head>
+  <body class="paper">
+    <main class="landing">
+      <div class="landing__actions">
+        <IconButton
+          ariaLabel="GitHub"
+          href="https://github.com/DylanMcCavitt"
+          external
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.02c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.25 3.33.96.1-.74.4-1.25.72-1.53-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18A10.94 10.94 0 0 1 12 6.8c.98 0 1.97.13 2.89.38 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" />
+          </svg>
+        </IconButton>
+        <IconButton ariaLabel="Toggle theme" class="landing-theme-btn">
+          <svg
+            class="landing-theme-icon landing-theme-icon--sun"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="4"></circle>
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            ></path>
+          </svg>
+          <svg
+            class="landing-theme-icon landing-theme-icon--moon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </IconButton>
       </div>
-    </section>
 
-    <section class="projects" id="projects">
-      <h2 class="section-heading section-heading--projects">projects</h2>
-      <div class="projects__listing">
-        <div class="projects__row">
-          <span class="projects__chevron">{'>'}</span>
-          <a href="/projects/homeserver/" class="projects__link projects__link--1">homeserver/</a>
-          <span class="projects__desc">-infrastructure</span>
-        </div>
-        <div class="projects__row">
-          <span class="projects__chevron">{'>'}</span>
-          <a href="/projects/bellas-beads/" class="projects__link projects__link--2">bellas-beads/</a>
-          <span class="projects__desc">-web app</span>
-        </div>
-        <div class="projects__row">
-          <span class="projects__chevron">{'>'}</span>
-          <a href="/projects/nhf/" class="projects__link projects__link--3">nhf/</a>
-          <span class="projects__desc">-band site</span>
-        </div>
-        <div class="projects__row">
-          <span class="projects__chevron">{'>'}</span>
-          <a href="/projects/work-orders/" class="projects__link projects__link--4">work-orders/</a>
-          <span class="projects__desc">-web app</span>
-        </div>
-        <div class="projects__row">
-          <span class="projects__chevron">{'>'}</span>
-          <a href="/projects/epl-ml-model/" class="projects__link projects__link--5">epl-ml-model/</a>
-          <span class="projects__desc">-ML model</span>
-        </div>
-      </div>
-    </section>
+      <div class="landing__column">
+        <header class="landing__header">
+          <div class="landing__monogram" aria-hidden="true">
+            <span>D</span>
+          </div>
+          <h1 class="landing__name">Dylan McCavitt</h1>
+          <p class="sera-label landing__tagline">
+            Software engineer · NYC
+          </p>
+        </header>
 
-    <section class="log" id="log">
-      <h2 class="section-heading section-heading--log">log</h2>
-      {recentLog.length === 0 ? (
-        <p class="log__empty">No entries yet.</p>
-      ) : (
-        <div class="log__listing">
-          {recentLog.map((entry) => (
-            <div class="log__row">
-              <span class="log__chevron">{'>'}</span>
-              <a href={`/log/${entry.slug}/`} class="log__link">{entry.title}</a>
-            </div>
-          ))}
-        </div>
-      )}
-      <a href="/log/" class="log__view-all">view all &rarr;</a>
-    </section>
+        <nav class="landing__nav" aria-label="Primary">
+          {
+            NAV.map((item, i) => (
+              <NavLink index={i + 1} label={item.label} to={item.to} />
+            ))
+          }
+        </nav>
 
-    <section class="contact" id="contact">
-      <h2 class="section-heading section-heading--contact">contact</h2>
-      <p class="contact__blurb">Open to opportunities or collaboration. Reach out wherever works.</p>
-      <div class="contact__links">
-        <a href="mailto:dylanmccavitt@outlook.com" class="contact__item">
-          <svg class="contact__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 4 10 8 10-8"/></svg>
-          <span>Email</span>
-        </a>
-        <a href="https://github.com/DylanMcCavitt" target="_blank" rel="noopener noreferrer" class="contact__item">
-          <svg class="contact__icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
-          <span>GitHub</span>
-        </a>
-        <a href="https://www.linkedin.com/in/dylan-mccavitt" target="_blank" rel="noopener noreferrer" class="contact__item">
-          <svg class="contact__icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-          <span>LinkedIn</span>
-        </a>
-        <a href="https://x.com/dylanmccavitt_" target="_blank" rel="noopener noreferrer" class="contact__item">
-          <svg class="contact__icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-          <span>X</span>
+        <a
+          class="landing__resume"
+          href="https://www.dylanmccavitt.xyz/resume.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span>Download resume</span>
+          <span aria-hidden="true" class="landing__resume-arrow">↗</span>
         </a>
       </div>
-    </section>
-  </main>
-</Base>
+    </main>
 
-<style>
-  /* Section headings */
-  .section-heading {
-    font-size: var(--text-xl);
-    font-weight: 600;
-    opacity: 0.7;
-    text-transform: lowercase;
-    margin-bottom: var(--space-5);
-  }
-  .section-heading::before {
-    content: "/";
-    color: var(--border);
-    margin-right: var(--space-1);
-  }
-  .section-heading--projects { color: var(--nav-1); }
-  .section-heading--about { color: var(--nav-2); }
-  .section-heading--contact { color: var(--nav-3); }
-  .section-heading--skills { color: var(--nav-4); }
-  .section-heading--log { color: var(--nav-5); }
+    <script is:inline>
+      (function () {
+        const btn = document.querySelector('.landing-theme-btn');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          const root = document.documentElement;
+          const isDark = root.classList.toggle('dark');
+          try {
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+          } catch {
+            /* best effort */
+          }
+        });
+      })();
+    </script>
 
-  /* About */
-  .about {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: var(--space-7) var(--space-5) var(--space-6);
-  }
-  .about__text {
-    color: var(--text-muted);
-    line-height: 1.8;
-  }
-  .about__link {
-    font-size: var(--text-sm);
-    color: var(--accent);
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-  .about__link:hover {
-    text-decoration: none;
-    opacity: 0.8;
-  }
+    <style is:global>
+      @import '../styles/global.css';
 
-  /* Skills — dotfile listing */
-  .skills {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: var(--space-5) var(--space-5) var(--space-6);
-  }
-  .skills__listing {
-    line-height: 2.4;
-  }
-  .skills__row {
-    white-space: nowrap;
-  }
-  .skills__name {
-    font-weight: 600;
-    margin-right: var(--space-4);
-  }
-  .skills__name--1 { color: var(--nav-1); }
-  .skills__name--2 { color: var(--nav-2); }
-  .skills__name--3 { color: var(--nav-3); }
-  .skills__items {
-    color: var(--text-muted);
-  }
-
-  /* Projects — terminal listing */
-  .projects {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: var(--space-5) var(--space-5) var(--space-6);
-  }
-  .projects__listing {
-    line-height: 2.4;
-  }
-  .projects__row {
-    white-space: nowrap;
-  }
-  .projects__chevron {
-    color: var(--accent);
-    margin-right: var(--space-2);
-  }
-  .projects__link {
-    text-decoration: none;
-    font-weight: 600;
-    border-bottom: 1px dashed currentColor;
-    border-bottom-color: rgba(255, 255, 255, 0.2);
-  }
-  .projects__link:hover {
-    text-decoration: none;
-    border-bottom-style: solid;
-    border-bottom-color: currentColor;
-  }
-  .projects__link--1 { color: var(--nav-1); }
-  .projects__link--2 { color: var(--nav-2); }
-  .projects__link--3 { color: var(--nav-3); }
-  .projects__link--4 { color: var(--nav-4); }
-  .projects__link--5 { color: var(--accent); }
-  .projects__desc {
-    color: var(--text-muted);
-    margin-left: var(--space-3);
-  }
-
-  /* Log — terminal listing */
-  .log {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: var(--space-5) var(--space-5) var(--space-6);
-  }
-  .log__listing {
-    line-height: 2.4;
-    margin-bottom: var(--space-3);
-  }
-  .log__row {
-    white-space: nowrap;
-  }
-  .log__chevron {
-    color: var(--accent);
-    margin-right: var(--space-2);
-  }
-  .log__link {
-    text-decoration: none;
-    font-weight: 600;
-    color: var(--nav-5);
-    border-bottom: 1px dashed currentColor;
-    border-bottom-color: rgba(255, 255, 255, 0.2);
-  }
-  .log__link:hover {
-    text-decoration: none;
-    border-bottom-style: solid;
-    border-bottom-color: currentColor;
-  }
-  .log__view-all {
-    display: inline-block;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-    text-decoration: none;
-    margin-top: var(--space-2);
-  }
-  .log__view-all:hover {
-    color: var(--text);
-  }
-  .log__empty {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-  }
-
-  @media (max-width: 600px) {
-    .log__row {
-      white-space: normal;
-    }
-  }
-
-  /* Contact */
-  .contact {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: var(--space-5) var(--space-5) var(--space-7);
-  }
-  .contact__blurb {
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    margin-bottom: var(--space-5);
-    line-height: 1.6;
-  }
-  .contact__links {
-    display: flex;
-    gap: var(--space-5);
-    flex-wrap: wrap;
-  }
-  .contact__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-    text-decoration: none;
-    transition: color 0.15s;
-  }
-  .contact__item:hover {
-    color: var(--text);
-    text-decoration: none;
-  }
-  .contact__icon {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-
-  @media (max-width: 600px) {
-    .skills__row {
-      white-space: normal;
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      margin-bottom: var(--space-3);
-    }
-    .skills__name {
-      margin-right: 0;
-      margin-bottom: var(--space-1);
-    }
-    .skills__items {
-      font-size: var(--text-sm);
-      padding-left: var(--space-3);
-    }
-    .skills__listing {
-      line-height: 1.8;
-    }
-
-    .projects__row {
-      white-space: normal;
-    }
-    .projects__desc {
-      font-size: var(--text-sm);
-    }
-  }
-</style>
+      .landing {
+        position: relative;
+        z-index: 2;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 64px 24px;
+      }
+      .landing__actions {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .landing__column {
+        width: 100%;
+        max-width: 440px;
+        display: flex;
+        flex-direction: column;
+      }
+      .landing__header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+      .landing__monogram {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 24px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--ink);
+        transition: transform 0.4s var(--ease);
+      }
+      .landing__monogram:hover {
+        transform: rotate(-4deg) scale(1.06);
+      }
+      .landing__monogram > span {
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .landing__name {
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.15;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--ink);
+        margin: 0;
+      }
+      .landing__tagline {
+        margin-top: 10px;
+        color: var(--muted);
+      }
+      .landing__nav {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .landing__resume {
+        margin-top: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        align-self: center;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+        text-decoration: none;
+        transition: color 0.25s var(--ease);
+      }
+      .landing__resume:hover {
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .landing__resume-arrow {
+        display: inline-block;
+        transition: transform 0.3s var(--ease);
+      }
+      .landing__resume:hover .landing__resume-arrow {
+        transform: translate(2px, -2px);
+      }
+      .landing-theme-icon {
+        width: 14px;
+        height: 14px;
+      }
+      .landing-theme-icon--sun {
+        display: none;
+      }
+      html.dark .landing-theme-icon--sun {
+        display: block;
+      }
+      html.dark .landing-theme-icon--moon {
+        display: none;
+      }
+    </style>
+  </body>
+</html>
