@@ -3,6 +3,11 @@ export interface ProjectLink {
   url: string;
 }
 
+export interface ProjectImage {
+  src: string;
+  alt: string;
+}
+
 export interface ProjectData {
   slug: string;
   name: string;
@@ -15,6 +20,8 @@ export interface ProjectData {
   links: ProjectLink[];
   summary: string;
   highlights: string[];
+  cover: ProjectImage;
+  gallery: ProjectImage[];
 }
 
 export const PROJECTS: ProjectData[] = [
@@ -30,6 +37,10 @@ export const PROJECTS: ProjectData[] = [
     stack: ['NixOS', 'Docker', 'Tailscale', 'Caddy', 'Restic', 'Grafana'],
     links: [
       {
+        label: 'map',
+        url: '/homelab/topology/',
+      },
+      {
         label: 'nixos-dotfiles',
         url: 'https://github.com/DylanMcCavitt/nixos-dotfiles',
       },
@@ -39,12 +50,30 @@ export const PROJECTS: ProjectData[] = [
       },
     ],
     summary:
-      'A declarative, reproducible home lab. Everything runs from a single NixOS flake so a rebuild from bare metal takes one command.',
+      'A self-hosted lab for passwords, dashboards, storage, monitoring, and automation. It runs on a single physical server with VMs and containers split across clean network zones so services can grow without collapsing into one flat box.',
     highlights: [
-      'Rack-mounted Ryzen node plus two mini PCs peered over Tailscale with split DNS.',
-      'Caddy reverse proxy with automatic TLS for every internal service.',
-      'Restic snapshots to S3-compatible object storage with deduplication.',
-      'Grafana plus Loki dashboards wired to every container for log-aware alerting.',
+      'Network is segmented into management, application, monitoring, and automation zones behind the firewall.',
+      'Core services already cover password management, service dashboards, storage, monitoring, and recurring jobs.',
+      'Caddy handles internal routing while Restic snapshots back up state to object storage.',
+      'Still expanding toward dedicated NAS storage, Jellyfin, Grafana visibility, and subnet-routed remote access.',
+    ],
+    cover: {
+      src: '/screenshots/homelab/homepage.webp',
+      alt: 'Homeserver dashboard landing page.',
+    },
+    gallery: [
+      {
+        src: '/screenshots/homelab/proxmox.webp',
+        alt: 'Proxmox dashboard for the homeserver setup.',
+      },
+      {
+        src: '/screenshots/homelab/opnsense.webp',
+        alt: 'OPNsense firewall interface for the homeserver network.',
+      },
+      {
+        src: '/screenshots/homelab/kuma.webp',
+        alt: 'Uptime Kuma monitoring view for homeserver services.',
+      },
     ],
   },
   {
@@ -53,18 +82,57 @@ export const PROJECTS: ProjectData[] = [
     kind: 'web app',
     year: '2025',
     blurb:
-      'A freelance full-stack build for a small jewelry business - catalog, orders, and inventory in one surface.',
+      'Full-stack ecommerce build for a small jewelry business, covering storefront, checkout, orders, and admin.',
     role: 'Freelance full-stack',
     status: 'shipped',
-    stack: ['Next.js', 'TypeScript', 'Postgres', 'Stripe', 'Tailwind'],
-    links: [],
+    stack: [
+      'React',
+      'TypeScript',
+      'Node.js',
+      'Express',
+      'Supabase',
+      'Stripe',
+      'Shippo',
+    ],
+    links: [
+      {
+        label: 'live site',
+        url: 'https://bellasbeads.shop',
+      },
+    ],
     summary:
-      'Consolidated three spreadsheets and a DM inbox into a single admin console. Designed the information architecture, built the full stack, and handed off with a clean ops playbook.',
+      'A freelance commerce platform for a jewelry maker with guest and authenticated checkout, saved addresses, shipment tracking, and an admin surface for products and inventory. It replaced spreadsheet-heavy operations with one clear order flow.',
     highlights: [
-      'Inventory model keyed on materials rather than SKUs, matching the owner workflow.',
-      'Stripe Checkout plus a webhook-driven order state machine.',
-      'Mobile-first admin views because the owner runs the business from a phone.',
-      'Shipped in six weeks, end to end.',
+      'Customers can browse, check out as guests or members, and review orders later from their account.',
+      'Supabase handles data and auth while Stripe, Shippo, and Resend cover payments, shipping, and transactional email.',
+      'Admin tooling includes product management and inventory workflows rather than a static catalog handoff.',
+      'Security work included CSRF protection, rate limiting, and HMAC token hashing for sensitive flows.',
+    ],
+    cover: {
+      src: '/screenshots/bella/landing.webp',
+      alt: "Bella's Beads storefront landing page.",
+    },
+    gallery: [
+      {
+        src: '/screenshots/bella/product-page.webp',
+        alt: "Bella's Beads product page.",
+      },
+      {
+        src: '/screenshots/bella/cart.webp',
+        alt: "Bella's Beads shopping cart view.",
+      },
+      {
+        src: '/screenshots/bella/stripe.webp',
+        alt: "Bella's Beads Stripe checkout flow.",
+      },
+      {
+        src: '/screenshots/bella/shipping.webp',
+        alt: "Bella's Beads shipping workflow.",
+      },
+      {
+        src: '/screenshots/bella/admin-dash.webp',
+        alt: "Bella's Beads admin dashboard.",
+      },
     ],
   },
   {
@@ -73,17 +141,40 @@ export const PROJECTS: ProjectData[] = [
     kind: 'band site',
     year: '2024',
     blurb:
-      'Static site and release tooling for a small music project. Minimalist, type-driven.',
+      'Website for a NJ/NY cover band with show dates, live media, booking, and an interactive album-card nav.',
     role: 'Designer + developer',
     status: 'shipped',
-    stack: ['Astro', 'MDX', 'Cloudflare Pages'],
-    links: [],
+    stack: ['Astro', 'React', 'Tailwind', 'Motion.js', 'Google Calendar'],
+    links: [
+      {
+        label: 'live site',
+        url: 'https://nohardfeelings.app',
+      },
+    ],
     summary:
-      'Built a single-page release hub that doubles as a press kit. Type does most of the work; imagery stays sparing and loud.',
+      'Built a central web presence for No Hard Feelings so upcoming gigs, band info, videos, and booking details live in one place instead of scattered across socials. The front door is a flippable album cover that turns navigation into the main interaction.',
     highlights: [
-      'Content authored in MDX so releases ship by pull request.',
-      'Edge-rendered on Cloudflare Pages with sub-100ms TTFB worldwide.',
-      'Two-color system with one accent per release cycle.',
+      'Astro, React, and Tailwind power a lightweight band site with custom interaction instead of a generic template.',
+      'The hero is a 3D album-card pattern with Motion.js driving flips and member popout animations.',
+      'Upcoming gigs sync from Google Calendar so new shows appear on the site without a code change.',
+    ],
+    cover: {
+      src: '/screenshots/nohard/landing.webp',
+      alt: 'No Hard Feelings band site landing page.',
+    },
+    gallery: [
+      {
+        src: '/screenshots/nohard/backcard.webp',
+        alt: 'Flipped album-card navigation on the No Hard Feelings site.',
+      },
+      {
+        src: '/screenshots/nohard/popout.webp',
+        alt: 'Band member popup interaction on the No Hard Feelings site.',
+      },
+      {
+        src: '/screenshots/nohard/gcal-integration.webp',
+        alt: 'Google Calendar driven shows section on the No Hard Feelings site.',
+      },
     ],
   },
   {
@@ -92,10 +183,10 @@ export const PROJECTS: ProjectData[] = [
     kind: 'web app',
     year: '2023',
     blurb:
-      'Internal work-order tracker for a small operations team - creation, assignment, and status.',
-    role: 'Lead developer (team of 4)',
+      'Work order management system for a class project, from public job intake through assignment and invoicing.',
+    role: 'Team project (4 developers)',
     status: 'archived',
-    stack: ['Node.js', 'Express', 'MongoDB', 'Handlebars'],
+    stack: ['Node.js', 'Express 5', 'MongoDB', 'Handlebars', 'bcrypt'],
     links: [
       {
         label: 'GitHub',
@@ -103,11 +194,30 @@ export const PROJECTS: ProjectData[] = [
       },
     ],
     summary:
-      'A class-project web app designed to make creating, assigning, and tracking work orders less painful than the email-plus-spreadsheet workflow it replaced.',
+      'A web programming class project for managing construction and maintenance requests across intake, approval, assignment, progress tracking, and invoicing. Public users submit requests, admins turn them into work orders, and contractors manage assigned jobs.',
     highlights: [
-      'Role-based auth for dispatchers, technicians, and admins with tailored dashboards.',
-      'Status machine with an audit trail on every transition.',
-      'Server-rendered for speed and graceful degradation on slow networks.',
+      'Workflow starts with unauthenticated public job requests instead of an internal-only task list.',
+      'Admins can approve or reject requests, assign contractors, track status, comment, and issue invoices.',
+      'Built with Express 5, the raw MongoDB driver, and Handlebars using session auth with bcrypt.',
+      'Seeded against NYC open-data contract records and intended as a local class deliverable, not a hosted product.',
+    ],
+    cover: {
+      src: '/screenshots/work-order/work-order-landing.webp',
+      alt: 'Work Orders application landing page.',
+    },
+    gallery: [
+      {
+        src: '/screenshots/work-order/jobreqform.webp',
+        alt: 'Public job request form in the Work Orders app.',
+      },
+      {
+        src: '/screenshots/work-order/woadmin.webp',
+        alt: 'Admin dashboard in the Work Orders app.',
+      },
+      {
+        src: '/screenshots/work-order/invoice.webp',
+        alt: 'Invoice view in the Work Orders app.',
+      },
     ],
   },
   {
@@ -116,18 +226,41 @@ export const PROJECTS: ProjectData[] = [
     kind: 'ML model',
     year: '2024',
     blurb:
-      'Premier League match prediction. Feature engineering on match-level data; gradient-boosted ensemble.',
-    role: 'Solo research',
-    status: 'ongoing',
+      'Group ML project comparing models for Premier League match prediction across a long historical dataset.',
+    role: 'Group project',
+    status: 'shipped',
     stack: ['Python', 'pandas', 'XGBoost', 'scikit-learn', 'Jupyter'],
-    links: [],
+    links: [
+      {
+        label: 'notebook',
+        url: 'https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX',
+      },
+    ],
     summary:
-      'A weekend project that grew teeth. Predicts 1X2 outcomes using rolling form windows, xG differentials, and squad-availability features calibrated against bookmaker lines.',
+      'A group study on predicting English Premier League match outcomes from more than 20 years of historical data. We cleaned the dataset, engineered features, and compared eight models under the same evaluation setup to see what actually held up.',
     highlights: [
-      'Custom rolling-window feature store with no lookahead leakage.',
-      'Stacked XGBoost plus logistic calibration beating implied bookmaker distributions on backtests.',
-      'Walk-forward validation across five seasons of EPL data.',
-      'Notebook-first workflow with pinned DVC-tracked datasets.',
+      'Compared Random Forest, MLP, Decision Tree, KNN, Naive Bayes, Logistic Regression, XGBoost, and SVM.',
+      'Feature set included 39 match-level inputs after handling missing values, outliers, and engineered form signals.',
+      'XGBoost produced the strongest documented result in the final comparison.',
+      'The project reinforced that data cleaning and feature design mattered more than endlessly swapping model classes.',
+    ],
+    cover: {
+      src: '/screenshots/epl-ml-model/accuracy-comparison.webp',
+      alt: 'Accuracy comparison chart for EPL ML model experiments.',
+    },
+    gallery: [
+      {
+        src: '/screenshots/epl-ml-model/correlation-heatmap.webp',
+        alt: 'Correlation heatmap from the EPL ML model project.',
+      },
+      {
+        src: '/screenshots/epl-ml-model/decision-tree.webp',
+        alt: 'Decision tree visualization from the EPL ML model project.',
+      },
+      {
+        src: '/screenshots/epl-ml-model/xgboost.webp',
+        alt: 'XGBoost results from the EPL ML model project.',
+      },
     ],
   },
 ];
