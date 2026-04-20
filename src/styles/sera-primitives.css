@@ -1,0 +1,29 @@
+/* ============================================================
+   Sera primitives — shared utilities for AGE-120 components.
+   Pseudo-element hover animations live alongside each
+   component's .astro file; this file only carries the
+   cross-component visual helpers.
+   ============================================================ */
+
+/* Hatched placeholder used for cover art stand-ins. */
+.ph {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--ink) 6%, transparent) 0 1px,
+      transparent 1px 9px
+    ),
+    var(--card);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+/* Mono chip utility reused by stack chips + meta labels. */
+.mono-chip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+}

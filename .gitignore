@@ -28,3 +28,6 @@ pnpm-debug.log*
 
 # working docs
 docs/
+
+# local dev harness config
+.claude/launch.json

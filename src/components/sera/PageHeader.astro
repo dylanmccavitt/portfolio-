@@ -1,0 +1,35 @@
+---
+import SeraLabel from './SeraLabel.astro';
+
+interface Props {
+  kicker: string;
+  title: string;
+  sub?: string;
+}
+const { kicker, title, sub } = Astro.props;
+---
+
+<header class="rise">
+  <SeraLabel tone="accent">{kicker}</SeraLabel>
+  <h1 class="page-header__title">{title}</h1>
+  {sub && <p class="page-header__sub">{sub}</p>}
+</header>
+
+<style>
+  .page-header__title {
+    margin-top: 16px;
+    font-size: 40px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1.02;
+    color: var(--ink);
+  }
+  .page-header__sub {
+    margin-top: 12px;
+    font-size: 14.5px;
+    color: var(--muted);
+    max-width: 48ch;
+    line-height: 1.6;
+  }
+</style>

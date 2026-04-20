@@ -1,0 +1,88 @@
+---
+interface Props {
+  index: number;
+  label: string;
+  to: string;
+}
+const { index, label, to } = Astro.props;
+const idx = String(index).padStart(2, '0');
+---
+
+<a href={to} class="navlink">
+  <span class="navlink__lede">
+    <span class="navlink__idx">{idx}</span>
+    <span class="navlink__label">{label}</span>
+  </span>
+  <span class="navlink__arrow">&rarr;</span>
+</a>
+
+<style>
+  .navlink {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    text-decoration: none;
+    overflow: hidden;
+    transition:
+      border-color 0.25s var(--ease),
+      color 0.25s var(--ease);
+  }
+  .navlink::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--ink);
+    transform: translateX(-101%);
+    transition: transform 0.45s var(--ease);
+    z-index: 0;
+  }
+  .navlink:hover {
+    border-color: var(--ink);
+    color: var(--bg);
+    text-decoration: none;
+  }
+  .navlink:hover::before {
+    transform: translateX(0);
+  }
+  .navlink > * {
+    position: relative;
+    z-index: 1;
+  }
+  .navlink__lede {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .navlink__idx {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    transition: color 0.25s var(--ease);
+  }
+  .navlink__label {
+    font-size: 12.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+  .navlink__arrow {
+    display: inline-block;
+    font-size: 14px;
+    color: var(--muted);
+    transition:
+      transform 0.35s var(--ease),
+      color 0.25s var(--ease);
+  }
+  .navlink:hover .navlink__arrow {
+    transform: translateX(6px);
+  }
+  .navlink:hover .navlink__idx,
+  .navlink:hover .navlink__arrow {
+    color: color-mix(in oklch, var(--bg) 75%, transparent);
+  }
+</style>

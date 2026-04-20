@@ -1,0 +1,91 @@
+---
+interface Props {
+  href: string;
+  meta?: string;
+  title: string;
+  trailing?: string;
+  external?: boolean;
+}
+const { href, meta, title, trailing, external = false } = Astro.props;
+const target = external ? '_blank' : undefined;
+const rel = external ? 'noopener noreferrer' : undefined;
+---
+
+<a
+  href={href}
+  class="row-link"
+  target={target}
+  rel={rel}
+>
+  <span class="row-link__lede">
+    {meta && <span class="row-link__meta">{meta}</span>}
+    <span class="row-link__title">{title}</span>
+  </span>
+  {trailing && <span class="row-link__trailing">{trailing}</span>}
+</a>
+
+<style>
+  .row-link {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 16px 8px 16px 16px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .row-link::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--accent);
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform 0.3s var(--ease);
+  }
+  .row-link:hover::before {
+    transform: scaleY(1);
+  }
+  .row-link:hover {
+    text-decoration: none;
+  }
+  .row-link__lede {
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    min-width: 0;
+  }
+  .row-link__meta {
+    flex-shrink: 0;
+    width: 72px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .row-link__title {
+    display: inline-block;
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    transition:
+      transform 0.3s var(--ease),
+      color 0.2s var(--ease);
+  }
+  .row-link:hover .row-link__title {
+    transform: translateX(10px);
+    color: var(--accent);
+  }
+  .row-link__trailing {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>

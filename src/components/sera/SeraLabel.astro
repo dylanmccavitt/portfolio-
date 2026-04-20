@@ -1,0 +1,23 @@
+---
+type Tone = 'muted' | 'ink' | 'accent';
+type Tag = 'span' | 'div' | 'p' | 'h1' | 'h2' | 'h3' | 'h4';
+
+interface Props {
+  as?: Tag;
+  tone?: Tone;
+  class?: string;
+}
+
+const { as = 'span', tone = 'muted', class: className = '' } = Astro.props as Props;
+const Element = as;
+const toneClass =
+  tone === 'accent'
+    ? 'text-accent'
+    : tone === 'ink'
+      ? 'text-ink'
+      : 'text-muted';
+---
+
+<Element class:list={['sera-label', toneClass, className]}>
+  <slot />
+</Element>

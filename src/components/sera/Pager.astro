@@ -1,0 +1,147 @@
+---
+import SeraLabel from './SeraLabel.astro';
+
+interface PagerItem {
+  href: string;
+  label: string;
+}
+interface Props {
+  prev?: PagerItem | null;
+  next?: PagerItem | null;
+  prevKicker?: string;
+  nextKicker?: string;
+}
+const {
+  prev = null,
+  next = null,
+  prevKicker = 'Previous',
+  nextKicker = 'Next',
+} = Astro.props;
+---
+
+<nav class="pager-row" aria-label="Page pager">
+  <div class="pager-row__grid">
+    {
+      prev ? (
+        <a href={prev.href} class="pager-btn pager-btn--prev">
+          <SeraLabel tone="muted" class="pager-btn__kicker">
+            <span class="pager-arrow">&larr;</span> {prevKicker}
+          </SeraLabel>
+          <span class="pager-title">{prev.label}</span>
+        </a>
+      ) : (
+        <span class="pager-btn pager-btn--prev pager-btn--disabled" aria-hidden="true">
+          <SeraLabel tone="muted" class="pager-btn__kicker">
+            <span class="pager-arrow">&larr;</span> {prevKicker}
+          </SeraLabel>
+          <span class="pager-title">&mdash;</span>
+        </span>
+      )
+    }
+    {
+      next ? (
+        <a href={next.href} class="pager-btn pager-btn--next">
+          <SeraLabel tone="muted" class="pager-btn__kicker">
+            {nextKicker} <span class="pager-arrow">&rarr;</span>
+          </SeraLabel>
+          <span class="pager-title">{next.label}</span>
+        </a>
+      ) : (
+        <span class="pager-btn pager-btn--next pager-btn--disabled" aria-hidden="true">
+          <SeraLabel tone="muted" class="pager-btn__kicker">
+            {nextKicker} <span class="pager-arrow">&rarr;</span>
+          </SeraLabel>
+          <span class="pager-title">&mdash;</span>
+        </span>
+      )
+    }
+  </div>
+</nav>
+
+<style>
+  .pager-row {
+    display: block;
+  }
+  .pager-row__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--line);
+  }
+  .pager-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px;
+    overflow: hidden;
+    color: var(--ink);
+    text-decoration: none;
+    background: transparent;
+    transition: background-color 0.3s var(--ease);
+  }
+  .pager-btn--prev {
+    text-align: left;
+    align-items: flex-start;
+    border-right: 1px solid var(--line);
+  }
+  .pager-btn--next {
+    text-align: right;
+    align-items: flex-end;
+  }
+  .pager-btn::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transition: transform 0.5s var(--ease);
+  }
+  .pager-btn--prev::before {
+    transform-origin: left;
+  }
+  .pager-btn--next::before {
+    transform-origin: right;
+  }
+  .pager-btn:not(.pager-btn--disabled):hover {
+    background: color-mix(in oklab, var(--ink) 4%, transparent);
+    text-decoration: none;
+  }
+  .pager-btn:not(.pager-btn--disabled):hover::before {
+    transform: scaleX(1);
+  }
+  .pager-btn--disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+  }
+  .pager-btn__kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9.5px;
+  }
+  .pager-arrow {
+    display: inline-block;
+    transition: transform 0.35s var(--ease);
+  }
+  .pager-btn--prev:not(.pager-btn--disabled):hover .pager-arrow {
+    transform: translateX(-6px);
+  }
+  .pager-btn--next:not(.pager-btn--disabled):hover .pager-arrow {
+    transform: translateX(6px);
+  }
+  .pager-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    transition: color 0.25s var(--ease);
+  }
+  .pager-btn:not(.pager-btn--disabled):hover .pager-title {
+    color: var(--accent);
+  }
+</style>

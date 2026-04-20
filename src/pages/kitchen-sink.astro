@@ -1,0 +1,210 @@
+---
+import SeraLabel from '../components/sera/SeraLabel.astro';
+import PageHeader from '../components/sera/PageHeader.astro';
+import RowLink from '../components/sera/RowLink.astro';
+import IconButton from '../components/sera/IconButton.astro';
+import Pager from '../components/sera/Pager.astro';
+import ProjectPager from '../components/sera/ProjectPager.astro';
+import NavLink from '../components/sera/NavLink.astro';
+import TopNavLink from '../components/sera/TopNavLink.astro';
+import ProjectCard from '../components/sera/ProjectCard.astro';
+import { PROJECTS } from '../data/projects';
+
+const NAV = [
+  { to: '/about', label: 'about' },
+  { to: '/projects', label: 'projects' },
+  { to: '/experience', label: 'experience' },
+  { to: '/log', label: 'log' },
+  { to: '/contact', label: 'contact' },
+];
+
+const [p1, p2] = PROJECTS;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Kitchen sink · Sera primitives</title>
+    <script is:inline>
+      (function () {
+        try {
+          const stored = localStorage.getItem('theme');
+          const prefersDark = window.matchMedia(
+            '(prefers-color-scheme: dark)'
+          ).matches;
+          const isDark =
+            stored === 'dark' || (stored === null && prefersDark);
+          if (isDark) document.documentElement.classList.add('dark');
+        } catch {
+          /* noop — pre-paint theme application is best-effort. */
+        }
+      })();
+    </script>
+  </head>
+  <body class="paper">
+    <main class="ks">
+      <section class="ks__section">
+        <PageHeader
+          kicker="00 / kitchen sink"
+          title="Sera primitives"
+          sub="Reference surface for AGE-120 components. Toggle dark via DevTools (html.dark) to verify both themes."
+        />
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">.sera-label</SeraLabel>
+        <div class="ks__stack">
+          <SeraLabel tone="muted">01 / muted</SeraLabel>
+          <SeraLabel tone="ink">01 / ink</SeraLabel>
+          <SeraLabel tone="accent">01 / accent</SeraLabel>
+        </div>
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">.icon-btn</SeraLabel>
+        <div class="ks__row">
+          <IconButton ariaLabel="Example action">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
+          </IconButton>
+          <IconButton ariaLabel="GitHub" href="https://github.com/DylanMcCavitt" external>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.02c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.25 3.33.96.1-.74.4-1.25.72-1.53-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18A10.94 10.94 0 0 1 12 6.8c.98 0 1.97.13 2.89.38 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" /></svg>
+          </IconButton>
+        </div>
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">TopNavLink</SeraLabel>
+        <nav class="ks__topnav">
+          {NAV.map((item, i) => (
+            <TopNavLink index={i + 1} label={item.label} to={item.to} active={item.to === '/projects'} />
+          ))}
+        </nav>
+      </section>
+
+      <section class="ks__section ks__section--narrow">
+        <SeraLabel tone="muted" class="ks__group-label">NavLink (landing)</SeraLabel>
+        <div class="ks__navstack">
+          {NAV.map((item, i) => (
+            <NavLink index={i + 1} label={item.label} to={item.to} />
+          ))}
+        </div>
+      </section>
+
+      <section class="ks__section ks__section--narrow">
+        <SeraLabel tone="muted" class="ks__group-label">RowLink</SeraLabel>
+        <ul class="ks__rowlist">
+          <li>
+            <RowLink href="/log/first-post" meta="Apr 2026" title="managing multiple agents & projects" trailing="6 min" />
+          </li>
+          <li>
+            <RowLink href="mailto:dylanmccavitt@outlook.com" title="Email" trailing="dylanmccavitt@outlook.com ↗" external />
+          </li>
+          <li>
+            <RowLink href="https://github.com/DylanMcCavitt" title="GitHub" trailing="DylanMcCavitt ↗" external />
+          </li>
+        </ul>
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">ProjectCard</SeraLabel>
+        <div class="ks__cards">
+          <ProjectCard project={p1} />
+          <ProjectCard project={p2} />
+        </div>
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">Pager (sitewide)</SeraLabel>
+        <Pager
+          prev={{ href: '/about', label: 'about' }}
+          next={{ href: '/experience', label: 'experience' }}
+        />
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">Pager — disabled edges</SeraLabel>
+        <Pager next={{ href: '/about', label: 'about' }} />
+      </section>
+
+      <section class="ks__section">
+        <SeraLabel tone="muted" class="ks__group-label">ProjectPager</SeraLabel>
+        <ProjectPager prev={PROJECTS[0]} next={PROJECTS[2]} />
+      </section>
+    </main>
+
+    <style is:global>
+      @import '../styles/global.css';
+      .ks {
+        max-width: 1024px;
+        margin: 0 auto;
+        padding: 64px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 56px;
+        position: relative;
+        z-index: 2;
+      }
+      .ks__section {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .ks__section--narrow {
+        max-width: 520px;
+      }
+      .ks__group-label {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+      .ks__stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ks__row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ks__topnav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        background: var(--card);
+      }
+      .ks__navstack {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ks__rowlist {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .ks__rowlist > li {
+        border-bottom: 1px solid var(--line);
+      }
+      .ks__rowlist > li:last-child {
+        border-bottom: none;
+      }
+      .ks__cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+      @media (max-width: 720px) {
+        .ks__cards {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </body>
+</html>
