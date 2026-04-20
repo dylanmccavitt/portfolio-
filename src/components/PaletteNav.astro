@@ -57,7 +57,6 @@ const navLinks = [
           href={link.href}
           class="palette-nav__swatch"
           style={`background:var(--nav-${i + 1}); color:var(--nav-text-${i + 1})`}
-          {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
         >
           {link.label}
         </a>
