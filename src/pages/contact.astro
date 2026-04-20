@@ -1,0 +1,76 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/sera/PageHeader.astro';
+import RowLink from '../components/sera/RowLink.astro';
+import Pager from '../components/sera/Pager.astro';
+
+const links = [
+  {
+    label: 'Email',
+    href: 'mailto:dylanmccavitt@outlook.com',
+    handle: 'dylanmccavitt@outlook.com',
+  },
+  {
+    label: 'GitHub',
+    href: 'https://github.com/DylanMcCavitt',
+    handle: 'DylanMcCavitt',
+  },
+  {
+    label: 'LinkedIn',
+    href: 'https://www.linkedin.com/in/dylan-mccavitt',
+    handle: 'dylan-mccavitt',
+  },
+  {
+    label: 'X',
+    href: 'https://x.com/dylanmccavitt_',
+    handle: '@dylanmccavitt_',
+  },
+];
+---
+
+<Base
+  title="Contact — Dylan McCavitt"
+  description="Get in touch with Dylan McCavitt."
+>
+  <main class="contact-page">
+    <PageHeader
+      kicker="05 / contact"
+      title="Get in touch"
+      sub="Open to opportunities or collaboration. Reach out wherever works."
+    />
+    <ul class="contact-page__list">
+      {
+        links.map(({ label, href, handle }) => (
+          <li>
+            <RowLink
+              href={href}
+              title={label}
+              trailing={`${handle} \u2197`}
+              external={href.startsWith('http')}
+            />
+          </li>
+        ))
+      }
+    </ul>
+    <div class="contact-page__pager">
+      <Pager prev={{ href: '/log', label: 'log' }} />
+    </div>
+  </main>
+</Base>
+
+<style>
+  .contact-page {
+    max-width: 36rem;
+    margin: 0 auto;
+    padding: 64px 24px;
+  }
+  .contact-page__list {
+    list-style: none;
+    margin: 40px 0 0;
+    padding: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .contact-page__pager {
+    margin-top: 48px;
+  }
+</style>
