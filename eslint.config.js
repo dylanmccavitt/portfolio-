@@ -1,6 +1,7 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import astro from "eslint-plugin-astro";
+import globals from "globals";
 
 export default [
   eslint.configs.recommended,
@@ -16,6 +17,12 @@ export default [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+    },
+  },
+  {
+    files: ["*.config.{js,mjs,ts}", "astro.config.{js,mjs,ts}"],
+    languageOptions: {
+      globals: { ...globals.node },
     },
   },
   {
