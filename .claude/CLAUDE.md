@@ -1,37 +1,40 @@
 # Portfolio
 
-Clean, recruiter-friendly portfolio site with a Nordic design direction — muted palette, clean lines, natural tones, generous whitespace. Designed for non-technical visitors first (recruiters, hiring managers).
+Clean, recruiter-friendly portfolio site. Current visual direction: **shadcn/ui "Sera"** — hard edges, uppercase tracked labels, hairline borders, ring-bordered surfaces, paper/ink feel. Designed for non-technical visitors first (recruiters, hiring managers).
 
 ## Stack
 
-- **Astro 5 + TypeScript** — static site, zero JS by default
-- **Vanilla CSS** with custom properties for design tokens (colors, spacing, type scale)
-- **Vanilla JS** for interactivity (topology map pan/zoom/click, dark mode toggle)
-- **Markdown/MDX** for project content
+- **Astro 5 + TypeScript** — static-first site framework
+- **Tailwind** via `@astrojs/tailwind` — utility classes map to CSS-variable design tokens
+- **React islands** via `@astrojs/react` where client state is needed (theme toggle, interactive pagers)
+- **CSS variables** own the design tokens (colors, spacing, type scale) — see the Sera design handoff for the authoritative values
+- **Markdown/MDX** for content collections (projects, log)
 - **Deployed** to Vercel or Cloudflare Pages
 
-No frameworks. No Tailwind. No React. Zero dependency JS.
+Default to zero client JS: static `.astro` pages everywhere, React islands only where interactivity actually earns them.
 
 ## Design Direction
 
-- Nordic aesthetic — muted, natural, restrained
+- **Sera** aesthetic — hairline borders, uppercase tracked labels, hard edges, paper/ink feel
 - Mobile-first responsive design
 - Project descriptions: concise paragraphs + screenshots/visuals, not longform case studies
 - Quality over quantity
+- Design handoff: `~/Downloads/design_handoff_portfolio_v2/` (README + Portfolio.html prototype + screenshots)
 
 ## Content
 
-- Homepage: hero, featured projects, brief bio, contact links
-- Project pages: paragraph description + screenshots for each (homelab, bella-web, nohard, school work order system)
-- Homelab section: full interactive topology diagram (ported from homelab/site/, rewritten in vanilla JS + SVG)
-- Blog: separate section, nice-to-have, not MVP
-- Bella-web and nohard are live and linkable
+- Landing: monogram + numbered nav grid
+- About: bio + contact row links
+- Projects: index (card grid) + dynamic detail pages from a shared `PROJECTS` array
+- Experience: resume button + education/work `dl` blocks
+- Log: dated row-link entries
+- Contact: row-link channels
+- Blog: nice-to-have, not MVP
 
 ## Constraints
 
 - Zero client JS by default — progressive enhancement only where needed
 - No jargon in project descriptions — write for someone with no coding background
-- Topology map: vanilla JS + SVG, no React island
 
 ## Workflow
 
