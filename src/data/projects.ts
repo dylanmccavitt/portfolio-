@@ -38,7 +38,7 @@ export const PROJECTS: ProjectData[] = [
     links: [
       {
         label: 'diagram',
-        url: '/diagrams/homelab-topology.svg',
+        url: '/diagrams/homelab-topology.png',
       },
     ],
     summary:
