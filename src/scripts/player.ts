@@ -145,6 +145,13 @@ function renderBar(playlist: Playlist, state: PlayerState): void {
   if (fill) fill.style.width = `${item.pct}%`;
   const knob = document.querySelector<HTMLElement>('[data-pb-knob]');
   if (knob) knob.style.left = `${item.pct}%`;
+
+  // Keep the display-only progressbar's a11y values in sync with the rail (#28).
+  const rail = document.querySelector<HTMLElement>('[data-pb-rail]');
+  if (rail) {
+    rail.setAttribute('aria-valuenow', String(Math.round(item.pct)));
+    rail.setAttribute('aria-valuetext', `${item.from} to ${item.to}`);
+  }
 }
 
 /** Reflect paused state on the body (freezes the eq + flips the play glyph). */
@@ -169,6 +176,21 @@ function applyViewState(playlist: Playlist, state: PlayerState): void {
     row.classList.toggle('playing', playing);
     if (playing) row.setAttribute('data-playing', 'true');
     else row.removeAttribute('data-playing');
+    // Keep the sr-only "Now playing" marker on the active row only (#28), so AT
+    // announces the change when the island moves play state between rows.
+    const n = row.querySelector<HTMLElement>('.n');
+    if (n) {
+      let label = n.querySelector<HTMLElement>('[data-now-playing-label]');
+      if (playing && !label) {
+        label = document.createElement('span');
+        label.className = 'sr-only';
+        label.dataset.nowPlayingLabel = '';
+        label.textContent = 'Now playing. ';
+        n.prepend(label);
+      } else if (!playing && label) {
+        label.remove();
+      }
+    }
   });
 
   // Library hero — only present on library/home pages, and only meaningful for a

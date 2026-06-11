@@ -60,9 +60,12 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     />
   </head>
   <body class="player-body">
+    <a class="skip-link" href="#main">Skip to content</a>
     <div class="body">
-      <Sidebar active={active} />
-      <main class="main">
+      <nav class="sidebar-nav" aria-label="Primary">
+        <Sidebar active={active} />
+      </nav>
+      <main class="main" id="main" tabindex="-1">
         <slot />
       </main>
     </div>

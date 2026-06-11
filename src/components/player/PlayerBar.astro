@@ -68,34 +68,47 @@ const PLAYLIST = {
 };
 ---
 
-<div class="playerbar">
+<footer class="playerbar" aria-label="Player">
   <a class="pb-now" href={`/projects/${now.id}`} data-pb-now>
-    <span class="pb-art" style={`--a:${now.hue}`} data-pb-art>{now.sym}</span>
-    <span>
+    <span class="pb-art" style={`--a:${now.hue}`} data-pb-art aria-hidden="true">{now.sym}</span>
+    <span aria-live="polite">
+      <span class="sr-only">Now playing: </span>
       <b data-pb-title>{now.title}</b>
       <small data-pb-sub>{now.status[1].toLowerCase()} · {now.seek.to}</small>
     </span>
   </a>
   <div class="pb-center">
-    <div class="controls">
+    <p class="sr-only" id="pb-shortcuts">
+      Keyboard shortcuts: press Space to play or pause, Right Arrow for next, Left Arrow for previous.
+    </p>
+    <div class="controls" role="group" aria-label="Playback controls" aria-describedby="pb-shortcuts">
       <button class="ctl prev" type="button" aria-label="Previous" data-pb-prev></button>
       <button class="ctl play" type="button" aria-label="Play" data-pb-play></button>
       <button class="ctl next" type="button" aria-label="Next" data-pb-next></button>
     </div>
     <div class="seek" data-pb-seek>
       <span class="time" data-pb-from>{now.seek.from}</span>
-      <span class="rail">
+      <span
+        class="rail"
+        role="progressbar"
+        aria-label="Timeline (display only)"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={Math.round(now.seek.pct)}
+        aria-valuetext={`${now.seek.from} to ${now.seek.to}`}
+        data-pb-rail
+      >
         <i style={`width:${now.seek.pct}%`} data-pb-fill></i>
         <u style={`left:${now.seek.pct}%`} data-pb-knob></u>
       </span>
       <span class="time" data-pb-to>{now.seek.to}</span>
     </div>
   </div>
-  <div class="pb-right">
+  <nav class="pb-right" aria-label="Contact and links">
     <a href={CONTACT.github} target="_blank" rel="noopener">github</a>
     <a href={CONTACT.resume} target="_blank" rel="noopener">resume</a>
     <a href={CONTACT.email}>contact</a>
-  </div>
-</div>
+  </nav>
+</footer>
 
 <script type="application/json" data-pb-playlist is:inline set:html={JSON.stringify(PLAYLIST)}></script>
