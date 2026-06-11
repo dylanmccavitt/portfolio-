@@ -1,6 +1,7 @@
 /* Player redesign tokens + app shell, ported verbatim from
    ~/Projects/portfolio-redesign-prototypes/15-player-v4.html (#20).
-   No Google Fonts @import — falls back to system fonts (no Inter/Plex in public/fonts). */
+   Inter + IBM Plex Mono are self-hosted via @fontsource imports in Player.astro
+   (no Google Fonts @import, no external font requests). */
 
 :root {
   --bg: #121317;
