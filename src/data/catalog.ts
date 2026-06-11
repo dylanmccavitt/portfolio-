@@ -51,6 +51,8 @@ export interface ProjectSeek {
 export interface ProjectImageShot {
   img: string;
   cap: string;
+  /** True for 9:16 phone captures (iOS), so the rail uses the narrow frame. */
+  phone?: boolean;
 }
 
 /** Skeleton placeholder kinds for shots without a captured screenshot. */
@@ -304,8 +306,8 @@ export const CATALOG: Project[] = [
       ['Status', 'app store review'],
     ],
     shots: [
-      { kind: 'phone', cap: 'dog profiles + quick log' },
-      { kind: 'phone', cap: 'home-screen widget' },
+      { img: `${SHOTS}/dog-log/profiles-quick-log.webp`, cap: 'dog profiles + quick log', phone: true },
+      { img: `${SHOTS}/dog-log/widget.webp`, cap: 'home-screen widget', phone: true },
       { kind: 'phone', cap: 'shared household invite flow' },
     ],
   },
@@ -344,9 +346,9 @@ export const CATALOG: Project[] = [
       ['Status', 'testflight prep'],
     ],
     shots: [
-      { kind: 'phone', cap: 'category board view' },
-      { kind: 'phone', cap: 'household stats' },
-      { kind: 'code', cap: 'entitlement test suite' },
+      { img: `${SHOTS}/chore-ladder/category-board.webp`, cap: 'category board view', phone: true },
+      { img: `${SHOTS}/chore-ladder/household-stats.webp`, cap: 'household stats', phone: true },
+      { img: `${SHOTS}/chore-ladder/entitlement-tests.webp`, cap: 'entitlement test suite' },
     ],
   },
   {
