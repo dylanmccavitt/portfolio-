@@ -8,20 +8,22 @@
  *
  * Field names are kept close to the prototype so porting the renderers stays
  * mechanical. Copy (about, notes, metrics, captions, hues, seek values) is
- * carried over as-is; link values are copied verbatim including the
- * GitHub-profile placeholders — link integrity is its own issue.
+ * carried over as-is.
+ *
+ * Link integrity (#30, 2026-06-10): every link points at a live destination.
+ * Seven projects originally linked the bare GitHub profile as a placeholder.
+ * Per Dylan's decision log, none can link a real repo today, so their links
+ * arrays are empty and the projects stand on their detail page + screenshots:
+ *   - hood, tradingview-mcp: approved to go public but gated on a manual
+ *     gitleaks sweep + a human-only visibility flip; both are still private
+ *     (404 anonymously), so no link until Dylan flips them.
+ *   - agentic-trader, dog log, chore ladder, harness-arena: stay private.
+ *   - condor study: not a repo — the detail page is the write-up.
+ * lingoloop was removed from the portfolio entirely (above).
  */
 
 /** Base for real screenshot paths, served from `public/screenshots/`. */
 const SHOTS = '/screenshots';
-
-/** Shared link targets, mirrored from the prototype's `LINKS` object. */
-const LINKS = {
-  github: 'https://github.com/DylanMcCavitt',
-  email: 'mailto:dylanmccavitt@outlook.com',
-  linkedin: 'https://www.linkedin.com/in/dylan-mccavitt',
-  resume: 'https://dylanmccavitt.xyz/resume.pdf',
-} as const;
 
 /** Status badge variants. */
 export type StatusKind = 'dry' | 'live' | 'wip' | 'done';
@@ -121,7 +123,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'autonomous swing trader via Robinhood’s Agentic Trading MCP',
     seek: { from: 'dry-run', to: 'live jun 23', pct: 80 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['15:45 ET', 'scheduled run, weekdays'],
       ['100%', 'decisions journaled in dry-run'],
@@ -201,7 +203,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'portfolio tracker + high-water-mark withdrawal engine',
     seek: { from: 'tracking', to: 'active daily', pct: 100 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['weekly', 'withdrawal cadence'],
       ['0', 'principal touched — gains only'],
@@ -241,7 +243,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'MCP server driving TradingView Desktop',
     seek: { from: 'scaffold', to: 'v1 charting', pct: 65 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['5', 'stock universes configured'],
       ['full', 'pine compile round-trip'],
@@ -281,7 +283,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'multi-dog routine tracking · widgets · shared households',
     seek: { from: 'v1.2', to: 'review', pct: 95 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['189', 'commits to v1.2'],
       ['2', 'storage modes: local + synced'],
@@ -320,7 +322,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'household chore boards with invites and a pro tier',
     seek: { from: 'build', to: 'testflight', pct: 90 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['184', 'commits'],
       ['25+', 'unit test suites'],
@@ -565,7 +567,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'no edge after costs — retired with a post-mortem',
     seek: { from: '2021', to: 'retired', pct: 100 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['4 yrs', 'of walk-forward backtests'],
       ['0', 'edge after costs'],
@@ -604,7 +606,7 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'agent-harness evals through games',
     seek: { from: 'arena loop', to: 'shelved', pct: 55 },
-    links: [['GitHub ↗', LINKS.github]],
+    links: [],
     metrics: [
       ['48', 'commits'],
       ['A/B', 'preset comparison design'],
