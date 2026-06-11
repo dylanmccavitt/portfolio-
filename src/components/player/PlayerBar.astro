@@ -1,0 +1,54 @@
+---
+/**
+ * Persistent bottom player bar — now-playing slot, transport controls, seek
+ * rail, and right-side links. Chrome only: markup + styles, no behavior
+ * (wired in the player-state issue). Rendered server-side with a sensible
+ * default "now playing" = the first catalog project.
+ *
+ * Ported from the prototype `15-player-v4.html` (player bar markup lines
+ * 304-319, the project branch of `renderBar` lines 966-975).
+ */
+import { CATALOG, type Project } from '../../data/catalog';
+
+export interface Props {
+  /** Project shown in the now-playing slot. Defaults to the first catalog entry. */
+  now?: Project;
+}
+const { now = CATALOG[0] } = Astro.props;
+
+const CONTACT = {
+  github: 'https://github.com/DylanMcCavitt',
+  resume: 'https://dylanmccavitt.xyz/resume.pdf',
+  email: 'mailto:dylanmccavitt@outlook.com',
+};
+---
+
+<div class="playerbar">
+  <a class="pb-now" href={`/projects/${now.id}`}>
+    <span class="pb-art" style={`--a:${now.hue}`}>{now.sym}</span>
+    <span>
+      <b>{now.title}</b>
+      <small>{now.status[1].toLowerCase()} · {now.seek.to}</small>
+    </span>
+  </a>
+  <div class="pb-center">
+    <div class="controls">
+      <span class="ctl prev" title="previous"></span>
+      <span class="ctl play" title="play / pause"></span>
+      <span class="ctl next" title="next"></span>
+    </div>
+    <div class="seek">
+      <span class="time">{now.seek.from}</span>
+      <span class="rail">
+        <i style={`width:${now.seek.pct}%`}></i>
+        <u style={`left:${now.seek.pct}%`}></u>
+      </span>
+      <span class="time">{now.seek.to}</span>
+    </div>
+  </div>
+  <div class="pb-right">
+    <a href={CONTACT.github} target="_blank" rel="noopener">github</a>
+    <a href={CONTACT.resume} target="_blank" rel="noopener">resume</a>
+    <a href={CONTACT.email}>contact</a>
+  </div>
+</div>

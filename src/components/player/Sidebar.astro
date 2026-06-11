@@ -1,0 +1,84 @@
+---
+/**
+ * Player shell sidebar — profile, Library filters with live counts, the
+ * "The Journey" album row, area playlists with counts, and footer links.
+ *
+ * Ported from the prototype `15-player-v4.html` (sidebar markup lines
+ * 267-299). Counts read from the catalog data module (#18); active state is
+ * derived from the current URL, not a click handler — zero client JS.
+ *
+ * URL scheme (coordinate with the view issues): `/` is the All-work library,
+ * `/library/[filter]` for every other filter, `/resume` for the album.
+ */
+import { AREA_PLAYLISTS, playlistCount, type PlaylistId } from '../../data/catalog';
+
+export interface Props {
+  /** Active filter, or `'resume'` when the album view is showing. */
+  active?: PlaylistId | 'resume';
+}
+const { active = 'all' } = Astro.props;
+
+const CONTACT = {
+  github: 'https://github.com/DylanMcCavitt',
+  resume: 'https://dylanmccavitt.xyz/resume.pdf',
+  linkedin: 'https://www.linkedin.com/in/dylan-mccavitt',
+  email: 'mailto:dylanmccavitt@outlook.com',
+};
+
+/** Route for a playlist filter. `all` → `/`, everything else → `/library/…`. */
+const filterHref = (id: PlaylistId) =>
+  id === 'all' ? '/' : `/library/${encodeURIComponent(id)}`;
+
+const LIBRARY: { id: PlaylistId; label: string }[] = [
+  { id: 'all', label: 'All work' },
+  { id: 'wip', label: 'Now building' },
+  { id: 'money', label: 'Live with real money' },
+];
+
+/** Sidebar labels for the area playlists (some differ from the raw area). */
+const PLAYLIST_LABEL: Partial<Record<PlaylistId, string>> = {
+  School: 'School · Stevens',
+  Research: 'Research & retired',
+};
+---
+
+<aside class="sidebar">
+  <a class="me" href="/">
+    <span class="dot">DM</span>
+    <span><b>Dylan McCavitt</b><small>Software engineer · NYC</small></span>
+  </a>
+
+  <div class="g-label">Library</div>
+  {
+    LIBRARY.map((item) => (
+      <a
+        class:list={['pl', { on: active === item.id }]}
+        href={filterHref(item.id)}
+      >
+        {item.label} <span>{playlistCount(item.id)}</span>
+      </a>
+    ))
+  }
+
+  <div class="g-label">Albums</div>
+  <a class:list={['pl album-row', { on: active === 'resume' }]} href="/resume">
+    <span class="alb">TJ</span>
+    <span class="tt"><b>The Journey</b><small>resume · 2019 — now</small></span>
+  </a>
+
+  <div class="g-label">Playlists</div>
+  {
+    AREA_PLAYLISTS.map((area) => (
+      <a class:list={['pl', { on: active === area }]} href={filterHref(area)}>
+        {PLAYLIST_LABEL[area] ?? area} <span>{playlistCount(area)}</span>
+      </a>
+    ))
+  }
+
+  <div class="side-foot">
+    <a href={CONTACT.github} target="_blank" rel="noopener">GitHub ↗</a>
+    <a href={CONTACT.resume} target="_blank" rel="noopener">Resume ↗</a>
+    <a href={CONTACT.linkedin} target="_blank" rel="noopener">LinkedIn ↗</a>
+    <a href={CONTACT.email}>Email ↗</a>
+  </div>
+</aside>
