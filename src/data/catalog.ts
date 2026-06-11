@@ -51,6 +51,8 @@ export interface ProjectSeek {
 export interface ProjectImageShot {
   img: string;
   cap: string;
+  /** True for 9:16 phone captures (iOS), so the rail uses the narrow frame. */
+  phone?: boolean;
 }
 
 /** Skeleton placeholder kinds for shots without a captured screenshot. */
@@ -145,9 +147,9 @@ export const CATALOG: Project[] = [
       ['Status', 'dry-run → live 06·23'],
     ],
     shots: [
-      { kind: 'code', cap: 'dry-run journal — intended vs simulated fills' },
-      { kind: 'dash', cap: 'risk-gate decision log for one session' },
-      { kind: 'chart', cap: 'signal backtest, walk-forward windows' },
+      { img: `${SHOTS}/agentic-trader/journal.webp`, cap: 'dry-run journal — intended vs simulated fills' },
+      { img: `${SHOTS}/agentic-trader/risk-gate.webp`, cap: 'risk-gate decision log for one session' },
+      { img: `${SHOTS}/agentic-trader/backtest.webp`, cap: 'signal backtest, walk-forward windows' },
     ],
   },
   {
@@ -185,9 +187,9 @@ export const CATALOG: Project[] = [
       ['Repo', 'public'],
     ],
     shots: [
-      { kind: 'dash', cap: 'position monitor with ratchet levels' },
-      { kind: 'code', cap: 'exit ladder config for an iron condor' },
-      { kind: 'list', cap: 'order audit trail, one expiry' },
+      { img: `${SHOTS}/exit-manager/position-monitor.webp`, cap: 'position monitor with ratchet levels' },
+      { img: `${SHOTS}/exit-manager/exit-ladder.webp`, cap: 'exit ladder config for an iron condor' },
+      { img: `${SHOTS}/exit-manager/audit-trail.webp`, cap: 'order audit trail, one expiry' },
     ],
   },
   {
@@ -265,9 +267,9 @@ export const CATALOG: Project[] = [
       ['Status', 'v1 in progress'],
     ],
     shots: [
-      { kind: 'dash', cap: 'agent-driven chartbook capture' },
-      { kind: 'code', cap: 'pine compile round-trip' },
-      { kind: 'chart', cap: 'universe sweep, 4-up layout' },
+      { img: `${SHOTS}/tradingview-mcp/chartbook.webp`, cap: 'agent-driven chartbook capture' },
+      { img: `${SHOTS}/tradingview-mcp/pine-compile.webp`, cap: 'pine compile round-trip' },
+      { img: `${SHOTS}/tradingview-mcp/universe-sweep.webp`, cap: 'universe sweep, 4-up layout' },
     ],
   },
   {
@@ -304,8 +306,8 @@ export const CATALOG: Project[] = [
       ['Status', 'app store review'],
     ],
     shots: [
-      { kind: 'phone', cap: 'dog profiles + quick log' },
-      { kind: 'phone', cap: 'home-screen widget' },
+      { img: `${SHOTS}/dog-log/profiles-quick-log.webp`, cap: 'dog profiles + quick log', phone: true },
+      { img: `${SHOTS}/dog-log/widget.webp`, cap: 'home-screen widget', phone: true },
       { kind: 'phone', cap: 'shared household invite flow' },
     ],
   },
@@ -344,9 +346,9 @@ export const CATALOG: Project[] = [
       ['Status', 'testflight prep'],
     ],
     shots: [
-      { kind: 'phone', cap: 'category board view' },
-      { kind: 'phone', cap: 'household stats' },
-      { kind: 'code', cap: 'entitlement test suite' },
+      { img: `${SHOTS}/chore-ladder/category-board.webp`, cap: 'category board view', phone: true },
+      { img: `${SHOTS}/chore-ladder/household-stats.webp`, cap: 'household stats', phone: true },
+      { img: `${SHOTS}/chore-ladder/entitlement-tests.webp`, cap: 'entitlement test suite' },
     ],
   },
   {
