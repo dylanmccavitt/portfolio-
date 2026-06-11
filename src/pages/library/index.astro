@@ -1,0 +1,30 @@
+---
+/** Minimal /library placeholder proving the shell; the library view lands in #21. */
+import Art from '../../components/player/Art.astro';
+import Badge from '../../components/player/Badge.astro';
+import Eq from '../../components/player/Eq.astro';
+import { CATALOG, playlistCount } from '../../data/catalog';
+import Player from '../../layouts/Player.astro';
+
+const now = CATALOG[0];
+---
+
+<Player>
+  <div class="view">
+    <div class="head">
+      <div class="hero">
+        <Art sym={now.sym} hue={now.hue} lg />
+        <div class="info">
+          <span class="kind">Now playing · {now.status[1]}</span>
+          <h1>{now.title}</h1>
+          <p>{now.line}</p>
+          <div class="meta">
+            <Badge status={now.status} />
+            <Eq />
+            <span><b>All work · {playlistCount('all')} projects</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Player>

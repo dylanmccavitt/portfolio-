@@ -1,0 +1,11 @@
+---
+/** Status pill: dry / live / wip / done, mirroring the prototype's status tuple. */
+import type { ProjectStatus } from '../../data/catalog';
+
+interface Props {
+  status: ProjectStatus;
+}
+const [kind, label] = Astro.props.status;
+---
+
+<span class:list={['badge', kind]}>{label}</span>

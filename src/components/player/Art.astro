@@ -1,0 +1,12 @@
+---
+/** Album-art tile primitive: default, `lg`, and `disc` variants, hue via `--a`. */
+interface Props {
+  sym: string;
+  hue: string;
+  lg?: boolean;
+  disc?: boolean;
+}
+const { sym, hue, lg = false, disc = false } = Astro.props;
+---
+
+<span class:list={['art', { lg, disc }]} style={`--a:${hue}`}>{sym}</span>

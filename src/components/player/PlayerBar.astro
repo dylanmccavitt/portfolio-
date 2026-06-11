@@ -1,0 +1,42 @@
+---
+/**
+ * Bottom player bar chrome: now-playing slot, transport controls, seek rail,
+ * right-side links. Server-rendered default is the first catalog project;
+ * behavior is wired in the player-state issue.
+ */
+import { CATALOG, LINKS, type Project } from '../../data/catalog';
+
+interface Props {
+  project?: Project;
+}
+const { project = CATALOG[0] } = Astro.props;
+---
+
+<div class="playerbar">
+  <div class="pb-now">
+    <span class="pb-art" style={`--a:${project.hue}`}>{project.sym}</span>
+    <span>
+      <b>{project.title}</b>
+      <small>{project.status[1].toLowerCase()} · {project.seek.to}</small>
+    </span>
+  </div>
+  <div class="pb-center">
+    <div class="controls">
+      <button class="ctl prev" title="previous"></button>
+      <button class="ctl play" title="play / pause"></button>
+      <button class="ctl next" title="next"></button>
+    </div>
+    <div class="seek">
+      <span class="time">{project.seek.from}</span>
+      <span class="rail">
+        <i style={`width:${project.seek.pct}%`}></i><u style={`left:${project.seek.pct}%`}></u>
+      </span>
+      <span class="time">{project.seek.to}</span>
+    </div>
+  </div>
+  <div class="pb-right">
+    <a href={LINKS.github} target="_blank" rel="noopener">github</a>
+    <a href={LINKS.resume} target="_blank" rel="noopener">resume</a>
+    <a href={LINKS.email}>contact</a>
+  </div>
+</div>

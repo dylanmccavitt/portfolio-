@@ -1,0 +1,40 @@
+---
+/**
+ * Player app shell (#20): grid rows 1fr/84px, columns 236px/1fr.
+ * The main region scrolls; body, sidebar, and player bar stay fixed.
+ * Zero client JS — sidebar active state derives from the URL.
+ */
+import PlayerBar from '../components/player/PlayerBar.astro';
+import Sidebar from '../components/player/Sidebar.astro';
+import '../styles/player.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = 'Dylan McCavitt — now playing',
+  description = 'Dylan McCavitt — software engineer in NYC. Trading systems, agents, and iOS apps.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="body">
+      <Sidebar />
+      <main class="main">
+        <slot />
+      </main>
+    </div>
+    <PlayerBar />
+  </body>
+</html>

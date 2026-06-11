@@ -1,0 +1,65 @@
+---
+/** Left rail: profile, Library + Playlists with live counts, Albums, footer links. */
+import { LINKS, PLAYLISTS, playlistCount, type PlaylistFilter } from '../../data/catalog';
+import { RESUME } from '../../data/resume';
+
+/** URL scheme locked by issue #25: `/library` is all-work, the rest get kebab slugs. */
+const FILTER_SLUGS: Record<Exclude<PlaylistFilter, 'all'>, string> = {
+  wip: 'now-building',
+  money: 'real-money',
+  'Trading systems': 'trading-systems',
+  'Agents & MCP': 'agents-mcp',
+  iOS: 'ios',
+  Shipped: 'shipped',
+  School: 'school',
+  Infrastructure: 'infrastructure',
+  Research: 'research',
+};
+const hrefFor = (filter: PlaylistFilter): string =>
+  filter === 'all' ? '/library' : `/library/${FILTER_SLUGS[filter]}`;
+
+const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const isOn = (href: string): boolean => path === href;
+
+const LIBRARY_FILTERS: PlaylistFilter[] = ['all', 'wip', 'money'];
+const library = PLAYLISTS.filter((p) => LIBRARY_FILTERS.includes(p.filter));
+const playlists = PLAYLISTS.filter((p) => !LIBRARY_FILTERS.includes(p.filter));
+---
+
+<aside class="sidebar">
+  <a class="me" href="/library">
+    <span class="dot">DM</span>
+    <span><b>Dylan McCavitt</b><small>Software engineer · NYC</small></span>
+  </a>
+
+  <div class="g-label">Library</div>
+  {
+    library.map((p) => (
+      <a class:list={['pl', { on: isOn(hrefFor(p.filter)) }]} href={hrefFor(p.filter)}>
+        {p.label} <span>{playlistCount(p.filter)}</span>
+      </a>
+    ))
+  }
+
+  <div class="g-label">Albums</div>
+  <a class:list={['pl', 'album-row', { on: isOn('/journey') }]} href="/journey">
+    <span class="alb">TJ</span>
+    <span class="tt"><b>{RESUME.title}</b><small>resume · 2019 — now</small></span>
+  </a>
+
+  <div class="g-label">Playlists</div>
+  {
+    playlists.map((p) => (
+      <a class:list={['pl', { on: isOn(hrefFor(p.filter)) }]} href={hrefFor(p.filter)}>
+        {p.label} <span>{playlistCount(p.filter)}</span>
+      </a>
+    ))
+  }
+
+  <div class="side-foot">
+    <a href={LINKS.github} target="_blank" rel="noopener">GitHub ↗</a>
+    <a href={LINKS.resume} target="_blank" rel="noopener">Resume ↗</a>
+    <a href={LINKS.linkedin} target="_blank" rel="noopener">LinkedIn ↗</a>
+    <a href={LINKS.email}>Email ↗</a>
+  </div>
+</aside>
