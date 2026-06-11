@@ -19,7 +19,8 @@ const { shots, hue } = Astro.props;
 
 /** Explicit pixel dimensions per shot variant, so images reserve layout. */
 const DIMS = { wide: { w: 400, h: 250 }, phone: { w: 180, h: 320 } };
-const isPhone = (shot: ProjectShot) => !isImageShot(shot) && shot.kind === 'phone';
+const isPhone = (shot: ProjectShot) =>
+  isImageShot(shot) ? shot.phone === true : shot.kind === 'phone';
 ---
 
 <div class="shots">
