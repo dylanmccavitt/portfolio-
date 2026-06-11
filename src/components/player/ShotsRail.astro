@@ -23,7 +23,7 @@ const isPhone = (shot: ProjectShot) =>
   isImageShot(shot) ? shot.phone === true : shot.kind === 'phone';
 ---
 
-<div class="shots">
+<div class="shots" role="group" aria-label="Screenshots" tabindex="0">
   {
     shots.map((shot) => {
       const phone = isPhone(shot);
@@ -40,7 +40,7 @@ const isPhone = (shot: ProjectShot) =>
               decoding="async"
             />
           ) : (
-            <div class="sk" data-kind={shot.kind} style={`--sk:${hue}66`}>
+            <div class="sk" data-kind={shot.kind} style={`--sk:${hue}66`} aria-hidden="true">
               {(shot.kind === 'chart' || shot.kind === 'dash' || shot.kind === 'list' || shot.kind === 'phone') && (
                 <div class="bar"></div>
               )}

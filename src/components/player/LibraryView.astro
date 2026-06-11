@@ -92,13 +92,14 @@ const sectionTitle = SECTION_TITLE[filter] ?? filter;
                 data-playing={playing ? 'true' : undefined}
               >
                 <span class="n">
-                  <span class="eq">
+                  {playing && <span class="sr-only" data-now-playing-label>Now playing. </span>}
+                  <span class="eq" aria-hidden="true">
                     <i />
                     <i />
                     <i />
                   </span>
                   <span class="num">{i + 1}</span>
-                  <span class="hoverplay" />
+                  <span class="hoverplay" aria-hidden="true" />
                 </span>
                 <span class="t">
                   <b>{p.title}</b>

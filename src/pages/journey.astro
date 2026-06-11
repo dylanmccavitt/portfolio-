@@ -33,7 +33,7 @@ const tracks = RESUME.tracks;
   <div class="view">
     <div class="head">
       <div class="hero">
-        <span class="art lg disc" style={`--a:${DISC_HUE}`}></span>
+        <span class="art lg disc" style={`--a:${DISC_HUE}`} aria-hidden="true"></span>
         <div class="info">
           <span class="kind">Album · {tracks.length} tracks · 2019 — now</span>
           <h1>{RESUME.title}</h1>
@@ -71,7 +71,7 @@ const tracks = RESUME.tracks;
           <a class="track" href={`/journey/${t.id}`}>
             <span class="n">
               <span class="num">{i + 1}</span>
-              <span class="hoverplay" />
+              <span class="hoverplay" aria-hidden="true" />
             </span>
             <span class="t">
               <b>{t.title}</b>
