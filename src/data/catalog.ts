@@ -414,6 +414,27 @@ export const PLAYLISTS: Playlist[] = [
   { filter: 'Research', label: 'Research & retired' },
 ];
 
+/**
+ * URL scheme locked by issue #25: `/library` is all-work, every other playlist
+ * gets a kebab slug under `/library/`. Shared by the sidebar links and the
+ * `/library/[filter]` static paths so the two can never drift apart.
+ */
+export const FILTER_SLUGS: Record<Exclude<PlaylistFilter, 'all'>, string> = {
+  wip: 'now-building',
+  money: 'real-money',
+  'Trading systems': 'trading-systems',
+  'Agents & MCP': 'agents-mcp',
+  iOS: 'ios',
+  Shipped: 'shipped',
+  School: 'school',
+  Infrastructure: 'infrastructure',
+  Research: 'research',
+};
+
+export function playlistHref(filter: PlaylistFilter): string {
+  return filter === 'all' ? '/library' : `/library/${FILTER_SLUGS[filter]}`;
+}
+
 export function filterProjects(filter: PlaylistFilter): Project[] {
   if (filter === 'all') return CATALOG;
   if (filter === 'wip') return CATALOG.filter((p) => p.wip);

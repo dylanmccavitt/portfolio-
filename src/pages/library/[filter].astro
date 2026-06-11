@@ -1,0 +1,28 @@
+---
+/**
+ * Filtered library routes (#21): one static page per playlist, slugged via
+ * the shared FILTER_SLUGS map (`/library/now-building`, `/library/ios`, …).
+ * Filters are plain links — no client JS.
+ */
+import LibraryView from '../../components/player/LibraryView.astro';
+import { FILTER_SLUGS, PLAYLISTS, type PlaylistFilter } from '../../data/catalog';
+import Player from '../../layouts/Player.astro';
+
+export function getStaticPaths() {
+  return PLAYLISTS.flatMap((p) =>
+    p.filter === 'all'
+      ? []
+      : [{ params: { filter: FILTER_SLUGS[p.filter] }, props: { filter: p.filter, label: p.label } }],
+  );
+}
+
+interface Props {
+  filter: PlaylistFilter;
+  label: string;
+}
+const { filter, label } = Astro.props;
+---
+
+<Player title={`Dylan McCavitt — ${label}`}>
+  <LibraryView filter={filter} />
+</Player>

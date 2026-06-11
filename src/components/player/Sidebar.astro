@@ -1,22 +1,7 @@
 ---
 /** Left rail: profile, Library + Playlists with live counts, Albums, footer links. */
-import { LINKS, PLAYLISTS, playlistCount, type PlaylistFilter } from '../../data/catalog';
+import { LINKS, PLAYLISTS, playlistCount, playlistHref, type PlaylistFilter } from '../../data/catalog';
 import { RESUME } from '../../data/resume';
-
-/** URL scheme locked by issue #25: `/library` is all-work, the rest get kebab slugs. */
-const FILTER_SLUGS: Record<Exclude<PlaylistFilter, 'all'>, string> = {
-  wip: 'now-building',
-  money: 'real-money',
-  'Trading systems': 'trading-systems',
-  'Agents & MCP': 'agents-mcp',
-  iOS: 'ios',
-  Shipped: 'shipped',
-  School: 'school',
-  Infrastructure: 'infrastructure',
-  Research: 'research',
-};
-const hrefFor = (filter: PlaylistFilter): string =>
-  filter === 'all' ? '/library' : `/library/${FILTER_SLUGS[filter]}`;
 
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const isOn = (href: string): boolean => path === href;
@@ -35,7 +20,7 @@ const playlists = PLAYLISTS.filter((p) => !LIBRARY_FILTERS.includes(p.filter));
   <div class="g-label">Library</div>
   {
     library.map((p) => (
-      <a class:list={['pl', { on: isOn(hrefFor(p.filter)) }]} href={hrefFor(p.filter)}>
+      <a class:list={['pl', { on: isOn(playlistHref(p.filter)) }]} href={playlistHref(p.filter)}>
         {p.label} <span>{playlistCount(p.filter)}</span>
       </a>
     ))
@@ -50,7 +35,7 @@ const playlists = PLAYLISTS.filter((p) => !LIBRARY_FILTERS.includes(p.filter));
   <div class="g-label">Playlists</div>
   {
     playlists.map((p) => (
-      <a class:list={['pl', { on: isOn(hrefFor(p.filter)) }]} href={hrefFor(p.filter)}>
+      <a class:list={['pl', { on: isOn(playlistHref(p.filter)) }]} href={playlistHref(p.filter)}>
         {p.label} <span>{playlistCount(p.filter)}</span>
       </a>
     ))

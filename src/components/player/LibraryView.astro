@@ -1,0 +1,90 @@
+---
+/**
+ * Library view (#21): "now playing" hero over a numbered tracklist, filtered
+ * by playlist. Ported from `renderLibrary()` + `trackRow()` in the prototype
+ * (`~/Projects/portfolio-redesign-prototypes/15-player-v4.html`), with rows
+ * as real links instead of buttons. Zero client JS.
+ *
+ * Now-playing contract: the server defaults "now playing" to the first
+ * catalog project. The hero carries `data-now-playing-*` hooks and every row
+ * carries `data-track-id` + an always-rendered num/hoverplay/eq cell, so the
+ * player island (#24) can retarget the `.playing` class without markup edits.
+ *
+ * Rows link to `/projects/{id}` — detail pages land in #22.
+ */
+import { CATALOG, filterProjects, LINKS, PLAYLISTS, type PlaylistFilter } from '../../data/catalog';
+import Art from './Art.astro';
+import Badge from './Badge.astro';
+import Eq from './Eq.astro';
+
+interface Props {
+  filter: PlaylistFilter;
+}
+const { filter } = Astro.props;
+
+const tracks = filterProjects(filter);
+const label = PLAYLISTS.find((p) => p.filter === filter)?.label ?? filter;
+
+const now = CATALOG[0];
+const stackLine = now.stack
+  .slice(0, 2)
+  .map(([, value]) => value)
+  .join(' · ');
+---
+
+<div class="view">
+  <div class="head">
+    <div class="hero" data-now-playing-id={now.id}>
+      <Art sym={now.sym} hue={now.hue} lg />
+      <div class="info">
+        <span class="kind" data-now-playing-kind>Now playing · {now.status[1]}</span>
+        <h1 data-now-playing-title>{now.title}</h1>
+        <p data-now-playing-about>{now.about[0]}</p>
+        <div class="meta" data-now-playing-meta>
+          <Badge status={now.status} />
+          <span><b>{stackLine}</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <a
+      class="bigplay"
+      href={`/projects/${now.id}`}
+      title="open project"
+      aria-label={`Open ${now.title}`}
+      data-now-playing-link></a>
+    <a class="act-link" href={LINKS.github} target="_blank" rel="noopener">GitHub ↗</a>
+    <a class="act-link" href={LINKS.resume} target="_blank" rel="noopener">Resume ↗</a>
+  </div>
+
+  <div class="listwrap">
+    <div class="sec-title">{label}</div>
+    <div class="list-head">
+      <span>#</span><span>Title</span><span class="album">Area</span><span class="stat-col">Status</span><span
+        style="text-align:right">Activity</span
+      >
+    </div>
+    {
+      tracks.map((p, i) => (
+        <a class:list={['track', { playing: p.id === now.id }]} href={`/projects/${p.id}`} data-track-id={p.id}>
+          <span class="n">
+            <span class="num">{i + 1}</span>
+            <span class="hoverplay" />
+            <Eq />
+          </span>
+          <span class="t">
+            <b>{p.title}</b>
+            <small>{p.line}</small>
+          </span>
+          <span class="album">{p.area}</span>
+          <span class="stat-col">
+            <Badge status={p.status} />
+          </span>
+          <span class="len">{p.activity}</span>
+        </a>
+      ))
+    }
+  </div>
+</div>
