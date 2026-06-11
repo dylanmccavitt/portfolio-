@@ -9,6 +9,13 @@
  *
  * URL scheme (coordinate with the view issues): `/` is the All-work library,
  * `/library/[filter]` for every other filter, `/resume` for the album.
+ *
+ * Responsive (#27): the root is a native `<details>` so the same markup serves
+ * desktop and mobile with zero JS. ≥820px CSS forces it open and hides the
+ * `<summary>` marker, so it reads as a plain always-on sidebar. <820px it
+ * collapses to a tappable "Browse" disclosure that drops the full nav sheet —
+ * every destination, active state, and the contact links stay reachable, and it
+ * degrades to visible links if CSS or `<details>` support is missing.
  */
 import { AREA_PLAYLISTS, playlistCount, type PlaylistId } from '../../data/catalog';
 
@@ -40,9 +47,23 @@ const PLAYLIST_LABEL: Partial<Record<PlaylistId, string>> = {
   School: 'School · Stevens',
   Research: 'Research & retired',
 };
+
+/** Human label for the active destination, shown in the mobile toggle. */
+const ALL_LABELS = new Map<PlaylistId | 'resume', string>([
+  ...LIBRARY.map((l) => [l.id, l.label] as const),
+  ...AREA_PLAYLISTS.map((a) => [a, PLAYLIST_LABEL[a] ?? a] as const),
+  ['resume', 'The Journey'],
+]);
+const activeLabel = ALL_LABELS.get(active) ?? 'Library';
 ---
 
-<aside class="sidebar">
+<details class="sidebar">
+  <summary class="side-toggle">
+    <span class="st-label">Browse</span>
+    <span class="st-active">{activeLabel}</span>
+    <span class="st-caret" aria-hidden="true"></span>
+  </summary>
+
   <a class="me" href="/">
     <span class="dot">DM</span>
     <span><b>Dylan McCavitt</b><small>Software engineer · NYC</small></span>
@@ -81,4 +102,4 @@ const PLAYLIST_LABEL: Partial<Record<PlaylistId, string>> = {
     <a href={CONTACT.linkedin} target="_blank" rel="noopener">LinkedIn ↗</a>
     <a href={CONTACT.email}>Email ↗</a>
   </div>
-</aside>
+</details>

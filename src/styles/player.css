@@ -41,10 +41,22 @@
 .player-body button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
 .body { display: grid; grid-template-columns: 236px 1fr; overflow: hidden; }
-@media (max-width: 820px) { .body { grid-template-columns: 1fr; } .sidebar { display: none; } }
 
 /* ============ sidebar ============ */
+/* Root is a <details>. The native UA style hides a closed <details>'s
+   non-summary children; ≥820px we override that so the full nav always shows
+   and reads as a plain always-on column (the `open` attribute is irrelevant
+   here — see the <820px block where it drives the disclosure sheet). The
+   mobile toggle (.side-toggle) and disclosure marker only surface <820px. */
 .sidebar { background: var(--pl-side); border-right: 1px solid var(--pl-line); padding: 20px 14px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.sidebar > .side-toggle { display: none; }
+.sidebar > summary::-webkit-details-marker { display: none; }
+.sidebar > summary { list-style: none; }
+/* desktop: reveal nav regardless of <details> open state */
+.sidebar > .me { display: flex; }
+.sidebar > .g-label { display: block; }
+.sidebar > .pl { display: flex; }
+.sidebar > .side-foot { display: grid; }
 .me { display: flex; align-items: center; gap: 10px; padding: 2px 8px 16px; cursor: pointer; text-align: left; }
 .me .dot {
   width: 32px; height: 32px; border-radius: 50%;
@@ -191,4 +203,91 @@
 .seek .rail u { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 11px; height: 11px; border-radius: 50%; background: var(--pl-text); }
 .pb-right { display: flex; justify-content: flex-end; gap: 16px; font-size: 12.5px; color: var(--pl-faint); }
 .pb-right a:hover { color: var(--pl-text); }
-@media (max-width: 820px) { .pb-right, .pb-now small { display: none; } }
+
+/* ============================================================
+   Responsive (#27): mobile navigation + layout below 820px.
+   The desktop sidebar (a <details>) collapses into a tappable
+   "Browse" disclosure sheet; the contact links live in the
+   sheet footer, so every destination stays reachable with zero
+   JS. Player bar trims its right links + subline and respects
+   the iOS home-indicator safe area.
+   ============================================================ */
+@media (max-width: 820px) {
+  /* one-column shell: the sidebar collapses to a top bar, main scrolls below */
+  .body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+
+  /* sidebar <details> becomes a collapsible disclosure; closed = just the bar */
+  .sidebar {
+    border-right: 0; border-bottom: 1px solid var(--pl-line);
+    padding: 0; gap: 0;
+    overflow-y: auto; max-height: min(72vh, 540px);
+  }
+  .sidebar:not([open]) { overflow: visible; }
+
+  /* the "Browse · <active>" toggle bar (≥44px tap target) */
+  .sidebar > .side-toggle {
+    display: flex; align-items: center; gap: 10px;
+    min-height: 48px; padding: 0 16px; cursor: pointer; user-select: none;
+  }
+  .sidebar[open] > .side-toggle {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--pl-side); border-bottom: 1px solid var(--pl-line);
+  }
+  .st-label {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 1.3px;
+    text-transform: uppercase; color: var(--pl-faint);
+  }
+  .st-active {
+    font-size: 13px; font-weight: 600; color: var(--pl-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .st-caret {
+    margin-left: auto; width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid var(--pl-dim); transition: transform 0.18s ease;
+  }
+  .sidebar[open] .st-caret { transform: rotate(180deg); }
+  .side-toggle:hover .st-active { color: var(--pl-accent); }
+
+  /* profile row is desktop-only; the rest of the nav shows only when open */
+  .sidebar > .me { display: none; }
+  .sidebar > .g-label,
+  .sidebar > .pl,
+  .sidebar > .side-foot { display: none; }
+  .sidebar[open] > .g-label { display: block; padding-left: 16px; padding-right: 16px; }
+  .sidebar[open] > .pl { display: flex; margin: 0 8px; min-height: 44px; align-items: center; }
+  .sidebar[open] > .pl.album-row { min-height: 52px; }
+  .sidebar[open] > .side-foot {
+    display: grid; grid-template-columns: 1fr 1fr;
+    margin: 8px 8px 0; padding: 12px 8px 8px; gap: 10px;
+  }
+
+  /* tracklist: drop area + status columns, keep ≥44px rows */
+  .list-head, .track { grid-template-columns: 34px 1fr 90px; }
+  .track .album, .track .stat-col, .list-head .album, .list-head .stat-col { display: none !important; }
+  .track { min-height: 44px; }
+
+  /* tighter content paddings + smaller hero art at phone width */
+  .head { padding: 20px 18px 18px; }
+  .actions, .listwrap { padding-left: 18px; padding-right: 18px; }
+  .hero { gap: 16px; }
+  .art.lg { width: 120px; height: 120px; font-size: 30px; }
+
+  /* player bar: trim right links + subline, keep transport reachable, and
+     lift it above the iOS home indicator via the bottom safe-area inset */
+  .pb-right, .pb-now small { display: none; }
+  .player-body { grid-template-rows: 1fr calc(72px + env(safe-area-inset-bottom, 0px)); }
+  .playerbar { padding: 0 14px env(safe-area-inset-bottom, 0px); gap: 12px; }
+  .pb-center { width: auto; flex: 1; }
+  .ctl.play { min-width: 44px; min-height: 44px; }
+  .ctl.prev, .ctl.next {
+    width: 44px; height: 44px; border: 0;
+    display: grid; place-items: center;
+  }
+  .ctl.prev::after, .ctl.next::after {
+    content: ''; width: 0; height: 0;
+    border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+  }
+  .ctl.prev::after { border-right: 9px solid var(--pl-text); }
+  .ctl.next::after { border-left: 9px solid var(--pl-text); }
+}
