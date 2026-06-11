@@ -1,19 +1,27 @@
 ---
-const diagramHref = "/diagrams/homelab-topology.png";
+/**
+ * Legacy `/homelab/topology` → `/projects/homeserver` (#25). The topology page
+ * was retired (Dylan, 2026-06-10); its content now lives on the homeserver
+ * project detail page. The edge `redirects` rule in `vercel.json` serves a real
+ * 308 in production; this static meta-refresh stub is the host-agnostic
+ * fallback.
+ */
+const target = '/projects/homeserver';
 
-return Astro.redirect(diagramHref, 302);
+return Astro.redirect(target, 301);
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content={`0;url=${diagramHref}`} />
+    <meta http-equiv="refresh" content={`0;url=${target}`} />
+    <link rel="canonical" href={`https://dylanmccavitt.xyz${target}`} />
     <title>Redirecting…</title>
   </head>
   <body>
     <p>
-      Redirecting to the homelab topology diagram.
-      <a href={diagramHref}>Continue</a>
+      Redirecting to the homeserver project.
+      <a href={target}>Continue</a>
     </p>
   </body>
 </html>

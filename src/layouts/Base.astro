@@ -15,6 +15,9 @@ const {
   showPaletteNav = false,
   showTopBar = true,
 } = Astro.props;
+
+// Canonical URL for this page (#25) — absolute, origin from `Astro.site`.
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
 ---
 
 <!doctype html>
@@ -32,6 +35,7 @@ const {
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <title>{title}</title>
+    <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script is:inline>

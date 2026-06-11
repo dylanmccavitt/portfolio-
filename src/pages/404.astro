@@ -1,0 +1,91 @@
+---
+/**
+ * 404 — "Track not found" (#25). Rendered inside the player shell so a dead deep
+ * link still lands the visitor in the app (sidebar + player bar intact) with a
+ * one-tap route back to the library. Static, zero client JS.
+ */
+import PlayerLayout from '../layouts/Player.astro';
+import { CATALOG } from '../data/catalog';
+
+const now = CATALOG[0];
+---
+
+<PlayerLayout
+  title="Track not found — Dylan McCavitt"
+  description="That track isn’t in the library."
+  active="all"
+  now={now}
+>
+  <div class="view notfound">
+    <span class="code">404</span>
+    <h1>Track not found</h1>
+    <p>
+      That link isn’t in the library — it may have been moved, renamed, or
+      retired.
+    </p>
+    <div class="actions">
+      <a class="back-btn" href="/">Back to the library</a>
+      <a class="back-link" href="/journey">The Journey</a>
+    </div>
+  </div>
+</PlayerLayout>
+
+<style>
+  .notfound {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 60vh;
+    padding: 30px;
+  }
+  .code {
+    font-family: var(--pl-mono);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--pl-green);
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    margin: 8px 0 10px;
+  }
+  .notfound p {
+    color: var(--pl-dim);
+    max-width: 46ch;
+    font-size: 14px;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 24px;
+  }
+  .back-btn {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0e1410;
+    background: var(--pl-green);
+    padding: 10px 20px;
+    border-radius: 99px;
+    transition: transform 0.12s, filter 0.12s;
+  }
+  .back-btn:hover {
+    transform: scale(1.03);
+    filter: brightness(1.08);
+  }
+  .back-link {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--pl-dim);
+    border: 1px solid var(--pl-line);
+    padding: 9px 18px;
+    border-radius: 99px;
+  }
+  .back-link:hover {
+    color: var(--pl-text);
+    border-color: var(--pl-faint);
+  }
+</style>

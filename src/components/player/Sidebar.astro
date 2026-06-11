@@ -17,7 +17,12 @@
  * every destination, active state, and the contact links stay reachable, and it
  * degrades to visible links if CSS or `<details>` support is missing.
  */
-import { AREA_PLAYLISTS, playlistCount, type PlaylistId } from '../../data/catalog';
+import {
+  AREA_PLAYLISTS,
+  playlistCount,
+  playlistSlug,
+  type PlaylistId,
+} from '../../data/catalog';
 
 export interface Props {
   /** Active filter, or `'resume'` when the album view is showing. */
@@ -32,9 +37,13 @@ const CONTACT = {
   email: 'mailto:dylanmccavitt@outlook.com',
 };
 
-/** Route for a playlist filter. `all` → `/`, everything else → `/library/…`. */
+/**
+ * Route for a playlist filter. `all` → `/`, everything else → its canonical
+ * lowercase-kebab `/library/<slug>` (#25 — slugs come from `PLAYLIST_SLUGS`,
+ * shared with the `[filter]` route and the sitemap).
+ */
 const filterHref = (id: PlaylistId) =>
-  id === 'all' ? '/' : `/library/${encodeURIComponent(id)}`;
+  id === 'all' ? '/' : `/library/${playlistSlug(id)}`;
 
 const LIBRARY: { id: PlaylistId; label: string }[] = [
   { id: 'all', label: 'All work' },

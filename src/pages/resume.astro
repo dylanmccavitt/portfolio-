@@ -1,17 +1,24 @@
 ---
-return Astro.redirect('/experience/', 301);
+/**
+ * Legacy `/resume` → `/journey` (#25). The edge `redirects` rule in
+ * `vercel.json` serves a real 308 in production and fires before this page; this
+ * static meta-refresh stub is the host-agnostic fallback so the route still
+ * lands on the resume album anywhere the site is served.
+ */
+return Astro.redirect('/journey', 301);
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="refresh" content="0;url=/experience/" />
+    <meta http-equiv="refresh" content="0;url=/journey" />
+    <link rel="canonical" href="https://dylanmccavitt.xyz/journey" />
     <title>Redirecting…</title>
   </head>
   <body>
     <p>
-      Redirecting to the experience page.
-      <a href="/experience/">Continue</a>
+      Redirecting to The Journey.
+      <a href="/journey">Continue</a>
     </p>
   </body>
 </html>

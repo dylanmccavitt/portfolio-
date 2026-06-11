@@ -669,3 +669,43 @@ export function playlistCount(id: PlaylistId): number {
 export function getProjectById(id: string): Project | null {
   return CATALOG.find((p) => p.id === id) ?? null;
 }
+
+/**
+ * Canonical URL slugs for the filtered library routes (#25). The playlist ids
+ * double as area labels, so several contain spaces, ampersands, and uppercase
+ * (`Trading systems`, `Agents & MCP`, `iOS`); those are not stable, shareable
+ * URL segments. This map is the single source of truth for `/library/<slug>` —
+ * the sidebar link, the `[filter]` route's `getStaticPaths`, and the sitemap
+ * all read it, so the slug scheme can never diverge between them.
+ *
+ * `all` is intentionally absent: it lives at `/`, not `/library/all`.
+ */
+export const PLAYLIST_SLUGS: Record<Exclude<PlaylistId, 'all'>, string> = {
+  wip: 'wip',
+  money: 'money',
+  'Trading systems': 'trading-systems',
+  'Agents & MCP': 'agents-mcp',
+  iOS: 'ios',
+  Shipped: 'shipped',
+  School: 'school',
+  Infrastructure: 'infrastructure',
+  Research: 'research',
+};
+
+/** Reverse lookup: URL slug → playlist id. Built once from {@link PLAYLIST_SLUGS}. */
+const SLUG_TO_PLAYLIST = new Map<string, PlaylistId>(
+  (Object.entries(PLAYLIST_SLUGS) as [PlaylistId, string][]).map(([id, slug]) => [
+    slug,
+    id,
+  ]),
+);
+
+/** Canonical `/library/<slug>` segment for a non-`all` playlist. */
+export function playlistSlug(id: Exclude<PlaylistId, 'all'>): string {
+  return PLAYLIST_SLUGS[id];
+}
+
+/** Resolve a `/library/<slug>` segment back to its playlist id (or null). */
+export function playlistFromSlug(slug: string): PlaylistId | null {
+  return SLUG_TO_PLAYLIST.get(slug) ?? null;
+}

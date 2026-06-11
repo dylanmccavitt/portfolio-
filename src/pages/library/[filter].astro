@@ -2,8 +2,13 @@
 /**
  * Filtered library views — one static route per playlist except `all`, which
  * lives at `/`. Each route renders the library hero + the tracklist filtered to
- * that playlist. Filter ids match the sidebar hrefs (`/library/<id>`), so area
- * names with spaces (e.g. `Trading systems`) are encoded in the URL by Astro.
+ * that playlist.
+ *
+ * Routing (#25): the URL segment is the canonical lowercase-kebab slug from
+ * `PLAYLIST_SLUGS` (e.g. `Agents & MCP` → `/library/agents-mcp`), not the raw
+ * playlist id. `getStaticPaths` emits those slugs and `playlistFromSlug`
+ * resolves the param back to the playlist id, so the sidebar link, this route,
+ * and the sitemap all share one stable slug scheme.
  *
  * Static rendering, zero client JS — the filter is the route, not a click.
  */
@@ -11,8 +16,9 @@ import type { GetStaticPaths } from 'astro';
 import PlayerLayout from '../../layouts/Player.astro';
 import LibraryView from '../../components/player/LibraryView.astro';
 import {
-  AREA_PLAYLISTS,
   CATALOG,
+  PLAYLIST_SLUGS,
+  playlistFromSlug,
   type PlaylistId,
 } from '../../data/catalog';
 
@@ -25,11 +31,12 @@ const PAGE_TITLE: Partial<Record<PlaylistId, string>> = {
 };
 
 export const getStaticPaths = (() => {
-  const filters: PlaylistId[] = ['wip', 'money', ...AREA_PLAYLISTS];
-  return filters.map((filter) => ({ params: { filter } }));
+  return Object.values(PLAYLIST_SLUGS).map((filter) => ({ params: { filter } }));
 }) satisfies GetStaticPaths;
 
-const { filter } = Astro.params as { filter: PlaylistId };
+const { filter: slug } = Astro.params as { filter: string };
+// `getStaticPaths` only emits known slugs, so this always resolves.
+const filter = playlistFromSlug(slug)!;
 
 const now = CATALOG[0];
 const title = `Dylan McCavitt — ${PAGE_TITLE[filter] ?? filter}`;
