@@ -1,0 +1,18 @@
+---
+/**
+ * Status badge pill — `dry | live | wip | done` color variants, ported from
+ * the prototype `.badge` markup. The `.badge` base + variant CSS lives in the
+ * shared `player.css` (lines 95-99); this component is the reusable wrapper so
+ * the project detail view and the resume track view (#23) emit identical
+ * markup.
+ */
+import type { ProjectStatus } from '../../data/catalog';
+
+export interface Props {
+  status: ProjectStatus;
+}
+const { status } = Astro.props;
+const [kind, label] = status;
+---
+
+<span class:list={['badge', kind]}>{label}</span>

@@ -1,0 +1,190 @@
+---
+/**
+ * Screenshot rail — horizontally scrolling, scroll-snapping row of shots,
+ * ported from the prototype `.shots`/`.shot`/`.sk` CSS (lines 170-195) and the
+ * `shotEl()`/`skeleton()` helpers (lines 765-775). Each shot is either a real
+ * captured image (lazy `<img>` with explicit width/height for zero CLS) or a
+ * CSS skeleton keyed by `kind` (`chart|dash|list|code|phone`) with a hue
+ * accent. `phone` shots are 9:16 at 180px; the rest 16:10 at 400px. A caption
+ * gradient overlays both. Pure CSS, zero client JS.
+ */
+import { isImageShot, type ProjectShot } from '../../data/catalog';
+
+export interface Props {
+  shots: ProjectShot[];
+  /** Project accent hue, threaded into skeleton accents. */
+  hue: string;
+}
+const { shots, hue } = Astro.props;
+
+/** Explicit pixel dimensions per shot variant, so images reserve layout. */
+const DIMS = { wide: { w: 400, h: 250 }, phone: { w: 180, h: 320 } };
+const isPhone = (shot: ProjectShot) => !isImageShot(shot) && shot.kind === 'phone';
+---
+
+<div class="shots">
+  {
+    shots.map((shot) => {
+      const phone = isPhone(shot);
+      const dims = phone ? DIMS.phone : DIMS.wide;
+      return (
+        <div class:list={['shot', { phone }]}>
+          {isImageShot(shot) ? (
+            <img
+              src={shot.img}
+              alt={shot.cap}
+              width={dims.w}
+              height={dims.h}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div class="sk" data-kind={shot.kind} style={`--sk:${hue}66`}>
+              {(shot.kind === 'chart' || shot.kind === 'dash' || shot.kind === 'list' || shot.kind === 'phone') && (
+                <div class="bar"></div>
+              )}
+              {shot.kind === 'phone' && <div class="block tall"></div>}
+              {shot.kind === 'dash' && (
+                <div class="row">
+                  <div class="block accent"></div>
+                  <div class="lines">
+                    <i></i><i></i><i></i><i></i><i></i>
+                  </div>
+                </div>
+              )}
+              {shot.kind === 'chart' && (
+                <div class="row">
+                  <div class="block accent"></div>
+                </div>
+              )}
+              {shot.kind === 'list' && (
+                <div class="lines grow">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+              )}
+              {shot.kind === 'code' && (
+                <div class="lines grow">
+                  <i style="width:88%"></i><i style="width:64%"></i>
+                  <i style="width:74%"></i><i style="width:52%"></i>
+                  <i style="width:81%"></i><i style="width:58%"></i>
+                  <i style="width:70%"></i>
+                </div>
+              )}
+              {shot.kind === 'phone' && (
+                <div class="lines">
+                  <i></i><i></i><i></i>
+                </div>
+              )}
+            </div>
+          )}
+          <span class="cap">{shot.cap}</span>
+        </div>
+      );
+    })
+  }
+</div>
+
+<style>
+  .shots {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    padding: 18px 30px 8px;
+    scroll-snap-type: x mandatory;
+  }
+  .shot {
+    flex: 0 0 400px;
+    aspect-ratio: 16 / 10;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--pl-panel);
+    border: 1px solid var(--pl-line);
+    position: relative;
+    scroll-snap-align: start;
+  }
+  .shot.phone {
+    flex: 0 0 180px;
+    aspect-ratio: 9 / 16;
+  }
+  .shot img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top;
+  }
+  .shot .cap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 26px 14px 10px;
+    font-size: 11.5px;
+    color: #e3e6ec;
+    background: linear-gradient(transparent, #000c 70%);
+  }
+
+  /* ---- skeleton placeholders (prototype `.sk` family) ---- */
+  .sk {
+    position: absolute;
+    inset: 0;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sk .bar {
+    height: 10px;
+    border-radius: 4px;
+    background: #ffffff10;
+  }
+  .sk[data-kind='chart'] .bar { width: 34%; }
+  .sk[data-kind='dash'] .bar { width: 46%; }
+  .sk[data-kind='list'] .bar { width: 40%; }
+  .sk[data-kind='phone'] .bar { width: 52%; }
+  .sk .row {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+  }
+  .sk .block {
+    border-radius: 6px;
+    background: #ffffff08;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .sk .block.tall { flex: 1.2; }
+  .sk .block.accent::after {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: 18%;
+    height: 38%;
+    border-radius: 4px;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--sk, #50c87844) 0 9%,
+      transparent 9% 16%
+    );
+  }
+  .sk .lines {
+    flex: 1.4;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding-top: 4px;
+  }
+  .sk .lines.grow { flex: 1; }
+  .sk .lines i {
+    display: block;
+    height: 7px;
+    border-radius: 3px;
+    background: #ffffff0d;
+  }
+  .sk .lines i:nth-child(2n) { width: 78%; }
+  .sk .lines i:nth-child(3n) { width: 62%; }
+  /* code/explicit widths win via inline style on each `i`. */
+</style>

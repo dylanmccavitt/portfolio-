@@ -1,0 +1,44 @@
+---
+/**
+ * Album card — art tile + title + sub-label, used in the "More from {area}"
+ * related rail. Ported from the prototype `.albumcard` (markup 859-863, CSS
+ * 212-219). Links to `/projects/{id}`; reused by the resume track view (#23)
+ * for its "Shipped during this era" rail.
+ */
+import ProjectArt from './ProjectArt.astro';
+import type { Project } from '../../data/catalog';
+
+export interface Props {
+  project: Project;
+}
+const { project } = Astro.props;
+---
+
+<a class="albumcard" href={`/projects/${project.id}`}>
+  <ProjectArt sym={project.sym} hue={project.hue} size="card" />
+  <b>{project.title}</b>
+  <small>{project.status[1]} · {project.year}</small>
+</a>
+
+<style>
+  .albumcard {
+    flex: 0 0 150px;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--pl-panel);
+    transition: background 0.12s;
+    text-align: left;
+  }
+  .albumcard:hover {
+    background: var(--pl-panel-hi);
+  }
+  .albumcard b {
+    font-size: 12.5px;
+    font-weight: 600;
+    display: block;
+  }
+  .albumcard small {
+    color: var(--pl-faint);
+    font-size: 11px;
+  }
+</style>
