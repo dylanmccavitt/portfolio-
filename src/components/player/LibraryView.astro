@@ -1,0 +1,119 @@
+---
+/**
+ * Library view — a "now playing" hero above a numbered tracklist of projects,
+ * filtered by the active sidebar playlist. Used by `/` (the `all` filter) and
+ * `/library/[filter]` for every other playlist.
+ *
+ * Ported from the prototype `15-player-v4.html` — `renderLibrary()` and
+ * `trackRow()` (lines ~779-821), tracklist CSS (lines 129-163). Static, zero
+ * client JS: the hero defaults to the first catalog project server-side and the
+ * playing-row treatment is driven by data attributes so the player-state island
+ * (#24) can toggle it without re-rendering.
+ *
+ * A11y: tracklist rows are semantic links inside an ordered list, NOT the
+ * prototype's `<button>`s, so each row is a real navigation target to the
+ * project detail page (#22).
+ */
+import {
+  CATALOG,
+  filterCatalog,
+  type PlaylistId,
+  type Project,
+} from '../../data/catalog';
+
+export interface Props {
+  /** Active playlist filter. */
+  filter: PlaylistId;
+  /** Now-playing project for the hero. Defaults to the first catalog entry. */
+  now?: Project;
+}
+const { filter, now = CATALOG[0] } = Astro.props;
+
+const list = filterCatalog(filter);
+
+const CONTACT = {
+  github: 'https://github.com/DylanMcCavitt',
+  resume: 'https://dylanmccavitt.xyz/resume.pdf',
+};
+
+/** Section title for each filter; areas fall back to their own label. */
+const SECTION_TITLE: Partial<Record<PlaylistId, string>> = {
+  all: 'All work',
+  wip: 'Now building',
+  money: 'Live with real money',
+  School: 'School · Stevens',
+  Research: 'Research & retired',
+};
+const sectionTitle = SECTION_TITLE[filter] ?? filter;
+---
+
+<div class="view">
+  <div class="head">
+    <div class="hero">
+      <span class="art lg" style={`--a:${now.hue}`} data-now-art>{now.sym}</span>
+      <div class="info">
+        <span class="kind" data-now-kind>Now playing · {now.status[1]}</span>
+        <h1 data-now-title>{now.title}</h1>
+        <p data-now-about>{now.about[0]}</p>
+        <div class="meta">
+          <span class:list={['badge', now.status[0]]} data-now-badge>
+            {now.status[1]}
+          </span>
+          <span><b data-now-stack>{now.stack.map((s) => s[1]).slice(0, 2).join(' · ')}</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="bigplay" href={`/projects/${now.id}`} title="open project" data-now-open></a>
+    <a class="act-link" href={CONTACT.github} target="_blank" rel="noopener">GitHub ↗</a>
+    <a class="act-link" href={CONTACT.resume} target="_blank" rel="noopener">Resume ↗</a>
+  </div>
+
+  <div class="listwrap">
+    <div class="sec-title">{sectionTitle}</div>
+    <div class="list-head">
+      <span>#</span>
+      <span>Title</span>
+      <span class="album">Area</span>
+      <span class="stat-col">Status</span>
+      <span style="text-align:right">Activity</span>
+    </div>
+    <ol class="tracklist">
+      {
+        list.map((p, i) => {
+          const playing = p.id === now.id;
+          return (
+            <li>
+              <a
+                class:list={['track', { playing }]}
+                href={`/projects/${p.id}`}
+                data-track-id={p.id}
+                data-playing={playing ? 'true' : undefined}
+              >
+                <span class="n">
+                  <span class="eq">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span class="num">{i + 1}</span>
+                  <span class="hoverplay" />
+                </span>
+                <span class="t">
+                  <b>{p.title}</b>
+                  <small>{p.line}</small>
+                </span>
+                <span class="album">{p.area}</span>
+                <span class="stat-col">
+                  <span class:list={['badge', p.status[0]]}>{p.status[1]}</span>
+                </span>
+                <span class="len">{p.activity}</span>
+              </a>
+            </li>
+          );
+        })
+      }
+    </ol>
+  </div>
+</div>

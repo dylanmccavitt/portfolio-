@@ -1,0 +1,40 @@
+---
+/**
+ * Filtered library views — one static route per playlist except `all`, which
+ * lives at `/`. Each route renders the library hero + the tracklist filtered to
+ * that playlist. Filter ids match the sidebar hrefs (`/library/<id>`), so area
+ * names with spaces (e.g. `Trading systems`) are encoded in the URL by Astro.
+ *
+ * Static rendering, zero client JS — the filter is the route, not a click.
+ */
+import type { GetStaticPaths } from 'astro';
+import PlayerLayout from '../../layouts/Player.astro';
+import LibraryView from '../../components/player/LibraryView.astro';
+import {
+  AREA_PLAYLISTS,
+  CATALOG,
+  type PlaylistId,
+} from '../../data/catalog';
+
+/** Page titles per filter; areas fall back to their own label. */
+const PAGE_TITLE: Partial<Record<PlaylistId, string>> = {
+  wip: 'Now building',
+  money: 'Live with real money',
+  School: 'School · Stevens',
+  Research: 'Research & retired',
+};
+
+export const getStaticPaths = (() => {
+  const filters: PlaylistId[] = ['wip', 'money', ...AREA_PLAYLISTS];
+  return filters.map((filter) => ({ params: { filter } }));
+}) satisfies GetStaticPaths;
+
+const { filter } = Astro.params as { filter: PlaylistId };
+
+const now = CATALOG[0];
+const title = `Dylan McCavitt — ${PAGE_TITLE[filter] ?? filter}`;
+---
+
+<PlayerLayout title={title} active={filter} now={now}>
+  <LibraryView filter={filter} now={now} />
+</PlayerLayout>
