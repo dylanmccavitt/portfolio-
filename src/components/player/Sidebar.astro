@@ -48,7 +48,6 @@ const filterHref = (id: PlaylistId) =>
 const LIBRARY: { id: PlaylistId; label: string }[] = [
   { id: 'all', label: 'All work' },
   { id: 'wip', label: 'Now building' },
-  { id: 'money', label: 'Live with real money' },
 ];
 
 /** Sidebar labels for the area playlists (some differ from the raw area). */
@@ -61,7 +60,7 @@ const PLAYLIST_LABEL: Partial<Record<PlaylistId, string>> = {
 const ALL_LABELS = new Map<PlaylistId | 'resume', string>([
   ...LIBRARY.map((l) => [l.id, l.label] as const),
   ...AREA_PLAYLISTS.map((a) => [a, PLAYLIST_LABEL[a] ?? a] as const),
-  ['resume', 'The Journey'],
+  ['resume', 'Resume'],
 ]);
 const activeLabel = ALL_LABELS.get(active) ?? 'Library';
 ---
@@ -97,8 +96,8 @@ const activeLabel = ALL_LABELS.get(active) ?? 'Library';
     href="/journey"
     aria-current={active === 'resume' ? 'page' : undefined}
   >
-    <span class="alb" aria-hidden="true">TJ</span>
-    <span class="tt"><b>The Journey</b><small>resume · 2019 — now</small></span>
+    <span class="alb" aria-hidden="true">R</span>
+    <span class="tt"><b>Resume</b><small>2019 — now</small></span>
   </a>
 
   <div class="g-label">Playlists</div>
@@ -116,7 +115,7 @@ const activeLabel = ALL_LABELS.get(active) ?? 'Library';
 
   <div class="side-foot">
     <a href={CONTACT.github} target="_blank" rel="noopener">GitHub ↗</a>
-    <a href={CONTACT.resume} target="_blank" rel="noopener">Resume ↗</a>
+    <a href={CONTACT.resume} target="_blank" rel="noopener">Resume.pdf ↗</a>
     <a href={CONTACT.linkedin} target="_blank" rel="noopener">LinkedIn ↗</a>
     <a href={CONTACT.email}>Email ↗</a>
   </div>

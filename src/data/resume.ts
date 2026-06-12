@@ -81,7 +81,7 @@ export interface ResumeAlbum {
 }
 
 export const RESUME: ResumeAlbum = {
-  title: 'The Journey',
+  title: 'Resume',
   line: 'economics → legal ops → cyber risk → engineering',
   about:
     'Career history in chronological order — from an economics degree to building trading systems, agents, and iOS apps in NYC.',

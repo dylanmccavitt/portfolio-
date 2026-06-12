@@ -16,7 +16,7 @@ export const GET: APIRoute = async ({ params }) => {
     title: t.title,
     sym: t.sym,
     hue: t.hue,
-    kind: `The Journey · ${t.when}`,
+    kind: `Resume · ${t.when}`,
     tagline: t.role,
     status: t.current ? ['live', 'Current'] : ['done', t.when],
   });
