@@ -15,11 +15,13 @@ Default to zero client JS: static `.astro` pages everywhere, React islands only 
 
 ## Design Direction
 
-- **Sera** aesthetic — hairline borders, uppercase tracked labels, hard edges, paper/ink feel
-- Mobile-first responsive design
-- Project descriptions: concise paragraphs + screenshots/visuals, not longform case studies
-- Quality over quantity
-- Design handoff: `~/Downloads/design_handoff_portfolio_v2/` (README + Portfolio.html prototype + screenshots)
+Current visual direction: the "now playing" player UI — a Spotify-style app shell
+(sidebar, scrolling main, persistent bottom player bar) where projects are tracks
+and the resume is an album ("The Journey"). Dark-only; tokens are the --pl-* set
+in src/styles/player.css. All copy lives in src/data/catalog.ts / resume.ts (no
+content collections). Zero client JS except the player-state island
+(src/scripts/player.ts, vanilla TS). Retired Sera routes 301 via vercel.json.
+Spec: ~/Projects/portfolio-redesign-prototypes/15-player-v4.html.
 
 ## Content
 
