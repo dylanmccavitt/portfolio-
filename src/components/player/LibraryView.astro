@@ -13,6 +13,12 @@
  * A11y: tracklist rows are semantic links inside an ordered list, NOT the
  * prototype's `<button>`s, so each row is a real navigation target to the
  * project detail page (#22).
+ *
+ * Hero variants (#51): `/` (the `all` filter) keeps the now-playing hero with
+ * its `data-now-*` hooks for the island; every other playlist renders a static
+ * playlist-identity hero (name + track count) with NO `data-now-*` hooks, so
+ * the island's hero hydration no-ops (`applyViewState` guards on
+ * `[data-now-art]`) and stored now-playing never overwrites the page title.
  */
 import {
   CATALOG,
@@ -45,27 +51,70 @@ const SECTION_TITLE: Partial<Record<PlaylistId, string>> = {
   Research: 'Research & retired',
 };
 const sectionTitle = SECTION_TITLE[filter] ?? filter;
+
+const isPlaylist = filter !== 'all';
+
+/**
+ * Playlist hero identity (#51): a 2-letter sym derived from the label (first
+ * letters of the first two words, else the first two letters) on a tile tinted
+ * with the playlist's first track's hue — same visual language as album art.
+ */
+const symWords = sectionTitle.split(/\s+/).filter((w) => /^[a-z0-9]/i.test(w));
+const playlistSym = (
+  symWords.length >= 2 ? symWords[0][0] + symWords[1][0] : sectionTitle.slice(0, 2)
+).toLowerCase();
+const playlistHue = list[0]?.hue ?? now.hue;
+/** Big-play target: the playlist's first track, or the now-playing project on `/`. */
+const playHref = `/projects/${(isPlaylist ? (list[0] ?? now) : now).id}`;
 ---
 
 <div class="view">
   <div class="head">
-    <div class="hero">
-      <span class="art lg" style={`--a:${now.hue}`} data-now-art>{now.sym}</span>
-      <div class="info">
-        <span class="kind" data-now-kind>Now playing · {now.status[1]}</span>
-        <h1 data-now-title>{now.title}</h1>
-        <p data-now-about>{now.about[0]}</p>
-        <div class="meta">
-          <span class:list={['badge', now.status[0]]} data-now-badge>
-            {now.status[1]}
+    {
+      isPlaylist ? (
+        <div class="hero">
+          <span class="art lg" style={`--a:${playlistHue}`} aria-hidden="true">
+            {playlistSym}
           </span>
-          <span><b data-now-stack>{now.stack.map((s) => s[1]).slice(0, 2).join(' · ')}</b></span>
+          <div class="info">
+            <span class="kind">
+              Playlist · {list.length} {list.length === 1 ? 'track' : 'tracks'}
+            </span>
+            <h1>{sectionTitle}</h1>
+          </div>
         </div>
-      </div>
-    </div>
+      ) : (
+        <div class="hero">
+          <span class="art lg" style={`--a:${now.hue}`} data-now-art>
+            {now.sym}
+          </span>
+          <div class="info">
+            <span class="kind" data-now-kind>
+              Now playing · {now.status[1]}
+            </span>
+            <h1 data-now-title>{now.title}</h1>
+            <p data-now-about>{now.about[0]}</p>
+            <div class="meta">
+              <span class:list={['badge', now.status[0]]} data-now-badge>
+                {now.status[1]}
+              </span>
+              <span>
+                <b data-now-stack>{now.stack.map((s) => s[1]).slice(0, 2).join(' · ')}</b>
+              </span>
+            </div>
+          </div>
+        </div>
+      )
+    }
   </div>
   <div class="actions">
-    <a class="bigplay" href={`/projects/${now.id}`} title="open project" data-now-open></a>
+    <a
+      class="bigplay"
+      href={playHref}
+      title={isPlaylist ? 'play from the top' : 'open project'}
+      aria-label={isPlaylist ? 'Play from the top' : undefined}
+      data-now-open={isPlaylist ? undefined : true}
+    ></a>
     <a class="act-link" href={CONTACT.github} target="_blank" rel="noopener">GitHub ↗</a>
     <a class="act-link" href={CONTACT.resume} target="_blank" rel="noopener">Resume ↗</a>
   </div>
