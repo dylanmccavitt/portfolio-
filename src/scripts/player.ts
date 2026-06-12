@@ -12,6 +12,10 @@
  *     stepped item's page;
  *   - navigation = play: landing on a project / journey-track page marks it as
  *     now playing (prototype semantics);
+ *   - select-then-open tracklist rows: the first click on a library row makes
+ *     it the now-playing track in place (eq wave + hero + bar update, no
+ *     navigation); clicking the selected row again opens its project page.
+ *     With JS off the rows stay plain links;
  *   - keyboard: Space = play/pause, ArrowRight/Left = next/prev, scoped so it
  *     never hijacks form fields, links, or buttons.
  *
@@ -272,6 +276,26 @@ function init(): void {
   document
     .querySelector('[data-pb-play]')
     ?.addEventListener('click', () => togglePlay(playlist, state, saveState));
+
+  // Tracklist rows: select-then-open. Clicking a row that isn't now playing
+  // selects it in place (no navigation); clicking the now-playing row follows
+  // the link to the project page. Journey rows carry no data-track-id, so the
+  // album tracklist keeps its plain-link behavior.
+  document.addEventListener('click', (e) => {
+    const row = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a[data-track-id]');
+    if (!row || !row.dataset.trackId) return;
+    const id = row.dataset.trackId;
+    if (state.nowType === 'p' && state.nowId === id) return; // second click → open
+    if (!findItem(playlist.p, id)) return;
+    e.preventDefault();
+    state.nowType = 'p';
+    state.nowId = id;
+    state.paused = false;
+    saveState(state);
+    renderBar(playlist, state);
+    applyPaused(state.paused);
+    applyViewState(playlist, state);
+  });
 
   // Hero big-play (project detail): the page already IS the now-playing project
   // (navigation = play), so this toggles pause in place.

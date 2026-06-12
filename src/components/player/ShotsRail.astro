@@ -25,21 +25,28 @@ const isPhone = (shot: ProjectShot) =>
 
 <div class="shots" role="group" aria-label="Screenshots" tabindex="0">
   {
-    shots.map((shot) => {
+    shots.map((shot, i) => {
       const phone = isPhone(shot);
       const dims = phone ? DIMS.phone : DIMS.wide;
-      return (
+      return isImageShot(shot) ? (
+        <a
+          class:list={['shot', { phone }]}
+          href={`#shot-${i}`}
+          aria-label={`Expand screenshot: ${shot.cap}`}
+        >
+          <img
+            src={shot.img}
+            alt={shot.cap}
+            width={dims.w}
+            height={dims.h}
+            loading="lazy"
+            decoding="async"
+          />
+          <span class="cap">{shot.cap}</span>
+        </a>
+      ) : (
         <div class:list={['shot', { phone }]}>
-          {isImageShot(shot) ? (
-            <img
-              src={shot.img}
-              alt={shot.cap}
-              width={dims.w}
-              height={dims.h}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
+          {(
             <div class="sk" data-kind={shot.kind} style={`--sk:${hue}66`} aria-hidden="true">
               {(shot.kind === 'chart' || shot.kind === 'dash' || shot.kind === 'list' || shot.kind === 'phone') && (
                 <div class="bar"></div>
@@ -85,6 +92,23 @@ const isPhone = (shot: ProjectShot) =>
   }
 </div>
 
+{/*
+  Zero-JS lightbox: each real screenshot links to `#shot-N`; `:target` reveals
+  the matching fixed overlay with the full image. The overlay itself is the
+  close link (`#!` matches nothing, so :target clears and nothing scrolls).
+*/}
+{
+  shots.map(
+    (shot, i) =>
+      isImageShot(shot) && (
+        <a class="lightbox" id={`shot-${i}`} href="#!" aria-label="Close screenshot">
+          <img src={shot.img} alt={shot.cap} loading="lazy" decoding="async" />
+          <span class="lb-cap">{shot.cap}</span>
+        </a>
+      ),
+  )
+}
+
 <style>
   .shots {
     display: flex;
@@ -92,7 +116,48 @@ const isPhone = (shot: ProjectShot) =>
     overflow-x: auto;
     padding: 18px 30px 8px;
     scroll-snap-type: x mandatory;
+    /* the rail still scrolls (swipe / wheel / keys); it just draws no bar */
+    scrollbar-width: none;
   }
+  .shots::-webkit-scrollbar {
+    display: none;
+  }
+  .shot {
+    display: block;
+  }
+  a.shot {
+    cursor: zoom-in;
+  }
+
+  /* ---- click-to-expand lightbox (`:target`, zero JS) ---- */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    place-items: center;
+    align-content: center;
+    gap: 10px;
+    padding: 4vh 4vw;
+    background: rgb(0 0 0 / 0.84);
+    cursor: zoom-out;
+  }
+  .lightbox:target {
+    display: grid;
+  }
+  .lightbox img {
+    max-width: 100%;
+    max-height: 84vh;
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--pl-line);
+  }
+  .lb-cap {
+    font-size: 12.5px;
+    color: #e3e6ec;
+  }
+
   .shot {
     flex: 0 0 400px;
     aspect-ratio: 16 / 10;
