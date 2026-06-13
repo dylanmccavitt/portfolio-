@@ -17,7 +17,8 @@
  *   - hood, tradingview-mcp: approved to go public but gated on a manual
  *     gitleaks sweep + a human-only visibility flip; both are still private
  *     (404 anonymously), so no link until Dylan flips them.
- *   - agentic-trader, dog log, chore ladder, harness-arena: stay private.
+ *   - agentic-trader: published public 2026-06-12 (#15), now linked.
+ *   - dog log, chore ladder, harness-arena: stay private.
  *   - condor study: not a repo — the detail page is the write-up.
  * lingoloop was removed from the portfolio entirely (above).
  */
@@ -123,17 +124,17 @@ export const CATALOG: Project[] = [
     hue: '#8b7cf6',
     wip: true,
     money: false,
-    line: 'autonomous swing trader via Robinhood’s Agentic Trading MCP',
+    line: 'autonomous trading agent with deterministic guardrails; the strategy is a pluggable example',
     seek: { from: 'dry-run', to: 'live jun 23', pct: 80 },
-    links: [],
+    links: [['View repo ↗', 'https://github.com/DylanMcCavitt/agentic-trader']],
     metrics: [
       ['15:45 ET', 'scheduled run, weekdays'],
       ['100%', 'decisions journaled in dry-run'],
       ['06·23', 'go-live date'],
     ],
     about: [
-      'An autonomous RSI(2) mean-reversion swing trader. A scheduled headless Claude Code session wakes at 15:45 ET on weekdays, reads signals, and places trades through Robinhood’s official Agentic Trading MCP.',
-      'In dry-run it journals every decision — intended entries, simulated fills, and the risk rule that allowed or blocked each one. Going live is a config change.',
+      'An autonomous trading agent whose safety comes from deterministic, model-independent guardrails rather than from trusting the model. A scheduled headless Claude Code session wakes at 15:45 ET on weekdays, computes a signal, and trades through Robinhood’s official Agentic Trading MCP — every order first clearing a deterministic gate that can block it.',
+      'The strategy — an RSI(2) mean-reversion rule — is a pluggable worked example; the project is really about the harness. In dry-run it journals every decision — intended entries, simulated fills, and the gate verdict that allowed or blocked each one. Going live is a config change.',
     ],
     notes: [
       'Runs unattended on launchd; no human in the loop at decision time.',
