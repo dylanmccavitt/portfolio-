@@ -41,6 +41,5 @@ Spec: ~/Projects/portfolio-redesign-prototypes/15-player-v4.html.
 ## Workflow
 
 - **No co-author lines** on commits
-- **Don't commit** — only `git add` changed files so they show as staged. Dylan reviews and commits from Zed.
 - **Don't commit** spec/plan docs (`docs/superpowers/`) — those are working files, not repo artifacts
 - Dev environment runs inside a Distrobox container
