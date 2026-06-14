@@ -55,7 +55,16 @@ const jsonLd = meta?.jsonLd;
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      viewport-fit=cover (#58): without it iOS Safari resolves every
+      env(safe-area-inset-*) to 0px, so the bottom tab bar's safe-area padding
+      in player.css is a no-op and the bar collides with the home indicator.
+      cover lets the shell paint edge-to-edge and the insets report real values.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="description" content={metaDescription} />
     <meta property="og:title" content={ogTitle} />
     <meta property="og:description" content={ogDescription} />
