@@ -26,8 +26,11 @@ import {
 } from '../../data/catalog';
 
 export interface Props {
-  /** Active filter, or `'resume'` when the album view is showing. */
-  active?: PlaylistId | 'resume';
+  /**
+   * Active filter, `'resume'` for the album view, or `'home'` for the concierge
+   * landing (which highlights no library row — it isn't a filter).
+   */
+  active?: PlaylistId | 'resume' | 'home';
 }
 const { active = 'all' } = Astro.props;
 
@@ -58,10 +61,11 @@ const PLAYLIST_LABEL: Partial<Record<PlaylistId, string>> = {
 };
 
 /** Human label for the active destination, shown in the mobile toggle. */
-const ALL_LABELS = new Map<PlaylistId | 'resume', string>([
+const ALL_LABELS = new Map<PlaylistId | 'resume' | 'home', string>([
   ...LIBRARY.map((l) => [l.id, l.label] as const),
   ...AREA_PLAYLISTS.map((a) => [a, PLAYLIST_LABEL[a] ?? a] as const),
   ['resume', 'Resume'],
+  ['home', 'Home'],
 ]);
 const activeLabel = ALL_LABELS.get(active) ?? 'Library';
 ---

@@ -1,15 +1,18 @@
 ---
 /**
- * Home — the concierge router (#60). A standalone, centered "What brings you
- * here?" page that sends each kind of visitor to the right place: hiring
- * managers to the guided tour, browsers to the full library, engineers to
- * GitHub. It is NOT the player shell — that all-work library now lives at
- * `/library`. Built on the lightweight `Concierge` layout; zero client JS.
+ * Home — the concierge router (#60). The centered "What brings you here?" entry
+ * point that sends each kind of visitor to the right place: hiring managers to
+ * the guided tour, browsers to the full library, engineers to GitHub. The
+ * all-work library now lives at `/library`.
  *
- * Ported from the landing prototype `17-landing-v2.html` (variant E, `#vE`),
- * with the metaphor copy and prototype scaffolding dropped.
+ * Rendered inside the player shell (sidebar + player bar) so it matches the
+ * landing prototype `17-landing-v2.html` (variant E, `#vE`) — the concierge is
+ * the main-panel content, not a chrome-free page. Metaphor copy and the
+ * prototype's knob scaffolding are dropped. Zero new client JS beyond the
+ * shell's existing player island.
  */
-import Concierge from '../layouts/Concierge.astro';
+import PlayerLayout from '../layouts/Player.astro';
+import { CATALOG } from '../data/catalog';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 const meta = {
@@ -21,67 +24,70 @@ const meta = {
 };
 ---
 
-<Concierge title="Dylan McCavitt — Software engineer" meta={meta}>
-  <main class="concierge">
-    <div class="cc-card">
-      <div class="cc-avatar" aria-hidden="true">DM</div>
-      <h1>Dylan McCavitt</h1>
-      <p class="cc-lede">Software engineer · Backend · AI.</p>
-      <div class="upper cc-q">What brings you here?</div>
-      <div class="cc-routes">
-        <a class="cc-route" href="/hiring">
-          <span class="cc-ico" aria-hidden="true">★</span>
-          <b>I'm hiring</b>
-          <span>A 2-minute tour: best work, then the resume.</span>
-          <span class="cc-go">Start the tour →</span>
-        </a>
-        <a class="cc-route" href="/library">
-          <span class="cc-ico" aria-hidden="true">≣</span>
-          <b>Just exploring</b>
-          <span>Browse the full library of work.</span>
-          <span class="cc-go">Open the library →</span>
-        </a>
-        <a
-          class="cc-route"
-          href="https://github.com/DylanMcCavitt"
-          target="_blank"
-          rel="noopener"
-        >
-          <span class="cc-ico" aria-hidden="true">⌘</span>
-          <b>Show me the code</b>
-          <span>Straight to GitHub and the live builds.</span>
-          <span class="cc-go">Go to GitHub ↗</span>
-        </a>
-      </div>
+<PlayerLayout
+  title="Dylan McCavitt — Software engineer"
+  meta={meta}
+  active="home"
+  now={CATALOG[0]}
+>
+  <div class="concierge">
+    <span class="cc-mark" aria-hidden="true"><span class="mono">DM</span></span>
+    <h1>Dylan McCavitt</h1>
+    <p class="cc-lede">Software engineer · Backend · AI.</p>
+    <div class="upper cc-q">What brings you here?</div>
+    <div class="cc-routes">
+      <a class="cc-route" href="/hiring">
+        <span class="cc-ico" aria-hidden="true">★</span>
+        <b>I'm hiring</b>
+        <span>A 2-minute tour: best work, then the resume.</span>
+        <span class="cc-go">Start the tour →</span>
+      </a>
+      <a class="cc-route" href="/library">
+        <span class="cc-ico" aria-hidden="true">≣</span>
+        <b>Just exploring</b>
+        <span>Browse the full library of work.</span>
+        <span class="cc-go">Open the library →</span>
+      </a>
+      <a
+        class="cc-route"
+        href="https://github.com/DylanMcCavitt"
+        target="_blank"
+        rel="noopener"
+      >
+        <span class="cc-ico" aria-hidden="true">⌘</span>
+        <b>Show me the code</b>
+        <span>Straight to GitHub and the live builds.</span>
+        <span class="cc-go">Go to GitHub ↗</span>
+      </a>
     </div>
-  </main>
-</Concierge>
+  </div>
+</PlayerLayout>
 
 <style>
+  /* Centered concierge, ported from the prototype's `.E-wrap`/`.route` (variant
+     E). It sits in the shell's scrolling `.main`, so the sidebar + player bar
+     stay; only the tracklist is gone. */
   .concierge {
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    padding: 40px 18px;
-  }
-  .cc-card {
-    width: 100%;
     max-width: 760px;
+    margin: 4vh auto 0;
+    padding: 0 44px 60px;
     text-align: center;
   }
-  .cc-avatar {
+  .cc-mark {
     width: 64px;
     height: 64px;
     margin: 0 auto 18px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: var(--pl-accent);
+    background: linear-gradient(150deg, var(--pl-accent), #2a2740 70%);
+  }
+  .cc-mark .mono {
     font-family: var(--pl-mono);
     font-size: 22px;
     color: #fff;
   }
-  .cc-card h1 {
+  .concierge h1 {
     font-size: 34px;
     letter-spacing: -0.02em;
     margin-bottom: 8px;
@@ -116,7 +122,9 @@ const meta = {
     flex-direction: column;
     gap: 8px;
     min-height: 150px;
-    transition: transform 0.15s, border-color 0.15s;
+    transition:
+      transform 0.15s,
+      border-color 0.15s;
   }
   .cc-route:hover {
     border-color: var(--pl-focus);
@@ -147,6 +155,9 @@ const meta = {
   }
   /* Stack the cards below the site-standard 820px breakpoint. */
   @media (max-width: 820px) {
+    .concierge {
+      padding: 0 18px 40px;
+    }
     .cc-routes {
       grid-template-columns: 1fr;
     }

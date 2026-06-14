@@ -26,8 +26,11 @@ export interface Props {
    * when omitted, the layout falls back to the site-wide defaults below.
    */
   meta?: PageMeta;
-  /** Active sidebar filter (or `'resume'` for the album view). */
-  active?: PlaylistId | 'resume';
+  /**
+   * Active sidebar filter, `'resume'` for the album view, or `'home'` for the
+   * concierge landing (no sidebar row highlighted).
+   */
+  active?: PlaylistId | 'resume' | 'home';
   /** Override the now-playing project in the bottom bar. */
   now?: Project;
 }
