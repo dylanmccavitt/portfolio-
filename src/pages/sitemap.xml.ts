@@ -7,8 +7,9 @@
  * updates automatically when a project, track, or playlist is added. Retired
  * Sera-era URLs are handled by `vercel.json` 301s and never appear here.
  *
- * Canonical set (31 URLs):
+ * Canonical set (32 URLs):
  *   /                        — the concierge landing (#60)
+ *   /hiring                  — the "I'm hiring" guided tour (#62)
  *   /library                 — all-work library (relocated from `/` in #60)
  *   /library/<slug>          — 8 filtered playlists (wip, 7 areas)
  *   /projects/<id>           — 13 project detail pages
@@ -30,6 +31,7 @@ import { RESUME } from '../data/resume';
 function canonicalPaths(): string[] {
   return [
     '/',
+    '/hiring/',
     '/library/',
     ...Object.values(PLAYLIST_SLUGS).map((slug) => `/library/${slug}/`),
     ...CATALOG.map((p) => `/projects/${p.id}/`),

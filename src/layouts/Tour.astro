@@ -1,0 +1,94 @@
+---
+/**
+ * Tour layout — the standalone `<head>` + body scaffold for the `/hiring`
+ * guided tour (#62). Like `Concierge.astro` (#60), it reuses the player shell's
+ * head derivation (canonical, OG/Twitter, JSON-LD, fonts, favicon) but renders
+ * NONE of the player chrome: no Sidebar/PlayerBar/TabBar, no `.player-body`
+ * grid, no `player.ts` script.
+ *
+ * The page projects the stepped tour shell into the `<slot/>`; design tokens
+ * still come from `player.css` (the `--pl-*` set), so the tour stays visually
+ * consistent with the concierge it routes from and the library it routes into.
+ *
+ * The one earned exception to zero-client-JS is the tour-state island
+ * (`src/scripts/tour.ts`), a vanilla-TS IIFE that drives the stepper. With JS
+ * off the page degrades to every beat stacked and scrollable (progressive
+ * enhancement) — see the page's scoped `<style>` and `tour.ts`.
+ */
+import { OG_FALLBACK, type PageMeta } from '../lib/seo';
+import '../styles/player.css';
+
+export interface Props {
+  title: string;
+  description?: string;
+  /**
+   * Per-page SEO bundle (#29) — drives OG/Twitter tags, `og:type`, the OG
+   * image, and optional JSON-LD. The page passes data-derived meta from
+   * `lib/seo`; when omitted, the head falls back to the defaults below.
+   */
+  meta?: PageMeta;
+}
+const { title, description = 'Dylan McCavitt — Portfolio', meta } = Astro.props;
+
+// Canonical URL for this page (#25) — absolute, origin from `Astro.site`.
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+// Site-wide meta defaults; `meta` (when passed) overrides each field (#29).
+const metaDescription = meta?.description ?? description;
+const ogTitle = title;
+const ogDescription = meta?.description ?? description;
+const ogType = meta?.ogType ?? 'website';
+const ogImage = new URL(meta?.ogImage ?? OG_FALLBACK, Astro.site).href;
+const jsonLd = meta?.jsonLd;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      viewport-fit=cover (#58): keeps the tour edge-to-edge and the
+      env(safe-area-inset-*) values real on iOS Safari, so the pinned bottom
+      nav's safe-area padding is honored — matches the player/concierge shells.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="description" content={metaDescription} />
+    <meta property="og:title" content={ogTitle} />
+    <meta property="og:description" content={ogDescription} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="Dylan McCavitt" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:title" content={ogTitle} />
+    <meta name="twitter:description" content={ogDescription} />
+    <title>{title}</title>
+    <link rel="canonical" href={canonical} />
+    {
+      jsonLd && (
+        <script
+          type="application/ld+json"
+          set:html={JSON.stringify(jsonLd)}
+        />
+      )
+    }
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+  </head>
+  <body class="tour-body">
+    <slot />
+    <script src="../scripts/tour.ts"></script>
+  </body>
+</html>
