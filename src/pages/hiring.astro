@@ -116,8 +116,9 @@ const meta = {
           // Proof line: no `proof` field exists on Project, so map the first
           // liner note (notes[0]) into the ✓ slot.
           const proof = project.notes[0];
-          // Repo link: render the first link when present (homeserver renders
-          // both); empty links → "Source private" (dog-log, hood).
+          // Repo link: render every link when present (bella's beads → live
+          // site, agentic-trader → repo); empty links → "Source private"
+          // (evalgate, slurmlet, tradingview-mcp).
           const links = project.links;
           return (
             <section class="step" data-step>
