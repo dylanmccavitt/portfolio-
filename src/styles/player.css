@@ -349,6 +349,14 @@ body.paused .eq i { animation-play-state: paused; }
   .sidebar { display: none; }
   .player-body { grid-template-rows: 1fr auto auto; }
 
+  /* concierge landing (#77): the recruiter entry hides the player bar + tab bar
+     on mobile so the "what brings you here?" cards stand alone. The two auto
+     rows collapse so `.main` reclaims the full height. Desktop + every other
+     view keep the full shell. */
+  .player-body.bare-mobile { grid-template-rows: 1fr; }
+  .player-body.bare-mobile .playerbar,
+  .player-body.bare-mobile .tabbar { display: none; }
+
   /* bottom tab bar */
   .tabbar {
     display: grid; grid-template-columns: repeat(4, 1fr);

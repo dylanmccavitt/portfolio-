@@ -33,6 +33,12 @@ export interface Props {
   active?: PlaylistId | 'resume' | 'home';
   /** Override the now-playing project in the bottom bar. */
   now?: Project;
+  /**
+   * Hide the player bar + tab bar on mobile (≤820px) only — used by the
+   * concierge landing (#77) so the recruiter entry's cards stand alone on a
+   * phone. Desktop and every other view keep the full shell.
+   */
+  hideMobileChrome?: boolean;
 }
 const {
   title,
@@ -40,6 +46,7 @@ const {
   meta,
   active = 'all',
   now,
+  hideMobileChrome = false,
 } = Astro.props;
 
 // Canonical URL for this page (#25) — absolute, origin from `Astro.site`.
@@ -100,7 +107,7 @@ const jsonLd = meta?.jsonLd;
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
     />
   </head>
-  <body class="player-body">
+  <body class:list={['player-body', { 'bare-mobile': hideMobileChrome }]}>
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="body">
       <nav class="sidebar-nav" aria-label="Primary">
