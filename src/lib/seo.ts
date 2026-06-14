@@ -44,7 +44,7 @@ function clampDescription(text: string, max = 160): string {
 
 /** `<thing> — Dylan McCavitt` title pattern. */
 function titleFor(name: string): string {
-  return `${name} — ${OWNER}`;
+  return `${name} · ${OWNER}`;
 }
 
 /** Home / library / playlist meta — shared fallback OG image. */
@@ -98,14 +98,14 @@ export function journeyMeta(): PageMeta {
 export function journeyTrackMeta(t: ResumeTrack): PageMeta {
   const description = clampDescription(t.about[0] ?? t.role);
   return {
-    title: `${t.title} — ${RESUME.title} — ${OWNER}`,
+    title: `${t.title} · ${RESUME.title} · ${OWNER}`,
     description,
     ogImage: `/og/journey/${t.id}.png`,
     ogType: 'article',
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'CreativeWork',
-      name: `${t.title} — ${t.role}`,
+      name: `${t.title} · ${t.role}`,
       description,
       url: `${ORIGIN}/journey/${t.id}/`,
       image: `${ORIGIN}/og/journey/${t.id}.png`,

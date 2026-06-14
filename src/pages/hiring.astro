@@ -72,14 +72,14 @@ const AGENDA: [label: string, detail: string][] = [
 
 const meta = {
   ...libraryMeta(
-    "I'm hiring — Dylan McCavitt",
+    "I'm hiring · Dylan McCavitt",
     'A 2-minute guided tour: best work, then the resume. Software engineer · Backend · AI.',
   ),
   jsonLd: personJsonLd(),
 };
 ---
 
-<Tour title="I'm hiring — Dylan McCavitt" meta={meta}>
+<Tour title="I'm hiring · Dylan McCavitt" meta={meta}>
   <main class="tour-main">
     <div class="tbar">
       <a class="tour-back" href="/" title="Back to the concierge">‹ What brings you here?</a>
@@ -188,7 +188,7 @@ const meta = {
                   <span class="yr">{track.when}</span>
                   <span class="arc-main">
                     <b>{track.title}</b>
-                    <span class="role"> — {track.role}</span>
+                    <span class="role"> · {track.role}</span>
                   </span>
                 </div>
               ))
@@ -216,7 +216,7 @@ const meta = {
           <div class="upper kicker">That's the tour</div>
           <h2>Thanks for the time.</h2>
           <p class="hlede">
-            The full library has everything — every project, the resume timeline,
+            The full library has everything: every project, the resume timeline,
             and the live builds.
           </p>
           <a class="btn primary" href="/library">Continue to the full site →</a>

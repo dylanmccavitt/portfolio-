@@ -42,7 +42,7 @@ const activeLabel = ITEMS.find((i) => i.id === active)?.label ?? LABEL.all!;
 ---
 
 <details class="playlist-menu">
-  <summary aria-label={`Playlist — current: ${activeLabel}`}>
+  <summary aria-label={`Playlist, current: ${activeLabel}`}>
     <span class="pm-label">Playlist</span>
     <span class="pm-current">{activeLabel}</span>
     <span class="pm-caret" aria-hidden="true"></span>

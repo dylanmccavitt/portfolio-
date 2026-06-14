@@ -133,8 +133,8 @@ export const CATALOG: Project[] = [
       ['06·23', 'go-live date'],
     ],
     about: [
-      'An autonomous trading agent whose safety comes from deterministic, model-independent guardrails rather than from trusting the model. A scheduled headless Claude Code session wakes at 15:45 ET on weekdays, computes a signal, and trades through Robinhood’s official Agentic Trading MCP — every order first clearing a deterministic gate that can block it.',
-      'The strategy — an RSI(2) mean-reversion rule — is a pluggable worked example; the project is really about the harness. In dry-run it journals every decision — intended entries, simulated fills, and the gate verdict that allowed or blocked each one. Going live is a config change.',
+      'An autonomous trading agent whose safety comes from deterministic, model-independent guardrails rather than from trusting the model. A scheduled headless Claude Code session wakes at 15:45 ET on weekdays, computes a signal, and trades through Robinhood’s official Agentic Trading MCP, with every order first clearing a deterministic gate that can block it.',
+      'The strategy (an RSI(2) mean-reversion rule) is a pluggable worked example; the project is really about the harness. In dry-run it journals every decision: intended entries, simulated fills, and the gate verdict that allowed or blocked each one. Going live is a config change.',
     ],
     notes: [
       'Runs unattended on launchd; no human in the loop at decision time.',
@@ -148,7 +148,7 @@ export const CATALOG: Project[] = [
       ['Status', 'dry-run → live 06·23'],
     ],
     shots: [
-      { img: `${SHOTS}/agentic-trader/journal.webp`, cap: 'dry-run journal — intended vs simulated fills' },
+      { img: `${SHOTS}/agentic-trader/journal.webp`, cap: 'dry-run journal: intended vs simulated fills' },
       { img: `${SHOTS}/agentic-trader/risk-gate.webp`, cap: 'risk-gate decision log for one session' },
       { img: `${SHOTS}/agentic-trader/backtest.webp`, cap: 'signal backtest, walk-forward windows' },
     ],
@@ -173,7 +173,7 @@ export const CATALOG: Project[] = [
       ['0', 'positions it can open'],
     ],
     about: [
-      'Manages exits on existing tastytrade options positions — scale-outs, ratcheting trailing stops, and OCO brackets. It never opens positions and never adds size; you enter the trade, it places and ratchets the exit orders.',
+      'Manages exits on existing tastytrade options positions: scale-outs, ratcheting trailing stops, and OCO brackets. It never opens positions and never adds size; you enter the trade, it places and ratchets the exit orders.',
       'Spreads can’t use native stop orders, so the manager watches the mid and fires the closing order itself.',
     ],
     notes: [
@@ -209,7 +209,7 @@ export const CATALOG: Project[] = [
     links: [],
     metrics: [
       ['weekly', 'withdrawal cadence'],
-      ['0', 'principal touched — gains only'],
+      ['0', 'principal touched, gains only'],
       ['local', 'account data stays on-machine'],
     ],
     about: [
@@ -253,7 +253,7 @@ export const CATALOG: Project[] = [
       ['v1', 'charting scope'],
     ],
     about: [
-      'An MCP server that drives TradingView Desktop from an agent conversation: chart whole stock universes, capture chartbooks, and round-trip Pine Script — set source, compile, read console errors back.',
+      'An MCP server that drives TradingView Desktop from an agent conversation: chart whole stock universes, capture chartbooks, and round-trip Pine Script (set source, compile, read console errors back).',
       'V1 is scoped to charting. No scanning, no execution.',
     ],
     notes: [
@@ -332,7 +332,7 @@ export const CATALOG: Project[] = [
       ['pro', 'subscription tier built'],
     ],
     about: [
-      'A Firebase-backed iOS app for managing household chores: category boards, shared households, friend invites, completion tracking, and stats — with a Pro subscription tier and notification settings.',
+      'A Firebase-backed iOS app for managing household chores: category boards, shared households, friend invites, completion tracking, and stats, plus a Pro subscription tier and notification settings.',
       'Built test-first: view models, services, and entitlement logic each carry their own suite, and Firebase runs against the emulator in tests.',
     ],
     notes: [
@@ -407,7 +407,7 @@ export const CATALOG: Project[] = [
     hue: '#d678b6',
     wip: false,
     money: false,
-    line: 'freelance ecommerce — browse, pay, ship, track',
+    line: 'freelance ecommerce: browse, pay, ship, track',
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
     links: [['Live site ↗', 'https://bellasbeads.shop']],
     metrics: [
@@ -417,7 +417,7 @@ export const CATALOG: Project[] = [
     ],
     about: [
       'A full ecommerce platform for a handmade-jewelry business. Guest and authenticated checkout, order history, shipment tracking, saved addresses, and an admin dashboard for products and inventory.',
-      'React + TypeScript frontend, Node/Express backend, Postgres via Supabase, Stripe payments, Shippo shipping labels, Resend transactional email — each with its own webhook patterns and failure modes, reconciled into one order lifecycle.',
+      'React + TypeScript frontend, Node/Express backend, Postgres via Supabase, Stripe payments, Shippo shipping labels, Resend transactional email. Each one carries its own webhook patterns and failure modes, reconciled into one order lifecycle.',
     ],
     notes: [
       'CSRF protection, rate limiting, and HMAC token hashing throughout.',
@@ -458,7 +458,7 @@ export const CATALOG: Project[] = [
     ],
     about: [
       'A website for No Hard Feelings, a classic-rock cover band in NJ/NY. Show dates, band bios, live videos, and booking in one place.',
-      'Astro + React + Tailwind. The hero is a 3D-flippable album cover: the front is navigation styled as a tracklist, the back has band bios. Show dates pull from the band’s Google Calendar — they add a gig, the site updates, no database and no code changes.',
+      'Astro + React + Tailwind. The hero is a 3D-flippable album cover: the front is navigation styled as a tracklist, the back has band bios. Show dates pull from the band’s Google Calendar: they add a gig, the site updates, no database and no code changes.',
     ],
     notes: [
       'Google Calendar acts as the band’s CMS; the site needs zero maintenance.',
@@ -472,7 +472,7 @@ export const CATALOG: Project[] = [
     ],
     shots: [
       { img: `${SHOTS}/nohard/landing.webp`, cap: 'album-cover hero, front' },
-      { img: `${SHOTS}/nohard/backcard.webp`, cap: 'flipped — band bios' },
+      { img: `${SHOTS}/nohard/backcard.webp`, cap: 'flipped to band bios' },
       { img: `${SHOTS}/nohard/gcal-integration.webp`, cap: 'shows from google calendar' },
     ],
   },
@@ -487,7 +487,7 @@ export const CATALOG: Project[] = [
     hue: '#5da8e8',
     wip: false,
     money: false,
-    line: 'NYC work-order management — request → assign → invoice',
+    line: 'NYC work-order management: request → assign → invoice',
     seek: { from: 'request', to: 'invoice', pct: 100 },
     links: [['View repo ↗', 'https://github.com/apolydore/Work-Order-Management-System']],
     metrics: [
@@ -537,7 +537,7 @@ export const CATALOG: Project[] = [
       ['20 yrs', 'of match data'],
     ],
     about: [
-      'A group project predicting English Premier League outcomes from 20+ years of match data — 39 features covering goals, streaks, differentials, and form. Eight models trained on the same split: Random Forest, MLP, Decision Tree, KNN, Naive Bayes, Logistic Regression, XGBoost, SVM.',
+      'A group project predicting English Premier League outcomes from 20+ years of match data, using 39 features covering goals, streaks, differentials, and form. Eight models trained on the same split: Random Forest, MLP, Decision Tree, KNN, Naive Bayes, Logistic Regression, XGBoost, SVM.',
       'XGBoost finished at ~99% accuracy with SVM and Logistic Regression close behind. Feature engineering moved accuracy more than model choice.',
     ],
     notes: [
@@ -568,7 +568,7 @@ export const CATALOG: Project[] = [
     hue: '#969aa6',
     wip: false,
     money: false,
-    line: 'no edge after costs — retired with a post-mortem',
+    line: 'no edge after costs, retired with a post-mortem',
     seek: { from: '2021', to: 'retired', pct: 100 },
     links: [],
     metrics: [
@@ -615,7 +615,7 @@ export const CATALOG: Project[] = [
       ['A/B', 'preset comparison design'],
     ],
     about: [
-      'A browser-first evaluation lab for tuning agent-harness presets through games — repeatable measurements of how harness settings change agent behavior.',
+      'A browser-first evaluation lab for tuning agent-harness presets through games: repeatable measurements of how harness settings change agent behavior.',
       'Shelved while the trading systems take priority; the arena loop and preset comparison design are in place.',
     ],
     notes: [
