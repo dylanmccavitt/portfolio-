@@ -32,6 +32,7 @@ const PROJECT_IDS = [
   'dog-log',
   'chore-ladder',
   'homeserver',
+  'slurmlet',
   'bellas-beads',
   'nhf',
   'work-orders',
