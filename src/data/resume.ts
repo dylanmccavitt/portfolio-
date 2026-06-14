@@ -28,6 +28,7 @@ const PROJECT_IDS = [
   'exit-manager',
   'hood',
   'tradingview-mcp',
+  'evalgate',
   'dog-log',
   'chore-ladder',
   'homeserver',
