@@ -82,7 +82,7 @@ const meta = {
 <Tour title="I'm hiring — Dylan McCavitt" meta={meta}>
   <main class="tour-main">
     <div class="tbar">
-      <a class="back" href="/" title="Back to the concierge">‹ What brings you here?</a>
+      <a class="tour-back" href="/" title="Back to the concierge">‹ What brings you here?</a>
       <a class="resbtn" href={RESUME_URL} data-tour-resume>Resume ↓</a>
     </div>
 
@@ -252,13 +252,13 @@ const meta = {
     margin: 0 auto;
     padding: 22px 40px 0;
   }
-  .tbar .back {
+  .tbar .tour-back {
     font-family: var(--pl-mono);
     font-size: 12px;
     color: var(--pl-dim);
     text-decoration: none;
   }
-  .tbar .back:hover {
+  .tbar .tour-back:hover {
     color: var(--pl-text);
   }
   .resbtn {
@@ -425,6 +425,12 @@ const meta = {
     gap: 26px;
     align-items: start;
     margin-top: 6px;
+  }
+  /* Grid items default to min-width:auto, so a wide child (the screenshot rail
+     or a long unwrapped line) blows the track past the viewport on narrow
+     screens. min-width:0 lets both columns shrink and the text wrap. */
+  .wbody > * {
+    min-width: 0;
   }
   .wline {
     font-size: 16px;
