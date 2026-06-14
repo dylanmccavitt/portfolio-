@@ -86,7 +86,7 @@ export const RESUME: ResumeAlbum = {
   title: 'Resume',
   line: 'economics → legal ops → cyber risk → engineering',
   about:
-    'Career history in chronological order — from an economics degree to building trading systems, agents, and iOS apps in NYC.',
+    'Career history in chronological order, from an economics degree to building trading systems, agents, and iOS apps in NYC.',
   tracks: [
     {
       id: 'syracuse',
@@ -98,7 +98,7 @@ export const RESUME: ResumeAlbum = {
       hue: '#ef8354',
       about: [
         'B.S. in Economics from Syracuse University, class of 2019.',
-        'Markets, incentives, and working from data — before writing production code.',
+        'Markets, incentives, and working from data, before writing production code.',
       ],
       notes: ['Economics intuition still anchors the trading-systems work.'],
       credits: [
@@ -112,7 +112,7 @@ export const RESUME: ResumeAlbum = {
       sym: 'pw',
       title: 'Paul, Weiss',
       role: 'Practice Assistant, Private Funds',
-      when: '2020 — 2023',
+      when: '2020 to 2023',
       len: '3:00',
       hue: '#5da8e8',
       about: [
@@ -122,7 +122,7 @@ export const RESUME: ResumeAlbum = {
       notes: ['Daily exposure to how funds are actually structured and run.'],
       credits: [
         ['Group', 'private funds'],
-        ['Years', '2020 — 2023'],
+        ['Years', '2020 to 2023'],
       ],
       era: [],
     },
@@ -131,17 +131,17 @@ export const RESUME: ResumeAlbum = {
       sym: 'kr',
       title: 'Kroll, Inc.',
       role: 'Associate, Cyber Strategy & Risk',
-      when: '2023 — 2024',
+      when: '2023 to 2024',
       len: '1:30',
       hue: '#50c878',
       about: [
-        'Associate on Kroll’s Cyber Strategy & Risk team — security assessments and risk work for client organizations.',
+        'Associate on Kroll’s Cyber Strategy & Risk team, running security assessments and risk work for client organizations.',
         'The security habits carried forward: risk gates on trading systems, paper-first scaffolds, secrets hygiene, read-only defaults.',
       ],
       notes: ['The pivot into technical work.'],
       credits: [
         ['Team', 'cyber strategy & risk'],
-        ['Years', '2023 — 2024'],
+        ['Years', '2023 to 2024'],
       ],
       era: [],
     },
@@ -150,11 +150,11 @@ export const RESUME: ResumeAlbum = {
       sym: 'st',
       title: 'Stevens Institute of Technology',
       role: 'M.S. Computer Science',
-      when: '2024 — 2026',
+      when: '2024 to 2026',
       len: '2:00',
       hue: '#8b7cf6',
       about: [
-        'M.S. in Computer Science at Stevens — the formal foundation under the self-taught stack. Systems, web programming, and mobile systems, with two group projects from coursework in this catalog.',
+        'M.S. in Computer Science at Stevens, the formal foundation under the self-taught stack. Systems, web programming, and mobile systems, with two group projects from coursework in this catalog.',
         'Completed 2026, shipping side projects throughout.',
       ],
       notes: ['Two catalog entries came out of coursework here.'],
@@ -173,7 +173,7 @@ export const RESUME: ResumeAlbum = {
       len: '0:45',
       hue: '#e6b450',
       about: [
-        'IT support for the Manhattan Board of Elections — keeping election-season infrastructure running, where downtime isn’t an option.',
+        'IT support for the Manhattan Board of Elections, keeping election-season infrastructure running, where downtime isn’t an option.',
       ],
       notes: ['Production support under real deadline pressure.'],
       credits: [
@@ -191,7 +191,7 @@ export const RESUME: ResumeAlbum = {
       len: '1:15',
       hue: '#d678b6',
       about: [
-        'First freelance full-stack contract: a complete ecommerce platform for a handmade-jewelry business, from wireframe to handoff — Stripe, Shippo, Supabase, and Resend in one order lifecycle.',
+        'First freelance full-stack contract: a complete ecommerce platform for a handmade-jewelry business, from wireframe to handoff, with Stripe, Shippo, Supabase, and Resend in one order lifecycle.',
       ],
       notes: ['Scoped, built, shipped, and handed off solo.', 'Real payments, real shipping, real client.'],
       credits: [
@@ -205,8 +205,8 @@ export const RESUME: ResumeAlbum = {
       sym: 'dm',
       title: 'Open to opportunities',
       role: 'Software engineer · agents, trading infra, iOS',
-      when: '2026 —',
-      len: '—',
+      when: '2026 to now',
+      len: 'now',
       hue: '#50c878',
       current: true,
       about: [

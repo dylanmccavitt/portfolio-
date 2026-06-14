@@ -14,11 +14,11 @@ import { CATALOG } from '../../data/catalog';
 import { libraryMeta } from '../../lib/seo';
 
 const now = CATALOG[0];
-const title = 'Dylan McCavitt — All work';
+const title = 'Dylan McCavitt · All work';
 const meta = {
   ...libraryMeta(
     'All work',
-    `All work — ${CATALOG.length} projects: ${CATALOG.map((p) => p.title).join(', ')}.`,
+    `All work, ${CATALOG.length} projects: ${CATALOG.map((p) => p.title).join(', ')}.`,
   ),
   title,
 };

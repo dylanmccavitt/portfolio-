@@ -71,13 +71,13 @@ const activeLabel = ALL_LABELS.get(active) ?? 'Library';
 ---
 
 <details class="sidebar" open>
-  <summary class="side-toggle" aria-label={`Browse — current: ${activeLabel}`}>
+  <summary class="side-toggle" aria-label={`Browse, current: ${activeLabel}`}>
     <span class="st-label">Browse</span>
     <span class="st-active">{activeLabel}</span>
     <span class="st-caret" aria-hidden="true"></span>
   </summary>
 
-  <a class="me" href="/" aria-label="Dylan McCavitt — home">
+  <a class="me" href="/" aria-label="Dylan McCavitt, home">
     <span class="dot" aria-hidden="true">DM</span>
     <span><b>Dylan McCavitt</b><small>Software engineer · NYC</small></span>
   </a>
@@ -102,7 +102,7 @@ const activeLabel = ALL_LABELS.get(active) ?? 'Library';
     aria-current={active === 'resume' ? 'page' : undefined}
   >
     <span class="alb" aria-hidden="true">R</span>
-    <span class="tt"><b>Resume</b><small>2019 — now</small></span>
+    <span class="tt"><b>Resume</b><small>2019 to now</small></span>
   </a>
 
   <div class="g-label">Playlists</div>

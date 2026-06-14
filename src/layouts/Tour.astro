@@ -28,7 +28,7 @@ export interface Props {
    */
   meta?: PageMeta;
 }
-const { title, description = 'Dylan McCavitt — Portfolio', meta } = Astro.props;
+const { title, description = 'Dylan McCavitt · Portfolio', meta } = Astro.props;
 
 // Canonical URL for this page (#25) — absolute, origin from `Astro.site`.
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
