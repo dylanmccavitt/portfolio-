@@ -447,7 +447,7 @@ export const CATALOG: Project[] = [
     hue: '#5da8e8',
     wip: true,
     money: false,
-    line: 'a learn-by-building scheduler that places big AI training jobs across a fleet of GPUs',
+    line: 'an all-or-nothing scheduler that places big AI training jobs across a fleet of GPUs, built in Go and Python',
     seek: { from: 'go port', to: 'python port', pct: 45 },
     links: [],
     metrics: [
@@ -456,8 +456,8 @@ export const CATALOG: Project[] = [
       ['simulated', 'fleet runs on fake GPUs, so no costly hardware'],
     ],
     about: [
-      'A capstone project for learning how large AI training jobs get scheduled across a shared fleet of GPUs. Big training runs need many GPUs at the same moment: if even one is missing, the whole job stalls and wastes the rest. slurmlet is the traffic controller that holds a job back until every GPU it asks for is available, then starts them all together.',
-      'I am building the same tool twice, once in Go and once in Python, to compare how each language handles the job and to learn the trade-offs first-hand. Everything runs against a simulated fleet of pretend GPUs, so I can practice the full lifecycle, scheduling, draining a machine, and rescheduling, without renting expensive hardware. The Go version is active; the Python version lands next.',
+      'Big AI training runs need many GPUs at the same moment: if even one is missing, the whole job stalls and the rest sit idle. slurmlet is the traffic controller that holds a job back until every GPU it asks for is free, then starts them all together, so expensive hardware never waits half-used while a run gets the machines it needs.',
+      'It is built twice, once in Go and once in Python, against one shared design, so the two implementations can be compared head to head on the same problem (and the trade-offs each language makes show up first-hand). Everything runs against a simulated fleet of stand-in GPUs, so the full lifecycle, scheduling a job, draining a machine, and rescheduling, is exercised without renting expensive hardware. The Go version is active; the Python version lands next.',
     ],
     notes: [
       'All-or-nothing start: a job only runs once every GPU it needs is reserved, so none sit idle waiting.',
