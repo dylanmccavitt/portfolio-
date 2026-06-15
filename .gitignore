@@ -28,3 +28,9 @@ pnpm-debug.log*
 
 # working docs
 docs/
+
+# local agent worktrees (git worktree storage)
+.claude/worktrees/
+
+# conductor (retired)
+.conductor/
