@@ -7,12 +7,11 @@
  * The production agent will be a Vercel **Eve** agent (an `agent/` directory:
  * `instructions.md` + TS tools `search_catalog` / `read_resume` / `get_contact`,
  * streamed via the AI SDK). Here answers are canned (`_agentData.ts`) so the
- * four variants can be judged on layout + flow without a backend.
+ * variants can be judged on layout + flow without a backend.
  *
  *   ?variant=A   Launcher      — centered prompt that expands into an inline thread
  *   ?variant=B   Split canvas  — Codex-app: thread left, live artifact canvas right
  *   ?variant=C   Terminal      — Codex-CLI-style monospace REPL
- *   ?variant=D   DJ in shell   — chat inside the real player shell; agent queues projects
  *
  * Floating bottom-center switcher cycles variants (←/→). Real tokens
  * (player.css) + real data (catalog/resume); only the view markup is
@@ -25,15 +24,13 @@ import AgentSwitcher from './_AgentSwitcher.astro';
 import VariantA from './_AgentVariantA.astro';
 import VariantB from './_AgentVariantB.astro';
 import VariantC from './_AgentVariantC.astro';
-import VariantD from './_AgentVariantD.astro';
 
 const VARIANTS = [
   { key: 'A', name: 'Launcher' },
   { key: 'B', name: 'Split canvas' },
   { key: 'C', name: 'Terminal' },
-  { key: 'D', name: 'DJ in the shell' },
 ];
-// Static project: the server can't vary by `?variant=`, so all four panes are
+// Static project: the server can't vary by `?variant=`, so all three panes are
 // rendered and toggled client-side via `body[data-variant]` (the switcher owns
 // that). `data-variant` below is the no-JS / production fallback (B, the winner).
 const showSwitch = !import.meta.env.PROD;
@@ -57,7 +54,6 @@ const showSwitch = !import.meta.env.PROD;
     <div class="vpane" data-v="A"><VariantA /></div>
     <div class="vpane" data-v="B"><VariantB /></div>
     <div class="vpane" data-v="C"><VariantC /></div>
-    <div class="vpane" data-v="D"><VariantD /></div>
     {showSwitch && <AgentSwitcher variants={VARIANTS} />}
     <script src="./_agentProto.client.ts"></script>
   </body>

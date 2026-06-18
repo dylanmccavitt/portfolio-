@@ -11,7 +11,7 @@ can be judged without a backend.
 
 **Drive it:** floating switcher at bottom-center, or `←` / `→` keys (ignored
 while typing). Click a suggested prompt or type + Enter to see a turn reveal
-(thinking beat → streamed answer). Variant is URL state: `?variant=A|B|C|D`
+(thinking beat → streamed answer). Variant is URL state: `?variant=A|B|C`
 (static site, so the switch is client-side via `body[data-variant]`).
 
 - `A` **Launcher** — single centered column, ChatGPT/Claude empty-state. The
@@ -23,9 +23,6 @@ while typing). Click a suggested prompt or type + Enter to see a turn reveal
 - `C` **Terminal** — Codex-CLI REPL in monospace: boot log, `try ▸` commands,
   `eve ❯` prompt, tool-trace lines, records/tree output. Most on-theme for an
   engineer audience; riskiest for non-technical recruiters.
-- `D` **DJ in the shell** — chat embedded in the REAL player shell (sidebar +
-  player bar + tab bar). Eve "queues" projects as tracklist rows. Best brand
-  continuity with the current site; the chat shares space with existing chrome.
 
 ## Shared scaffolding (prototype-local)
 
@@ -37,7 +34,7 @@ while typing). Click a suggested prompt or type + Enter to see a turn reveal
   chip-click / submit with a ~700ms "thinking" beat, then the answer. Variants
   opt in via `data-proto-*` hooks; they never reimplement reveal/streaming.
 - `_AgentSwitcher.astro` — the floating variant switcher (dev-only).
-- `agent.astro` — renders all four panes, toggles `body[data-variant]`, loads
+- `agent.astro` — renders all three panes, toggles `body[data-variant]`, loads
   the driver. Real tokens (`player.css`) + real data; only the view markup is
   prototype-local.
 
@@ -48,11 +45,11 @@ stalls on a throttled surface.
 **Verdict (Dylan, 2026-06-18):** **B — Split canvas** wins. That's the landing
 direction: Codex-app shell, persistent left `agent/tools/` + prompts sidebar,
 answers render prose beside large artifact cards. It's now the default variant
-on `/prototype/agent`. (A/C/D kept for reference until B is folded into
-`index.astro`.)
+on `/prototype/agent`. (A/C kept for reference until B is folded into
+`index.astro`; the shell-based D variant was removed to avoid preserving the retired player metaphor.)
 
 **Cleanup:** once a direction is chosen, fold the winner into `index.astro`
 (rewrite properly — wire the real Eve agent + AI SDK streaming, replace the
-canned `_agentData` turns) and delete `_AgentVariant{A,B,C,D}.astro`,
+canned `_agentData` turns) and delete `_AgentVariant{A,B,C}.astro`,
 `_AgentSwitcher.astro`, `_agentProto.client.ts`, `_agentData.ts`, `agent.astro`,
 and this file.

@@ -29,13 +29,14 @@ const THINK_MS = 700;
 
 /** Membership test over the canned turn ids (dynamic lookup → Set). */
 const KNOWN_TURN_IDS = new Set(CONVERSATION.map((t) => t.id));
+const TURN_QUESTIONS = new Map(CONVERSATION.map((t) => [t.id, t.q]));
 
 /** Pick a turn id from free text by keyword; fall back to the router turn. */
 function routeQuery(text: string): string {
   const q = text.toLowerCase();
   const hits: Array<[string, RegExp]> = [
     ['hire', /\b(hire|hiring|open to|reach|contact|email|available|resume|résumé|cv)\b/],
-    ['trading', /\b(trad|option|market|stock|finance|quant|robinhood|tastytrade)\b/],
+    ['trading', /\b(trading|trade|trader|options?|market|stock|finance|quant|robinhood|tastytrade)\b/],
     ['ios', /\b(ios|iphone|app store|swift|mobile|app)\b/],
     ['background', /\b(background|history|career|experience|resume|résumé|school|study|education)\b/],
     ['now', /\b(now|currently|building|working on|latest|recent)\b/],
@@ -63,10 +64,8 @@ function initRoot(root: HTMLElement): void {
     }
     shown.add(turnId);
 
-    if (typed) {
-      const userEl = turn.querySelector<HTMLElement>('[data-proto-user]');
-      if (userEl) userEl.textContent = typed;
-    }
+    const userEl = turn.querySelector<HTMLElement>('[data-proto-user]');
+    if (userEl) userEl.textContent = typed ?? TURN_QUESTIONS.get(turnId) ?? userEl.textContent;
 
     turn.hidden = false;
     turn.classList.add('proto-in');

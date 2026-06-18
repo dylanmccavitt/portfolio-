@@ -182,12 +182,11 @@ const promptName = AGENT_NAME.toLowerCase();
 
                   {block.kind === 'links' && (
                     <div class="chips next-chips">
-                      {SUGGESTED.map((p) => (
-                        <button type="button" class="cmd-chip" data-proto-send data-turn={p.id}>
-                          <span class="run">try ▸</span>
-                          <span class="lbl">{p.label}</span>
-                          {p.hint && <span class="tool"># {p.hint}</span>}
-                        </button>
+                      {block.items.map(([label, href]) => (
+                        <a class="cmd-chip" href={href}>
+                          <span class="run">open ▸</span>
+                          <span class="lbl">{label}</span>
+                        </a>
                       ))}
                     </div>
                   )}

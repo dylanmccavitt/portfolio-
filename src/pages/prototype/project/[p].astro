@@ -67,6 +67,16 @@ const showSwitch = !import.meta.env.PROD;
     <div class="vpane" data-v="C"><VariantC project={project} related={related} /></div>
     {showSwitch && <ProtoSwitcher variants={VARIANTS} />}
 
+    <script is:inline define:vars={{ variants: VARIANTS }}>
+      (() => {
+        const keys = variants.map((v) => v.key);
+        const q = new URLSearchParams(location.search).get('variant');
+        if (q && keys.includes(q.toUpperCase())) {
+          document.body.dataset.variant = q.toUpperCase();
+        }
+      })();
+    </script>
+
     {/* Preserve the active variant when clicking through to a related project. */}
     <script is:inline>
       document.addEventListener('click', (e) => {

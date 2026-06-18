@@ -2,11 +2,11 @@
  * PROTOTYPE — throwaway, do not ship.
  *
  * Shared canned-conversation dataset for the chat-first agent landing
- * prototypes (`/prototype/agent?variant=A|B|C|D`). The real thing will be a
+ * prototypes (`/prototype/agent?variant=A|B|C`). The real thing will be a
  * Vercel **Eve** agent (an `agent/` directory: `instructions.md` + TS tools
  * like `search_catalog` / `read_resume` / `get_contact`, streamed through the
- * AI SDK). Here every answer is pre-written so the four UI variants can be
- * judged on *layout + flow* without a backend.
+ * AI SDK). Here every answer is pre-written so the UI variants can be judged on
+ * *layout + flow* without a backend.
  *
  * Each variant imports this module (the "data fetching" all variants share),
  * then renders the turns in its own structurally-distinct way. The interaction

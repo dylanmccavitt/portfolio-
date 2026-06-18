@@ -5,9 +5,9 @@
  * bottom-center, obviously not part of the design being evaluated.
  *
  * This is a STATIC Astro project (`output: 'static'`), so the server can't vary
- * the page by `?variant=` — all four variant panes are rendered and toggled
- * CLIENT-SIDE via `document.body[data-variant]` (same approach as the existing
- * `home.astro` prototype). This script owns both the initial read from the URL
+ * the page by `?variant=` — variant panes are rendered and toggled CLIENT-SIDE
+ * via `document.body[data-variant]` (same approach as the existing `home.astro`
+ * prototype). This script owns both the initial read from the URL
  * and the cycling. The route only renders it outside production builds, so a
  * stray merge can't ship the bar.
  */
@@ -35,7 +35,8 @@ const { variants } = Astro.props;
     const valEl = bar.querySelector('[data-ag-val]');
 
     const norm = (k) => (keys.includes(k) ? k : keys[0]);
-    let current = norm((new URLSearchParams(location.search).get('variant') || '').toUpperCase());
+    const fallback = () => norm((document.body.dataset.variant || '').toUpperCase());
+    let current = norm((new URLSearchParams(location.search).get('variant') || fallback()).toUpperCase());
 
     const apply = () => {
       document.body.dataset.variant = current;

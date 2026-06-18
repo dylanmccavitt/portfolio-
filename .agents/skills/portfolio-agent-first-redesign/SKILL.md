@@ -15,7 +15,7 @@ description: Use when working on the portfolio agent-first redesign, Eve runtime
 
 ## Invariants
 
-- Target `preview/agent-first-redesign`, not `main`.
+- Target the issue packet's Desired base branch / immediate stack parent; never target `main` unless a maintainer changes the plan.
 - Keep one issue / one worktree / one branch / one PR.
 - UI implementation routes to Claude.
 - Eve runtime, data tools, endpoint plumbing, tests, and cleanup route to Codex agents/subagents.

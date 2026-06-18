@@ -151,10 +151,10 @@ const TURNS = CONVERSATION.map((t) => ({
                         <div class="b-next">
                           <p class="b-next-label">Suggested next steps:</p>
                           <div class="b-next-chips">
-                            {SUGGESTED.map((s) => (
-                              <button class="b-chip" data-proto-send data-turn={s.id} type="button">
-                                {s.label}
-                              </button>
+                            {block.items.map(([label, href]) => (
+                              <a class="b-chip" href={href}>
+                                {label}
+                              </a>
                             ))}
                           </div>
                         </div>

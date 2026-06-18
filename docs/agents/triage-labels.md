@@ -11,9 +11,9 @@
 
 ## Owner routing
 
-- UI implementation issues: `ready-for-human` unless explicitly assigned to a Claude worktree.
+- Claude-owned UI implementation issues: `ready-for-human` only when a human must act; otherwise keep the issue routed to its Claude worktree/branch.
 - Non-UI implementation issues: `ready-for-agent` for Codex agents/subagents.
-- All agent-first redesign issues target preview branch `preview/agent-first-redesign`, not `main`.
+- Agent-first redesign issues are rooted at `preview/agent-first-redesign`; each PR targets the issue's documented stack parent / Desired base branch, never `main`.
 
 ## Continuity rules
 

@@ -229,7 +229,7 @@ const gallery = project.shots.slice(1);
     project.shots.map(
       (shot, i) =>
         isImageShot(shot) && (
-          <a class="lightbox" id={`va-shot-${i}`} href="#!" aria-label="Close screenshot">
+          <a class="lightbox" id={`va-shot-${i}`} href="#!" aria-label={`Close expanded screenshot: ${shot.cap}`}>
             <img src={shot.img} alt={shot.cap} loading="lazy" decoding="async" />
             <span class="lb-cap">{shot.cap}</span>
           </a>

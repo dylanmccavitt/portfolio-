@@ -35,7 +35,7 @@ const githubLabel = CONTACT.github.replace(/^https?:\/\//, '');
   </div>
 
   {/* ---- conversation thread (scrolls once started) ---- */}
-  <div class="lc-thread" data-proto-thread>
+  <div class="lc-thread" data-proto-thread role="log" aria-live="polite" aria-relevant="additions">
     <div class="lc-thread-in">
       {
         CONVERSATION.map((turn) => (

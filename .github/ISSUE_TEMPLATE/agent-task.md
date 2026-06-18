@@ -37,6 +37,12 @@
 - Where tracked: `docs/agents/scope-ledger.md`
 - Constraint imposed on V1:
 
+## Open questions
+
+| Question | Owner | Needed before | Status / evidence |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
 ## Continuity constraints checked
 
 - Constraint:
