@@ -327,6 +327,7 @@ export function createEveAgentStream(
           }
           if (transformed.type === 'block' && transformed.block.kind === 'text') {
             finalText = transformed.block.text;
+            if (sawDelta) return;
           }
 
           enqueueJson(controller, encoder, transformed);
@@ -353,7 +354,6 @@ export function createEveAgentStream(
         controller.close();
       }
 
-      void sawDelta;
     },
   });
 }
@@ -471,7 +471,12 @@ async function streamRemoteSession(
       buffer = buffer.slice(nl + 1);
       if (!line) continue;
       const event = parseRemoteEvent(line);
-      if (event) onEvent(event);
+      if (!event) continue;
+      onEvent(event);
+      if (isRemoteTurnBoundary(event)) {
+        await reader.cancel().catch(() => {});
+        return;
+      }
     }
   }
 
@@ -479,6 +484,17 @@ async function streamRemoteSession(
     const event = parseRemoteEvent(buffer.trim());
     if (event) onEvent(event);
   }
+}
+
+function isRemoteTurnBoundary(event: RemoteEveEvent): boolean {
+  return (
+    event.type === 'message.completed' ||
+    event.type === 'result.completed' ||
+    event.type === 'session.waiting' ||
+    event.type === 'session.completed' ||
+    event.type === 'session.failed' ||
+    event.type === 'turn.failed'
+  );
 }
 
 function transformRemoteEvent(event: RemoteEveEvent): EveStreamEvent | null {
