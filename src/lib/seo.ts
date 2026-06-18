@@ -1,13 +1,13 @@
 /**
  * Per-page SEO/meta derivation (#29).
  *
- * Pages pass *data* (a project, a track, or nothing); this module derives the
- * tags — title, description, OG image path, `og:type`, and JSON-LD — so the
- * head implementation stays in one component (`layouts/Player.astro`) and pages
- * never hand-write meta. Descriptions are trimmed here to ≤160 chars.
+ * Pages pass data (a project, a resume entry, or nothing); this module derives the
+ * tags — title, description, OG image path, `og:type`, and JSON-LD — so layout
+ * components can share one metadata contract. Descriptions are trimmed here to
+ * ≤160 chars.
  *
  * OG image paths point at the static `/og/**.png` endpoints rendered at build
- * (see `src/pages/og/`). The library/playlist routes share one fallback image.
+ * (see `src/pages/og/`). Shared routes use one fallback image.
  */
 import type { Project } from '../data/catalog';
 import type { ResumeTrack } from '../data/resume';
@@ -19,7 +19,7 @@ const OWNER = 'Dylan McCavitt';
 /** Canonical origin (mirrors `site` in astro.config.mjs). */
 const ORIGIN = 'https://dylanmccavitt.xyz';
 
-/** Fallback OG image for the home + library/playlist routes. */
+/** Fallback OG image for home, library, resume, and hiring routes. */
 export const OG_FALLBACK = '/og/default.png';
 
 /** The resolved meta a page hands to the layout head. */
@@ -47,7 +47,7 @@ function titleFor(name: string): string {
   return `${name} · ${OWNER}`;
 }
 
-/** Home / library / playlist meta — shared fallback OG image. */
+/** Home / library / filtered index meta — shared fallback OG image. */
 export function libraryMeta(name: string, description: string): PageMeta {
   return {
     title: titleFor(name),
@@ -84,7 +84,7 @@ export function projectMeta(p: Project): PageMeta {
   };
 }
 
-/** Journey album meta — uses the fallback OG image, profile type. */
+/** Resume index meta — uses the fallback OG image, profile type. */
 export function journeyMeta(): PageMeta {
   return {
     title: titleFor(RESUME.title),
@@ -94,11 +94,11 @@ export function journeyMeta(): PageMeta {
   };
 }
 
-/** Journey track meta — per-track OG image + CreativeWork JSON-LD. */
+/** Resume entry meta — per-entry OG image + CreativeWork JSON-LD. */
 export function journeyTrackMeta(t: ResumeTrack): PageMeta {
   const description = clampDescription(t.about[0] ?? t.role);
   return {
-    title: `${t.title} · ${RESUME.title} · ${OWNER}`,
+    title: `${t.title} · Resume · ${OWNER}`,
     description,
     ogImage: `/og/journey/${t.id}.png`,
     ogType: 'article',

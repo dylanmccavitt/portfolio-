@@ -1,96 +1,247 @@
 ---
 /**
- * Resume view — the career timeline, ported from the prototype `renderResume()`
- * / `resumeRow()` (`15-player-v4.html` lines ~870-907). Static, zero client JS:
- * the disc hero, the play-from-the-top + Resume.pdf + contact actions, and a
- * chronological tracklist where each row is a link to the track detail page
- * (`/journey/[track]`), not a button (#23 constraint).
- *
- * Reuses the shared `.art`/`.badge`/`.track`/`.listwrap`/`.actions` primitives
- * from `player.css` — nothing is scoped here, so the shared mobile gutter
- * overrides apply. Sidebar active state is driven by `active="resume"` on the
- * layout — URL-derived, no click handler.
+ * Resume index — a static, editorial career timeline backed by
+ * `src/data/resume.ts`. This route keeps the existing `/journey` URL while
+ * removing the old shell chrome and metaphor copy.
  */
-import PlayerLayout from '../layouts/Player.astro';
+import Editorial from '../layouts/Editorial.astro';
 import { RESUME } from '../data/resume';
 import { journeyMeta } from '../lib/seo';
-
-/** Album disc hue — carried from the prototype hero (`--a:#8b7cf6`). */
-const DISC_HUE = '#8b7cf6';
 
 const LINKS = {
   resume: 'https://dylanmccavitt.xyz/resume.pdf',
   email: 'mailto:dylanmccavitt@outlook.com',
+  linkedin: 'https://www.linkedin.com/in/dylan-mccavitt',
 };
 
-const tracks = RESUME.tracks;
+const entries = RESUME.tracks;
 const meta = journeyMeta();
 ---
 
-<PlayerLayout title={meta.title} meta={meta} active="resume">
-  <div class="view">
-    <div class="head">
-      <div class="hero">
-        <span class="art lg disc" style={`--a:${DISC_HUE}`} aria-hidden="true"></span>
-        <div class="info">
-          <span class="kind">Album · {tracks.length} tracks · 2019 to now</span>
-          <h1>{RESUME.title}</h1>
-          <p>{RESUME.about}</p>
-          <div class="meta">
-            <span class="badge live">Current</span>
-            <span><b>{RESUME.line}</b></span>
-          </div>
+<Editorial title={meta.title} meta={meta}>
+  <section class="resume-page">
+    <header class="resume-topbar">
+      <a class="resume-mark" href="/" aria-label="Dylan McCavitt home">DM</a>
+      <nav class="resume-nav" aria-label="Primary">
+        <a href="/">Ask Eve</a>
+        <a href="/library">Projects</a>
+        <a href="/hiring">Hiring tour</a>
+      </nav>
+    </header>
+
+    <div class="resume-wrap">
+      <section class="resume-hero">
+        <p class="eyebrow">Resume</p>
+        <h1>{RESUME.title}</h1>
+        <p>{RESUME.about}</p>
+        <div class="resume-actions">
+          <a class="btn btn-fill" href={LINKS.resume} target="_blank" rel="noopener">
+            Download resume
+          </a>
+          <a class="btn btn-out" href={LINKS.email}>Email Dylan</a>
+          <a class="btn btn-out" href={LINKS.linkedin} target="_blank" rel="noopener">
+            LinkedIn
+          </a>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <div class="actions">
-      <a
-        class="bigplay"
-        href={`/journey/${tracks[0].id}`}
-        title="play from the top"
-        aria-label="Play from the top"></a>
-      <a class="act-link" href={LINKS.resume} target="_blank" rel="noopener">
-        Resume.pdf ↗
-      </a>
-      <a class="act-link" href={LINKS.email}>Get in touch ↗</a>
+      <section class="timeline" aria-labelledby="timeline-title">
+        <h2 id="timeline-title">Career Timeline</h2>
+        <ol>
+          {
+            entries.map((entry) => (
+              <li>
+                <a class="timeline-row" href={`/journey/${entry.id}`} style={`--accent:${entry.hue}`}>
+                  <span class="when">{entry.when}</span>
+                  <span class="entry">
+                    <span class="entry-top">
+                      <b>{entry.title}</b>
+                      {entry.current && <span class="badge live">Current</span>}
+                    </span>
+                    <span>{entry.role}</span>
+                  </span>
+                </a>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
     </div>
+  </section>
+</Editorial>
 
-    <div class="listwrap">
-      <div class="list-head">
-        <span>#</span>
-        <span>Track</span>
-        <span class="album">Era</span>
-        <span class="stat-col"></span>
-        <span style="text-align:right">Length</span>
-      </div>
-      <ol class="tracklist">
-        {
-          tracks.map((t, i) => (
-            <li>
-              <a class="track" href={`/journey/${t.id}`}>
-                <span class="n">
-                  <span class="num">{i + 1}</span>
-                  <span class="hoverplay" aria-hidden="true" />
-                </span>
-                <span class="t">
-                  <b>{t.title}</b>
-                  <small>{t.role}</small>
-                </span>
-                <span class="album">{t.when}</span>
-                <span class="stat-col">
-                  {t.current && <span class="badge live">Current</span>}
-                </span>
-                <span class="len">{t.len}</span>
-              </a>
-            </li>
-          ))
-        }
-      </ol>
-    </div>
-  </div>
-</PlayerLayout>
+<style>
+  .resume-page {
+    min-height: 100dvh;
+    color: var(--pl-text);
+    font-family: var(--pl-sans);
+  }
 
-<!-- All styling comes from the player.css primitives (`.art`, `.badge`,
-     `.hero`, `.actions`, `.bigplay`, `.act-link`, `.listwrap`, ...) — no
-     scoped copy, so the mobile gutter overrides there apply here too. -->
+  .resume-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 13px clamp(18px, 5vw, 40px);
+    border-bottom: 1px solid var(--pl-line);
+    background: color-mix(in srgb, var(--pl-bg) 84%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .resume-mark {
+    font-family: var(--pl-mono);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    color: var(--pl-accent);
+    border: 1px solid color-mix(in srgb, var(--pl-accent) 38%, var(--pl-line));
+    border-radius: 7px;
+    padding: 4px 8px;
+    line-height: 1;
+  }
+
+  .resume-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--pl-dim);
+  }
+  .resume-nav a:hover {
+    color: var(--pl-text);
+  }
+
+  .resume-wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: clamp(44px, 8vw, 92px) clamp(18px, 5vw, 40px) clamp(64px, 10vw, 112px);
+  }
+
+  .resume-hero {
+    max-width: 700px;
+    margin-bottom: clamp(40px, 7vw, 72px);
+  }
+  .eyebrow {
+    font-family: var(--pl-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--pl-accent);
+    margin-bottom: 16px;
+  }
+  .resume-hero h1 {
+    font-size: clamp(38px, 7vw, 72px);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+  }
+  .resume-hero p {
+    max-width: 58ch;
+    margin-top: 18px;
+    color: var(--pl-dim);
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
+  .resume-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .btn-fill {
+    background: var(--pl-text);
+    color: #111;
+  }
+  .btn-out {
+    background: var(--pl-tile);
+    color: var(--pl-text);
+    border-color: var(--pl-line);
+  }
+  .btn-out:hover {
+    border-color: var(--pl-accent);
+  }
+
+  .timeline h2 {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--pl-faint);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--pl-line);
+  }
+  .timeline ol {
+    list-style: none;
+  }
+  .timeline-row {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 22px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--pl-line);
+  }
+  .timeline-row:hover b,
+  .timeline-row:focus-visible b {
+    color: var(--accent);
+  }
+  .when {
+    font-family: var(--pl-mono);
+    font-size: 12px;
+    color: var(--pl-faint);
+  }
+  .entry {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--pl-dim);
+    font-size: 13.5px;
+  }
+  .entry-top {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .entry b {
+    color: var(--pl-text);
+    font-size: 18px;
+    line-height: 1.2;
+    transition: color 0.15s ease;
+  }
+
+  @media (max-width: 640px) {
+    .resume-topbar {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .resume-nav {
+      justify-content: flex-start;
+      gap: 11px;
+    }
+    .timeline-row {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+  }
+</style>

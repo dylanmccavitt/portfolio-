@@ -1,6 +1,6 @@
 /**
- * Per-track OG image endpoint (#29). One static `/og/journey/<track>.png` per
- * resume track, pre-rendered at build (static output — no runtime endpoint).
+ * Per-entry resume OG image endpoint. One static `/og/journey/<track>.png` per
+ * resume entry, pre-rendered at build.
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
 import { RESUME, getResumeTrackById } from '../../../data/resume';
@@ -14,7 +14,6 @@ export const GET: APIRoute = async ({ params }) => {
   if (!t) return new Response('Not found', { status: 404 });
   const png = await renderOgImage({
     title: t.title,
-    sym: t.sym,
     hue: t.hue,
     kind: `Resume · ${t.when}`,
     tagline: t.role,

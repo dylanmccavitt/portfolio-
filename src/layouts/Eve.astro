@@ -1,10 +1,8 @@
 ---
 /**
  * Eve landing layout (#86) — the full-height shell for the Split-canvas chat
- * surface. Deliberately *not* `Player.astro`: the agent-first landing is cut
- * away from the retired Spotify/player shell (no sidebar nav, player bar, or tab
- * bar). It carries the same per-page SEO head the rest of the site uses, then
- * hands the whole viewport to the Eve conversation island.
+ * surface. It carries the same per-page SEO head the rest of the site uses,
+ * then hands the whole viewport to the Eve conversation island.
  *
  * Tokens + the `.badge` primitive come from `player.css`; the Split-canvas
  * styling (global, `.eve-`-namespaced so the JS-built thread is styled too)
@@ -52,6 +50,7 @@ const jsonLd = meta.jsonLd;
     {
       jsonLd && (
         <script
+          is:inline
           type="application/ld+json"
           set:html={JSON.stringify(jsonLd)}
         />

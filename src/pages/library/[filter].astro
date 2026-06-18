@@ -1,22 +1,20 @@
 ---
 /**
- * Filtered library views — one static route per playlist except `all`, which
- * lives at `/library`. Each route renders the library hero + the tracklist filtered to
- * that playlist.
+ * Filtered library views — one static route per project category except `all`,
+ * which lives at `/library`.
  *
  * Routing (#25): the URL segment is the canonical lowercase-kebab slug from
  * `PLAYLIST_SLUGS` (e.g. `Agents & MCP` → `/library/agents-mcp`), not the raw
  * playlist id. `getStaticPaths` emits those slugs and `playlistFromSlug`
- * resolves the param back to the playlist id, so the sidebar link, this route,
- * and the sitemap all share one stable slug scheme.
+ * resolves the param back to the playlist id, so this route and the sitemap
+ * share one stable slug scheme.
  *
  * Static rendering, zero client JS — the filter is the route, not a click.
  */
 import type { GetStaticPaths } from 'astro';
-import PlayerLayout from '../../layouts/Player.astro';
-import LibraryView from '../../components/player/LibraryView.astro';
+import Editorial from '../../layouts/Editorial.astro';
+import LibraryView from '../../components/LibraryView.astro';
 import {
-  CATALOG,
   PLAYLIST_SLUGS,
   filterCatalog,
   playlistFromSlug,
@@ -39,7 +37,6 @@ const { filter: slug } = Astro.params as { filter: string };
 // `getStaticPaths` only emits known slugs, so this always resolves.
 const filter = playlistFromSlug(slug)!;
 
-const now = CATALOG[0];
 const label = PAGE_TITLE[filter] ?? filter;
 const title = `Dylan McCavitt · ${label}`;
 const projects = filterCatalog(filter);
@@ -50,11 +47,10 @@ const meta = {
       projects.length === 1 ? 'project' : 'projects'
     }: ${projects.map((p) => p.title).join(', ')}.`,
   ),
-  // Keep the page <title> as the now-playing phrasing, not the OG title.
   title,
 };
 ---
 
-<PlayerLayout title={title} meta={meta} active={filter} now={now}>
+<Editorial title={title} meta={meta}>
   <LibraryView filter={filter} />
-</PlayerLayout>
+</Editorial>

@@ -2,19 +2,18 @@
  * Sitemap (#25) — emitted as a static `/sitemap.xml` at build time.
  *
  * Built directly from the catalog + resume data and the canonical filter-slug
- * map (project + track + playlist slugs) rather than from every page Astro
- * happens to build, so it stays *exactly* the canonical redesign route set and
- * updates automatically when a project, track, or playlist is added. Retired
+ * map rather than from every page Astro happens to build, so it stays exactly
+ * aligned with the canonical redesign route set. Retired
  * Sera-era URLs are handled by `vercel.json` 301s and never appear here.
  *
  * Canonical set (32 URLs):
  *   /                        — the concierge landing (#60)
  *   /hiring                  — the "I'm hiring" guided tour (#62)
  *   /library                 — all-work library (relocated from `/` in #60)
- *   /library/<slug>          — 8 filtered playlists (wip, 7 areas)
+ *   /library/<slug>          — 8 filtered project indexes (wip, 7 areas)
  *   /projects/<id>           — 13 project detail pages
  *   /journey                 — the resume timeline
- *   /journey/<track>         — 7 resume track pages
+ *   /journey/<track>         — 7 resume entry pages
  *
  * `/projects` (the index) is intentionally absent — it now 301s to `/library`.
  */

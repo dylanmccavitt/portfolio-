@@ -1,10 +1,9 @@
 /**
- * Resume — the career timeline. Ported verbatim from the player redesign
- * prototype (`15-player-v4.html`, the `RESUME` object). This is the single
- * source of truth for the resume views (a separate issue).
+ * Resume — the career timeline and single source of truth for resume views and
+ * Eve resume tools.
  *
- * Field names mirror the prototype so porting the renderers stays mechanical.
- * Copy (about, notes, credits, hues, lengths) is carried over as-is.
+ * Copy (about, notes, credits, hues, and chronology metadata) is kept here so
+ * static pages and Eve tools read the same facts.
  *
  * Era cross-links resolve against the project catalog (`catalog.ts`): each
  * `era` entry is a project id, constrained at compile time to the ids the
@@ -47,16 +46,16 @@ export type ProjectId = (typeof PROJECT_IDS)[number];
 /** `[label, value]` credit tuple, e.g. `['Degree', 'b.s. economics']`. */
 export type ResumeCredit = [label: string, value: string];
 
-/** A single chronological career track on the resume timeline. */
+/** A single chronological career entry on the resume timeline. */
 export interface ResumeTrack {
   id: string;
-  /** Two-letter symbol shown on the album tile. */
+  /** Short mark retained for data consumers. */
   sym: string;
   title: string;
   role: string;
   /** Time span, e.g. `'2020 — 2023'`. */
   when: string;
-  /** Track "length", e.g. `'3:00'` (or `'—'` for the current track). */
+  /** Legacy duration-style metadata retained for Eve/data compatibility. */
   len: string;
   /** Accent color (hex). */
   hue: string;
@@ -72,7 +71,7 @@ export interface ResumeTrack {
   era: ProjectId[];
 }
 
-/** The resume: metadata plus the chronological career tracks. */
+/** The resume: metadata plus chronological career entries. */
 export interface ResumeAlbum {
   title: string;
   /** One-line tagline. */
@@ -245,18 +244,7 @@ function assertCatalogIdsInSync(): void {
 
 assertCatalogIdsInSync();
 
-/**
- * Seek position for the player bar's 2019 → now timeline. Maps a track index
- * (0-based) to a percentage, evenly spaced so track 1 → ~14% and the last
- * track → 100%.
- */
-export function trackSeekPct(index: number, total: number = RESUME.tracks.length): number {
-  if (total <= 0) return 0;
-  const clamped = Math.min(Math.max(index, 0), total - 1);
-  return Math.round(((clamped + 1) / total) * 100);
-}
-
-/** Look up a resume track by id. */
+/** Look up a resume entry by id. */
 export function getResumeTrackById(id: string): ResumeTrack | null {
   return RESUME.tracks.find((t) => t.id === id) ?? null;
 }

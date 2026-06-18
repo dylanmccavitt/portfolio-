@@ -1,17 +1,15 @@
 /**
- * Fallback OG image (#29) for the home, library/playlist, and journey-album
- * routes — `/og/default.png`, pre-rendered at build (static output).
+ * Fallback OG image for home, library, resume, and hiring routes.
  */
 import type { APIRoute } from 'astro';
 import { renderOgImage } from '../../lib/og';
 
 export const GET: APIRoute = async () => {
   const png = await renderOgImage({
-    title: 'Portfolio',
-    sym: 'dm',
+    title: 'Dylan McCavitt',
     hue: '#8b7cf6',
-    kind: 'Agents · Trading infra · iOS',
-    tagline: 'Building agentic systems and trading infrastructure in NYC.',
+    kind: 'Software engineer',
+    tagline: 'Agentic systems, trading infrastructure, and iOS apps in NYC.',
   });
   return new Response(new Uint8Array(png), {
     headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' },

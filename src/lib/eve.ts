@@ -10,9 +10,8 @@
  * `/api/eve/chat` endpoint that emits this stream. This file owns nothing
  * server-side; it only describes what the landing reads. When #84 ships its
  * canonical endpoint types, these should be consolidated against them — they
- * are kept deliberately small and faithful to the prototype answer-block
- * contract (`src/pages/prototype/_agentData.ts`) so that consolidation is a
- * rename, not a redesign.
+ * are kept deliberately small and faithful to the answer-block contract so that
+ * consolidation is a rename, not a redesign.
  *
  * Wire format (documented so #84 can conform): the endpoint accepts
  *   POST /api/eve/chat  { message: string, history?: ChatMessage[] }
@@ -39,7 +38,7 @@ export const SUBGREETING =
   'I can pull up projects, walk his résumé, or get you his contact details.';
 
 /**
- * Eve's file-based tools, shown in the sidebar `agent/tools/` directory. Display
+ * Eve's file-based tools, shown in the left rail `agent/tools/` directory. Display
  * only — the authoritative tool set lives in the agent runtime (#84); this list
  * sells the "an agent is a directory" identity and mirrors that tool surface.
  */
@@ -60,7 +59,7 @@ export interface SuggestedPrompt {
 /**
  * Empty-state starter prompts. These submit their `label` as a real question to
  * the endpoint — they are seed *questions*, not canned answers, so shipping them
- * does not reintroduce the prototype's canned routing/data as the answer source.
+ * does not reintroduce canned routing/data as the answer source.
  */
 export const SUGGESTED: SuggestedPrompt[] = [
   { label: "What's Dylan building right now?", hint: 'search_catalog' },
@@ -96,7 +95,7 @@ export const CONTACT: Contact = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Answer blocks — the rendering contract (preserved from the prototype).
+// Answer blocks — the rendering contract shared with the stream renderer.
 // ---------------------------------------------------------------------------
 
 export interface TextBlock {

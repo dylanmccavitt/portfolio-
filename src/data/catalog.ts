@@ -1,14 +1,11 @@
 /**
- * Project catalog — ported verbatim from the player redesign prototype
- * (`15-player-v4.html`, the `P` array). This is the single source of truth
- * for the new player UI, replacing the role of the old `PROJECTS` array.
+ * Project catalog — the single source of truth for portfolio project content.
  *
  * Decision log: lingoloop is removed from the portfolio entirely (2026-06-10),
- * so this catalog ships 13 of the prototype's 14 projects.
+ * so this catalog ships 13 projects.
  *
- * Field names are kept close to the prototype so porting the renderers stays
- * mechanical. Copy (about, notes, metrics, captions, hues, seek values) is
- * carried over as-is.
+ * Copy (about, notes, metrics, captions, hues, and progress metadata) is kept
+ * here so static pages and Eve tools read the same facts.
  *
  * Link integrity (#30, 2026-06-10): every link points at a live destination.
  * Seven projects originally linked the bare GitHub profile as a placeholder.
@@ -68,7 +65,7 @@ export interface ProjectSkeletonShot {
 /** A shot is either a real image or a skeleton placeholder. */
 export type ProjectShot = ProjectImageShot | ProjectSkeletonShot;
 
-/** Catalog areas — also serve as the area playlists in the sidebar. */
+/** Catalog areas — also serve as project library filters. */
 export type ProjectArea =
   | 'Trading systems'
   | 'Agents & MCP'
@@ -81,7 +78,7 @@ export type ProjectArea =
 export interface Project {
   id: string;
   title: string;
-  /** Two-letter symbol shown on the album tile. */
+  /** Short project mark retained for data consumers. */
   sym: string;
   area: ProjectArea;
   status: ProjectStatus;
@@ -715,13 +712,13 @@ export const CATALOG: Project[] = [
 ];
 
 /**
- * Playlist identifiers used by the sidebar: the two cross-cutting playlists
- * (`all`, `wip`) plus one per area. `money` was retired as a playlist/tab
- * (2026-06-12) — the `Project.money` flag stays as data, not a category.
+ * Filter identifiers used by the library: the two cross-cutting filters
+ * (`all`, `wip`) plus one per area. `money` was retired as a filter
+ * (2026-06-12), but the `Project.money` flag stays as data.
  */
 export type PlaylistId = 'all' | 'wip' | ProjectArea;
 
-/** Ordered list of area playlists, mirroring the prototype sidebar order. */
+/** Ordered list of area filters. */
 export const AREA_PLAYLISTS: ProjectArea[] = [
   'Trading systems',
   'Agents & MCP',
@@ -733,7 +730,7 @@ export const AREA_PLAYLISTS: ProjectArea[] = [
 ];
 
 /**
- * Filter the catalog by playlist. Mirrors the prototype's filter predicate:
+ * Filter the catalog by library filter:
  * `all` → everything, `wip` → the flag, area → `area === id`.
  */
 export function filterCatalog(id: PlaylistId): Project[] {
@@ -742,7 +739,7 @@ export function filterCatalog(id: PlaylistId): Project[] {
   );
 }
 
-/** Count of projects in a playlist. */
+/** Count of projects in a library filter. */
 export function playlistCount(id: PlaylistId): number {
   return filterCatalog(id).length;
 }
@@ -753,12 +750,11 @@ export function getProjectById(id: string): Project | null {
 }
 
 /**
- * Canonical URL slugs for the filtered library routes (#25). The playlist ids
+ * Canonical URL slugs for the filtered library routes (#25). The filter ids
  * double as area labels, so several contain spaces, ampersands, and uppercase
  * (`Trading systems`, `Agents & MCP`, `iOS`); those are not stable, shareable
- * URL segments. This map is the single source of truth for `/library/<slug>` —
- * the sidebar link, the `[filter]` route's `getStaticPaths`, and the sitemap
- * all read it, so the slug scheme can never diverge between them.
+ * URL segments. This map is the single source of truth for `/library/<slug>`;
+ * routes and the sitemap read it, so the slug scheme stays aligned.
  *
  * `all` is intentionally absent: it lives at `/`, not `/library/all`.
  */

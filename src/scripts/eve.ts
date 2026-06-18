@@ -2,7 +2,7 @@
  * Eve landing — production chat client island (#86).
  *
  * The one deliberate client-JS island on the landing (the rest of the site
- * stays static). It replaces the prototype's canned reveal driver
+ * stays static). It replaces the canned reveal driver
  * (`_agentProto.client.ts`) with a real integration against the Eve streaming
  * endpoint (#84): it submits the visitor's question, consumes the NDJSON stream
  * incrementally, and renders the user turn, streamed answer text, the tool

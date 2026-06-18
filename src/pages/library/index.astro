@@ -1,19 +1,13 @@
 ---
 /**
- * All-work library, relocated from `/` in #60. The home route became the
- * concierge ("What brings you here?"), so the full player-style "now playing"
- * library now lives here at `/library`. Old `/`, `/projects`, and `/player`
- * links resolve here via the vercel.json 301s.
- *
- * This does NOT collide with `/library/[filter]`: `PLAYLIST_SLUGS` excludes
- * `all`, so no filter route ever emits `/library`.
+ * All-work library. The home route is Eve; `/library` is the canonical project
+ * index, with filtered indexes under `/library/[filter]`.
  */
-import PlayerLayout from '../../layouts/Player.astro';
-import LibraryView from '../../components/player/LibraryView.astro';
+import Editorial from '../../layouts/Editorial.astro';
+import LibraryView from '../../components/LibraryView.astro';
 import { CATALOG } from '../../data/catalog';
 import { libraryMeta } from '../../lib/seo';
 
-const now = CATALOG[0];
 const title = 'Dylan McCavitt · All work';
 const meta = {
   ...libraryMeta(
@@ -24,6 +18,6 @@ const meta = {
 };
 ---
 
-<PlayerLayout title={title} meta={meta} active="all" now={now}>
+<Editorial title={title} meta={meta}>
   <LibraryView filter="all" />
-</PlayerLayout>
+</Editorial>

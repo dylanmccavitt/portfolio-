@@ -1,20 +1,10 @@
 ---
 /**
- * Resume track detail view — one static page per career track, ported from the
- * prototype `renderResumeTrack()` (`15-player-v4.html` lines 909-952). Static,
- * zero client JS. `getStaticPaths()` enumerates the 7 resume tracks.
- *
- * Reuses the #22 player components: `ProjectArt` (lg hero tile), `StatusBadge`
- * (era badge), and `CreditsList` (label/value rows — `ResumeCredit` shares the
- * `ProjectStackEntry` shape). The "Shipped during this era" cross-links into
- * project detail pages render with the canonical `ProjectCard` grid (#85). The
- * current track ("Open to opportunities") gets Email + LinkedIn actions; the
- * others get none.
+ * Resume detail view — one static page per career entry. The route keeps the
+ * existing `/journey/[track]` parameter for compatibility while presenting the
+ * content as plain resume history.
  */
-import PlayerLayout from '../../layouts/Player.astro';
-import ProjectArt from '../../components/player/ProjectArt.astro';
-import StatusBadge from '../../components/player/StatusBadge.astro';
-import CreditsList from '../../components/player/CreditsList.astro';
+import Editorial from '../../layouts/Editorial.astro';
 import ProjectCardGrid from '../../components/ProjectCardGrid.astro';
 import { RESUME, getResumeTrackById, type ResumeTrack } from '../../data/resume';
 import { getProjectById, type Project } from '../../data/catalog';
@@ -32,11 +22,10 @@ interface Props {
 }
 const { track } = Astro.props as Props;
 
-// Fallback for direct prop typing; getStaticPaths always supplies `track`.
 const t = track ?? getResumeTrackById(Astro.params.track as string)!;
-
 const index = RESUME.tracks.findIndex((x) => x.id === t.id);
-// Resolve era cross-links against the catalog; drop any that don't resolve.
+const previous = index > 0 ? RESUME.tracks[index - 1] : null;
+const next = RESUME.tracks[index + 1] ?? null;
 const era = t.era
   .map((id) => getProjectById(id))
   .filter((p): p is Project => p !== null);
@@ -46,85 +35,322 @@ const LINKS = {
   linkedin: 'https://www.linkedin.com/in/dylan-mccavitt',
 };
 
-// The bigplay is a static nav anchor here (no #24 play island on this view).
-// Prefer the next track, fall back to the era's first project, then the album
-// index — `nextTrack` is undefined on the final track and `era` can be empty.
-const nextTrack = RESUME.tracks[index + 1];
-const playHref = nextTrack
-  ? `/journey/${nextTrack.id}`
-  : era[0]
-    ? `/projects/${era[0].id}`
-    : '/journey';
-const playLabel = nextTrack ? `Play next track: ${nextTrack.title}` : 'Play';
-
 const meta = journeyTrackMeta(t);
 ---
 
-<PlayerLayout title={meta.title} meta={meta} active="resume">
-  <div class="view">
-    <div class="head">
-      <a class="back" href="/journey">Resume</a>
-      <div class="hero">
-        <ProjectArt sym={t.sym} hue={t.hue} size="lg" />
-        <div class="info">
-          <span class="kind">Track {index + 1} of {RESUME.tracks.length} · {t.when}</span>
-          <h1>{t.title}</h1>
-          <p>{t.role}</p>
-          <div class="meta">
-            {
-              t.current ? (
-                <span class="badge live">Current</span>
-              ) : (
-                <StatusBadge status={['done', t.when]} />
-              )
-            }
-          </div>
-        </div>
-      </div>
-    </div>
+<Editorial title={meta.title} meta={meta}>
+  <article class="resume-detail" style={`--accent:${t.hue}`}>
+    <header class="detail-topbar">
+      <a class="detail-mark" href="/" aria-label="Dylan McCavitt home">DM</a>
+      <nav class="detail-nav" aria-label="Primary">
+        <a href="/journey">Resume</a>
+        <a href="/library">Projects</a>
+        <a href="/hiring">Hiring tour</a>
+      </nav>
+    </header>
 
-    <div class="actions">
-      <a
-        class="bigplay"
-        href={playHref}
-        title={nextTrack ? 'play next track' : 'play'}
-        aria-label={playLabel}></a>
+    <div class="detail-wrap">
+      <a class="back" href="/journey">Back to resume</a>
+
+      <section class="detail-hero">
+        <p class="eyebrow">{t.when}</p>
+        <h1>{t.title}</h1>
+        <p>{t.role}</p>
+        <div class="hero-meta">
+          <span class:list={['badge', t.current ? 'live' : 'done']}>
+            {t.current ? 'Current' : t.when}
+          </span>
+        </div>
+        {
+          t.current && (
+            <div class="detail-actions">
+              <a class="btn btn-fill" href={LINKS.email}>Email Dylan</a>
+              <a class="btn btn-out" href={LINKS.linkedin} target="_blank" rel="noopener">
+                LinkedIn
+              </a>
+            </div>
+          )
+        }
+      </section>
+
+      <div class="read">
+        <section class="block">
+          <h2>About</h2>
+          {t.about.map((para) => <p>{para}</p>)}
+        </section>
+
+        <section class="block">
+          <h2>Highlights</h2>
+          <ul class="notes">
+            {t.notes.map((note) => <li>{note}</li>)}
+          </ul>
+        </section>
+
+        <section class="block">
+          <h2>Details</h2>
+          <dl class="details">
+            {t.credits.map(([label, value]) => (
+              <div>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </div>
+
       {
-        t.current && (
-          <>
-            <a class="act-link" href={LINKS.email}>
-              Email ↗
-            </a>
-            <a class="act-link" href={LINKS.linkedin} target="_blank" rel="noopener">
-              LinkedIn ↗
-            </a>
-          </>
+        era.length > 0 && (
+          <section class="related">
+            <h2>Related projects</h2>
+            <ProjectCardGrid projects={era} />
+          </section>
         )
       }
-    </div>
 
-    <div class="pbody">
-      <div>
-        <h3>About this track</h3>
-        {t.about.map((para) => <p>{para}</p>)}
-        <h3>Liner notes</h3>
-        <ul class="notes">
-          {t.notes.map((note) => <li>{note}</li>)}
-        </ul>
-      </div>
-      <div>
-        <h3>Credits</h3>
-        <CreditsList rows={t.credits} />
-      </div>
+      <nav class="entry-nav" aria-label="Resume entries">
+        {previous ? <a href={`/journey/${previous.id}`}>Previous: {previous.title}</a> : <span></span>}
+        {next ? <a href={`/journey/${next.id}`}>Next: {next.title}</a> : <a href="/library">View projects</a>}
+      </nav>
     </div>
+  </article>
+</Editorial>
 
-    {
-      era.length > 0 && (
-        <div class="more">
-          <h3>Shipped during this era</h3>
-          <ProjectCardGrid projects={era} />
-        </div>
-      )
+<style>
+  .resume-detail {
+    --accent: var(--pl-accent);
+    min-height: 100dvh;
+    color: var(--pl-text);
+    font-family: var(--pl-sans);
+  }
+
+  .detail-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 13px clamp(18px, 5vw, 40px);
+    border-bottom: 1px solid var(--pl-line);
+    background: color-mix(in srgb, var(--pl-bg) 84%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .detail-mark {
+    font-family: var(--pl-mono);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--pl-line));
+    border-radius: 7px;
+    padding: 4px 8px;
+    line-height: 1;
+  }
+
+  .detail-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--pl-dim);
+  }
+  .detail-nav a:hover {
+    color: var(--pl-text);
+  }
+
+  .detail-wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: clamp(32px, 6vw, 70px) clamp(18px, 5vw, 40px) clamp(64px, 10vw, 112px);
+  }
+
+  .back {
+    display: inline-flex;
+    color: var(--pl-dim);
+    font-size: 13px;
+    margin-bottom: clamp(32px, 5vw, 56px);
+  }
+  .back:hover {
+    color: var(--pl-text);
+  }
+
+  .detail-hero {
+    max-width: 720px;
+    margin: 0 auto clamp(40px, 7vw, 72px);
+    text-align: center;
+  }
+  .eyebrow {
+    font-family: var(--pl-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .detail-hero h1 {
+    font-size: clamp(34px, 7vw, 68px);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+  }
+  .detail-hero p {
+    max-width: 54ch;
+    margin: 18px auto 0;
+    color: var(--pl-dim);
+    font-size: clamp(16px, 2.4vw, 20px);
+    line-height: 1.5;
+  }
+  .hero-meta {
+    margin-top: 22px;
+  }
+
+  .detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .btn-fill {
+    background: var(--accent);
+    color: #0c0e13;
+  }
+  .btn-out {
+    background: var(--pl-tile);
+    color: var(--pl-text);
+    border-color: var(--pl-line);
+  }
+  .btn-out:hover {
+    border-color: var(--accent);
+  }
+
+  .read {
+    max-width: 68ch;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(34px, 5vw, 52px);
+  }
+  .block h2,
+  .related h2 {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--pl-faint);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--pl-line);
+  }
+  .block p {
+    color: var(--pl-text);
+    font-size: 15.5px;
+    line-height: 1.78;
+  }
+  .block p + p {
+    margin-top: 16px;
+  }
+  .notes {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .notes li {
+    position: relative;
+    padding-left: 26px;
+    color: var(--pl-dim);
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+  .notes li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .details {
+    display: grid;
+    border-top: 1px solid var(--pl-line);
+  }
+  .details div {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 24px;
+    border-bottom: 1px solid var(--pl-line);
+    padding: 12px 0;
+  }
+  .details dt {
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--pl-faint);
+  }
+  .details dd {
+    font-family: var(--pl-mono);
+    font-size: 13px;
+    color: var(--pl-text);
+    text-align: right;
+    word-break: break-word;
+  }
+
+  .related {
+    margin-top: clamp(48px, 8vw, 84px);
+  }
+
+  .entry-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: clamp(48px, 8vw, 84px);
+    padding-top: 18px;
+    border-top: 1px solid var(--pl-line);
+    color: var(--pl-dim);
+    font-size: 13px;
+  }
+  .entry-nav a:hover {
+    color: var(--pl-text);
+  }
+
+  @media (max-width: 640px) {
+    .detail-topbar {
+      align-items: flex-start;
+      flex-direction: column;
     }
-  </div>
-</PlayerLayout>
+    .detail-nav {
+      justify-content: flex-start;
+      gap: 11px;
+    }
+    .details div {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .details dd {
+      text-align: left;
+    }
+    .entry-nav {
+      flex-direction: column;
+    }
+  }
+</style>

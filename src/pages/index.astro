@@ -2,12 +2,12 @@
 /**
  * Home — the Split-canvas Eve landing (#86). The portfolio is agent-first: you
  * land on Eve, a chat agent that answers questions about Dylan and renders
- * project, résumé, and contact artifacts. This is the winning prototype layout
- * (`prototype/_AgentVariantB.astro`, "Split canvas") folded into production and
- * wired to the Eve streaming endpoint (#84) via the chat island
- * (`scripts/eve.ts`); the canned prototype driver/data are not shipped.
+ * project, résumé, and contact artifacts. This is the winning Split-canvas
+ * layout folded into production and wired to the Eve streaming endpoint (#84)
+ * via the chat island (`scripts/eve.ts`); canned demo driver/data are not
+ * shipped.
  *
- * Structure: a persistent left sidebar (Eve identity, `agent/tools/`, suggested
+ * Structure: a persistent left rail (Eve identity, `agent/tools/`, suggested
  * prompts, new-conversation) and a main pane (empty-state greeting, the
  * conversation thread the island fills, and a docked composer). The thread's
  * turns are built client-side from streamed payloads — see `scripts/eve.ts`.
@@ -29,7 +29,7 @@ const meta = {
 
 <EveLayout title="Dylan McCavitt · Software engineer" meta={meta}>
   <div class="eve-root" data-eve-root>
-    <!-- ============ persistent left sidebar ============ -->
+    <!-- ============ persistent left rail ============ -->
     <aside class="eve-side">
       <div class="eve-id">
         <span class="eve-monogram" aria-hidden="true">✦</span>

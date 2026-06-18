@@ -1,16 +1,13 @@
 ---
 /**
- * Editorial layout — the standalone `<head>` + body scaffold for the centered
- * Editorial project detail pages (#87). Like `Tour.astro` (#62), it reuses the
- * player shell's head derivation (canonical, OG/Twitter, JSON-LD, fonts,
- * favicon) but renders NONE of the player chrome: no Sidebar/PlayerBar/TabBar,
- * no `.player-body` grid, no `player.ts` script.
+ * Editorial layout — standalone `<head>` + body scaffold for static pages that
+ * share the site metadata contract (canonical, OG/Twitter, JSON-LD, fonts,
+ * favicon).
  *
  * The detail page projects its own monogram/back bar + case-study article into
  * the `<slot/>`; design tokens, the two web fonts, and the `.badge.<kind>`
- * classes still come from `player.css` (the `--pl-*` set), so the page stays
- * visually consistent with the rest of the redesign. Fully static, zero client
- * JS — the only interactivity (the screenshot lightbox) is CSS `:target`.
+ * classes still come from `player.css` (the `--pl-*` set), so these pages stay
+ * visually consistent with the rest of the redesign.
  */
 import { OG_FALLBACK, type PageMeta } from '../lib/seo';
 import '../styles/player.css';
@@ -43,11 +40,7 @@ const jsonLd = meta?.jsonLd;
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!--
-      viewport-fit=cover (#58): keeps the page edge-to-edge and the
-      env(safe-area-inset-*) values real on iOS Safari — matches the player /
-      tour shells the editorial page sits alongside.
-    -->
+    <!-- Keeps the page edge-to-edge and preserves iOS safe-area values. -->
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
@@ -70,6 +63,7 @@ const jsonLd = meta?.jsonLd;
     {
       jsonLd && (
         <script
+          is:inline
           type="application/ld+json"
           set:html={JSON.stringify(jsonLd)}
         />

@@ -1,7 +1,7 @@
 /**
  * Tour-state island (#62) — the one earned exception to the zero-client-JS rule
- * for `/hiring`, mirroring `src/scripts/player.ts`. A single vanilla-TS module,
- * no framework, that turns the stacked beats into a single-screen stepper:
+ * for `/hiring`. A single vanilla-TS module, no framework, that turns the
+ * stacked beats into a single-screen stepper:
  *
  *   - sets `html[data-tour-js]` so the page's CSS flips from the no-JS stacked
  *     layout to the one-beat-per-screen stepper (chrome gated behind that flag);
@@ -20,7 +20,7 @@
  * localStorage — the tour always starts at the hook).
  *
  * Wrapped in an IIFE to keep declarations out of the page's global scope and
- * `astro check`'s shared-scope type-checking clean (same as player.ts).
+ * `astro check`'s shared-scope type-checking clean.
  */
 
 (() => {
@@ -125,7 +125,7 @@
   });
 
   // Keyboard: arrows step the tour. Never hijack form fields, links, or buttons
-  // (so arrows over a focused control don't double-fire) — mirrors player.ts.
+  // so arrows over a focused control don't double-fire.
   document.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, select, a, button, [contenteditable="true"]')) {

@@ -14,7 +14,6 @@ export const GET: APIRoute = async ({ params }) => {
   if (!p) return new Response('Not found', { status: 404 });
   const png = await renderOgImage({
     title: p.title,
-    sym: p.sym,
     hue: p.hue,
     kind: `${p.area} · ${p.year}`,
     tagline: p.line,

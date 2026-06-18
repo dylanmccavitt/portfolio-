@@ -1,7 +1,6 @@
 ---
 /**
- * Project card — the canonical "Typographic" project card (#85), ported from the
- * winning prototype `_CardsVariantB.astro` ("Variant B — Typographic").
+ * Project card — the canonical "Typographic" project card (#85).
  *
  * Image-free and tile-free by intent: a project's identity is type + color only.
  * The monospace project `id` is the sole mark, over a strong title, a `area ·
@@ -10,10 +9,9 @@
  * and brightens on hover/focus, and the id/title pick up the hue. Surfaces stay
  * flat (no boxes); hairlines + whitespace do the framing.
  *
- * This is the one canonical project card site-wide: it replaces the old
- * album-art systems (`AlbumCard` + the `ProjectArt` two-letter tile) and never
- * uses `project.sym`, screenshots, icons, or generated marks. Static, zero
- * client JS; links to `/projects/{id}` with a visible keyboard focus ring.
+ * This is the one canonical project card site-wide: it never uses screenshots,
+ * icons, generated marks, or project initials. Static, zero client JS; links to
+ * `/projects/{id}` with a visible keyboard focus ring.
  *
  * Reused by the library index, the project-detail "More projects" rail, and the
  * résumé "Shipped during this era" rail; see `ProjectCardGrid.astro` for the

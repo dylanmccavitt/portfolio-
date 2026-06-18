@@ -9,12 +9,12 @@
 
    Tokens (`--pl-*`) and the shared `.badge` primitive come from
    `src/styles/player.css`, imported alongside this file by the Eve layout.
-   Ported from the winning prototype `_AgentVariantB.astro` (Split canvas); the
+   Ported from the winning Split-canvas variant; the
    project artifact card follows the canonical Typographic card contract (#85):
    image-free, tile-free, monospace id as the only mark, hue hairline tick.
    ============================================================ */
 
-/* ---- body reset (no player shell; mirrors player.css `.tour-body`) ---- */
+/* ---- body reset ---- */
 .eve-body {
   margin: 0;
   background: var(--pl-bg);
@@ -88,7 +88,7 @@
   display: none !important;
 }
 
-/* ============ sidebar ============ */
+/* ============ left rail ============ */
 .eve-side {
   background: var(--pl-side);
   border-right: 1px solid var(--pl-line);
@@ -360,7 +360,7 @@
   margin-bottom: 0;
 }
 /* transform-only entrance — never opacity-fill (can stall invisible on a
-   throttled/occluded surface; see prototype _AGENT_NOTES) */
+   throttled/occluded surface. */
 .eve-turn {
   animation: eve-turn-in 0.26s ease both;
 }

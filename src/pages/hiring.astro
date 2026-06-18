@@ -1,33 +1,28 @@
 ---
 /**
  * `/hiring` — the "I'm hiring" guided tour (#62). A standalone, stepped tour
- * (the prototype's T1 format from `18-hiring-tour.html`): one beat per screen,
- * Back/Next + dots, opened from the concierge's "I'm hiring" route (#60).
+ * one beat per screen, Back/Next + dots, opened from the "I'm hiring" route.
  *
  * Nine beats in order:
  *   0  hook / agenda      — name, title, "In this tour" numbered list
  *   1-5 selected work     — one card per featured project (FEATURED_IDS)
- *   6  track record       — the resume timeline (RESUME.tracks)
+ *   6  resume timeline    — the resume timeline (RESUME.tracks)
  *   7  the ask            — resume + contact CTAs (the one resume CTA here)
  *   8  handoff            — "Continue to the full site →" → /library
  *
  * ALL project/resume copy reads from `catalog.ts` / `resume.ts` — nothing is
- * duplicated here. Built on the lightweight `Tour` layout (no player chrome).
+ * duplicated here. Built on the lightweight `Tour` layout.
  * The stepper is progressive enhancement: with JS off, every beat is stacked
  * and scrollable (see the scoped `<style>` and `src/scripts/tour.ts`).
  */
 import Tour from '../layouts/Tour.astro';
-import ProjectArt from '../components/player/ProjectArt.astro';
-import StatusBadge from '../components/player/StatusBadge.astro';
-import ShotsRail from '../components/player/ShotsRail.astro';
+import ShotRail from '../components/ShotRail.astro';
 import { getProjectById, type Project } from '../data/catalog';
 import { RESUME } from '../data/resume';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 /**
- * Site convention for the off-site CTAs — kept as local consts (matching
- * PlayerBar/Sidebar) rather than imported, so the tour is self-contained.
- */
+/** Site convention for the off-site CTAs. */
 const RESUME_URL = 'https://dylanmccavitt.xyz/resume.pdf';
 const EMAIL_URL = 'mailto:dylanmccavitt@outlook.com';
 const GITHUB_URL = 'https://github.com/DylanMcCavitt';
@@ -57,7 +52,7 @@ const FEATURED: Project[] = FEATURED_IDS.map((id) => {
   return project;
 });
 
-// The full career timeline, in chronological order, for the track-record beat.
+// The full career timeline, in chronological order, for the resume beat.
 const TRACKS = RESUME.tracks;
 
 /**
@@ -66,7 +61,7 @@ const TRACKS = RESUME.tracks;
  */
 const AGENDA: [label: string, detail: string][] = [
   ['Some of my work', `${FEATURED.length} projects`],
-  ['Track Record', 'Education & experience'],
+  ['Resume', 'Education & experience'],
   ['Resume & contact', 'The fastest way to reach me'],
 ];
 
@@ -127,11 +122,11 @@ const meta = {
                   Selected work · {i + 1}/{FEATURED.length}
                 </div>
                 <div class="wtop">
-                  <ProjectArt sym={project.sym} hue={project.hue} />
                   <div>
+                    <span class="work-id" style={`--accent:${project.hue}`}>{project.id}</span>
                     <h2>{project.title}</h2>
                     <div class="meta">
-                      <StatusBadge status={project.status} />
+                      <span class:list={['badge', project.status[0]]}>{project.status[1]}</span>
                       <span>{project.area}</span>
                     </div>
                   </div>
@@ -169,7 +164,7 @@ const meta = {
                     </details>
                   </div>
                   <div class="wshot">
-                    <ShotsRail shots={project.shots} hue={project.hue} />
+                    <ShotRail shots={project.shots} hue={project.hue} />
                   </div>
                 </div>
               </div>
@@ -178,10 +173,10 @@ const meta = {
         })
       }
 
-      {/* Beat 6 — track record (resume timeline) */}
+      {/* Beat 6 — resume timeline */}
       <section class="step" data-step>
         <div class="card">
-          <div class="upper kicker">The track record</div>
+          <div class="upper kicker">Resume timeline</div>
           <div class="arc-list">
             {
               TRACKS.map((track) => (
@@ -404,10 +399,13 @@ const meta = {
     align-items: center;
     margin-bottom: 14px;
   }
-  .wtop :global(.art) {
-    width: 62px;
-    height: 62px;
-    font-size: 19px;
+  .work-id {
+    display: inline-block;
+    margin-bottom: 7px;
+    font-family: var(--pl-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, var(--accent) 64%, var(--pl-faint));
   }
   .wtop h2 {
     font-size: 28px;
@@ -432,7 +430,7 @@ const meta = {
     margin-top: 6px;
   }
   /* Grid items default to min-width:auto, so a wide child (the screenshot rail
-     or a long unwrapped line) blows the track past the viewport on narrow
+     or a long unwrapped line) blows the row past the viewport on narrow
      screens. min-width:0 lets both columns shrink and the text wrap. */
   .wbody > * {
     min-width: 0;
@@ -451,7 +449,7 @@ const meta = {
     content: '✓ ';
     color: var(--pl-green);
   }
-  /* Let the screenshot rail bleed to the card edge like the prototype's shot. */
+  /* Let the screenshot rail bleed to the card edge. */
   .wshot {
     margin: 0 -10px;
   }
@@ -541,7 +539,7 @@ const meta = {
     color: var(--pl-faint);
   }
 
-  /* ---- track-record beat ---- */
+  /* ---- resume timeline beat ---- */
   .arc-list {
     display: flex;
     flex-direction: column;

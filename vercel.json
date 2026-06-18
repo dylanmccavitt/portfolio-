@@ -9,7 +9,7 @@
     { "source": "/log", "destination": "/library", "permanent": true },
     { "source": "/log/:slug", "destination": "/library", "permanent": true },
     { "source": "/homelab/topology", "destination": "/projects/homeserver", "permanent": true },
-    { "source": "/player", "destination": "/library", "permanent": true },
+    { "source": "/player", "destination": "/", "permanent": true },
     { "source": "/projects", "destination": "/library", "permanent": true }
   ]
 }
