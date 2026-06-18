@@ -150,37 +150,6 @@
   color: var(--pl-faint);
   font-weight: 600;
 }
-.eve-path {
-  font-family: var(--pl-mono);
-  font-size: 10.5px;
-  color: var(--pl-dim);
-  margin-top: 3px;
-}
-.eve-tools {
-  list-style: none;
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.eve-tool {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 7px;
-  font-family: var(--pl-mono);
-  font-size: 12px;
-  color: var(--pl-dim);
-}
-.eve-tool-glyph {
-  color: var(--pl-accent);
-}
-.eve-tool-ext {
-  margin-left: auto;
-  font-size: 10.5px;
-  color: var(--pl-faint);
-}
 
 .eve-section--grow {
   flex: 1;
@@ -222,11 +191,6 @@
   font-size: 12.5px;
   color: var(--pl-text);
   line-height: 1.35;
-}
-.eve-suggest-hint {
-  font-family: var(--pl-mono);
-  font-size: 10px;
-  color: var(--pl-faint);
 }
 
 .eve-reset {
@@ -896,9 +860,6 @@ a.eve-contact-row:hover .eve-contact-val {
   .eve-id-sub {
     display: none;
   }
-  .eve-section--tools {
-    display: none;
-  }
   .eve-section--grow {
     flex: 1 1 auto;
     min-width: 0;
@@ -923,9 +884,6 @@ a.eve-contact-row:hover .eve-contact-val {
   }
   .eve-suggest-row:hover {
     transform: none;
-  }
-  .eve-suggest-hint {
-    display: none;
   }
   .eve-reset {
     margin: 0 0 0 auto;
