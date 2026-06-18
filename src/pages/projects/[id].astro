@@ -7,10 +7,11 @@
  * gallery with a zero-JS `:target` lightbox, and a "More projects" row built
  * from the canonical Typographic card language (#85).
  *
- * Static, zero client JS: the gallery lightbox is pure CSS `:target`. Routes
- * and SEO are preserved — one prerendered page per `CATALOG` entry, meta via
- * `projectMeta(p)`. Tokens, the two web fonts, and the global `.badge.<kind>`
- * classes come from `player.css` (imported by the Editorial layout).
+ * Static-first: the gallery lightbox is pure CSS `:target`, and the only client
+ * island is the deliberate contextual Eve popup. Routes and SEO are preserved —
+ * one prerendered page per `CATALOG` entry, meta via `projectMeta(p)`. Tokens,
+ * the two web fonts, and the global `.badge.<kind>` classes come from
+ * `player.css` (imported by the Editorial layout).
  */
 import Editorial from '../../layouts/Editorial.astro';
 import ProjectCardGrid from '../../components/ProjectCardGrid.astro';
@@ -22,6 +23,8 @@ import {
   type ProjectShot,
 } from '../../data/catalog';
 import { projectMeta } from '../../lib/seo';
+import { AGENT_NAME } from '../../lib/eve';
+import '../../styles/eve.css';
 
 export function getStaticPaths() {
   return CATALOG.map((project) => ({
@@ -40,6 +43,10 @@ const p = project ?? getProjectById(Astro.params.id as string)!;
 
 const related = CATALOG.filter((o) => o.area === p.area && o.id !== p.id).slice(0, 5);
 const meta = projectMeta(p);
+const agentDialogId = `project-agent-${p.id}`;
+const agentTitleId = `${agentDialogId}-title`;
+const agentDescriptionId = `${agentDialogId}-description`;
+const defaultProjectPrompt = `Tell me about ${p.title} and what Dylan did.`;
 
 const isPhone = (shot: ProjectShot): boolean =>
   isImageShot(shot) ? shot.phone === true : shot.kind === 'phone';
@@ -92,6 +99,100 @@ const gallery = p.shots.slice(1);
             </div>
           )
         }
+
+        <div class="project-agent" data-eve-root data-eve-project-id={p.id}>
+          <button
+            class="project-agent-trigger"
+            type="button"
+            data-eve-open
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls={agentDialogId}
+          >
+            <span>Ask about this</span>
+            <small>{AGENT_NAME} answers in place</small>
+          </button>
+
+          <div class="eve-popup" data-eve-dialog hidden>
+            <section
+              class="eve-popup-panel"
+              data-eve-panel
+              id={agentDialogId}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={agentTitleId}
+              aria-describedby={agentDescriptionId}
+              tabindex="-1"
+            >
+              <header class="eve-popup-head">
+                <div>
+                  <p class="eve-label">Project agent</p>
+                  <h2 id={agentTitleId}>Ask about {p.title}</h2>
+                </div>
+                <button class="eve-popup-close" type="button" data-eve-close>
+                  <span aria-hidden="true">×</span>
+                  <span class="eve-sr-only">Close project agent</span>
+                </button>
+              </header>
+
+              <div class="eve-main eve-main--popup">
+                <p id={agentDescriptionId} class="eve-sr-only">
+                  Chat with {AGENT_NAME} about this project without leaving the page.
+                </p>
+                <div class="eve-stage">
+                  <div class="eve-empty">
+                    <div class="eve-card">
+                      <span class="eve-card-tile" aria-hidden="true">✦</span>
+                      <h3 class="eve-greeting">What should recruiters know about this project?</h3>
+                      <p class="eve-subgreeting">
+                        {AGENT_NAME} will answer using {p.title} as the active project context.
+                      </p>
+                      <ul class="eve-suggest project-agent-suggest">
+                        <li>
+                          <button
+                            class="eve-suggest-row"
+                            type="button"
+                            data-eve-send
+                            data-label={defaultProjectPrompt}
+                          >
+                            <span class="eve-suggest-label">Start with the project overview</span>
+                            <span class="eve-suggest-hint">context.projectIds: {p.id}</span>
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div
+                    class="eve-thread"
+                    data-eve-thread
+                    role="log"
+                    aria-label={`${AGENT_NAME} conversation about ${p.title}`}
+                  ></div>
+                </div>
+
+                <form class="eve-composer" data-eve-form>
+                  <div class="eve-composer-inner">
+                    <span class="eve-composer-glyph" aria-hidden="true">⌁</span>
+                    <input
+                      class="eve-input"
+                      data-eve-input
+                      type="text"
+                      name="message"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder={`Ask about ${p.title}…`}
+                      aria-label={`Ask ${AGENT_NAME} about ${p.title}`}
+                    />
+                    <button class="eve-send" type="submit" data-eve-submit aria-label="Send message">
+                      →
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </section>
+          </div>
+        </div>
       </section>
 
       {
@@ -245,6 +346,7 @@ const gallery = p.shots.slice(1);
       )
     }
   </article>
+  <script src="../../scripts/eve.ts"></script>
 </Editorial>
 
 <style>

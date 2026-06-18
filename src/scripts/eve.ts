@@ -41,6 +41,10 @@ import {
  * an attribute. Loose by design — this is an internal builder.
  */
 type ElProps = Record<string, string | boolean | undefined>;
+type ChatContext = {
+  projectIds?: string[];
+  resumeTrackIds?: string[];
+};
 
 function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -336,13 +340,15 @@ class Turn {
 async function streamInto(
   turn: Turn,
   message: string,
-  history: ChatMessage[],
+  conversation: ChatMessage[],
+  context: ChatContext | undefined,
   signal: AbortSignal,
 ): Promise<void> {
+  const payload = context ? { message, conversation, context } : { message, conversation };
   const res = await fetch(EVE_ENDPOINT, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify(payload),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -382,10 +388,16 @@ function initRoot(root: HTMLElement): void {
   const sendBtn = root.querySelector<HTMLButtonElement>('[data-eve-submit]');
   if (!thread || !form || !input) return;
 
+  const projectId = root.dataset.eveProjectId?.trim();
+  const context = projectId ? { projectIds: [projectId] } : undefined;
+
   const history: ChatMessage[] = [];
   let busy = false;
   let controller: AbortController | null = null;
 
+  const trigger = root.querySelector<HTMLElement>('[data-eve-open]');
+  const dialog = root.querySelector<HTMLElement>('[data-eve-dialog]');
+  const panel = root.querySelector<HTMLElement>('[data-eve-panel]');
   const setBusy = (next: boolean): void => {
     busy = next;
     if (sendBtn) sendBtn.disabled = next;
@@ -402,11 +414,11 @@ function initRoot(root: HTMLElement): void {
 
     const turn = new Turn(message);
     thread.append(turn.root);
-    turn.root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' });
 
     controller = new AbortController();
     try {
-      await streamInto(turn, message, historySnapshot, controller.signal);
+      await streamInto(turn, message, historySnapshot, context, controller.signal);
       turn.finishEmptyIfNeeded();
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
@@ -418,6 +430,62 @@ function initRoot(root: HTMLElement): void {
       controller = null;
     }
   };
+
+  if (trigger && dialog && panel) {
+    const close = (): void => {
+      if (dialog.hidden) return;
+      dialog.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.focus({ preventScroll: true });
+    };
+
+    const open = (): void => {
+      if (!dialog.hidden) return;
+      dialog.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      input.focus({ preventScroll: true });
+    };
+
+    const focusable = (): HTMLElement[] =>
+      Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute('disabled') && !el.closest('[hidden]'));
+
+    trigger.addEventListener('click', open);
+    root.querySelectorAll<HTMLElement>('[data-eve-close]').forEach((btn) => {
+      btn.addEventListener('click', close);
+    });
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) close();
+    });
+    dialog.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const items = focusable();
+      if (!items.length) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+  }
 
   // suggested prompts submit their label as a real question
   root.querySelectorAll<HTMLElement>('[data-eve-send]').forEach((btn) => {

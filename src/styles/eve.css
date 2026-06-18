@@ -84,7 +84,8 @@
 /* JS toggles `hidden`; guard our display rules so it always wins */
 .eve-turn[hidden],
 .eve-answer[hidden],
-.eve-typing[hidden] {
+.eve-typing[hidden],
+.eve-popup[hidden] {
   display: none !important;
 }
 
@@ -825,6 +826,158 @@ a.eve-contact-row:hover .eve-contact-val {
   box-shadow: 0 10px 34px #00000045;
 }
 
+
+/* ============ project detail popup ============ */
+.project-agent {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+}
+.project-agent *,
+.project-agent *::before,
+.project-agent *::after {
+  box-sizing: border-box;
+}
+.project-agent a {
+  color: inherit;
+  text-decoration: none;
+}
+.project-agent button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.project-agent a:focus-visible,
+.project-agent button:focus-visible,
+.project-agent input:focus-visible,
+.project-agent summary:focus-visible,
+.eve-popup-panel:focus-visible {
+  outline: 2px solid var(--pl-accent);
+  outline-offset: 3px;
+}
+.project-agent :focus:not(:focus-visible) {
+  outline: none;
+}
+.project-agent-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-radius: 999px;
+  color: var(--pl-text);
+  background: color-mix(in srgb, var(--accent, var(--pl-accent)) 11%, var(--pl-tile));
+  border: 1px solid color-mix(in srgb, var(--accent, var(--pl-accent)) 38%, var(--pl-line));
+  box-shadow: 0 18px 45px -34px color-mix(in srgb, var(--accent, var(--pl-accent)) 72%, #000);
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.project-agent-trigger:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent, var(--pl-accent)) 64%, var(--pl-line));
+  background: color-mix(in srgb, var(--accent, var(--pl-accent)) 16%, var(--pl-tile));
+}
+.project-agent-trigger span {
+  font-size: 13px;
+  font-weight: 700;
+}
+.project-agent-trigger small {
+  font-family: var(--pl-mono);
+  font-size: 10.5px;
+  color: var(--pl-faint);
+}
+.eve-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: rgba(8, 9, 12, 0.74);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.eve-popup-panel {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 48px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--pl-text);
+  font-family: var(--pl-sans);
+  background: var(--pl-bg);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--pl-accent)) 28%, var(--pl-line));
+  border-radius: 18px;
+  box-shadow: 0 32px 100px -28px rgba(0, 0, 0, 0.88);
+}
+.eve-popup-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--pl-line);
+  background: color-mix(in srgb, var(--pl-panel) 72%, var(--pl-bg));
+}
+.eve-popup-head .eve-label {
+  margin: 0 0 5px;
+  padding: 0;
+}
+.eve-popup-head h2 {
+  font-size: clamp(16px, 2.2vw, 22px);
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+}
+.eve-popup-close {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--pl-dim);
+  background: var(--pl-tile);
+  border: 1px solid var(--pl-line);
+  font-size: 22px;
+  line-height: 1;
+}
+.eve-popup-close:hover {
+  color: var(--pl-text);
+  border-color: color-mix(in srgb, var(--accent, var(--pl-accent)) 42%, var(--pl-line));
+}
+.eve-main--popup {
+  flex: 1;
+  min-height: min(44dvh, 420px);
+  background: var(--pl-bg);
+}
+.project-agent .eve-empty {
+  padding: 22px;
+}
+.project-agent.eve-started .eve-empty {
+  display: none;
+}
+.project-agent-suggest {
+  width: min(340px, 100%);
+  margin-top: 4px;
+}
+.project-agent-suggest .eve-suggest-row {
+  text-align: center;
+}
+.project-agent .eve-thread {
+  padding: 18px 20px 22px;
+}
+.project-agent .eve-turn {
+  max-width: none;
+}
+.project-agent .eve-composer {
+  padding: 12px 18px 16px;
+}
+.project-agent .eve-composer-inner {
+  max-width: none;
+}
 /* ============ responsive ============ */
 @media (max-width: 980px) {
   .eve-split {
@@ -898,6 +1051,45 @@ a.eve-contact-row:hover .eve-contact-val {
   }
   .eve-composer {
     padding: 12px 16px 16px;
+  }
+  .project-agent-trigger {
+    width: 100%;
+    justify-content: center;
+  }
+  .project-agent-trigger small {
+    display: none;
+  }
+  .eve-popup {
+    align-items: end;
+    justify-items: stretch;
+    padding: 0 10px max(10px, env(safe-area-inset-bottom));
+  }
+  .eve-popup-panel {
+    width: 100%;
+    max-height: min(62dvh, 560px);
+    border-radius: 18px 18px 0 0;
+    border-left: 1px solid color-mix(in srgb, var(--accent, var(--pl-accent)) 28%, var(--pl-line));
+    border-right: 1px solid color-mix(in srgb, var(--accent, var(--pl-accent)) 28%, var(--pl-line));
+  }
+  .eve-popup-head {
+    padding: 13px 14px;
+  }
+  .eve-main--popup {
+    min-height: 0;
+  }
+  .project-agent .eve-empty {
+    padding: 16px;
+  }
+  .project-agent .eve-card-tile {
+    display: none;
+  }
+  .project-agent .eve-greeting {
+    font-size: 16px;
+    line-height: 1.35;
+  }
+  .project-agent-suggest .eve-suggest-row {
+    min-width: 0;
+    white-space: normal;
   }
 }
 
