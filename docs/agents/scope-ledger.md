@@ -54,9 +54,9 @@ The PRD created from the 2026-06-18 handoff records the locked decisions from th
 
 ## Do not preclude
 
-- Constraint: Redesign implementation PRs target `preview/agent-first-redesign`, not `main`.
+- Constraint: Redesign implementation PRs form a stacked chain rooted at `preview/agent-first-redesign`, never `main`.
   - Deferred capability protected: Safe stacked preview before mainline merge.
-  - Verification evidence: PR base branch and issue Desired base branch.
+  - Verification evidence: PR base branch matches the issue's stack parent branch.
 - Constraint: One implementation issue maps to one worktree, one branch, and one PR.
   - Deferred capability protected: Parallel agent ownership without hidden coupling.
   - Verification evidence: Issue packet and PR link.

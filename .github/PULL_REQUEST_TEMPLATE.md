@@ -8,7 +8,7 @@ Closes #
 
 ## Base branch
 
-preview/agent-first-redesign for agent-first redesign PRs.
+Use the issue's stack parent branch. Agent-first redesign order: `preview/agent-first-redesign` -> #84 -> #85 -> #86 -> #87 -> #88.
 
 ## Verification evidence
 

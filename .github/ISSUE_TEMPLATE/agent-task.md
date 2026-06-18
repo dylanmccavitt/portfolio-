@@ -55,4 +55,4 @@
 
 ## Desired base branch
 
-preview/agent-first-redesign
+Use this issue's immediate stack parent branch. Do not target `main` for agent-first redesign PRs.

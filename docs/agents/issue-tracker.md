@@ -14,8 +14,9 @@ Run GitHub commands from inside the repo:
 
 ## Branch and agent routing
 
-- The agent-first redesign uses preview branch `preview/agent-first-redesign` as the PR stack base.
+- The agent-first redesign roots at preview branch `preview/agent-first-redesign`.
 - Do not target `main` for redesign implementation PRs unless a maintainer explicitly changes the plan.
+- Stack order: `preview/agent-first-redesign` -> `codex/issue-84-eve-runtime` -> `claude/issue-85-typographic-card` -> `claude/issue-86-eve-landing` -> `claude/issue-87-editorial-detail` -> `codex/issue-88-retire-shell`.
 - Each implementation issue must name an Owner engine: `Claude` for UI work, `Codex` for agent runtime/data/plumbing/test/cleanup work.
 - Each implementation issue should be executed as one issue / one worktree / one branch / one PR.
 

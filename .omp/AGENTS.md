@@ -19,10 +19,11 @@ GitHub Issues: DylanMcCavitt/portfolio-
 
 ## Branch and agent routing
 
-- The redesign PR stack targets `preview/agent-first-redesign`, not `main`.
+- The redesign PR stack roots at `preview/agent-first-redesign`; each child PR targets its immediate stack parent, never `main`.
 - Implementation stays one issue / one worktree / one branch / one PR.
 - UI implementation issues route to Claude.
 - Agent runtime, data, plumbing, tests, and cleanup route to Codex agents/subagents.
+- Current stack order: `preview/agent-first-redesign` -> `codex/issue-84-eve-runtime` -> `claude/issue-85-typographic-card` -> `claude/issue-86-eve-landing` -> `claude/issue-87-editorial-detail` -> `codex/issue-88-retire-shell`.
 
 ## Full-flow traceability
 
