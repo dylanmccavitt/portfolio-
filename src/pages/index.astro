@@ -1,166 +1,130 @@
 ---
 /**
- * Home — the concierge router (#60). The centered "What brings you here?" entry
- * point that sends each kind of visitor to the right place: hiring managers to
- * the guided tour, browsers to the full library, engineers to GitHub. The
- * all-work library now lives at `/library`.
+ * Home — the Split-canvas Eve landing (#86). The portfolio is agent-first: you
+ * land on Eve, a chat agent that answers questions about Dylan and renders
+ * project, résumé, and contact artifacts. This is the winning prototype layout
+ * (`prototype/_AgentVariantB.astro`, "Split canvas") folded into production and
+ * wired to the Eve streaming endpoint (#84) via the chat island
+ * (`scripts/eve.ts`); the canned prototype driver/data are not shipped.
  *
- * Rendered inside the player shell (sidebar + player bar) so it matches the
- * landing prototype `17-landing-v2.html` (variant E, `#vE`) — the concierge is
- * the main-panel content, not a chrome-free page. Metaphor copy and the
- * prototype's knob scaffolding are dropped. Zero new client JS beyond the
- * shell's existing player island.
+ * Structure: a persistent left sidebar (Eve identity, `agent/tools/`, suggested
+ * prompts, new-conversation) and a main pane (empty-state greeting, the
+ * conversation thread the island fills, and a docked composer). The thread's
+ * turns are built client-side from streamed payloads — see `scripts/eve.ts`.
+ *
+ * This page renders the static shell only; all interaction lives in the island.
  */
-import PlayerLayout from '../layouts/Player.astro';
-import { CATALOG } from '../data/catalog';
+import EveLayout from '../layouts/Eve.astro';
+import { AGENT_NAME, GREETING, SUBGREETING, SUGGESTED, EVE_TOOLS } from '../lib/eve';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 const meta = {
   ...libraryMeta(
     'Dylan McCavitt',
-    'Software engineer building agentic systems, trading infrastructure, and iOS apps in NYC.',
+    'Software engineer building agentic systems, trading infrastructure, and iOS apps in NYC. Ask Eve, his portfolio agent, anything about his work.',
   ),
   jsonLd: personJsonLd(),
 };
 ---
 
-<PlayerLayout
-  title="Dylan McCavitt · Software engineer"
-  meta={meta}
-  active="home"
-  now={CATALOG[0]}
-  hideMobileChrome
->
-  <div class="concierge">
-    <span class="cc-mark" aria-hidden="true"><span class="mono">DM</span></span>
-    <h1>Dylan McCavitt</h1>
-    <p class="cc-lede">Software engineer · Backend · AI.</p>
-    <div class="upper cc-q">What brings you here?</div>
-    <div class="cc-routes">
-      <a class="cc-route" href="/hiring">
-        <span class="cc-ico" aria-hidden="true">★</span>
-        <b>I'm hiring</b>
-        <span>A 2-minute tour: best work, then the resume.</span>
-        <span class="cc-go">Start the tour →</span>
-      </a>
-      <a class="cc-route" href="/library">
-        <span class="cc-ico" aria-hidden="true">≣</span>
-        <b>Just exploring</b>
-        <span>Browse the full library of work.</span>
-        <span class="cc-go">Open the library →</span>
-      </a>
-      <a
-        class="cc-route"
-        href="https://github.com/DylanMcCavitt"
-        target="_blank"
-        rel="noopener"
-      >
-        <span class="cc-ico" aria-hidden="true">⌘</span>
-        <b>Show me the code</b>
-        <span>Straight to GitHub and the live builds.</span>
-        <span class="cc-go">Go to GitHub ↗</span>
-      </a>
-    </div>
-  </div>
-</PlayerLayout>
+<EveLayout title="Dylan McCavitt · Software engineer" meta={meta}>
+  <div class="eve-root" data-eve-root>
+    <!-- ============ persistent left sidebar ============ -->
+    <aside class="eve-side">
+      <div class="eve-id">
+        <span class="eve-monogram" aria-hidden="true">✦</span>
+        <span class="eve-id-text">
+          <span class="eve-id-name">{AGENT_NAME}</span>
+          <span class="eve-id-sub">portfolio agent</span>
+        </span>
+        <span class="eve-dot" title="online" aria-hidden="true"></span>
+      </div>
 
-<style>
-  /* Centered concierge, ported from the prototype's `.E-wrap`/`.route` (variant
-     E). It sits in the shell's scrolling `.main`, so the sidebar + player bar
-     stay; only the tracklist is gone. */
-  .concierge {
-    max-width: 760px;
-    margin: 4vh auto 0;
-    padding: 0 44px 60px;
-    text-align: center;
-  }
-  .cc-mark {
-    width: 64px;
-    height: 64px;
-    margin: 0 auto 18px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: linear-gradient(150deg, var(--pl-accent), #2a2740 70%);
-  }
-  .cc-mark .mono {
-    font-family: var(--pl-mono);
-    font-size: 22px;
-    color: #fff;
-  }
-  .concierge h1 {
-    font-size: 34px;
-    letter-spacing: -0.02em;
-    margin-bottom: 8px;
-  }
-  .cc-lede {
-    color: var(--pl-dim);
-    max-width: 48ch;
-    margin: 0 auto 8px;
-  }
-  .upper {
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    font-size: 11px;
-    color: var(--pl-faint);
-    font-family: var(--pl-mono);
-  }
-  .cc-q {
-    margin: 26px 0 16px;
-  }
-  .cc-routes {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 18px;
-    text-align: left;
-  }
-  .cc-route {
-    background: var(--pl-tile);
-    border: 1px solid var(--pl-tile-line);
-    border-radius: 14px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 150px;
-    transition:
-      transform 0.15s,
-      border-color 0.15s;
-  }
-  .cc-route:hover {
-    border-color: var(--pl-focus);
-    transform: translateY(-2px);
-  }
-  .cc-ico {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: var(--pl-panel-hi);
-    display: grid;
-    place-items: center;
-    font-size: 18px;
-    color: var(--pl-accent);
-  }
-  .cc-route b {
-    font-size: 16px;
-  }
-  .cc-route span {
-    font-size: 13px;
-    color: var(--pl-dim);
-  }
-  .cc-go {
-    margin-top: auto;
-    color: var(--pl-focus);
-    font-size: 13px;
-    font-family: var(--pl-mono);
-  }
-  /* Stack the cards below the site-standard 820px breakpoint. */
-  @media (max-width: 820px) {
-    .concierge {
-      padding: 0 18px 40px;
-    }
-    .cc-routes {
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
+      <section class="eve-section eve-section--tools">
+        <p class="eve-label">Tools</p>
+        <p class="eve-path">agent/tools/</p>
+        <ul class="eve-tools">
+          {
+            EVE_TOOLS.map((tool) => (
+              <li class="eve-tool">
+                <span class="eve-tool-glyph" aria-hidden="true">›</span>
+                <code>{tool}</code>
+                <span class="eve-tool-ext">.ts</span>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <section class="eve-section eve-section--grow">
+        <p class="eve-label">Suggested</p>
+        <ul class="eve-suggest">
+          {
+            SUGGESTED.map((prompt) => (
+              <li>
+                <button
+                  class="eve-suggest-row"
+                  type="button"
+                  data-eve-send
+                  data-label={prompt.label}
+                >
+                  <span class="eve-suggest-label">{prompt.label}</span>
+                  {prompt.hint && <span class="eve-suggest-hint">{prompt.hint}</span>}
+                </button>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <button class="eve-reset" type="button" data-eve-reset>
+        <span aria-hidden="true">↺</span> New conversation
+      </button>
+    </aside>
+
+    <!-- ============ main conversation pane ============ -->
+    <main class="eve-main">
+      <header class="eve-bar">
+        <span class="eve-bar-title"
+          >{AGENT_NAME} <span class="eve-bar-sub">· portfolio agent</span></span
+        >
+        <span class="eve-bar-status"
+          ><span class="eve-dot" aria-hidden="true"></span> ready</span
+        >
+      </header>
+
+      <div class="eve-stage">
+        <!-- empty state -->
+        <div class="eve-empty">
+          <div class="eve-card">
+            <span class="eve-card-tile" aria-hidden="true">✦</span>
+            <h1 class="eve-greeting">{GREETING}</h1>
+            <p class="eve-subgreeting">{SUBGREETING}</p>
+            <p class="eve-hint">Pick a suggested prompt, or type your own below ↓</p>
+          </div>
+        </div>
+
+        <!-- conversation thread (filled by the island) -->
+        <div class="eve-thread" data-eve-thread role="log" aria-label="Conversation with Eve"></div>
+      </div>
+
+      <!-- docked composer -->
+      <form class="eve-composer" data-eve-form>
+        <div class="eve-composer-inner">
+          <span class="eve-composer-glyph" aria-hidden="true">⌁</span>
+          <input
+            class="eve-input"
+            data-eve-input
+            type="text"
+            name="message"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Ask Eve about Dylan's work…"
+            aria-label="Ask Eve about Dylan"
+          />
+          <button class="eve-send" type="submit" data-eve-submit aria-label="Send message">→</button>
+        </div>
+      </form>
+    </main>
+  </div>
+</EveLayout>
