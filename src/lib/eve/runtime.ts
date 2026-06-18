@@ -1,3 +1,4 @@
+import { getVercelOidcToken } from '@vercel/oidc';
 import {
   assertProjectIds,
   assertResumeTrackIds,
@@ -12,14 +13,35 @@ import type {
   AnswerBlock,
   EveAnswer,
   EveChatContext,
+  EveChatRequest,
   EveStreamEvent,
   ToolTraceItem,
 } from './contract';
 
 export interface EveRuntimeConfig {
-  provider: string;
-  modelId: string;
-  hasGatewayAuth: boolean;
+  /** Origin for Dylan's real Eve app (`~/portfolio-agent`), e.g. https://agent.example.com. */
+  agentHost: string;
+  /** Optional static bearer for non-OIDC agent auth. Prefer Vercel OIDC on Vercel. */
+  bearerToken?: string;
+  /** Optional Vercel deployment-protection bypass for protected previews. */
+  bypassSecret?: string;
+  /** Loopback hosts use `localDev()` auth and do not need a bearer. */
+  isLoopback: boolean;
+}
+
+interface RemoteDeps {
+  fetch: typeof fetch;
+  getOidcToken: () => Promise<string>;
+}
+
+interface RemoteSession {
+  sessionId: string;
+  continuationToken?: string;
+}
+
+interface RemoteEveEvent {
+  type?: unknown;
+  data?: unknown;
 }
 
 export class EveRuntimeConfigError extends Error {
@@ -32,24 +54,37 @@ export class EveRuntimeConfigError extends Error {
   }
 }
 
+export class EveAgentError extends Error {
+  readonly code: string;
+  readonly safeMessage: string;
+
+  constructor(code: string, message: string, safeMessage = 'Eve is unavailable right now.') {
+    super(message);
+    this.name = 'EveAgentError';
+    this.code = code;
+    this.safeMessage = safeMessage;
+  }
+}
+
 export function readEveRuntimeConfig(
   env: Partial<Record<string, string | undefined>> = process.env,
 ): EveRuntimeConfig {
-  const provider = env.EVE_PROVIDER?.trim();
-  const model = env.EVE_MODEL?.trim();
+  const agentHost = env.EVE_AGENT_HOST?.trim();
   const missing: string[] = [];
 
-  if (!provider) missing.push('EVE_PROVIDER');
-  if (!model) missing.push('EVE_MODEL');
+  if (!agentHost) missing.push('EVE_AGENT_HOST');
 
   if (missing.length > 0) {
     throw new EveRuntimeConfigError(missing);
   }
 
+  const normalizedHost = normalizeAgentHost(agentHost as string);
+
   return {
-    provider: provider as string,
-    modelId: resolveModelId(provider as string, model as string),
-    hasGatewayAuth: Boolean(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN),
+    agentHost: normalizedHost,
+    bearerToken: env.EVE_AGENT_BEARER_TOKEN?.trim() || undefined,
+    bypassSecret: env.EVE_AGENT_BYPASS_SECRET?.trim() || undefined,
+    isLoopback: isLoopbackHost(normalizedHost),
   };
 }
 
@@ -57,6 +92,11 @@ export function resolveModelId(provider: string, model: string): string {
   return model.includes('/') ? model : `${provider}/${model}`;
 }
 
+/**
+ * Heuristic artifact answer over canonical site data. The real prose comes from
+ * `~/portfolio-agent`; these blocks keep the landing's project/resume/contact
+ * canvas grounded in the same `catalog.ts` / `resume.ts` facts as static pages.
+ */
 export function createEveAnswer(message: string, context: EveChatContext = {}): EveAnswer {
   if (context.projectIds) assertProjectIds(context.projectIds);
   if (context.resumeTrackIds) assertResumeTrackIds(context.resumeTrackIds);
@@ -237,6 +277,88 @@ export function assertAnswerBlocksValid(blocks: AnswerBlock[]): void {
   }
 }
 
+/**
+ * Stream Dylan's real `~/portfolio-agent` through the site's answer-block UI.
+ * The remote agent owns prose. This site adds deterministic artifacts from its
+ * canonical data modules so the right pane can still render project/resume/contact cards.
+ */
+export function createEveAgentStream(
+  request: EveChatRequest,
+  config: EveRuntimeConfig,
+  deps: Partial<RemoteDeps> = {},
+): ReadableStream<Uint8Array> {
+  const runtimeDeps: RemoteDeps = {
+    fetch: deps.fetch ?? fetch,
+    getOidcToken: deps.getOidcToken ?? getVercelOidcToken,
+  };
+  const encoder = new TextEncoder();
+  const artifactAnswer = createEveAnswer(request.message, request.context);
+  const artifactBlocks = artifactAnswer.blocks.filter((block) => block.kind !== 'text');
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let finalText = '';
+      let sawDelta = false;
+
+      try {
+        const session = await startRemoteSession(config, request.message, runtimeDeps);
+        enqueueJson(controller, encoder, {
+          type: 'ready',
+          agent: 'Eve',
+          trace: artifactAnswer.trace,
+          provider: 'portfolio-agent',
+        });
+
+        for (const item of artifactAnswer.trace.items) {
+          enqueueJson(controller, encoder, {
+            type: 'tool',
+            name: item.tool,
+            summary: item.label,
+          });
+        }
+
+        await streamRemoteSession(config, session.sessionId, runtimeDeps, (event) => {
+          const transformed = transformRemoteEvent(event);
+          if (!transformed) return;
+
+          if (transformed.type === 'text-delta') {
+            sawDelta = true;
+            finalText += transformed.delta;
+          }
+          if (transformed.type === 'block' && transformed.block.kind === 'text') {
+            finalText = transformed.block.text;
+          }
+
+          enqueueJson(controller, encoder, transformed);
+        });
+
+        for (const [index, block] of artifactBlocks.entries()) {
+          enqueueJson(controller, encoder, { type: 'block', index, block });
+        }
+
+        const answer: AnswerBlock[] = [
+          ...(finalText.trim() ? [{ kind: 'text' as const, text: finalText.trim() }] : []),
+          ...artifactBlocks,
+        ];
+        enqueueJson(controller, encoder, {
+          type: 'done',
+          answer,
+          trace: artifactAnswer.trace,
+        });
+      } catch (error) {
+        const message = error instanceof EveAgentError ? error.safeMessage : 'Eve is unavailable right now.';
+        console.error('[eve] portfolio-agent stream failure', error);
+        enqueueJson(controller, encoder, { type: 'error', message });
+      } finally {
+        controller.close();
+      }
+
+      void sawDelta;
+    },
+  });
+}
+
+/** Legacy deterministic stream kept for tests and local contract assertions. */
 export function createEveAnswerStream(answer: EveAnswer, config: EveRuntimeConfig): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
 
@@ -246,7 +368,7 @@ export function createEveAnswerStream(answer: EveAnswer, config: EveRuntimeConfi
         type: 'ready',
         agent: 'Eve',
         trace: answer.trace,
-        provider: config.provider,
+        provider: config.agentHost,
       });
 
       for (const [index, block] of answer.blocks.entries()) {
@@ -276,6 +398,162 @@ function enqueueJson(
   controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
 }
 
+async function startRemoteSession(
+  config: EveRuntimeConfig,
+  message: string,
+  deps: RemoteDeps,
+): Promise<RemoteSession> {
+  const res = await deps.fetch(`${config.agentHost}/eve/v1/session`, {
+    method: 'POST',
+    headers: await remoteHeaders(config, deps, true),
+    body: JSON.stringify({ message }),
+  });
+
+  if (!res.ok) {
+    const body = await safeResponseText(res);
+    throw new EveAgentError(
+      'agent_session_failed',
+      `portfolio-agent session failed: ${res.status} ${body}`,
+      'Eve could not start a chat session right now.',
+    );
+  }
+
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  const sessionId =
+    res.headers.get('x-eve-session-id') ||
+    (typeof body?.sessionId === 'string' ? body.sessionId : undefined) ||
+    (typeof body?.id === 'string' ? body.id : undefined);
+
+  if (!sessionId) {
+    throw new EveAgentError(
+      'agent_session_missing_id',
+      'portfolio-agent did not return a session id',
+      'Eve started, but did not return a stream id.',
+    );
+  }
+
+  return {
+    sessionId,
+    continuationToken: typeof body?.continuationToken === 'string' ? body.continuationToken : undefined,
+  };
+}
+
+async function streamRemoteSession(
+  config: EveRuntimeConfig,
+  sessionId: string,
+  deps: RemoteDeps,
+  onEvent: (event: RemoteEveEvent) => void,
+): Promise<void> {
+  const res = await deps.fetch(`${config.agentHost}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`, {
+    headers: await remoteHeaders(config, deps, false),
+  });
+
+  if (!res.ok || !res.body) {
+    const body = await safeResponseText(res);
+    throw new EveAgentError(
+      'agent_stream_failed',
+      `portfolio-agent stream failed: ${res.status} ${body}`,
+      'Eve started, but the answer stream failed.',
+    );
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      const event = parseRemoteEvent(line);
+      if (event) onEvent(event);
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = parseRemoteEvent(buffer.trim());
+    if (event) onEvent(event);
+  }
+}
+
+function transformRemoteEvent(event: RemoteEveEvent): EveStreamEvent | null {
+  if (event.type === 'message.appended' && isRecord(event.data)) {
+    return typeof event.data.messageDelta === 'string'
+      ? { type: 'text-delta', delta: event.data.messageDelta }
+      : null;
+  }
+
+  if (event.type === 'message.completed' && isRecord(event.data)) {
+    return typeof event.data.message === 'string'
+      ? { type: 'block', index: 0, block: { kind: 'text', text: event.data.message } }
+      : null;
+  }
+
+  if (event.type === 'actions.requested' && isRecord(event.data)) {
+    return { type: 'tool', name: 'portfolio-agent', summary: 'requested an action' };
+  }
+
+  if (event.type === 'action.result' && isRecord(event.data)) {
+    return { type: 'tool', name: 'portfolio-agent', summary: 'received an action result' };
+  }
+
+  if (event.type === 'session.failed' || event.type === 'turn.failed') {
+    return {
+      type: 'error',
+      message: 'Eve hit an error while answering. Try again, or ask a narrower portfolio question.',
+    };
+  }
+
+  return null;
+}
+
+async function remoteHeaders(
+  config: EveRuntimeConfig,
+  deps: RemoteDeps,
+  json: boolean,
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    Accept: json ? 'application/json' : 'application/x-ndjson',
+  };
+  if (json) headers['Content-Type'] = 'application/json';
+  if (config.bypassSecret) headers['x-vercel-protection-bypass'] = config.bypassSecret;
+
+  if (config.bearerToken) {
+    headers.Authorization = `Bearer ${config.bearerToken}`;
+  } else if (!config.isLoopback) {
+    headers.Authorization = `Bearer ${await deps.getOidcToken()}`;
+  }
+
+  return headers;
+}
+
+function parseRemoteEvent(line: string): RemoteEveEvent | null {
+  let text = line.trim();
+  if (!text) return null;
+  if (text.startsWith('data:')) text = text.slice(5).trim();
+  if (!text || text === '[DONE]') return null;
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return isRecord(parsed) ? (parsed as RemoteEveEvent) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function safeResponseText(res: Response): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 1000);
+  } catch {
+    return '<unreadable response>';
+  }
+}
+
 function fallbackAnswer(text: string): AnswerBlock[] {
   return [
     { kind: 'text', text },
@@ -292,4 +570,25 @@ function fallbackAnswer(text: string): AnswerBlock[] {
 
 function matchesAny(value: string, needles: string[]): boolean {
   return needles.some((needle) => value.includes(needle));
+}
+
+function normalizeAgentHost(host: string): string {
+  try {
+    const url = new URL(host);
+    url.pathname = url.pathname.replace(/\/$/, '');
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    throw new EveRuntimeConfigError(['EVE_AGENT_HOST(valid URL)']);
+  }
+}
+
+function isLoopbackHost(host: string): boolean {
+  const { hostname } = new URL(host);
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

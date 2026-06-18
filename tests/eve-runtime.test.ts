@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { filterCatalog, getContact, rankProjects, readResume, searchCatalog } from '../src/lib/eve/data-tools';
-import { createEveAnswer, readEveRuntimeConfig } from '../src/lib/eve/runtime';
+import {
+  createEveAgentStream,
+  createEveAnswer,
+  readEveRuntimeConfig,
+} from '../src/lib/eve/runtime';
 import { POST } from '../src/pages/api/eve/chat';
 
 test('catalog tools search and filter canonical project ids', () => {
@@ -47,21 +51,87 @@ test('unknown and empty questions return visitor-safe fallback blocks', () => {
   assert.ok(empty.blocks.some((block) => block.kind === 'links'));
 });
 
-test('runtime config requires provider and model env', () => {
-  assert.throws(() => readEveRuntimeConfig({}), /EVE_PROVIDER, EVE_MODEL/);
-  assert.deepEqual(readEveRuntimeConfig({ EVE_PROVIDER: 'openai', EVE_MODEL: 'gpt-test' }), {
-    provider: 'openai',
-    modelId: 'openai/gpt-test',
-    hasGatewayAuth: false,
+test('runtime config points at the deployed portfolio-agent host', () => {
+  assert.throws(() => readEveRuntimeConfig({}), /EVE_AGENT_HOST/);
+  assert.deepEqual(readEveRuntimeConfig({ EVE_AGENT_HOST: 'http://127.0.0.1:3333/' }), {
+    agentHost: 'http://127.0.0.1:3333',
+    bearerToken: undefined,
+    bypassSecret: undefined,
+    isLoopback: true,
   });
 });
 
-test('chat endpoint streams answer-block events when configured', async () => {
-  const previousProvider = process.env.EVE_PROVIDER;
-  const previousModel = process.env.EVE_MODEL;
+test('portfolio-agent stream is transformed into UI events plus artifact blocks', async () => {
+  const calls: string[] = [];
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
 
-  process.env.EVE_PROVIDER = 'openai';
-  process.env.EVE_MODEL = 'gpt-test';
+    if (url === 'http://127.0.0.1:3333/eve/v1/session') {
+      return new Response(JSON.stringify({ ok: true, sessionId: 'session-1' }), {
+        status: 202,
+        headers: {
+          'content-type': 'application/json',
+          'x-eve-session-id': 'session-1',
+        },
+      });
+    }
+
+    if (url === 'http://127.0.0.1:3333/eve/v1/session/session-1/stream') {
+      return new Response(
+        [
+          JSON.stringify({ type: 'session.started', data: { runtime: { agentId: 'portfolio-agent' } } }),
+          JSON.stringify({ type: 'message.appended', data: { messageDelta: 'Agent', messageSoFar: 'Agent' } }),
+          JSON.stringify({ type: 'message.appended', data: { messageDelta: ' work', messageSoFar: 'Agent work' } }),
+          JSON.stringify({ type: 'message.completed', data: { message: 'Agent work' } }),
+        ].join('\n'),
+        { headers: { 'content-type': 'application/x-ndjson; charset=utf-8' } },
+      );
+    }
+
+    return new Response('not found', { status: 404 });
+  };
+
+  const config = readEveRuntimeConfig({ EVE_AGENT_HOST: 'http://127.0.0.1:3333' });
+  const stream = createEveAgentStream(
+    { message: 'What should I look at for agent work?' },
+    config,
+    { fetch: fetchImpl },
+  );
+
+  const events = await readNdjson(stream);
+
+  assert.deepEqual(calls, [
+    'http://127.0.0.1:3333/eve/v1/session',
+    'http://127.0.0.1:3333/eve/v1/session/session-1/stream',
+  ]);
+  assert.equal(events[0].type, 'ready');
+  assert.ok(events.some((event) => event.type === 'text-delta' && event.delta === 'Agent'));
+  assert.ok(events.some((event) => hasBlockKind(event, 'projects')));
+  assert.equal(events.at(-1)?.type, 'done');
+});
+
+test('chat endpoint streams from portfolio-agent when configured', async () => {
+  const previousHost = process.env.EVE_AGENT_HOST;
+  const previousFetch = globalThis.fetch;
+
+  process.env.EVE_AGENT_HOST = 'http://127.0.0.1:3333';
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url === 'http://127.0.0.1:3333/eve/v1/session') {
+      return new Response(JSON.stringify({ sessionId: 'session-1' }), {
+        status: 202,
+        headers: { 'x-eve-session-id': 'session-1', 'content-type': 'application/json' },
+      });
+    }
+    if (url === 'http://127.0.0.1:3333/eve/v1/session/session-1/stream') {
+      return new Response(
+        `${JSON.stringify({ type: 'message.appended', data: { messageDelta: 'hello', messageSoFar: 'hello' } })}\n`,
+        { headers: { 'content-type': 'application/x-ndjson; charset=utf-8' } },
+      );
+    }
+    return new Response('not found', { status: 404 });
+  }) as typeof fetch;
 
   try {
     const response = await POST({
@@ -81,20 +151,19 @@ test('chat endpoint streams answer-block events when configured', async () => {
       .map((line) => JSON.parse(line));
 
     assert.equal(events[0].type, 'ready');
-    assert.ok(events.some((event) => event.type === 'block' && event.block.kind === 'projects'));
+    assert.ok(events.some((event) => event.type === 'text-delta' && event.delta === 'hello'));
+    assert.ok(events.some((event) => hasBlockKind(event, 'projects')));
     assert.equal(events.at(-1)?.type, 'done');
   } finally {
-    restoreEnv('EVE_PROVIDER', previousProvider);
-    restoreEnv('EVE_MODEL', previousModel);
+    restoreEnv('EVE_AGENT_HOST', previousHost);
+    globalThis.fetch = previousFetch;
   }
 });
 
 test('chat endpoint fails safely when runtime env is missing', async () => {
-  const previousProvider = process.env.EVE_PROVIDER;
-  const previousModel = process.env.EVE_MODEL;
+  const previousHost = process.env.EVE_AGENT_HOST;
 
-  delete process.env.EVE_PROVIDER;
-  delete process.env.EVE_MODEL;
+  delete process.env.EVE_AGENT_HOST;
 
   try {
     const response = await POST({
@@ -113,10 +182,31 @@ test('chat endpoint fails safely when runtime env is missing', async () => {
       },
     });
   } finally {
-    restoreEnv('EVE_PROVIDER', previousProvider);
-    restoreEnv('EVE_MODEL', previousModel);
+    restoreEnv('EVE_AGENT_HOST', previousHost);
   }
 });
+
+type JsonEvent = { type?: string; [key: string]: unknown };
+
+function hasBlockKind(event: JsonEvent, kind: string): boolean {
+  const block = event.block;
+  return (
+    event.type === 'block' &&
+    typeof block === 'object' &&
+    block !== null &&
+    'kind' in block &&
+    (block as { kind: unknown }).kind === kind
+  );
+}
+
+async function readNdjson(stream: ReadableStream<Uint8Array>): Promise<JsonEvent[]> {
+  const text = await new Response(stream).text();
+  return text
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {

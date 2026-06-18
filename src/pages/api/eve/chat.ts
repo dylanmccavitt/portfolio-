@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import {
-  createEveAnswer,
-  createEveAnswerStream,
+  createEveAgentStream,
+  EveAgentError,
   EveRuntimeConfigError,
   isEveToolError,
   readEveRuntimeConfig,
@@ -25,9 +25,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   try {
     const payload = await parseRequest(request);
-    const answer = createEveAnswer(payload.message, payload.context);
-
-    return new Response(createEveAnswerStream(answer, config), {
+    return new Response(createEveAgentStream(payload, config), {
       headers: {
         'Cache-Control': 'no-store',
         'Content-Type': 'application/x-ndjson; charset=utf-8',
@@ -42,6 +40,11 @@ export const POST: APIRoute = async ({ request }) => {
         details: error.details,
       });
       return jsonError(400, error.code, error.safeMessage);
+    }
+
+    if (error instanceof EveAgentError) {
+      console.error('[eve] portfolio-agent failure', { code: error.code, message: error.message });
+      return jsonError(502, error.code, error.safeMessage);
     }
 
     if (error instanceof Error && error.name === 'BadRequestError') {

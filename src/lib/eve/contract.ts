@@ -84,8 +84,17 @@ export type EveStreamEvent =
       provider: string;
     }
   | {
+      type: 'tool';
+      name: string;
+      summary?: string;
+    }
+  | {
+      type: 'text-delta';
+      delta: string;
+    }
+  | {
       type: 'block';
-      index: number;
+      index?: number;
       block: AnswerBlock;
     }
   | {
@@ -95,8 +104,5 @@ export type EveStreamEvent =
     }
   | {
       type: 'error';
-      error: {
-        code: string;
-        message: string;
-      };
+      message: string;
     };
