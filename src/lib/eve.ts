@@ -24,14 +24,14 @@ import { CATALOG, type Project } from '../data/catalog';
 import { RESUME, type ResumeTrack } from '../data/resume';
 
 /** The portfolio agent's name. */
-export const AGENT_NAME = 'Eve';
+export const AGENT_NAME = 'DM';
 
 /** Streaming chat endpoint owned by #84. Relative so it follows the origin. */
 export const EVE_ENDPOINT = '/api/eve/chat';
 
 /** Empty-state greeting shown before the first question. */
 export const GREETING =
-  "I'm Eve — Dylan's portfolio agent. Ask me anything about his work, his background, or whether he's the right fit for your team.";
+  "I'm DM — Dylan's portfolio guide. Ask about his work, background, or whether he's the right fit for your team.";
 
 /** Sub-greeting / capability line under the greeting. */
 export const SUBGREETING =
@@ -244,7 +244,7 @@ export function parseStreamLine(line: string): StreamEvent | null {
     case 'error':
       return {
         type: 'error',
-        message: typeof raw.message === 'string' ? raw.message : 'Eve hit an unexpected error.',
+        message: typeof raw.message === 'string' ? raw.message : 'DM hit an unexpected error.',
       };
     default:
       return null;

@@ -259,7 +259,7 @@ test('chat endpoint fails safely when runtime env is missing', async () => {
     assert.deepEqual(await response.json(), {
       error: {
         code: 'missing_config',
-        message: 'Eve is not configured for chat yet.',
+        message: 'DM is not configured for chat yet.',
       },
     });
   } finally {

@@ -1,7 +1,7 @@
 import type { Project } from '../../data/catalog';
 import type { ResumeTrack } from '../../data/resume';
 
-export const AGENT_NAME = 'Eve';
+export const AGENT_NAME = 'DM';
 
 export type AnswerBlock =
   | { kind: 'text'; text: string }

@@ -60,7 +60,7 @@ export class EveAgentError extends Error {
   readonly code: string;
   readonly safeMessage: string;
 
-  constructor(code: string, message: string, safeMessage = 'Eve is unavailable right now.') {
+  constructor(code: string, message: string, safeMessage = 'DM is unavailable right now.') {
     super(message);
     this.name = 'EveAgentError';
     this.code = code;
@@ -313,7 +313,7 @@ export function createEveAgentStream(
         const session = await startRemoteSession(config, request.message, groundingContext, runtimeDeps);
         enqueueJson(controller, encoder, {
           type: 'ready',
-          agent: 'Eve',
+          agent: 'DM',
           trace: artifactAnswer.trace,
           provider: 'portfolio-agent',
         });
@@ -375,7 +375,7 @@ export function createEveAnswerStream(answer: EveAnswer, _config: EveRuntimeConf
     async start(controller) {
       enqueueJson(controller, encoder, {
         type: 'ready',
-        agent: 'Eve',
+        agent: 'DM',
         trace: answer.trace,
         provider: 'portfolio-site',
       });
@@ -427,7 +427,7 @@ async function startRemoteSession(
     throw new EveAgentError(
       'agent_session_failed',
       `portfolio-agent session failed: ${res.status} ${body}`,
-      'Eve could not start a chat session right now.',
+      'DM could not start a chat session right now.',
     );
   }
 
@@ -534,7 +534,7 @@ function transformRemoteEvent(event: RemoteEveEvent): EveStreamEvent | null {
   if (event.type === 'session.failed' || event.type === 'turn.failed') {
     return {
       type: 'error',
-      message: 'Eve hit an error while answering. Try again, or ask a narrower portfolio question.',
+      message: 'DM hit an error while answering. Try again, or ask a narrower portfolio question.',
     };
   }
 

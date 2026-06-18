@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request }) => {
   } catch (error) {
     if (error instanceof EveRuntimeConfigError) {
       console.error('[eve] missing runtime config', { missing: error.missing });
-      return jsonError(503, 'missing_config', 'Eve is not configured for chat yet.');
+      return jsonError(503, 'missing_config', 'DM is not configured for chat yet.');
     }
     throw error;
   }
@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     console.error('[eve] chat endpoint failure', error);
-    return jsonError(500, 'chat_failed', 'Eve could not answer that safely. Try a portfolio or resume question.');
+    return jsonError(500, 'chat_failed', 'DM could not answer that safely. Try a portfolio or resume question.');
   }
 };
 
