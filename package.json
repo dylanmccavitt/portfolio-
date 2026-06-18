@@ -11,13 +11,18 @@
     "preview": "astro preview",
     "astro": "astro",
     "lint": "eslint .",
+    "test:eve": "node --import tsx --test tests/eve-runtime.test.ts",
     "typecheck": "astro check",
     "verify": "npm run lint && npm run typecheck && npm run build"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.8",
+    "@astrojs/vercel": "^10.0.8",
+    "ai": "^7.0.0-beta.178",
     "astro": "^6.1.2",
-    "typescript": "^5.9.3"
+    "eve": "^0.11.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -27,6 +32,7 @@
     "eslint": "^10.1.0",
     "eslint-plugin-astro": "^1.6.0",
     "satori": "^0.26.0",
+    "tsx": "^4.22.4",
     "typescript-eslint": "^8.58.0"
   }
 }

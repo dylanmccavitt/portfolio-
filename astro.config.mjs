@@ -1,8 +1,10 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import vercel from '@astrojs/vercel';
 
 // https://astro.build/config
 export default defineConfig({
+  adapter: vercel(),
   // Canonical origin — drives `Astro.site`, the `<link rel="canonical">` in the
   // layouts, and the absolute URLs in `src/pages/sitemap.xml.ts` (#25).
   site: 'https://dylanmccavitt.xyz',
