@@ -67,6 +67,17 @@
 .tour-body a { color: inherit; text-decoration: none; }
 .tour-body button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
+/* The Editorial project detail pages (#87) also render outside the shell — same
+   standalone reset/palette/font as the tour, with no fixed grid (the page owns
+   its own centered, normally-scrolling layout). */
+.editorial-body {
+  margin: 0; background: var(--pl-bg); color: var(--pl-text);
+  font-family: var(--pl-sans); font-size: 15px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.editorial-body *, .editorial-body *::before, .editorial-body *::after { margin: 0; padding: 0; box-sizing: border-box; }
+.editorial-body a { color: inherit; text-decoration: none; }
+
 /* ---- keyboard focus (#28) ----
    A single visible :focus-visible ring for every interactive element in the
    shell, tuned for the dark surfaces. Pointer focus stays clean (`:focus`
