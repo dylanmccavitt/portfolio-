@@ -7,15 +7,15 @@
  * via the chat island (`scripts/eve.ts`); canned demo driver/data are not
  * shipped.
  *
- * Structure: a persistent left rail (Eve identity, `agent/tools/`, suggested
- * prompts, new-conversation) and a main pane (empty-state greeting, the
+ * Structure: a persistent left rail (Eve identity, suggested prompts,
+ * new-conversation) and a main pane (empty-state greeting, the
  * conversation thread the island fills, and a docked composer). The thread's
  * turns are built client-side from streamed payloads — see `scripts/eve.ts`.
  *
  * This page renders the static shell only; all interaction lives in the island.
  */
 import EveLayout from '../layouts/Eve.astro';
-import { AGENT_NAME, GREETING, SUBGREETING, SUGGESTED, EVE_TOOLS } from '../lib/eve';
+import { AGENT_NAME, GREETING, SUBGREETING, SUGGESTED } from '../lib/eve';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 const meta = {
@@ -40,22 +40,6 @@ const meta = {
         <span class="eve-dot" title="online" aria-hidden="true"></span>
       </div>
 
-      <section class="eve-section eve-section--tools">
-        <p class="eve-label">Tools</p>
-        <p class="eve-path">agent/tools/</p>
-        <ul class="eve-tools">
-          {
-            EVE_TOOLS.map((tool) => (
-              <li class="eve-tool">
-                <span class="eve-tool-glyph" aria-hidden="true">›</span>
-                <code>{tool}</code>
-                <span class="eve-tool-ext">.ts</span>
-              </li>
-            ))
-          }
-        </ul>
-      </section>
-
       <section class="eve-section eve-section--grow">
         <p class="eve-label">Suggested</p>
         <ul class="eve-suggest">
@@ -69,7 +53,6 @@ const meta = {
                   data-label={prompt.label}
                 >
                   <span class="eve-suggest-label">{prompt.label}</span>
-                  {prompt.hint && <span class="eve-suggest-hint">{prompt.hint}</span>}
                 </button>
               </li>
             ))

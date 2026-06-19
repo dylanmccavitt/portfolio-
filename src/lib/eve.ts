@@ -37,23 +37,9 @@ export const GREETING =
 export const SUBGREETING =
   'I can pull up projects, walk his résumé, or get you his contact details.';
 
-/**
- * Eve's file-based tools, shown in the left rail `agent/tools/` directory. Display
- * only — the authoritative tool set lives in the agent runtime (#84); this list
- * sells the "an agent is a directory" identity and mirrors that tool surface.
- */
-export const EVE_TOOLS = [
-  'search_catalog',
-  'rank_projects',
-  'read_resume',
-  'filter_catalog',
-  'get_contact',
-] as const;
-
-/** A starter prompt chip. `hint` is the tool it will likely lean on (flavor). */
+/** A starter prompt chip. */
 export interface SuggestedPrompt {
   label: string;
-  hint?: string;
 }
 
 /**
@@ -62,12 +48,12 @@ export interface SuggestedPrompt {
  * does not reintroduce canned routing/data as the answer source.
  */
 export const SUGGESTED: SuggestedPrompt[] = [
-  { label: "What's Dylan building right now?", hint: 'search_catalog' },
-  { label: 'Show me his most impressive project', hint: 'rank_projects' },
-  { label: "What's his background?", hint: 'read_resume' },
-  { label: 'Does he have trading experience?', hint: 'filter_catalog' },
-  { label: 'Can he ship iOS apps?', hint: 'filter_catalog' },
-  { label: 'Is he open to work? How do I reach him?', hint: 'get_contact' },
+  { label: "What's Dylan building right now?" },
+  { label: 'Show me his most impressive project' },
+  { label: "What's his background?" },
+  { label: 'Does he have trading experience?' },
+  { label: 'Can he ship iOS apps?' },
+  { label: 'Is he open to work? How do I reach him?' },
 ];
 
 /** Resolved contact fields rendered by the contact artifact. */
