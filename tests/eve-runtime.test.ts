@@ -9,10 +9,12 @@ import {
   searchCatalog,
 } from '../src/lib/eve/data-tools';
 import {
+  assertAnswerBlocksValid,
   createEveAgentStream,
   createEveAnswer,
   readEveRuntimeConfig,
 } from '../src/lib/eve/runtime';
+import { parseStreamLine, resolveEvidence, validateBlock } from '../src/lib/eve';
 import { POST } from '../src/pages/api/eve/chat';
 
 test('catalog tools search and filter canonical project ids', () => {
@@ -73,8 +75,13 @@ test('contact grounding includes canonical contact context and remote-call ratio
 test('answer blocks preserve canonical ids and trace metadata', () => {
   const answer = createEveAnswer('Can he ship iOS apps?');
   const projectBlock = answer.blocks.find((block) => block.kind === 'projects');
+  const evidenceBlock = answer.blocks.find((block) => block.kind === 'evidence');
 
   assert.deepEqual(projectBlock, { kind: 'projects', ids: ['dog-log', 'chore-ladder'] });
+  assert.deepEqual(evidenceBlock, {
+    kind: 'evidence',
+    projectIds: ['dog-log', 'chore-ladder'],
+  });
   assert.equal(answer.trace.count, 1);
   assert.equal(answer.trace.items[0]?.tool, 'filter_catalog');
 });
@@ -91,6 +98,81 @@ test('answer artifacts prioritize explicit chat context ids', () => {
   if (resumeBlock?.kind !== 'resume') assert.fail('expected resume block');
   assert.equal(projectBlock.ids[0], 'dog-log');
   assert.deepEqual(resumeBlock.trackIds, ['now']);
+
+  const evidenceBlock = answer.blocks.find((block) => block.kind === 'evidence');
+  if (evidenceBlock?.kind !== 'evidence') assert.fail('expected evidence block');
+  assert.equal(evidenceBlock.projectIds?.[0], 'dog-log');
+  assert.deepEqual(evidenceBlock.resumeTrackIds, ['now']);
+});
+
+test('evidence block validation accepts canonical ids and rejects unsafe shapes', () => {
+  assert.doesNotThrow(() =>
+    assertAnswerBlocksValid([{ kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] }]),
+  );
+  assert.throws(
+    () => assertAnswerBlocksValid([{ kind: 'evidence', projectIds: ['missing-project'] }]),
+    /Unknown project id/,
+  );
+  assert.throws(() => assertAnswerBlocksValid([{ kind: 'evidence' }]), /empty evidence block/);
+
+  assert.deepEqual(validateBlock({ kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] }), {
+    kind: 'evidence',
+    projectIds: ['agentic-trader'],
+    resumeTrackIds: ['now'],
+  });
+  assert.equal(validateBlock({ kind: 'evidence' }), null);
+  assert.equal(validateBlock({ kind: 'evidence', projectIds: ['agentic-trader', 42] }), null);
+  assert.deepEqual(
+    validateBlock({
+      kind: 'evidence',
+      projectIds: ['a', 'b', 'c', 'd', 'e'],
+      resumeTrackIds: ['one', 'two', 'three', 'four'],
+    }),
+    {
+      kind: 'evidence',
+      projectIds: ['a', 'b', 'c', 'd'],
+      resumeTrackIds: ['one', 'two', 'three'],
+    },
+  );
+
+  const event = parseStreamLine(
+    JSON.stringify({
+      type: 'block',
+      block: { kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
+    }),
+  );
+  assert.deepEqual(event, {
+    type: 'block',
+    block: { kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
+  });
+  assert.equal(
+    parseStreamLine(JSON.stringify({ type: 'block', block: { kind: 'evidence', projectIds: [42] } })),
+    null,
+  );
+});
+
+test('evidence resolution drops stale ids without throwing', () => {
+  const previousWarn = console.warn;
+  console.warn = () => undefined;
+
+  try {
+    const resolved = resolveEvidence({
+      kind: 'evidence',
+      projectIds: ['agentic-trader', 'missing-project'],
+      resumeTrackIds: ['now', 'missing-track'],
+    });
+
+    assert.deepEqual(
+      resolved.projects.map((project) => project.id),
+      ['agentic-trader'],
+    );
+    assert.deepEqual(
+      resolved.tracks.map((track) => track.id),
+      ['now'],
+    );
+  } finally {
+    console.warn = previousWarn;
+  }
 });
 
 test('unknown and empty questions return visitor-safe fallback blocks', () => {
@@ -136,6 +218,7 @@ test('catalog search questions stream remote prose with deterministic site artif
   assert.equal(events[0].provider, 'portfolio-agent');
   assert.ok(events.some((event) => event.type === 'text-delta' && event.delta === 'These are the strongest agent projects.'));
   assert.ok(events.some((event) => hasBlockKind(event, 'projects')));
+  assert.ok(events.some((event) => hasBlockKind(event, 'evidence')));
   assert.equal(events.at(-1)?.type, 'done');
 });
 

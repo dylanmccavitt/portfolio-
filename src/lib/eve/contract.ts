@@ -7,6 +7,7 @@ export type AnswerBlock =
   | { kind: 'text'; text: string }
   | { kind: 'projects'; ids: string[] }
   | { kind: 'resume'; trackIds: string[] }
+  | { kind: 'evidence'; projectIds?: string[]; resumeTrackIds?: string[] }
   | { kind: 'contact' }
   | { kind: 'links'; items: [label: string, href: string][] };
 

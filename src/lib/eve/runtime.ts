@@ -264,6 +264,7 @@ export function createEveAnswer(message: string, context: EveChatContext = {}): 
   }
 
   blocks = applyContextBlockPriorities(blocks, context);
+  blocks = addEvidenceArtifacts(blocks);
 
   assertAnswerBlocksValid(blocks);
   return { blocks, trace: { count: trace.length, items: trace } };
@@ -273,6 +274,15 @@ export function assertAnswerBlocksValid(blocks: AnswerBlock[]): void {
   for (const block of blocks) {
     if (block.kind === 'projects') assertProjectIds(block.ids);
     if (block.kind === 'resume') assertResumeTrackIds(block.trackIds);
+    if (block.kind === 'evidence') {
+      const projectIds = block.projectIds ?? [];
+      const resumeTrackIds = block.resumeTrackIds ?? [];
+      if (projectIds.length === 0 && resumeTrackIds.length === 0) {
+        throw new Error('Eve answer contains an empty evidence block');
+      }
+      assertProjectIds(projectIds);
+      assertResumeTrackIds(resumeTrackIds);
+    }
     if (block.kind === 'links') {
       for (const [label, href] of block.items) {
         if (!label.trim() || !href.trim()) {
@@ -792,6 +802,39 @@ function applyContextBlockPriorities(blocks: AnswerBlock[], context: EveChatCont
     if (!sawResumeBlock) next = [...next, { kind: 'resume', trackIds: resumeTrackIds }];
   }
 
+  return next;
+}
+
+function addEvidenceArtifacts(blocks: AnswerBlock[]): AnswerBlock[] {
+  if (blocks.some((block) => block.kind === 'evidence')) return blocks;
+
+  const projectIds = uniqueIds(
+    blocks.flatMap((block) => (block.kind === 'projects' ? block.ids : [])),
+  ).slice(0, 4);
+  const resumeTrackIds = uniqueIds(
+    blocks.flatMap((block) => (block.kind === 'resume' ? block.trackIds : [])),
+  ).slice(0, 3);
+
+  if (projectIds.length === 0 && resumeTrackIds.length === 0) return blocks;
+
+  return [
+    ...blocks,
+    {
+      kind: 'evidence',
+      ...(projectIds.length ? { projectIds } : {}),
+      ...(resumeTrackIds.length ? { resumeTrackIds } : {}),
+    },
+  ];
+}
+
+function uniqueIds(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
   return next;
 }
 

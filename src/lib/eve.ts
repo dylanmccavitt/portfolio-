@@ -96,6 +96,11 @@ export interface ResumeBlock {
   kind: 'resume';
   trackIds: string[];
 }
+export interface EvidenceBlock {
+  kind: 'evidence';
+  projectIds?: string[];
+  resumeTrackIds?: string[];
+}
 /** Contact fields are optional; the UI merges them over {@link CONTACT}. */
 export interface ContactBlock {
   kind: 'contact';
@@ -115,11 +120,14 @@ export type AnswerBlock =
   | TextBlock
   | ProjectsBlock
   | ResumeBlock
+  | EvidenceBlock
   | ContactBlock
   | LinksBlock;
 
 /** The answer-block kinds the surface knows how to render. */
-const BLOCK_KINDS = new Set(['text', 'projects', 'resume', 'contact', 'links']);
+const BLOCK_KINDS = new Set(['text', 'projects', 'resume', 'evidence', 'contact', 'links']);
+const MAX_EVIDENCE_PROJECTS = 4;
+const MAX_EVIDENCE_TRACKS = 3;
 
 // ---------------------------------------------------------------------------
 // Stream events — the NDJSON envelope the client consumes.
@@ -184,6 +192,19 @@ export function validateBlock(value: unknown): AnswerBlock | null {
         value.trackIds.every((id) => typeof id === 'string')
         ? { kind: 'resume', trackIds: value.trackIds as string[] }
         : null;
+    case 'evidence': {
+      const projectIds = parseOptionalStringArray(value.projectIds);
+      const resumeTrackIds = parseOptionalStringArray(value.resumeTrackIds);
+      if (projectIds === null || resumeTrackIds === null) return null;
+      if (!projectIds?.length && !resumeTrackIds?.length) return null;
+      return {
+        kind: 'evidence',
+        ...(projectIds?.length ? { projectIds: projectIds.slice(0, MAX_EVIDENCE_PROJECTS) } : {}),
+        ...(resumeTrackIds?.length
+          ? { resumeTrackIds: resumeTrackIds.slice(0, MAX_EVIDENCE_TRACKS) }
+          : {}),
+      };
+    }
     case 'contact': {
       const out: ContactBlock = { kind: 'contact' };
       for (const key of ['email', 'github', 'resume', 'location', 'status'] as const) {
@@ -260,6 +281,13 @@ export function parseStreamLine(line: string): StreamEvent | null {
 const PROJECTS_BY_ID = new Map(CATALOG.map((p) => [p.id, p]));
 const TRACKS_BY_ID = new Map(RESUME.tracks.map((t) => [t.id, t]));
 
+function parseOptionalStringArray(value: unknown): string[] | null | undefined {
+  if (value === undefined) return undefined;
+  return Array.isArray(value) && value.every((id) => typeof id === 'string')
+    ? (value as string[])
+    : null;
+}
+
 /** Resolve project ids to catalog records, dropping (and warning on) unknowns. */
 export function resolveProjects(ids: string[]): Project[] {
   const out: Project[] = [];
@@ -280,6 +308,17 @@ export function resolveTracks(trackIds: string[]): ResumeTrack[] {
     else console.warn(`[eve] unknown résumé track id from stream: "${id}"`);
   }
   return out;
+}
+
+/** Resolve an evidence block to canonical site records, dropping unknown ids. */
+export function resolveEvidence(block: EvidenceBlock): {
+  projects: Project[];
+  tracks: ResumeTrack[];
+} {
+  return {
+    projects: resolveProjects(block.projectIds ?? []),
+    tracks: resolveTracks(block.resumeTrackIds ?? []),
+  };
 }
 
 /** Merge a streamed contact payload over the canonical fallback. */

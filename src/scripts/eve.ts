@@ -6,8 +6,8 @@
  * (`_agentProto.client.ts`) with a real integration against the Eve streaming
  * endpoint (#84): it submits the visitor's question, consumes the NDJSON stream
  * incrementally, and renders the user turn, streamed answer text, the tool
- * trace (live "working…" log + `USED N tools`), and project / résumé / contact /
- * link artifacts — building each turn's DOM from streamed payloads rather than
+ * trace (live "working…" log + `USED N tools`), and project / résumé /
+ * evidence / contact / link artifacts — building each turn's DOM from streamed payloads rather than
  * pre-rendered canned turns.
  *
  * Failure is graceful by construction: a missing/erroring endpoint, a malformed
@@ -24,12 +24,15 @@ import {
   EVE_ENDPOINT,
   parseStreamLine,
   resolveContact,
+  resolveEvidence,
   resolveProjects,
   resolveTracks,
   type AnswerBlock,
   type ChatMessage,
   type StreamEvent,
 } from '../lib/eve';
+import type { Project } from '../data/catalog';
+import type { ResumeTrack } from '../data/resume';
 
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers — explicit and XSS-safe (text via textContent only).
@@ -240,6 +243,31 @@ class Turn {
         this.canvas().append(wrap);
         break;
       }
+      case 'evidence': {
+        const { projects, tracks } = resolveEvidence(block);
+        if (!projects.length && !tracks.length) break;
+
+        const count = projects.length + tracks.length;
+        const wrap = make('section', { class: 'eve-evidence', 'aria-label': 'Evidence summary' }, [
+          make('div', { class: 'eve-evidence-head' }, [
+            make('span', { class: 'eve-evidence-kicker', text: 'evidence summary' }),
+            make('span', {
+              class: 'eve-evidence-count',
+              text: `${count} source${count === 1 ? '' : 's'}`,
+            }),
+          ]),
+        ]);
+
+        for (const project of projects) {
+          wrap.append(this.projectEvidence(project));
+        }
+        for (const track of tracks) {
+          wrap.append(this.resumeEvidence(track));
+        }
+
+        this.canvas().append(wrap);
+        break;
+      }
       case 'contact': {
         const c = resolveContact(block);
         this.canvas().append(
@@ -276,6 +304,52 @@ class Turn {
         break;
       }
     }
+  }
+
+  private projectEvidence(project: Project): HTMLElement {
+    const [kind, statusLabel] = project.status;
+    const facts = [...project.metrics.slice(0, 2), ...project.stack.slice(0, 2)];
+
+    return make('a', { class: 'eve-evidence-item', href: `/projects/${project.id}`, hue: project.hue }, [
+      make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'eve-evidence-top' }, [
+        make('span', { class: 'eve-evidence-type', text: 'project' }),
+        make('span', { class: `badge ${kind}`, text: statusLabel }),
+      ]),
+      make('h3', { class: 'eve-evidence-title', text: project.title }),
+      make('p', { class: 'eve-evidence-line', text: project.line }),
+      this.evidenceFacts(facts),
+      project.notes[0] ? make('p', { class: 'eve-evidence-note', text: project.notes[0] }) : null,
+      make('span', { class: 'eve-evidence-route', text: 'Open project →' }),
+    ]);
+  }
+
+  private resumeEvidence(track: ResumeTrack): HTMLElement {
+    return make('a', { class: 'eve-evidence-item', href: `/journey/${track.id}`, hue: track.hue }, [
+      make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'eve-evidence-top' }, [
+        make('span', { class: 'eve-evidence-type', text: 'resume' }),
+        track.current ? make('span', { class: 'badge live', text: 'Now' }) : null,
+      ]),
+      make('h3', { class: 'eve-evidence-title', text: track.title }),
+      make('p', { class: 'eve-evidence-line', text: `${track.role} · ${track.when}` }),
+      this.evidenceFacts(track.credits.slice(0, 3)),
+      track.notes[0] ? make('p', { class: 'eve-evidence-note', text: track.notes[0] }) : null,
+      make('span', { class: 'eve-evidence-route', text: 'Open resume entry →' }),
+    ]);
+  }
+
+  private evidenceFacts(facts: [string, string][]): HTMLElement {
+    return make(
+      'ul',
+      { class: 'eve-evidence-facts' },
+      facts.map(([value, label]) =>
+        make('li', {}, [
+          make('span', { class: 'eve-evidence-fact-value', text: value }),
+          make('span', { class: 'eve-evidence-fact-label', text: label }),
+        ]),
+      ),
+    );
   }
 
   private contactRow(key: string, value: string, href?: string, external = false): HTMLElement {
