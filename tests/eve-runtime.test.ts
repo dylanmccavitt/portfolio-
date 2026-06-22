@@ -223,6 +223,27 @@ test('remote answer blocks stream after site validation', async () => {
   assert.deepEqual(blocksOfKind(events, 'contact')[0], { kind: 'contact' });
 });
 
+test('remote answer blocks unwrap nested structured output results', async () => {
+  const events = await readAgentStreamEvents([
+    {
+      type: 'result.completed',
+      data: {
+        result: {
+          answerBlocks: [
+            { kind: 'text', text: 'A structured fit summary.' },
+            { kind: 'projects', ids: ['agentic-trader'] },
+            { kind: 'resume', trackIds: ['now'] },
+          ],
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(blocksOfKind(events, 'text')[0], { kind: 'text', text: 'A structured fit summary.' });
+  assert.deepEqual(blocksOfKind(events, 'projects')[0], { kind: 'projects', ids: ['agentic-trader'] });
+  assert.deepEqual(blocksOfKind(events, 'resume')[0], { kind: 'resume', trackIds: ['now'] });
+});
+
 test('remote answer blocks skip unknown malformed and unsafe payloads', async () => {
   const events = await readAgentStreamEvents([
     {

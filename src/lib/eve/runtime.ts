@@ -561,18 +561,25 @@ function extractRemoteAnswerBlocks(event: RemoteEveEvent): AnswerBlock[] {
   if (!isRecord(event.data)) return [];
 
   const candidates: unknown[] = [];
-  if (typeof event.data.kind === 'string') candidates.push(event.data);
-  for (const key of ['answerBlock', 'block'] as const) {
-    if (key in event.data) candidates.push(event.data[key]);
-  }
-  for (const key of ['answerBlocks', 'blocks'] as const) {
-    const value = event.data[key];
-    if (Array.isArray(value)) candidates.push(...value);
-  }
+  collectAnswerBlockCandidates(event.data, candidates);
+
+  const result = event.data.result;
+  if (isRecord(result)) collectAnswerBlockCandidates(result, candidates);
 
   return candidates
     .map(validateRemoteAnswerBlock)
     .filter((block): block is AnswerBlock => block !== null);
+}
+
+function collectAnswerBlockCandidates(data: Record<string, unknown>, candidates: unknown[]): void {
+  if (typeof data.kind === 'string') candidates.push(data);
+  for (const key of ['answerBlock', 'block'] as const) {
+    if (key in data) candidates.push(data[key]);
+  }
+  for (const key of ['answerBlocks', 'blocks'] as const) {
+    const value = data[key];
+    if (Array.isArray(value)) candidates.push(...value);
+  }
 }
 
 function validateRemoteAnswerBlock(value: unknown): AnswerBlock | null {
