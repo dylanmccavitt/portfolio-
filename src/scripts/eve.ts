@@ -489,6 +489,7 @@ function initRoot(root: HTMLElement): void {
   const trigger = root.querySelector<HTMLElement>('[data-eve-open]');
   const dialog = root.querySelector<HTMLElement>('[data-eve-dialog]');
   const panel = root.querySelector<HTMLElement>('[data-eve-panel]');
+  const shouldAvoidAutoKeyboard = (): boolean => window.matchMedia('(max-width: 820px)').matches;
   const setBusy = (next: boolean): void => {
     busy = next;
     if (sendBtn) sendBtn.disabled = next;
@@ -537,7 +538,8 @@ function initRoot(root: HTMLElement): void {
       if (!dialog.hidden) return;
       dialog.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
-      input.focus({ preventScroll: true });
+      if (shouldAvoidAutoKeyboard()) panel.focus({ preventScroll: true });
+      else input.focus({ preventScroll: true });
     };
 
     const focusable = (): HTMLElement[] =>
@@ -594,6 +596,12 @@ function initRoot(root: HTMLElement): void {
     e.preventDefault();
     const text = input.value;
     input.value = '';
+    if (dialog && panel && shouldAvoidAutoKeyboard() && text.trim()) {
+      input.blur();
+      requestAnimationFrame(() => {
+        panel.focus({ preventScroll: true });
+      });
+    }
     void ask(text);
   });
 
