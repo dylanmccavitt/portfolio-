@@ -38,11 +38,11 @@ export const EVE_ENDPOINT = '/api/eve/chat';
 
 /** Empty-state greeting shown before the first question. */
 export const GREETING =
-  "I'm DM — Dylan's portfolio guide. Ask about his work, background, or whether he's the right fit for your team.";
+  "I'm DM — Dylan McCavitt's portfolio guide for practical tools, client software, and AI-assisted workflows.";
 
 /** Sub-greeting / capability line under the greeting. */
 export const SUBGREETING =
-  'I can pull up projects, walk his résumé, or get you his contact details.';
+  'Ask me a question, browse grounded project evidence, read the resume, take the hiring tour, paste a job description, or contact Dylan directly.';
 
 /** A starter prompt chip. */
 export interface SuggestedPrompt {
@@ -55,12 +55,12 @@ export interface SuggestedPrompt {
  * does not reintroduce canned routing/data as the answer source.
  */
 export const SUGGESTED: SuggestedPrompt[] = [
-  { label: "What's Dylan building right now?" },
-  { label: 'Show me his strongest shipped work' },
-  { label: "What's his background?" },
-  { label: 'Which projects show product judgment?' },
-  { label: 'Which side projects show how he learns?' },
-  { label: 'Is he open to work? How do I reach him?' },
+  { label: 'Which projects best show client software?' },
+  { label: 'Show practical AI-assisted workflow evidence' },
+  { label: 'What has Dylan shipped for real users?' },
+  { label: 'Where is he strongest for backend or product work?' },
+  { label: 'What should I know from his resume?' },
+  { label: 'Is he open to work, and how do I reach him?' },
 ];
 
 /** Resolved contact fields rendered by the contact artifact. */

@@ -15,20 +15,53 @@
  * This page renders the static shell only; all interaction lives in the island.
  */
 import EveLayout from '../layouts/Eve.astro';
-import { AGENT_NAME, GREETING, SUBGREETING, SUGGESTED } from '../lib/eve';
+import { AGENT_NAME, CONTACT, GREETING, SUBGREETING, SUGGESTED } from '../lib/eve';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 const meta = {
   ...libraryMeta(
     'Dylan McCavitt',
-    'Software engineer in NYC building practical tools, client software, and AI-assisted workflows. Ask DM, his portfolio guide, anything about his work.',
+    'Software engineer in NYC building practical tools, client software, AI-assisted workflows, and grounded side-project evidence. Ask DM or browse directly.',
   ),
   jsonLd: personJsonLd(),
 };
+
+const ENTRY_LINKS = [
+  {
+    label: 'Project library',
+    href: '/library',
+    eyebrow: 'Evidence',
+    text: 'Practical tools, client software, and side-project proof.',
+  },
+  {
+    label: 'Resume / journey',
+    href: '/journey',
+    eyebrow: 'Background',
+    text: 'Economics, legal ops, cyber risk, CS, and current work.',
+  },
+  {
+    label: 'Hiring tour',
+    href: '/hiring',
+    eyebrow: 'Recruiter path',
+    text: 'A guided read on fit, strengths, and strongest examples.',
+  },
+  {
+    label: 'Fit check',
+    href: '/fit-check',
+    eyebrow: 'Job description',
+    text: 'Paste a role and get an evidence-grounded DM read.',
+  },
+  {
+    label: 'Contact Dylan',
+    href: `mailto:${CONTACT.email}`,
+    eyebrow: 'Next step',
+    text: 'Email directly from the current resume contact details.',
+  },
+] as const;
 ---
 
 <EveLayout title="Dylan McCavitt · Software engineer" meta={meta}>
-  <div class="eve-root" data-eve-root>
+  <div class="eve-root eve-root--home" data-eve-root>
     <!-- ============ persistent left rail ============ -->
     <aside class="eve-side">
       <div class="eve-id">
@@ -84,14 +117,26 @@ const meta = {
         <div class="eve-empty">
           <div class="eve-card">
             <span class="eve-card-tile" aria-hidden="true">✦</span>
+            <p class="eve-entry-kicker">Dylan McCavitt · software engineer</p>
             <h1 class="eve-greeting">{GREETING}</h1>
             <p class="eve-subgreeting">{SUBGREETING}</p>
-            <p class="eve-hint">Pick a suggested prompt, or type your own below ↓</p>
+            <nav class="eve-entry-grid" aria-label="Recruiter entry paths">
+              {
+                ENTRY_LINKS.map((link) => (
+                  <a class="eve-entry-link" href={link.href}>
+                    <span class="eve-entry-eyebrow">{link.eyebrow}</span>
+                    <span class="eve-entry-label">{link.label}</span>
+                    <span class="eve-entry-text">{link.text}</span>
+                  </a>
+                ))
+              }
+            </nav>
+            <p class="eve-hint">Suggested questions stay in the side rail, or type your own below ↓</p>
           </div>
         </div>
 
         <!-- conversation thread (filled by the island) -->
-        <div class="eve-thread" data-eve-thread role="log" aria-label="Conversation with Eve"></div>
+        <div class="eve-thread" data-eve-thread role="log" aria-label="Conversation with DM"></div>
       </div>
 
       <!-- docked composer -->
