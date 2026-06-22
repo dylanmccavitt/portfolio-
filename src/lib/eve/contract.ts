@@ -95,6 +95,31 @@ export interface EveGroundingPacket {
   contact?: ContactBlock;
 }
 
+export type EveGroundingFixtureId =
+  | 'general'
+  | 'recruiter-contact'
+  | 'agent-mcp-work'
+  | 'trading-finance-automation'
+  | 'ios-product-work'
+  | 'shipped-client-work'
+  | 'project-page-agentic-trader';
+
+export interface EveGroundingFixture {
+  id: EveGroundingFixtureId;
+  label: string;
+  message: string;
+  context: EveChatContext;
+  route?: string;
+  packet: EveGroundingPacket;
+}
+
+export interface EveGroundingFixtureSet {
+  version: 1;
+  source: 'portfolio-site-canonical-data';
+  generatedFrom: ['src/data/catalog.ts', 'src/data/resume.ts'];
+  fixtures: EveGroundingFixture[];
+}
+
 export interface EveAnswer {
   blocks: AnswerBlock[];
   trace: ToolTraceMetadata;
