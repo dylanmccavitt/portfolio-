@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { CATALOG } from '../src/data/catalog';
+import { RESUME } from '../src/data/resume';
 import {
+  createGroundingFixtureSet,
   deriveGroundingContext,
   filterCatalog,
   getContact,
@@ -14,6 +17,7 @@ import {
   readEveRuntimeConfig,
 } from '../src/lib/eve/runtime';
 import { POST } from '../src/pages/api/eve/chat';
+import { GET as GETGroundingFixtures } from '../src/pages/api/eve/grounding-fixtures.json';
 
 test('catalog tools search and filter canonical project ids', () => {
   const trading = searchCatalog({ query: 'trading risk broker options', limit: 5 });
@@ -68,6 +72,94 @@ test('contact grounding includes canonical contact context and remote-call ratio
   assert.equal(context.contact?.email, 'dylanmccavitt@outlook.com');
   assert.equal(context.remoteCall.required, false);
   assert.match(context.remoteCall.reason, /without waiting/);
+});
+
+test('grounding fixture set covers versioned representative DM contexts', () => {
+  const fixtures = createGroundingFixtureSet();
+
+  assert.equal(fixtures.version, 1);
+  assert.equal(fixtures.source, 'portfolio-site-canonical-data');
+  assert.deepEqual(fixtures.generatedFrom, ['src/data/catalog.ts', 'src/data/resume.ts']);
+  assert.deepEqual(
+    fixtures.fixtures.map((fixture) => fixture.id),
+    [
+      'general',
+      'recruiter-contact',
+      'agent-mcp-work',
+      'trading-finance-automation',
+      'ios-product-work',
+      'shipped-client-work',
+      'project-page-agentic-trader',
+    ],
+  );
+
+  const byId = Object.fromEntries(fixtures.fixtures.map((fixture) => [fixture.id, fixture]));
+  assert.equal(byId.general?.packet.remoteCall.required, true);
+  assert.equal(byId['recruiter-contact']?.packet.contact?.email, 'dylanmccavitt@outlook.com');
+  assert.ok(byId['agent-mcp-work']?.packet.projects.some((project) => project.id === 'tradingview-mcp'));
+  assert.ok(byId['trading-finance-automation']?.packet.projects.some((project) => project.id === 'exit-manager'));
+  assert.deepEqual(
+    byId['ios-product-work']?.packet.projects.map((project) => project.id),
+    ['dog-log', 'chore-ladder'],
+  );
+  assert.ok(byId['shipped-client-work']?.packet.projects.some((project) => project.id === 'bellas-beads'));
+  assert.equal(byId['project-page-agentic-trader']?.route, '/projects/agentic-trader');
+  assert.deepEqual(
+    byId['project-page-agentic-trader']?.packet.projects.map((project) => project.id),
+    ['agentic-trader'],
+  );
+  assert.deepEqual(
+    byId['project-page-agentic-trader']?.packet.resume.tracks.map((track) => track.id),
+    ['now'],
+  );
+});
+
+test('grounding fixtures expose canonical ids and stay bounded for cross-repo evals', () => {
+  const fixtureSet = createGroundingFixtureSet();
+  const projectIds = new Set(CATALOG.map((project) => project.id));
+  const resumeTrackIds = new Set(RESUME.tracks.map((track) => track.id));
+  const encoded = new TextEncoder().encode(JSON.stringify(fixtureSet));
+
+  assert.ok(encoded.byteLength < 50000, `fixture payload was ${encoded.byteLength} bytes`);
+
+  for (const fixture of fixtureSet.fixtures) {
+    assert.equal(fixture.packet.version, fixtureSet.version);
+    assert.equal(fixture.packet.source, fixtureSet.source);
+    assert.ok(fixture.packet.remoteCall.reason.trim());
+    assert.ok(fixture.packet.projects.length <= 4, `${fixture.id} selected too many projects`);
+
+    for (const project of fixture.packet.projects) {
+      assert.ok(projectIds.has(project.id), `unknown project id ${project.id}`);
+      assert.ok(project.title.trim());
+      assert.ok(project.area.trim());
+      assert.ok(project.line.trim());
+      assert.ok(Array.isArray(project.metrics));
+      assert.ok(Array.isArray(project.links));
+      assert.equal('shots' in project, false, `${fixture.id} leaked project shots`);
+      assert.equal('hue' in project, false, `${fixture.id} leaked project hue`);
+      assert.equal('seek' in project, false, `${fixture.id} leaked project seek`);
+    }
+
+    for (const track of fixture.packet.resume.tracks) {
+      assert.ok(resumeTrackIds.has(track.id), `unknown resume track id ${track.id}`);
+      assert.ok(track.title.trim());
+      assert.ok(track.role.trim());
+    }
+
+    if (fixture.packet.contact) {
+      assert.ok(fixture.packet.contact.links.length >= 2);
+      assert.ok(fixture.packet.contact.resumeHref.trim());
+    }
+  }
+});
+
+test('grounding fixtures endpoint emits the generated packet as JSON', async () => {
+  const response = await GETGroundingFixtures({} as never);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Content-Type'), 'application/json; charset=utf-8');
+  assert.deepEqual(body, createGroundingFixtureSet());
 });
 
 test('answer blocks preserve canonical ids and trace metadata', () => {

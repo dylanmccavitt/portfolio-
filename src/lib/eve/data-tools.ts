@@ -10,6 +10,8 @@ import { getResumeTrackById, RESUME, type ResumeTrack } from '../../data/resume'
 import type {
   ContactBlock,
   EveChatContext,
+  EveGroundingFixtureId,
+  EveGroundingFixtureSet,
   EveGroundingFocus,
   EveGroundingPacket,
   ProjectSummary,
@@ -55,6 +57,14 @@ export interface RankProjectsInput {
 
 export interface ReadResumeInput {
   trackIds?: string[];
+}
+
+interface GroundingFixtureSpec {
+  id: EveGroundingFixtureId;
+  label: string;
+  message: string;
+  context?: EveChatContext;
+  route?: string;
 }
 
 export function searchCatalog(input: SearchCatalogInput): { query: string; projects: ProjectSummary[] } {
@@ -174,6 +184,26 @@ export function deriveGroundingContext(message: string, context: EveChatContext 
       reason: remoteCallReason(focus, remoteRequired),
     },
     ...(contact ? { contact } : {}),
+  };
+}
+
+export function createGroundingFixtureSet(): EveGroundingFixtureSet {
+  return {
+    version: 1,
+    source: 'portfolio-site-canonical-data',
+    generatedFrom: ['src/data/catalog.ts', 'src/data/resume.ts'],
+    fixtures: GROUNDING_FIXTURE_SPECS.map((fixture) => {
+      const context = fixture.context ?? {};
+      const packet = deriveGroundingContext(fixture.message, context);
+      return {
+        ...fixture,
+        context,
+        packet:
+          fixture.route && context.projectIds
+            ? { ...packet, focus: 'projects', projects: filterCatalog({ ids: context.projectIds, limit: 4 }).projects }
+            : packet,
+      };
+    }),
   };
 }
 
@@ -395,6 +425,46 @@ const SEARCH_STOP_WORDS = new Set([
   'what',
   'with',
 ]);
+
+const GROUNDING_FIXTURE_SPECS: GroundingFixtureSpec[] = [
+  {
+    id: 'general',
+    label: 'General portfolio question',
+    message: 'How should Dylan describe himself?',
+  },
+  {
+    id: 'recruiter-contact',
+    label: 'Recruiter and contact context',
+    message: 'Is Dylan open to work, and how do I contact him?',
+  },
+  {
+    id: 'agent-mcp-work',
+    label: 'Agent and MCP work',
+    message: 'What should I look at for agent and MCP work?',
+  },
+  {
+    id: 'trading-finance-automation',
+    label: 'Trading and finance automation',
+    message: 'Which projects show trading and finance automation?',
+  },
+  {
+    id: 'ios-product-work',
+    label: 'iOS and product work',
+    message: 'Can he ship iOS or mobile product work?',
+  },
+  {
+    id: 'shipped-client-work',
+    label: 'Shipped client work',
+    message: 'Show me shipped client ecommerce work.',
+  },
+  {
+    id: 'project-page-agentic-trader',
+    label: 'Explicit project-page context',
+    message: 'Tell me about agentic-trader.',
+    context: { projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
+    route: '/projects/agentic-trader',
+  },
+];
 
 function scoreProject(project: Project, tokens: string[]): number {
   const haystack = [
