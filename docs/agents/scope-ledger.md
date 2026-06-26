@@ -17,7 +17,7 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Source DM PRD: Linear document `Integrated DM content backend and agent workflow PRD`.
 - Planning buildout: Linear document `DM implementation planning buildout`.
 - Legacy prototype plan: `/var/folders/kk/k4gwllpx1cb8yl9n5t1stn8h0000gn/T/handoff-portfolio-agent-redesign.md`.
-- Acceptance criterion: Issues preserve DM naming, preview-branch base, one issue / one worktree / one PR, and Claude-vs-Codex ownership.
+- Acceptance criterion: Issues preserve DM naming, preview-branch base, one issue / one worktree / one PR, and Claude/GLM-vs-Codex ownership.
 - Expected evidence: PRD issue plus child issue packets link this ledger and name continuity constraints.
 - Actual evidence: Filled during issue closeout.
 
@@ -82,7 +82,7 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Constraint: One implementation issue maps to one worktree, one branch, and one PR.
   - Deferred capability protected: Parallel agent ownership without hidden coupling.
   - Verification evidence: Issue packet and PR link.
-- Constraint: UI implementation routes to Claude; non-UI runtime/data/plumbing routes to Codex.
+- Constraint: UI implementation routes to Claude or GLM; non-UI runtime/data/plumbing routes to Codex.
   - Deferred capability protected: Correct agent specialization.
   - Verification evidence: Owner engine field on every issue.
 - Constraint: DM public answers use only published DB project records, approved public RAG sources, and static résumé/contact data.

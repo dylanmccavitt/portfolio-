@@ -17,7 +17,7 @@ description: Use when working on the portfolio agent-first redesign, DM runtime,
 
 - Target the issue packet's Desired base branch / immediate stack parent; never target `main` unless a maintainer changes the plan.
 - Keep one issue / one worktree / one branch / one PR.
-- UI implementation routes to Claude.
+- UI implementation routes to Claude or GLM.
 - DM runtime, data tools, endpoint plumbing, tests, and cleanup route to Codex agents/subagents.
 - Use published DB project records when available, `src/data/catalog.ts` as shadow fallback during migration, and `src/data/resume.ts` for v1 résumé/contact facts; do not duplicate project or résumé facts.
 - Keep copy recruiter-first and jargon-light.

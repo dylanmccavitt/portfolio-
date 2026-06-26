@@ -13,7 +13,7 @@ from `.agents/envelope/domain.md`).
 
 - Source PRD:
 - Parent issue:
-- Owner engine: {{claude | codex}}  (UI → `claude`; runtime/data/plumbing/tests/cleanup → `codex`)
+- Owner engine: {{claude | glm | codex}}  (UI → `claude` or `glm`; runtime/data/plumbing/tests/cleanup → `codex`)
 - Preserves from scope ledger:
 
 ## Acceptance criteria
@@ -39,7 +39,7 @@ from `.agents/envelope/domain.md`).
 ## Execution
 
 - Mode: {{HITL | AFK}}
-- Labels: type (`Bug`/`Improvement`/`Feature`), engine (`claude`/`codex`), `risk:*`.
+- Labels: type (`Bug`/`Improvement`/`Feature`), engine (`claude`/`glm`/`codex`), `risk:*`.
 - Branch: `<engine>/age-{{n}}-<slug>` — carries this issue's Linear id so the PR
   auto-links and the merge auto-closes the issue.
 - Desired base branch: this issue's stack parent (never `main` for the redesign stack).

@@ -21,7 +21,7 @@ through Linear's GitHub bridge.
 - New DM implementation roots at preview branch `preview/agent-first-redesign` unless an issue names a different stack parent.
 - Do not target `main` for redesign implementation PRs unless a maintainer explicitly changes the plan.
 - Legacy Eve stack order remains historical context: `preview/agent-first-redesign` -> `codex/issue-84-eve-runtime` -> `claude/issue-85-typographic-card` -> `claude/issue-86-eve-landing` -> `claude/issue-87-editorial-detail` -> `codex/issue-88-retire-shell`.
-- Each implementation issue must name an Owner engine: `Claude` (label `claude`) for UI work, `Codex` (label `codex`) for DM runtime/data/plumbing/test/cleanup work.
+- Each implementation issue must name an Owner engine: `Claude` or `GLM` (labels `claude`/`glm`) for UI work, `Codex` (label `codex`) for DM runtime/data/plumbing/test/cleanup work.
 - Each implementation issue should be executed as one issue / one worktree / one branch / one PR.
 - Branch shape: `<engine>/age-<n>-<slug>` (e.g. `codex/age-726-supersede-eve-with-dm`).
 

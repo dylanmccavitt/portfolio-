@@ -21,7 +21,7 @@ Linear — team `dmcc` (key `AGE`), project **Portfolio**. See `.agents/envelope
 
 - New DM implementation roots at `preview/agent-first-redesign` unless an issue names a different stack parent; child PRs target their immediate stack parent, never `main`.
 - Implementation stays one issue / one worktree / one branch / one PR.
-- UI implementation issues route to Claude.
+- UI implementation issues route to Claude or GLM.
 - DM runtime, data, plumbing, tests, and cleanup route to Codex agents/subagents.
 - Legacy Eve stack order remains historical context: `preview/agent-first-redesign` -> `codex/issue-84-eve-runtime` -> `claude/issue-85-typographic-card` -> `claude/issue-86-eve-landing` -> `claude/issue-87-editorial-detail` -> `codex/issue-88-retire-shell`.
 

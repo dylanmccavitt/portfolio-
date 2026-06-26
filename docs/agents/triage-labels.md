@@ -10,7 +10,7 @@ mirrors it for quick reference.
 | --- | --- | --- |
 | Needs maintainer evaluation | `Triage` | — |
 | Waiting on reporter/user | `Blocked` | — |
-| Ready for agent implementation | `Ready` | engine (`claude`/`codex`) |
+| Ready for agent implementation | `Ready` | engine (`claude`/`glm`/`codex`) |
 | Ready for human implementation | `Todo` | — |
 | Will not be actioned | `Canceled` | — |
 
@@ -18,7 +18,7 @@ Type labels: `Bug`, `Improvement`, `Feature`. Risk tier: `risk:low`, `risk:mediu
 
 ## Owner routing
 
-- Claude-owned UI implementation issues: label `claude`; route to a Claude worktree/branch. Set state `Todo` (`ready-for-human`) only when a human must act.
+- Claude- or GLM-owned UI implementation issues: label `claude` or `glm`; route to a matching UI worktree/branch. Set state `Todo` (`ready-for-human`) only when a human must act.
 - Non-UI implementation issues (DM runtime, data, plumbing, tests, cleanup): label `codex`; `Ready` for Codex agents/subagents.
 - Agent-first redesign issues are rooted at `preview/agent-first-redesign`; each PR targets the issue's documented stack parent / Desired base branch, never `main`.
 

@@ -24,7 +24,7 @@ every implementation issue; add risk as triage dictates.
 
 - **Type:** `Bug`, `Improvement`, `Feature`
 - **Engine routing:**
-  - `claude` — UI / layout / presentation work.
+  - `claude` or `glm` — UI / layout / presentation work.
   - `codex` — DM/runtime, data tools, endpoint plumbing, tests, cleanup.
 - **Risk tier:** `risk:low`, `risk:medium`, `risk:high`
 
@@ -36,7 +36,7 @@ every implementation issue; add risk as triage dictates.
 | ------------------ | ------------ | ----- |
 | `needs-triage`     | `Triage`     | New, unsorted. |
 | `needs-info`       | `Blocked`    | Waiting on reporter / missing info. |
-| `ready-for-agent`  | `Ready`      | + engine label (`claude` for UI, `codex` for non-UI). |
+| `ready-for-agent`  | `Ready`      | + engine label (`claude`/`glm` for UI, `codex` for non-UI). |
 | `ready-for-human`  | `Todo`       | A human must implement. |
 | `wontfix`          | `Canceled`   | Will not be actioned; preserve deferred-scope links before cancelling. |
 
@@ -51,7 +51,7 @@ Blocked, In Review, Human Review, Needs Fixes, Merging, Done, Canceled, Duplicat
   auto-links to the issue and the merge auto-closes it through Linear's GitHub
   integration.
 - **Branch shape:** `<engine>/<issue-id-lower>-<slug>`
-  (e.g. `claude/age-141-eve-landing`, `codex/age-142-eve-runtime`).
+  (e.g. `claude/age-141-dm-landing`, `glm/age-141-dm-landing`, `codex/age-142-dm-runtime`).
 - **Default branch:** `main`. Agent-first redesign PRs stack from
   `preview/agent-first-redesign` and target their immediate stack parent, never
   `main`, until a maintainer changes the plan. See `commands.md` for the chain.
@@ -59,4 +59,4 @@ Blocked, In Review, Human Review, Needs Fixes, Merging, Done, Canceled, Duplicat
 ## Routing
 
 - One issue / one worktree / one branch / one PR.
-- UI implementation → `claude`; DM runtime / data / plumbing / tests / cleanup → `codex`.
+- UI implementation → `claude` or `glm`; DM runtime / data / plumbing / tests / cleanup → `codex`.
