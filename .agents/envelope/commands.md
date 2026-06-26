@@ -40,7 +40,7 @@ DM runtime code that mines/replaces them (`agent/`, `src/lib/eve/`,
 
 ## Runtime
 
-- Node `>=22.12.0` (see `engines` in `package.json`).
+- Node `24.x` (see `engines` in `package.json`, `.node-version`, and `.nvmrc`).
 - Dev environment runs inside a Distrobox container.
 - Deployed to Vercel (`@astrojs/vercel`; see `vercel.json`).
 - Model/provider for DM, and for any legacy Eve runtime kept during migration, is configured via Vercel env vars — never commit secrets.
