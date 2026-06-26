@@ -19,6 +19,6 @@ export default [
     },
   },
   {
-    ignores: ["dist/", ".astro/", "node_modules/", ".claude/"],
+    ignores: ["dist/", ".astro/", ".vercel/", "node_modules/", ".claude/"],
   },
 ];

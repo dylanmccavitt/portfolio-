@@ -3,7 +3,10 @@
 
 ## Issue
 
-Closes #
+Fixes AGE-<n>
+
+<!-- The branch name carries the Linear issue id, so this PR auto-links to the
+issue and the merge auto-closes it through Linear's GitHub bridge. -->
 
 
 ## Base branch

@@ -6,7 +6,7 @@ This repo uses Dylan's Oh My Pi workflow kit at `/Users/dylanmccavitt/.omp/agent
 
 Before editing:
 1. Read this file.
-2. Read `docs/agents/issue-tracker.md`.
+2. Read `.agents/envelope/` — the workflow envelope (Linear map, domain, commands, templates); it is the authoritative tracker/domain/command source.
 3. Read `docs/agents/triage-labels.md`.
 4. Read `docs/agents/domain.md`.
 5. Read `docs/agents/scope-ledger.md`.
@@ -14,7 +14,7 @@ Before editing:
 
 ## Issue tracker
 
-GitHub Issues: DylanMcCavitt/portfolio-
+Linear — team `dmcc` (key `AGE`), project **Portfolio**. See `.agents/envelope/linear-map.md` for the full team/project/label/state map and the GitHub bridge. (Legacy GitHub issues `DylanMcCavitt/portfolio-` #84–#88 remain for the in-flight redesign stack.)
 
 
 ## Branch and agent routing

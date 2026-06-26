@@ -1,5 +1,9 @@
 # Agent Task
 
+<!-- New work is tracked in Linear (team dmcc / AGE, project Portfolio). Prefer
+`.agents/envelope/templates/linear-issue.md`. This GitHub template remains for the
+legacy redesign stack (#84-#88). See `.agents/envelope/linear-map.md`. -->
+
 ## Problem
 
 
