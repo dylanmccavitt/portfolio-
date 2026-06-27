@@ -217,6 +217,8 @@ export async function importCatalogShadowRecords(
 ): Promise<{ imported: number; ids: string[] }> {
   const records = buildCatalogShadowRecords(projects);
 
+  await assertNoNonLegacyConflicts(db, records);
+
   for (const record of records) {
     await db.query(
       `INSERT INTO projects (
@@ -265,6 +267,30 @@ export async function importCatalogShadowRecords(
   }
 
   return { imported: records.length, ids: records.map((record) => record.id) };
+}
+
+async function assertNoNonLegacyConflicts(
+  db: CatalogShadowQueryable,
+  records: CatalogShadowRecord[],
+): Promise<void> {
+  const conflicts: string[] = [];
+
+  for (const record of records) {
+    const result = await db.query<{ id: string; source: string }>(
+      `SELECT id, source
+       FROM projects
+       WHERE id = $1
+         AND source <> 'legacy_catalog'`,
+      [record.id],
+    );
+    conflicts.push(...result.rows.map((row) => `${row.id} (${row.source})`));
+  }
+
+  if (conflicts.length > 0) {
+    throw new Error(
+      `Refusing to overwrite non-legacy catalog project records: ${conflicts.join(', ')}`,
+    );
+  }
 }
 
 export async function fetchCatalogShadowRecords(

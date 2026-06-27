@@ -176,6 +176,30 @@ test('catalog shadow import writes every project as legacy shadow records', asyn
   );
 });
 
+test('catalog shadow import refuses to overwrite non-legacy projects', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+  const project = CATALOG[0];
+  assert.ok(project, 'expected at least one catalog project');
+
+  await db.query(
+    `INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state, source)
+     VALUES ($1, $2, $3, $4, $5, $6, 'draft_only', 'manual')`,
+    [project.id, project.id, project.title, project.line, project.area, project.year],
+  );
+
+  await assert.rejects(
+    () => importCatalogShadowRecords(db),
+    /Refusing to overwrite non-legacy catalog project records/,
+  );
+
+  const unchanged = await db.query<{ source: string; lifecycle_state: string }>(
+    `SELECT source, lifecycle_state FROM projects WHERE id = $1`,
+    [project.id],
+  );
+  assert.deepEqual(unchanged.rows, [{ source: 'manual', lifecycle_state: 'draft_only' }]);
+});
+
 test('catalog parity report names missing extra and mismatched fields', () => {
   const records = JSON.parse(JSON.stringify(buildCatalogShadowRecords())) as CatalogShadowRecord[];
   const firstRecord = records[0];
