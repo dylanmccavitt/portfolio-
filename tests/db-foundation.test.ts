@@ -12,12 +12,22 @@ import {
   type CatalogShadowRecord,
 } from '../src/lib/db/catalog-shadow';
 import {
+  fetchInternalShadowProjectReadModels,
+  fetchPublicProjectCards,
+  fetchPublicProjectDetail,
+  fetchPublicProjectDetails,
+  projectRecordToReadModels,
+  tryFetchInternalShadowProjectReadModels,
+  type ProjectReadQueryable,
+} from '../src/lib/db/project-reads';
+import {
   CANDIDATE_LIFECYCLE_STATES,
   DRAFT_LIFECYCLE_STATES,
   PROJECT_LIFECYCLE_STATES,
   RAG_SOURCE_ELIGIBILITY_STATES,
   SCAN_RUN_LIFECYCLE_STATES,
 } from '../src/lib/db/schema';
+import { projectMeta } from '../src/lib/seo';
 
 const FOUNDATION_TABLES = [
   'projects',
@@ -31,6 +41,36 @@ const FOUNDATION_TABLES = [
 
 function createTestDb(): Queryable {
   return new PGlite() as Queryable;
+}
+
+async function insertProjectRecord(db: Queryable, record: CatalogShadowRecord): Promise<void> {
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+       details, metrics, links, media, source, published_at, archived_at
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8, $9,
+       $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16
+     )`,
+    [
+      record.id,
+      record.slug,
+      record.title,
+      record.tagline,
+      record.area,
+      record.year,
+      record.lifecycle_state,
+      record.activity,
+      record.summary,
+      JSON.stringify(record.details),
+      JSON.stringify(record.metrics),
+      JSON.stringify(record.links),
+      JSON.stringify(record.media),
+      record.source,
+      record.published_at,
+      record.archived_at,
+    ],
+  );
 }
 
 test('migrations create the DM project foundation tables', async () => {
@@ -198,6 +238,168 @@ test('catalog shadow import refuses to overwrite non-legacy projects', async () 
     [project.id],
   );
   assert.deepEqual(unchanged.rows, [{ source: 'manual', lifecycle_state: 'draft_only' }]);
+});
+
+test('DB read layer returns card detail and DM artifact models from shadow records', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+  await importCatalogShadowRecords(db);
+
+  const models = await fetchInternalShadowProjectReadModels(db);
+  assert.equal(models.length, CATALOG.length);
+
+  const byId = new Map(models.map((model) => [model.card.id, model]));
+  for (const project of CATALOG) {
+    const model = byId.get(project.id);
+    assert.ok(model, `expected DB read model for ${project.id}`);
+    const meta = projectMeta(project);
+
+    assert.deepEqual(model.card, {
+      id: project.id,
+      slug: project.id,
+      href: `/projects/${project.id}`,
+      title: project.title,
+      area: project.area,
+      status: project.status,
+      year: project.year,
+      activity: project.activity,
+      hue: project.hue,
+      line: project.line,
+    });
+    assert.deepEqual(
+      {
+        seek: model.detail.seek,
+        links: model.detail.links,
+        metrics: model.detail.metrics,
+        about: model.detail.about,
+        notes: model.detail.notes,
+        stack: model.detail.stack,
+        shots: model.detail.shots,
+        wip: model.detail.wip,
+        money: model.detail.money,
+        seo: model.detail.seo,
+      },
+      {
+        seek: project.seek,
+        links: project.links,
+        metrics: project.metrics,
+        about: project.about,
+        notes: project.notes,
+        stack: project.stack,
+        shots: project.shots,
+        wip: project.wip,
+        money: project.money,
+        seo: {
+          title: meta.title,
+          description: meta.description,
+          ogImage: meta.ogImage,
+          sitemapPath: `/projects/${project.id}/`,
+        },
+      },
+    );
+    assert.deepEqual(model.dmArtifact, {
+      kind: 'project',
+      id: project.id,
+      title: project.title,
+      area: project.area,
+      status: project.status,
+      year: project.year,
+      activity: project.activity,
+      line: project.line,
+      wip: project.wip,
+      money: project.money,
+      links: project.links,
+      metrics: project.metrics,
+      about: project.about,
+      notes: project.notes,
+      stack: project.stack,
+      href: `/projects/${project.id}`,
+      source: 'portfolio-site-canonical-data',
+    });
+  }
+});
+
+test('public DB read helpers expose only published project rows', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+
+  const [shadow, draft, published] = buildCatalogShadowRecords(CATALOG.slice(0, 3));
+  assert.ok(shadow && draft && published, 'expected at least three catalog shadow records');
+
+  await insertProjectRecord(db, shadow);
+  await insertProjectRecord(db, { ...draft, lifecycle_state: 'draft_only', source: 'github_discovery' });
+  await insertProjectRecord(db, {
+    ...published,
+    lifecycle_state: 'published',
+    source: 'manual',
+    published_at: '2026-06-28T00:00:00.000Z',
+  });
+  await db.query(
+    `INSERT INTO project_candidates (id, source_kind, source_ref, lifecycle_state)
+     VALUES ('candidate-hidden', 'github_repo', 'https://example.com/repo', 'detected')`,
+  );
+
+  const cards = await fetchPublicProjectCards(db);
+  const details = await fetchPublicProjectDetails(db);
+  const detail = await fetchPublicProjectDetail(db, published.id);
+  const shadowDetail = await fetchPublicProjectDetail(db, shadow.id);
+
+  assert.deepEqual(cards.map((card) => card.id), [published.id]);
+  assert.deepEqual(details.map((item) => item.id), [published.id]);
+  assert.equal(detail?.id, published.id);
+  assert.equal(shadowDetail, null);
+  const internalShadow = await fetchInternalShadowProjectReadModels(db);
+  assert.deepEqual(internalShadow.map((model) => model.card.id), [shadow.id]);
+
+  const neonStyleDb = {
+    async query<Row = unknown>() {
+      return [published] as Row[];
+    },
+  } satisfies ProjectReadQueryable;
+  assert.deepEqual(
+    (await fetchPublicProjectCards(neonStyleDb)).map((card) => card.id),
+    [published.id],
+  );
+
+  assert.throws(
+    () => projectRecordToReadModels({ ...published, media: ['not-a-shot'] }),
+    /invalid media read details/,
+  );
+  assert.throws(
+    () => projectRecordToReadModels({ ...published, media: [{ cap: 'bad hybrid', img: false, kind: 'chart' }] }),
+    /invalid media read details/,
+  );
+  assert.throws(
+    () => projectRecordToReadModels({ ...published, media: [{ cap: 'bad skeleton', kind: 'constructor' }] }),
+    /invalid media read details/,
+  );
+  const invalidStatus = JSON.parse(JSON.stringify(published)) as CatalogShadowRecord;
+  (invalidStatus.details[0] as Record<string, unknown>).status = ['constructor', 'Published'];
+  assert.throws(
+    () => projectRecordToReadModels(invalidStatus),
+    /invalid status read details/,
+  );
+});
+
+test('shadow read helper reports unavailable instead of throwing on missing or failed DB', async () => {
+  const missing = await tryFetchInternalShadowProjectReadModels(null);
+  assert.deepEqual(missing, {
+    status: 'unavailable',
+    projects: [],
+    reason: 'Database client is not configured.',
+  });
+
+  const failed = await tryFetchInternalShadowProjectReadModels({
+    async query() {
+      throw new Error('shadow read failed');
+    },
+  } satisfies ProjectReadQueryable);
+
+  assert.deepEqual(failed, {
+    status: 'unavailable',
+    projects: [],
+    reason: 'shadow read failed',
+  });
 });
 
 test('catalog parity report names missing extra and mismatched fields', () => {
