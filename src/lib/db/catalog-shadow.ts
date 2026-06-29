@@ -2,9 +2,12 @@ import { CATALOG, PLAYLIST_SLUGS, type Project } from '../../data/catalog';
 import { projectMeta } from '../seo';
 import type { JsonValue, ProjectRecord } from './schema';
 
+export type DbQueryResult<Row = unknown> = { rows: Row[] } | Row[];
+
 export interface CatalogShadowQueryable {
-  query<Row = unknown>(sql: string, params?: unknown[]): Promise<{ rows: Row[] }>;
+  query<Row = unknown>(sql: string, params?: unknown[]): Promise<DbQueryResult<Row>>;
 }
+
 
 export type CatalogShadowRecord = Omit<ProjectRecord, 'created_at' | 'updated_at'> & {
   created_at?: string;
@@ -283,7 +286,8 @@ async function assertNoNonLegacyConflicts(
          AND source <> 'legacy_catalog'`,
       [record.id],
     );
-    conflicts.push(...result.rows.map((row) => `${row.id} (${row.source})`));
+    const rows = Array.isArray(result) ? result : result.rows;
+    conflicts.push(...rows.map((row) => `${row.id} (${row.source})`));
   }
 
   if (conflicts.length > 0) {
@@ -300,11 +304,11 @@ export async function fetchCatalogShadowRecords(
     `SELECT id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
             details, metrics, links, media, source, published_at, archived_at
      FROM projects
-     WHERE source = 'legacy_catalog'
+     WHERE source = 'legacy_catalog' AND lifecycle_state = 'shadow'
      ORDER BY id`,
   );
 
-  return result.rows;
+  return Array.isArray(result) ? result : result.rows;
 }
 
 export function generateCatalogParityReport(
