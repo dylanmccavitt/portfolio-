@@ -22,7 +22,7 @@ export interface GithubRepositorySnapshot {
 export interface GithubDiscoveryScanInput {
   actor: string;
   repo: GithubRepositorySnapshot;
-  trigger?: 'manual' | 'test';
+  trigger?: 'manual' | 'slack' | 'test';
   allowlistTopic?: string;
 }
 
