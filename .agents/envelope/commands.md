@@ -11,7 +11,8 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Preview    | `npm run preview`  | `astro preview` |
 | Lint       | `npm run lint`     | `eslint .` |
 | Typecheck  | `npm run typecheck`| `astro check` |
-| Test       | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
+| DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
+| Legacy Eve test | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
 
 ## Verify gate
 
@@ -21,9 +22,10 @@ Run before calling work complete (also `npm run verify`):
 npm run lint && npm run typecheck && npm run build
 ```
 
-Add `npm run test:eve` when the change touches legacy Eve runtime/tool paths or
-DM runtime code that mines/replaces them (`agent/`, `src/lib/eve/`,
-`/api/eve/chat`, or `tests/eve-runtime.test.ts`).
+Add `npm run test:dm` when the change touches the public DM runtime/API seam.
+Add `npm run test:eve` when the change touches legacy Eve runtime/tool paths
+that remain as migration evidence (`src/lib/eve/`, `/api/eve/chat`, or
+`tests/eve-runtime.test.ts`).
 
 ## Branches
 

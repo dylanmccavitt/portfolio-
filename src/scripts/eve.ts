@@ -21,7 +21,7 @@
 
 import {
   AGENT_NAME,
-  EVE_ENDPOINT,
+  DM_ENDPOINT,
   fitCheckValidationMessage,
   parseStreamLine,
   resolveContact,
@@ -31,10 +31,13 @@ import {
   sanitizeJobDescriptionForFitCheck,
   type AnswerBlock,
   type ChatMessage,
+  type ProjectArtifact,
   type StreamEvent,
 } from '../lib/eve';
 import type { Project } from '../data/catalog';
 import type { ResumeTrack } from '../data/resume';
+
+type RenderProject = Project | ProjectArtifact;
 
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers — explicit and XSS-safe (text via textContent only).
@@ -213,13 +216,13 @@ class Turn {
         break;
       }
       case 'projects': {
-        const projects = resolveProjects(block.ids);
+        const projects = mergeProjectArtifacts(block.items, resolveProjects(block.ids));
         if (!projects.length) break;
         const wrap = make('div', { class: 'eve-projs' });
         for (const p of projects) {
           const [kind, statusLabel] = p.status;
           wrap.append(
-            make('a', { class: 'eve-proj', href: `/projects/${p.id}`, hue: p.hue }, [
+            make('a', { class: 'eve-proj', href: projectHref(p), hue: projectHue(p) }, [
               make('span', { class: 'eve-proj__rule', 'aria-hidden': 'true' }),
               make('span', { class: 'eve-proj__id', text: p.id }),
               make('h3', { class: 'eve-proj__title', text: p.title }),
@@ -256,7 +259,9 @@ class Turn {
         break;
       }
       case 'evidence': {
-        const { projects, tracks } = resolveEvidence(block);
+        const resolved = resolveEvidence(block);
+        const projects = mergeProjectArtifacts(block.projects, resolved.projects);
+        const tracks = resolved.tracks;
         if (!projects.length && !tracks.length) break;
 
         const count = projects.length + tracks.length;
@@ -318,11 +323,11 @@ class Turn {
     }
   }
 
-  private projectEvidence(project: Project): HTMLElement {
+  private projectEvidence(project: RenderProject): HTMLElement {
     const [kind, statusLabel] = project.status;
-    const facts = [...project.metrics.slice(0, 2), ...project.stack.slice(0, 2)];
+    const facts = [...projectMetrics(project).slice(0, 2), ...projectStack(project).slice(0, 2)];
 
-    return make('a', { class: 'eve-evidence-item', href: `/projects/${project.id}`, hue: project.hue }, [
+    return make('a', { class: 'eve-evidence-item', href: projectHref(project), hue: projectHue(project) }, [
       make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
       make('span', { class: 'eve-evidence-top' }, [
         make('span', { class: 'eve-evidence-type', text: 'project' }),
@@ -331,7 +336,7 @@ class Turn {
       make('h3', { class: 'eve-evidence-title', text: project.title }),
       make('p', { class: 'eve-evidence-line', text: project.line }),
       this.evidenceFacts(facts),
-      project.notes[0] ? make('p', { class: 'eve-evidence-note', text: project.notes[0] }) : null,
+      projectNotes(project)[0] ? make('p', { class: 'eve-evidence-note', text: projectNotes(project)[0] }) : null,
       make('span', { class: 'eve-evidence-route', text: 'Open project →' }),
     ]);
   }
@@ -431,7 +436,7 @@ async function streamInto(
   signal: AbortSignal,
 ): Promise<void> {
   const payload = context ? { message, conversation, context } : { message, conversation };
-  const res = await fetch(EVE_ENDPOINT, {
+  const res = await fetch(DM_ENDPOINT, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
     body: JSON.stringify(payload),
@@ -654,6 +659,34 @@ function initRoot(root: HTMLElement): void {
     root.classList.remove('eve-started');
     input.focus();
   });
+}
+
+function mergeProjectArtifacts(items: ProjectArtifact[] | undefined, fallback: Project[]): RenderProject[] {
+  if (!items?.length) return fallback;
+  const byId = new Map<string, RenderProject>();
+  for (const project of fallback) byId.set(project.id, project);
+  for (const item of items) byId.set(item.id, item);
+  return [...byId.values()];
+}
+
+function projectHref(project: RenderProject): string {
+  return 'href' in project ? project.href : `/projects/${project.id}`;
+}
+
+function projectHue(project: RenderProject): string {
+  return 'hue' in project && typeof project.hue === 'string' ? project.hue : '#8b7cf6';
+}
+
+function projectMetrics(project: RenderProject): Project['metrics'] {
+  return 'metrics' in project && Array.isArray(project.metrics) ? project.metrics : [];
+}
+
+function projectStack(project: RenderProject): Project['stack'] {
+  return 'stack' in project && Array.isArray(project.stack) ? project.stack : [];
+}
+
+function projectNotes(project: RenderProject): string[] {
+  return 'notes' in project && Array.isArray(project.notes) ? project.notes : [];
 }
 
 document.querySelectorAll<HTMLElement>('[data-eve-root]').forEach(initRoot);

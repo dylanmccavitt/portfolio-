@@ -1,5 +1,5 @@
 import type { Project, ProjectLink, ProjectMetric, ProjectSeek, ProjectShot, ProjectStackEntry, ProjectStatus } from '../../data/catalog';
-import type { ProjectSummary } from '../eve/contract';
+import type { ProjectSummary } from '../dm/contract';
 import { fetchCatalogShadowRecords, type CatalogShadowQueryable, type CatalogShadowRecord } from './catalog-shadow';
 import type { JsonValue, ProjectRecord, ProjectSource } from './schema';
 

@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "test:db": "node --import tsx --test tests/db-foundation.test.ts",
     "test:eve": "node --import tsx --test tests/eve-runtime.test.ts",
+    "test:dm": "node --import tsx --test tests/dm-runtime.test.ts",
     "typecheck": "astro check",
     "verify": "npm run lint && npm run typecheck && npm run build",
     "db:migrate": "tsx scripts/db.ts migrate",
@@ -29,14 +30,13 @@
     "@vercel/oidc": "^3.6.1",
     "ai": "^7.0.2",
     "astro": "^7.0.3",
-    "eve": "^0.15.1",
     "openai": "^6.45.0",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@electric-sql/pglite": "^0.5.3",
+    "@eslint/js": "^10.0.1",
     "@fontsource/inter": "^5.2.8",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^25.6.0",

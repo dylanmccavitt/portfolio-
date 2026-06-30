@@ -1,20 +1,17 @@
 /**
- * Eve landing — client contract for the Split-canvas chat UI (#86).
+ * Split-canvas landing — client contract for the DM chat UI.
  *
- * This module is the UI's view of the runtime contract owned by the Eve agent
- * endpoint (#84). It defines the **answer-block** shapes the surface renders,
- * the **stream-event** envelope the client consumes, a tolerant NDJSON parser,
- * and id resolvers against the canonical `catalog.ts` / `resume.ts` data.
+ * This module is the UI's view of the public DM runtime contract. It defines
+ * the **answer-block** shapes the surface renders, the **stream-event** envelope
+ * the client consumes, a tolerant NDJSON parser, and id resolvers against the
+ * canonical `catalog.ts` / `resume.ts` data.
  *
- * Boundary: the server (#84) owns the agent, tools, model/provider, and the
- * `/api/eve/chat` endpoint that emits this stream. This file owns nothing
- * server-side; it only describes what the landing reads. When #84 ships its
- * canonical endpoint types, these should be consolidated against them — they
- * are kept deliberately small and faithful to the answer-block contract so that
- * consolidation is a rename, not a redesign.
+ * Boundary: the server owns the agent, tools, model/provider, and the
+ * `/api/dm/chat` endpoint that emits this stream. This file owns nothing
+ * server-side; it only describes what the landing reads.
  *
- * Wire format (documented so #84 can conform): the endpoint accepts
- *   POST /api/eve/chat  { message: string, history?: ChatMessage[] }
+ * Wire format: the endpoint accepts
+ *   POST /api/dm/chat  { message: string, conversation?: ChatMessage[] }
  * and replies with **NDJSON** — one JSON {@link StreamEvent} per line. A
  * `data: ` SSE prefix is tolerated but not required. The stream ends when the
  * response body closes.
@@ -28,13 +25,13 @@ export {
   FIT_CHECK_MIN_CHARS,
   fitCheckValidationMessage,
   sanitizeJobDescriptionForFitCheck,
-} from './eve/fit-check';
+} from './dm/fit-check';
 
 /** The portfolio agent's name. */
 export const AGENT_NAME = 'DM';
 
-/** Streaming chat endpoint owned by #84. Relative so it follows the origin. */
-export const EVE_ENDPOINT = '/api/eve/chat';
+/** Streaming chat endpoint. Relative so it follows the origin. */
+export const DM_ENDPOINT = '/api/dm/chat';
 
 /** Empty-state greeting shown before the first question. */
 export const GREETING =
@@ -95,9 +92,25 @@ export interface TextBlock {
   kind: 'text';
   text: string;
 }
+export interface ProjectArtifact {
+  id: string;
+  title: string;
+  area: Project['area'];
+  status: Project['status'];
+  year: number;
+  activity: string;
+  line: string;
+  href: string;
+  hue?: string;
+  metrics?: Project['metrics'];
+  stack?: Project['stack'];
+  notes?: string[];
+}
+
 export interface ProjectsBlock {
   kind: 'projects';
   ids: string[];
+  items?: ProjectArtifact[];
 }
 export interface ResumeBlock {
   kind: 'resume';
@@ -106,6 +119,7 @@ export interface ResumeBlock {
 export interface EvidenceBlock {
   kind: 'evidence';
   projectIds?: string[];
+  projects?: ProjectArtifact[];
   resumeTrackIds?: string[];
 }
 /** Contact fields are optional; the UI merges them over {@link CONTACT}. */
@@ -122,7 +136,7 @@ export interface LinksBlock {
   items: [label: string, href: string][];
 }
 
-/** A rendered chunk of an Eve answer. */
+/** A rendered chunk of a DM answer. */
 export type AnswerBlock =
   | TextBlock
   | ProjectsBlock
@@ -190,10 +204,11 @@ export function validateBlock(value: unknown): AnswerBlock | null {
   switch (value.kind) {
     case 'text':
       return typeof value.text === 'string' ? { kind: 'text', text: value.text } : null;
-    case 'projects':
-      return Array.isArray(value.ids) && value.ids.every((id) => typeof id === 'string')
-        ? { kind: 'projects', ids: value.ids as string[] }
-        : null;
+    case 'projects': {
+      const ids = parseRequiredStringArray(value.ids);
+      const items = parseOptionalProjectArtifacts(value.items);
+      return ids && items !== null ? { kind: 'projects', ids, ...(items?.length ? { items } : {}) } : null;
+    }
     case 'resume':
       return Array.isArray(value.trackIds) &&
         value.trackIds.every((id) => typeof id === 'string')
@@ -201,12 +216,14 @@ export function validateBlock(value: unknown): AnswerBlock | null {
         : null;
     case 'evidence': {
       const projectIds = parseOptionalStringArray(value.projectIds);
+      const projects = parseOptionalProjectArtifacts(value.projects);
       const resumeTrackIds = parseOptionalStringArray(value.resumeTrackIds);
-      if (projectIds === null || resumeTrackIds === null) return null;
-      if (!projectIds?.length && !resumeTrackIds?.length) return null;
+      if (projectIds === null || projects === null || resumeTrackIds === null) return null;
+      if (!projectIds?.length && !projects?.length && !resumeTrackIds?.length) return null;
       return {
         kind: 'evidence',
         ...(projectIds?.length ? { projectIds: projectIds.slice(0, MAX_EVIDENCE_PROJECTS) } : {}),
+        ...(projects?.length ? { projects: projects.slice(0, MAX_EVIDENCE_PROJECTS) } : {}),
         ...(resumeTrackIds?.length
           ? { resumeTrackIds: resumeTrackIds.slice(0, MAX_EVIDENCE_TRACKS) }
           : {}),
@@ -288,11 +305,66 @@ export function parseStreamLine(line: string): StreamEvent | null {
 const PROJECTS_BY_ID = new Map(CATALOG.map((p) => [p.id, p]));
 const TRACKS_BY_ID = new Map(RESUME.tracks.map((t) => [t.id, t]));
 
+function parseRequiredStringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((id) => typeof id === 'string') ? (value as string[]) : null;
+}
+
 function parseOptionalStringArray(value: unknown): string[] | null | undefined {
   if (value === undefined) return undefined;
   return Array.isArray(value) && value.every((id) => typeof id === 'string')
     ? (value as string[])
     : null;
+}
+
+function parseOptionalProjectArtifacts(value: unknown): ProjectArtifact[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const projects = value.map(parseProjectArtifact);
+  return projects.every((project): project is ProjectArtifact => Boolean(project)) ? projects : null;
+}
+
+function parseProjectArtifact(value: unknown): ProjectArtifact | null {
+  if (!isObject(value)) return null;
+  const status = value.status;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.title !== 'string' ||
+    typeof value.area !== 'string' ||
+    !Array.isArray(status) ||
+    status.length !== 2 ||
+    typeof status[0] !== 'string' ||
+    typeof status[1] !== 'string' ||
+    typeof value.year !== 'number' ||
+    typeof value.activity !== 'string' ||
+    typeof value.line !== 'string' ||
+    typeof value.href !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    title: value.title,
+    area: value.area as Project['area'],
+    status: status as Project['status'],
+    year: value.year,
+    activity: value.activity,
+    line: value.line,
+    href: value.href,
+    ...(typeof value.hue === 'string' ? { hue: value.hue } : {}),
+    ...(isStringTupleArray(value.metrics) ? { metrics: value.metrics as Project['metrics'] } : {}),
+    ...(isStringTupleArray(value.stack) ? { stack: value.stack as Project['stack'] } : {}),
+    ...(Array.isArray(value.notes) && value.notes.every((note) => typeof note === 'string') ? { notes: value.notes as string[] } : {}),
+  };
+}
+
+function isStringTupleArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) => Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && typeof item[1] === 'string',
+    )
+  );
 }
 
 /** Resolve project ids to catalog records, dropping (and warning on) unknowns. */
@@ -301,7 +373,7 @@ export function resolveProjects(ids: string[]): Project[] {
   for (const id of ids) {
     const project = PROJECTS_BY_ID.get(id);
     if (project) out.push(project);
-    else console.warn(`[eve] unknown project id from stream: "${id}"`);
+    else console.warn(`[dm] unknown project id from stream: "${id}"`);
   }
   return out;
 }
@@ -312,7 +384,7 @@ export function resolveTracks(trackIds: string[]): ResumeTrack[] {
   for (const id of trackIds) {
     const track = TRACKS_BY_ID.get(id);
     if (track) out.push(track);
-    else console.warn(`[eve] unknown résumé track id from stream: "${id}"`);
+    else console.warn(`[dm] unknown résumé track id from stream: "${id}"`);
   }
   return out;
 }

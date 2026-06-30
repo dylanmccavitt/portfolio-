@@ -1,9 +1,9 @@
 /**
  * Resume — the career timeline and single source of truth for resume views and
- * Eve resume tools.
+ * DM resume tools.
  *
  * Copy (about, notes, credits, hues, and chronology metadata) is kept here so
- * static pages and Eve tools read the same facts.
+ * static pages and DM tools read the same facts.
  *
  * Era cross-links resolve against the project catalog (`catalog.ts`): each
  * `era` entry is a project id, constrained at compile time to the ids the
