@@ -11,7 +11,10 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Preview    | `npm run preview`  | `astro preview` |
 | Lint       | `npm run lint`     | `eslint .` |
 | Typecheck  | `npm run typecheck`| `astro check` |
-| Test       | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
+| Test DB foundation | `npm run test:db` | `node --import tsx --test tests/db-foundation.test.ts` |
+| Test GitHub discovery | `npm run test:discovery` | `node --import tsx --test tests/github-discovery.test.ts` |
+| Test legacy Eve | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
+| Manual GitHub discovery scan | `npm run db:github:scan -- <repo-fixture.json>` | `tsx scripts/github-discovery.ts <repo-fixture.json>` |
 
 ## Verify gate
 

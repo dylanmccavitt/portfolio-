@@ -12,6 +12,7 @@
     "astro": "astro",
     "lint": "eslint .",
     "test:db": "node --import tsx --test tests/db-foundation.test.ts",
+    "test:discovery": "node --import tsx --test tests/github-discovery.test.ts",
     "test:eve": "node --import tsx --test tests/eve-runtime.test.ts",
     "typecheck": "astro check",
     "verify": "npm run lint && npm run typecheck && npm run build",
@@ -19,7 +20,8 @@
     "db:seed": "tsx scripts/db.ts seed",
     "db:reset": "tsx scripts/db.ts reset",
     "db:catalog:shadow": "tsx scripts/catalog-shadow.ts import-and-report",
-    "db:catalog:parity": "tsx scripts/catalog-shadow.ts report"
+    "db:catalog:parity": "tsx scripts/catalog-shadow.ts report",
+    "db:github:scan": "tsx scripts/github-discovery.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
