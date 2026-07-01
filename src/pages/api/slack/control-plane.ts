@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { createDbClient, getDatabaseUrl, type DbClient } from '../../../lib/db/client';
 import {
   handleSlackFormEncodedRequest,
+  safeSlackError,
   verifySlackRequest,
   type SlackControlPlaneConfig,
   type SlackControlPlaneQueryable,
@@ -28,30 +29,38 @@ type SlackControlPlaneEnv = Partial<{
 
 export function createSlackControlPlanePostHandler(deps: SlackControlPlanePostHandlerDeps = {}): APIRoute {
   return async ({ request }) => {
-    const body = await request.text();
-    const configResult = readConfigResult(deps);
-    if (!configResult.ok) return configResult.response;
+    try {
+      const body = await request.text();
+      const configResult = readConfigResult(deps);
+      if (!configResult.ok) return configResult.response;
 
-    const config = configResult.config;
-    const verification = verifySlackRequest(
-      {
-        body,
-        timestamp: request.headers.get('x-slack-request-timestamp'),
-        signature: request.headers.get('x-slack-signature'),
-      },
-      config,
-    );
+      const config = configResult.config;
+      const verification = verifySlackRequest(
+        {
+          body,
+          timestamp: request.headers.get('x-slack-request-timestamp'),
+          signature: request.headers.get('x-slack-signature'),
+        },
+        config,
+      );
 
-    if (!verification.ok) {
-      return slackJson(200, false, verification.code, verification.message);
+      if (!verification.ok) {
+        return slackJson(200, false, verification.code, verification.message);
+      }
+
+      const dbResult = createDbResult(deps);
+      if (!dbResult.ok) return dbResult.response;
+
+      const db = dbResult.db;
+      const result = await handleSlackFormEncodedRequest(db, config, body);
+      return slackJson(slackHttpStatus(result.status), result.ok, result.code, result.message, result.responseType);
+    } catch (error) {
+      // Last-resort guard: without it, anything thrown outside
+      // handleSlackFormEncodedRequest becomes an Astro 500 and Slack shows
+      // "app did not respond" with no server-side trace.
+      const result = safeSlackError(error);
+      return slackJson(200, false, result.code, result.message, result.responseType);
     }
-
-    const dbResult = createDbResult(deps);
-    if (!dbResult.ok) return dbResult.response;
-
-    const db = dbResult.db;
-    const result = await handleSlackFormEncodedRequest(db, config, body);
-    return slackJson(slackHttpStatus(result.status), result.ok, result.code, result.message, result.responseType);
   };
 }
 

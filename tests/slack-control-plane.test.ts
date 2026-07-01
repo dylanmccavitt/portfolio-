@@ -155,6 +155,30 @@ test('Slack command rejects invalid signatures before service work runs', async 
   });
 });
 
+test('Slack route returns safe 200 JSON when the request itself fails', async () => {
+  const db = {
+    async query() {
+      throw new Error('database should not be called when request.text fails');
+    },
+  } satisfies Queryable;
+  const POST = createSlackControlPlanePostHandler({ config: CONFIG, db });
+
+  const response = await POST({
+    request: {
+      headers: new Headers(),
+      text: () => Promise.reject(new Error('boom with sensitive details')),
+    },
+  } as never);
+  const json = await responseJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(json.ok, false);
+  assert.equal(json.code, 'slack_control_plane_error');
+  assert.equal(json.response_type, 'ephemeral');
+  assert.match(String(json.text), /Error ref [0-9a-f]{8}\.$/);
+  assert.ok(!String(json.text).includes('sensitive'), 'raw request error details must not leak to Slack');
+});
+
 test('single-user Slack scan trigger routes authorized repo input to GitHub discovery', async () => {
   const db = await createMigratedDb();
   const repo = {
@@ -331,7 +355,11 @@ test('Slack action errors return safe messages without public visibility changes
   );
   assert.equal(failing.status, 500);
   assert.equal(failing.code, 'slack_control_plane_error');
-  assert.equal(failing.message, 'Slack control-plane action failed before changing public project visibility.');
+  assert.match(
+    failing.message,
+    /^Slack control-plane action failed before changing public project visibility\. Error ref [0-9a-f]{8}\.$/,
+  );
+  assert.ok(!failing.message.includes('secret-token'), 'raw error details must not leak to Slack');
 
   const projects = await db.query<{ count: string }>(`SELECT count(*)::text AS count FROM projects`);
   assert.equal(projects.rows[0]?.count, '0');

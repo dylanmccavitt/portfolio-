@@ -586,7 +586,7 @@ function candidateNotFound(candidateId: string): SlackControlPlaneResult {
   };
 }
 
-function safeSlackError(error: unknown): SlackControlPlaneResult {
+export function safeSlackError(error: unknown): SlackControlPlaneResult {
   if (error instanceof SlackUserFacingError) {
     return {
       ok: false,
@@ -597,13 +597,38 @@ function safeSlackError(error: unknown): SlackControlPlaneResult {
     };
   }
 
+  const errorRef = logSlackControlPlaneError(error);
   return {
     ok: false,
     status: 500,
     code: 'slack_control_plane_error',
     responseType: 'ephemeral',
-    message: 'Slack control-plane action failed before changing public project visibility.',
+    message: `Slack control-plane action failed before changing public project visibility. Error ref ${errorRef}.`,
   };
+}
+
+/**
+ * Logs an unexpected control-plane error server-side (Vercel runtime logs) and
+ * returns a short correlation ref that is safe to show in Slack. Never logs
+ * request bodies or secrets; Postgres error fields (code/table/constraint) are
+ * schema-level facts, not data.
+ */
+function logSlackControlPlaneError(error: unknown): string {
+  const errorRef = randomUUID().slice(0, 8);
+  const details: Record<string, unknown> = { errorRef };
+  if (error instanceof Error) {
+    details.name = error.name;
+    details.message = error.message;
+    details.stack = error.stack;
+    for (const key of ['code', 'detail', 'table', 'constraint', 'routine'] as const) {
+      const value = (error as unknown as Record<string, unknown>)[key];
+      if (typeof value === 'string') details[`pg_${key}`] = value;
+    }
+  } else {
+    details.value = String(error);
+  }
+  console.error('[slack-control-plane]', JSON.stringify(details));
+  return errorRef;
 }
 
 function userFacingError(code: string, message: string): SlackUserFacingError {
