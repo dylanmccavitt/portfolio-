@@ -13,6 +13,8 @@ AGE-728 adds the Neon-on-Vercel foundation for future DM project records. It doe
 ## Commands
 
 - `npm run db:migrate` applies unapplied SQL files under `db/migrations/`.
+- Deploys do NOT run migrations (`build` is bare `astro build`). Every new migration file requires a one-time manual `DATABASE_URL='<neon-connection-string>' npm run db:migrate` against the real database before deployed code depends on it. The connection string is Sensitive in Vercel (`vercel env pull` returns it empty) — read it from the Neon console or Vercel → Storage. Automation is deferred scope; see `docs/agents/scope-ledger.md`.
+- Migrations must stay statement-idempotent (`IF NOT EXISTS` et al.): the `neon()` HTTP driver has no session/transaction support, so the runner executes statements without `BEGIN`/`COMMIT` and a partial failure must converge on re-run.
 - `npm run db:seed` applies migrations and non-public seed rows under `db/seeds/`.
 - `ALLOW_DB_RESET=1 npm run db:reset` drops the AGE-728 foundation tables, reapplies migrations, then reapplies seeds. The safety flag is required because this command uses the active Neon/Vercel connection string.
 - `npm run test:db` runs the migration/seed/reset proof against an in-memory PGlite database, so CI/local tests do not require Vercel or Neon credentials.

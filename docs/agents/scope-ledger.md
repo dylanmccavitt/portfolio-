@@ -73,6 +73,10 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   - Why deferred: Handoff names blog as nice-to-have, not MVP.
   - Where tracked: Future issue candidates below.
   - Constraint imposed on Now: Do not remove routes/data patterns that make future writing sections possible.
+- Capability: Automated DB migration on deploy.
+  - Why deferred: AGE-761 debugging proved deploys never run `db:migrate` (`build` is bare `astro build`); migration 0001 was applied manually against Neon. Auto-migration is a policy decision because preview and production currently share one Neon database, so preview deploys would migrate production.
+  - Where tracked: Future issue candidates below.
+  - Constraint imposed on Now: Every new file under `db/migrations/` requires a one-time manual `DATABASE_URL='<neon>' npm run db:migrate` against the real database before any deployed code depends on it (see `docs/agents/db-foundation.md`). Migrations must stay statement-idempotent (`IF NOT EXISTS` et al.) because the Neon HTTP driver runs them without transactions.
 
 ## Do not preclude
 

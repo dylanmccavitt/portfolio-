@@ -5,6 +5,7 @@ import { applyMigrations, type Queryable } from '../scripts/db';
 import {
   PORTFOLIO_CANDIDATE_TOPIC,
   scanGithubRepositoryCandidate,
+  type GithubDiscoveryQueryable,
   type GithubRepositorySnapshot,
 } from '../src/lib/db/github-discovery';
 
@@ -119,6 +120,40 @@ test('allowlisted GitHub repo creates scan run candidate evidence and audit reco
 
   const ragSources = await db.query<{ count: string }>(`SELECT count(*)::text AS count FROM rag_sources`);
   assert.equal(ragSources.rows[0]?.count, '0');
+});
+
+test('scan failure rethrows the original error when scan_runs bookkeeping also fails', async () => {
+  const originalError = new Error('relation "scan_runs" does not exist');
+  const bookkeepingError = new Error('bookkeeping update failed');
+  let queryCount = 0;
+  const db: GithubDiscoveryQueryable = {
+    async query() {
+      queryCount += 1;
+      if (queryCount === 1) return { rows: [] };
+      if (queryCount === 2) throw originalError;
+      throw bookkeepingError;
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      scanGithubRepositoryCandidate(db, {
+        actor: 'test',
+        trigger: 'test',
+        repo: {
+          owner: 'DylanMcCavitt',
+          name: 'portfolio-candidate-app',
+          htmlUrl: 'https://github.com/DylanMcCavitt/portfolio-candidate-app',
+          topics: [PORTFOLIO_CANDIDATE_TOPIC],
+          isPrivate: false,
+        },
+      }),
+    (error) => {
+      assert.equal((error as Error).message, 'relation "scan_runs" does not exist');
+      return true;
+    },
+  );
+  assert.equal(queryCount, 3);
 });
 
 test('non-allowlisted GitHub repos are rejected with audit reason and no candidate records', async () => {

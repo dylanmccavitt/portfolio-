@@ -40,3 +40,5 @@ docs/handoffs/*.md
 
 # conductor (retired)
 .conductor/
+.vercel
+.env*.local

@@ -62,16 +62,15 @@ export async function applyMigrations(db: Queryable, migrationsDir = MIGRATIONS_
     const existing = await db.query<{ name: string }>('SELECT name FROM schema_migrations WHERE name = $1', [name]);
     if (existing.rows.length > 0) continue;
 
-    await db.query('BEGIN');
-    try {
-      await runSqlFile(db, join(migrationsDir, name));
-      await db.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
-      await db.query('COMMIT');
-      applied.push(name);
-    } catch (error) {
-      await db.query('ROLLBACK');
-      throw error;
-    }
+    // No BEGIN/COMMIT here: the Neon HTTP driver (`neon()`) runs each query in
+    // its own implicit transaction and does not support sessions, so explicit
+    // transaction control either fails or silently does nothing. Migrations
+    // must therefore stay statement-idempotent (IF NOT EXISTS et al.) so a
+    // partial failure converges on re-run. The migration row is only recorded
+    // after every statement succeeded.
+    await runSqlFile(db, join(migrationsDir, name));
+    await db.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
+    applied.push(name);
   }
 
   return applied;

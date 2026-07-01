@@ -22,7 +22,7 @@ export interface GithubRepositorySnapshot {
 export interface GithubDiscoveryScanInput {
   actor: string;
   repo: GithubRepositorySnapshot;
-  trigger?: 'manual' | 'test';
+  trigger?: 'manual' | 'slack' | 'test';
   allowlistTopic?: string;
 }
 
@@ -161,7 +161,13 @@ export async function scanGithubRepositoryCandidate(
       audit,
     };
   } catch (error) {
-    await failScanRun(db, scanRunId, error);
+    // Best-effort bookkeeping: if scan_runs itself is broken (e.g. missing
+    // relation), the update would throw the same error and mask the original.
+    try {
+      await failScanRun(db, scanRunId, error);
+    } catch {
+      // Original error is the diagnostic signal; swallow the bookkeeping one.
+    }
     throw error;
   }
 }
