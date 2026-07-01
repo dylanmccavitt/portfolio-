@@ -632,14 +632,29 @@ function logSlackControlPlaneError(error: unknown): string {
 }
 
 /**
+ * Env vars whose values are credentials. Any occurrence of these values in
+ * error text is masked before logging, so no secret this system holds can
+ * reach logs regardless of which error message carries it.
+ */
+const SECRET_ENV_KEYS = ['SLACK_SIGNING_SECRET', 'PORTFOLIO_DATABASE_URL', 'DATABASE_URL'] as const;
+
+/**
  * Strips data-bearing substrings from error text before it reaches logs:
- * Postgres detail values ("Key (col)=(value)…") and URL credentials. Schema
- * identifiers and error shapes stay intact for correlation.
+ * Postgres detail values ("Key (col)=(value)…"), URL credentials, and the
+ * values of configured secrets. Schema identifiers and error shapes stay
+ * intact for correlation.
  */
 function redactErrorText(text: string): string {
-  return text
+  let redacted = text
     .replace(/Key \([^)]*\)=\([^)]*\)/g, 'Key (…)=(…)')
     .replace(/\/\/[^/\s:@]+:[^/\s@]+@/g, '//…:…@');
+  for (const key of SECRET_ENV_KEYS) {
+    const value = process.env[key];
+    if (value && value.length >= 8 && redacted.includes(value)) {
+      redacted = redacted.split(value).join(`[${key}]`);
+    }
+  }
+  return redacted;
 }
 
 function userFacingError(code: string, message: string): SlackUserFacingError {

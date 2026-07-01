@@ -189,8 +189,16 @@ test('server-side error logs redact data values, not just the Slack response', a
     console.error = originalError;
   });
 
+  const envSecret = 'env-secret-value-cafebabe123';
+  const originalEnvSecret = process.env.PORTFOLIO_DATABASE_URL;
+  process.env.PORTFOLIO_DATABASE_URL = envSecret;
+  t.after(() => {
+    if (originalEnvSecret === undefined) delete process.env.PORTFOLIO_DATABASE_URL;
+    else process.env.PORTFOLIO_DATABASE_URL = originalEnvSecret;
+  });
+
   const pgError = Object.assign(
-    new Error('duplicate key: Key (email)=(person@example.com) already exists at postgres://user:secret-token@db.example/neon'),
+    new Error(`duplicate key: Key (email)=(person@example.com) already exists at postgres://user:secret-token@db.example/neon using ${envSecret}`),
     { code: '23505', table: 'project_candidates', constraint: 'project_candidates_pkey', detail: 'Key (email)=(person@example.com) already exists.', routine: 'ExecInsert' },
   );
   const db = {
@@ -214,6 +222,8 @@ test('server-side error logs redact data values, not just the Slack response', a
   assert.ok(logLine.includes('"pg_table":"project_candidates"'), 'log keeps schema-level pg table');
   assert.ok(!logLine.includes('person@example.com'), 'pg detail data values must not reach logs');
   assert.ok(!logLine.includes('secret-token'), 'URL credentials must not reach logs');
+  assert.ok(!logLine.includes(envSecret), 'configured secret values must not reach logs');
+  assert.ok(logLine.includes('[PORTFOLIO_DATABASE_URL]'), 'masked secret is replaced by its env key name');
   assert.ok(!logLine.includes('pg_detail'), 'pg detail field must not be logged at all');
   assert.ok(!logLine.includes('pg_routine'), 'pg routine field must not be logged');
 });
