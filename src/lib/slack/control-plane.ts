@@ -620,7 +620,7 @@ function logSlackControlPlaneError(error: unknown): string {
   const errorRef = randomUUID().slice(0, 8);
   const details: Record<string, unknown> = { errorRef };
   if (error instanceof Error) {
-    details.name = error.name;
+    details.name = typeof error.name === 'string' ? error.name : 'Error';
     details.frames = stackFrames(error);
     for (const key of ['code', 'table', 'constraint'] as const) {
       const value = (error as unknown as Record<string, unknown>)[key];
@@ -635,13 +635,14 @@ function logSlackControlPlaneError(error: unknown): string {
 
 /**
  * Extracts only real code-location frame lines ("at fn (file:line:col)") from
- * a V8 stack trace. The complete `name: message` prefix is removed before any
- * frame filtering, so multiline message content cannot spoof a frame-shaped
- * line and reach logs. Unknown stack formats fail closed to no frames.
+ * a V8 stack trace with string name/message/stack fields. The complete
+ * `name: message` prefix is removed before any frame filtering, so multiline
+ * message content cannot spoof a frame-shaped line and reach logs. Unknown stack
+ * formats fail closed to no frames.
  */
 function stackFrames(error: Error): string[] {
+  if (typeof error.stack !== 'string' || typeof error.name !== 'string' || typeof error.message !== 'string') return [];
   const stack = error.stack;
-  if (!stack) return [];
   const prefix = error.message ? `${error.name}: ${error.message}` : error.name;
   if (!stack.startsWith(prefix)) return [];
   return stack

@@ -58,6 +58,27 @@ async function responseJson(response: Response): Promise<Record<string, unknown>
   return (await response.json()) as Record<string, unknown>;
 }
 
+function slackLogDetails(logged: string[]): Record<string, unknown>[] {
+  return logged
+    .filter((line) => line.includes('[slack-control-plane]'))
+    .map((line) => JSON.parse(line.slice(line.indexOf('{'))) as Record<string, unknown>);
+}
+
+function assertSlackLogKeys(logged: string[]): void {
+  const errorKeys = ['errorRef', 'frames', 'name', 'pg_code', 'pg_constraint', 'pg_table'];
+  const nonErrorKeys = ['errorRef', 'thrownType'];
+  for (const details of slackLogDetails(logged)) {
+    const allowedKeys = 'thrownType' in details ? nonErrorKeys : errorKeys;
+    assert.deepEqual(
+      Object.keys(details).sort(),
+      Object.keys(details)
+        .filter((key) => allowedKeys.includes(key))
+        .sort(),
+      'slack control-plane logs must not add unapproved fields',
+    );
+  }
+}
+
 async function insertCandidate(db: Queryable, id = 'candidate_test'): Promise<string> {
   await db.query(
     `INSERT INTO scan_runs (id, trigger, actor, lifecycle_state, started_at, finished_at)
@@ -210,9 +231,9 @@ test('server-side error logs carry only structured facts, never free error text'
   assert.equal(response.status, 200);
   assert.equal(json.ok, false);
 
-  const logLine = logged.find((line) => line.includes('[slack-control-plane]'));
-  assert.ok(logLine, 'expected a [slack-control-plane] error log line');
-  const details = JSON.parse(logLine.slice(logLine.indexOf('{'))) as Record<string, unknown>;
+  const [details] = slackLogDetails(logged);
+  assert.ok(details, 'expected a [slack-control-plane] error log line');
+  assertSlackLogKeys(logged);
 
   assert.match(String(details.errorRef), /^[0-9a-f]{8}$/, 'log keeps the correlation ref');
   assert.equal(details.name, 'Error', 'log keeps the error class name');
@@ -237,6 +258,57 @@ test('server-side error logs carry only structured facts, never free error text'
   assert.ok(!fullLogOutput.includes(envSecret), 'embedded env-style secret values must not reach logs');
 
   logged.length = 0;
+  const stackSecret = 'non-location-secret-envtoken';
+  const craftedStackError = new Error('crafted message');
+  craftedStackError.stack = `Error: crafted message\n    at ${stackSecret}\n    at handler (/app/src/lib/slack/control-plane.ts:100:5)`;
+  const craftedStackDb = {
+    async query() {
+      throw craftedStackError;
+    },
+  } satisfies Queryable;
+  const craftedStackPost = createSlackControlPlanePostHandler({ config: CONFIG, db: craftedStackDb });
+  const craftedStackResponse = await craftedStackPost({ request: signedSlackRequest(body) } as never);
+  const craftedStackJson = await responseJson(craftedStackResponse);
+
+  assert.equal(craftedStackResponse.status, 200);
+  assert.equal(craftedStackJson.ok, false);
+
+  const [craftedStackDetails] = slackLogDetails(logged);
+  assert.ok(craftedStackDetails, 'expected a [slack-control-plane] log line for crafted stack throws');
+  assertSlackLogKeys(logged);
+  assert.ok(Array.isArray(craftedStackDetails.frames), 'crafted stack is reduced to frame lines');
+  assert.deepEqual(craftedStackDetails.frames, ['at handler (/app/src/lib/slack/control-plane.ts:100:5)']);
+  for (const frame of craftedStackDetails.frames as string[]) {
+    assert.match(frame, /^at .+:\d+:\d+\)?$/, 'every crafted logged frame is a code location');
+  }
+  assert.ok(!logged.join('\n').includes(stackSecret), 'non-location stack lines must not reach logs');
+
+  logged.length = 0;
+  const objectNameSecret = 'obj-name-secret';
+  const objectNameError = new Error('safe message');
+  Object.defineProperty(objectNameError, 'name', { value: { leak: objectNameSecret } });
+  Object.defineProperty(objectNameError, 'stack', { value: undefined });
+  const objectNameDb = {
+    async query() {
+      throw objectNameError;
+    },
+  } satisfies Queryable;
+  const objectNamePost = createSlackControlPlanePostHandler({ config: CONFIG, db: objectNameDb });
+  const objectNameResponse = await objectNamePost({ request: signedSlackRequest(body) } as never);
+  const objectNameJson = await responseJson(objectNameResponse);
+
+  assert.equal(objectNameResponse.status, 200);
+  assert.equal(objectNameJson.ok, false);
+
+  const [objectNameDetails] = slackLogDetails(logged);
+  assert.ok(objectNameDetails, 'expected a [slack-control-plane] log line for object-name Error throws');
+  assertSlackLogKeys(logged);
+  assert.equal(objectNameDetails.name, 'Error', 'non-string Error names fall back to a fixed safe name');
+  assert.deepEqual(objectNameDetails.frames, [], 'non-string stack shapes fail closed to no frames');
+  assert.ok(logged.join('\n').includes('"name":"Error"'), 'safe fallback name reaches logs');
+  assert.ok(!logged.join('\n').includes(objectNameSecret), 'non-string Error name values must not reach logs');
+
+  logged.length = 0;
   const thrownValueSecret = 'non-error-thrown-secret-value';
   const nonErrorDb = {
     async query() {
@@ -250,9 +322,9 @@ test('server-side error logs carry only structured facts, never free error text'
   assert.equal(nonErrorResponse.status, 200);
   assert.equal(nonErrorJson.ok, false);
 
-  const nonErrorLogLine = logged.find((line) => line.includes('[slack-control-plane]'));
-  assert.ok(nonErrorLogLine, 'expected a [slack-control-plane] log line for non-Error throws');
-  const nonErrorDetails = JSON.parse(nonErrorLogLine.slice(nonErrorLogLine.indexOf('{'))) as Record<string, unknown>;
+  const [nonErrorDetails] = slackLogDetails(logged);
+  assert.ok(nonErrorDetails, 'expected a [slack-control-plane] log line for non-Error throws');
+  assertSlackLogKeys(logged);
   assert.match(String(nonErrorDetails.errorRef), /^[0-9a-f]{8}$/, 'non-Error throw log keeps the correlation ref');
   assert.equal(nonErrorDetails.thrownType, 'string', 'non-Error throws log only the thrown value type');
   assert.equal(nonErrorDetails.value, undefined, 'non-Error thrown values must not be stringified into logs');
