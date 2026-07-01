@@ -34,8 +34,7 @@ export const AGENT_NAME = 'DM';
 export const DM_ENDPOINT = '/api/dm/chat';
 
 /** Empty-state greeting shown before the first question. */
-export const GREETING =
-  "I'm DM — Dylan McCavitt's portfolio guide for practical tools, client software, and AI-assisted workflows.";
+export const GREETING = "I'm DM, Dylan McCavitt's portfolio guide.";
 
 /** Sub-greeting / capability line under the greeting. */
 export const SUBGREETING =
