@@ -618,17 +618,28 @@ function logSlackControlPlaneError(error: unknown): string {
   const details: Record<string, unknown> = { errorRef };
   if (error instanceof Error) {
     details.name = error.name;
-    details.message = error.message;
-    details.stack = error.stack;
-    for (const key of ['code', 'detail', 'table', 'constraint', 'routine'] as const) {
+    details.message = redactErrorText(error.message);
+    details.stack = redactErrorText(error.stack ?? '');
+    for (const key of ['code', 'table', 'constraint'] as const) {
       const value = (error as unknown as Record<string, unknown>)[key];
       if (typeof value === 'string') details[`pg_${key}`] = value;
     }
   } else {
-    details.value = String(error);
+    details.value = redactErrorText(String(error));
   }
   console.error('[slack-control-plane]', JSON.stringify(details));
   return errorRef;
+}
+
+/**
+ * Strips data-bearing substrings from error text before it reaches logs:
+ * Postgres detail values ("Key (col)=(value)…") and URL credentials. Schema
+ * identifiers and error shapes stay intact for correlation.
+ */
+function redactErrorText(text: string): string {
+  return text
+    .replace(/Key \([^)]*\)=\([^)]*\)/g, 'Key (…)=(…)')
+    .replace(/\/\/[^/\s:@]+:[^/\s@]+@/g, '//…:…@');
 }
 
 function userFacingError(code: string, message: string): SlackUserFacingError {

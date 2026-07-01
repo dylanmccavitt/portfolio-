@@ -179,6 +179,45 @@ test('Slack route returns safe 200 JSON when the request itself fails', async ()
   assert.ok(!String(json.text).includes('sensitive'), 'raw request error details must not leak to Slack');
 });
 
+test('server-side error logs redact data values, not just the Slack response', async (t) => {
+  const logged: string[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    logged.push(args.map(String).join(' '));
+  };
+  t.after(() => {
+    console.error = originalError;
+  });
+
+  const pgError = Object.assign(
+    new Error('duplicate key: Key (email)=(person@example.com) already exists at postgres://user:secret-token@db.example/neon'),
+    { code: '23505', table: 'project_candidates', constraint: 'project_candidates_pkey', detail: 'Key (email)=(person@example.com) already exists.', routine: 'ExecInsert' },
+  );
+  const db = {
+    async query() {
+      throw pgError;
+    },
+  } satisfies Queryable;
+  const POST = createSlackControlPlanePostHandler({ config: CONFIG, db });
+
+  const body = formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-scan', text: 'DylanMcCavitt/portfolio-candidate-app' });
+  const response = await POST({ request: signedSlackRequest(body) } as never);
+  const json = await responseJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(json.ok, false);
+
+  const logLine = logged.find((line) => line.includes('[slack-control-plane]'));
+  assert.ok(logLine, 'expected a [slack-control-plane] error log line');
+  assert.match(logLine, /"errorRef":"[0-9a-f]{8}"/, 'log keeps the correlation ref');
+  assert.ok(logLine.includes('"pg_code":"23505"'), 'log keeps schema-level pg code');
+  assert.ok(logLine.includes('"pg_table":"project_candidates"'), 'log keeps schema-level pg table');
+  assert.ok(!logLine.includes('person@example.com'), 'pg detail data values must not reach logs');
+  assert.ok(!logLine.includes('secret-token'), 'URL credentials must not reach logs');
+  assert.ok(!logLine.includes('pg_detail'), 'pg detail field must not be logged at all');
+  assert.ok(!logLine.includes('pg_routine'), 'pg routine field must not be logged');
+});
+
 test('single-user Slack scan trigger routes authorized repo input to GitHub discovery', async () => {
   const db = await createMigratedDb();
   const repo = {
