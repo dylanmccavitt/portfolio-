@@ -224,15 +224,19 @@ class Turn {
           wrap.append(
             make('a', { class: 'eve-proj', href: projectHref(p), hue: projectHue(p) }, [
               make('span', { class: 'eve-proj__rule', 'aria-hidden': 'true' }),
-              make('span', { class: 'eve-proj__id', text: p.id }),
-              make('h3', { class: 'eve-proj__title', text: p.title }),
-              make('div', { class: 'eve-proj__meta' }, [
-                make('span', { class: 'eve-proj__cat', text: `${p.area} · ${p.year}` }),
-                make('span', { class: `badge ${kind}`, text: statusLabel }),
-                make('span', { class: 'eve-proj__act', text: p.activity }),
+              make('span', { class: 'eve-proj__body' }, [
+                make('span', { class: 'eve-proj__main' }, [
+                  make('span', { class: 'eve-proj__id', text: p.id }),
+                  make('span', { class: 'eve-proj__title', text: p.title }),
+                ]),
+                make('span', { class: 'eve-proj__meta' }, [
+                  make('span', { class: `badge ${kind}`, text: statusLabel }),
+                  make('span', { class: 'eve-proj__cat', text: `${p.area} · ${p.year}` }),
+                  make('span', { class: 'eve-proj__act', text: p.activity }),
+                ]),
+                make('span', { class: 'eve-proj__line', text: p.line }),
               ]),
-              make('p', { class: 'eve-proj__line', text: p.line }),
-              make('span', { class: 'eve-proj__view', text: 'View project →' }),
+              make('span', { class: 'eve-proj__go', 'aria-hidden': 'true', text: '→' }),
             ]),
           );
         }
