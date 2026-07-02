@@ -3,6 +3,7 @@ import { isStepCount, streamText, tool, type LanguageModel, type ToolSet } from 
 import { z } from 'zod';
 import type { ProjectReadQueryable } from '../db/project-reads';
 import { createPublicDMDataTools, DMToolError, type PublicDMDataTools } from './data-tools';
+import { createDMMetricsRecorder, shouldRecordDMMetrics } from './metrics';
 import type { AnswerBlock, DMChatRequest, DMStreamEvent, ProjectSummary, ToolTraceItem, ToolTraceMetadata } from './contract';
 
 export interface DMRuntimeConfig {
@@ -67,6 +68,7 @@ export function createDMChatStream(
   const encoder = new TextEncoder();
   const tools = createPublicDMDataTools(deps.db);
   const model = deps.model ?? openai(config.model);
+  const metrics = createDMMetricsRecorder({ enabled: shouldRecordDMMetrics() });
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -75,18 +77,23 @@ export function createDMChatStream(
       let blockIndex = 0;
       let finalText = '';
 
+      const emit = (event: DMStreamEvent): void => {
+        metrics.record(event);
+        enqueueJson(controller, encoder, event);
+      };
+
       try {
         await validateContext(request, tools);
         await assertPublicDataAvailable(tools);
         const refusal = privateDataRefusal(request.message);
         if (refusal) {
-          enqueueJson(controller, encoder, { type: 'block', index: blockIndex, block: refusal });
+          emit({ type: 'block', index: blockIndex, block: refusal });
           answer.push(refusal);
-          enqueueJson(controller, encoder, { type: 'done', answer, trace: trace(traceItems) });
+          emit({ type: 'done', answer, trace: trace(traceItems) });
           return;
         }
 
-        enqueueJson(controller, encoder, {
+        emit({
           type: 'ready',
           agent: 'DM',
           provider: config.provider,
@@ -106,17 +113,17 @@ export function createDMChatStream(
             const delta = textDelta(part);
             if (delta) {
               finalText += delta;
-              enqueueJson(controller, encoder, { type: 'text-delta', delta });
+              emit({ type: 'text-delta', delta });
             }
           } else if (part.type === 'tool-call') {
             const item = traceItem(part.toolName, toolSummary(part.toolName));
             traceItems.push(item);
-            enqueueJson(controller, encoder, { type: 'tool', name: item.tool, summary: item.label });
+            emit({ type: 'tool', name: item.tool, summary: item.label });
           } else if (part.type === 'tool-result') {
             const blocks = blocksFromToolResult(part.output);
             for (const block of blocks) {
               answer.push(block);
-              enqueueJson(controller, encoder, { type: 'block', index: blockIndex, block });
+              emit({ type: 'block', index: blockIndex, block });
               blockIndex += 1;
             }
           } else if (part.type === 'tool-error') {
@@ -133,15 +140,15 @@ export function createDMChatStream(
         const supplementalBlocks = await deterministicBlocks(request, tools, answer);
         for (const block of supplementalBlocks) {
           answer.push(block);
-          enqueueJson(controller, encoder, { type: 'block', index: blockIndex, block });
+          emit({ type: 'block', index: blockIndex, block });
           blockIndex += 1;
         }
 
-        enqueueJson(controller, encoder, { type: 'done', answer, trace: trace(traceItems) });
+        emit({ type: 'done', answer, trace: trace(traceItems) });
       } catch (error) {
         const message = safeErrorMessage(error);
         console.error('[dm] chat stream failure', safeLogError(error));
-        enqueueJson(controller, encoder, { type: 'error', message });
+        emit({ type: 'error', message });
       } finally {
         controller.close();
       }

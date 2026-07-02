@@ -16,6 +16,8 @@
     "test:slack": "node --import tsx --test tests/slack-control-plane.test.ts",
     "test:eve": "node --import tsx --test tests/eve-runtime.test.ts",
     "test:dm": "node --import tsx --test tests/dm-runtime.test.ts",
+    "test:metrics": "node --import tsx --test tests/dm-metrics.test.ts",
+    "dm:eval": "node --import tsx scripts/dm-eval.ts",
     "typecheck": "astro check",
     "verify": "npm run lint && npm run typecheck && npm run build",
     "db:migrate": "tsx scripts/db.ts migrate",
