@@ -13,6 +13,7 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Typecheck  | `npm run typecheck`| `astro check` |
 | Test DB foundation | `npm run test:db` | `node --import tsx --test tests/db-foundation.test.ts` |
 | Test GitHub discovery | `npm run test:discovery` | `node --import tsx --test tests/github-discovery.test.ts` |
+| Admin publish test | `npm run test:admin` | `node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts` |
 | DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
 | Legacy Eve test | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
 | Manual GitHub discovery scan | `npm run db:github:scan -- <repo-fixture.json>` | `tsx scripts/github-discovery.ts <repo-fixture.json>` |
