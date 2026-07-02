@@ -4,20 +4,28 @@ AGE-728 adds the Neon-on-Vercel foundation for future DM project records. It doe
 
 ## Environment story
 
-- Production and preview use the Vercel-connected Neon/Postgres database.
-- Runtime code reads the first available private server variable in this order: `DATABASE_URL`, then `POSTGRES_URL`.
-- Pull local secrets from Vercel when needed, for example `vercel env pull .env.local`, or set an equivalent local `DATABASE_URL` manually.
+- Production uses the Neon default production branch.
+- Preview deployments use one persistent Neon branch named `preview`; per-preview branch provisioning in the Vercel↔Neon integration is disabled.
+- Vercel DB env vars are environment-scoped: Production-scoped connection strings point at production, and Preview-scoped connection strings point at `preview`. Production data is unreachable from preview deployments.
+- Runtime code reads the first available private server variable in this order: `DATABASE_URL`, `POSTGRES_URL`, `PORTFOLIO_DATABASE_URL`, `PORTFOLIO_POSTGRES_URL`.
+- The repo names variables only; Vercel/Neon own the actual secret values.
+- Pull local env from Vercel when needed, for example `vercel env pull .env.local`, or set an equivalent local `DATABASE_URL` manually. Delete any pulled `.env.local` immediately after use. Sensitive DB values pull empty; read actual connection strings only from Neon console or Vercel → Storage.
 - Do not commit `.env*`, connection strings, passwords, Neon project ids, or Vercel account values.
-- Keep preview and production databases separate in Vercel/Neon. The repo only names variables; Vercel owns the actual secret values.
 
 ## Commands
 
 - `npm run db:migrate` applies unapplied SQL files under `db/migrations/`.
-- Deploys do NOT run migrations (`build` is bare `astro build`). Every new migration file requires a one-time manual `DATABASE_URL='<neon-connection-string>' npm run db:migrate` against the real database before deployed code depends on it. The connection string is Sensitive in Vercel (`vercel env pull` returns it empty) — read it from the Neon console or Vercel → Storage. Automation is deferred scope; see `docs/agents/scope-ledger.md`.
+- Deploys do NOT run migrations (`build` is bare `astro build`). Every new migration file requires two manual applies before deployed code depends on it: once with the production connection string, once with the `preview` branch connection string, using the same idempotent Neon-HTTP-safe runner (`DATABASE_URL='<connection-string>' npm run db:migrate`). Connection strings are Sensitive in Vercel (`vercel env pull` returns them empty) — read them from the Neon console or Vercel → Storage. Automation is deferred scope; see `docs/agents/scope-ledger.md`.
 - Migrations must stay statement-idempotent (`IF NOT EXISTS` et al.): the `neon()` HTTP driver has no session/transaction support, so the runner executes statements without `BEGIN`/`COMMIT` and a partial failure must converge on re-run.
 - `npm run db:seed` applies migrations and non-public seed rows under `db/seeds/`.
 - `ALLOW_DB_RESET=1 npm run db:reset` drops the AGE-728 foundation tables, reapplies migrations, then reapplies seeds. The safety flag is required because this command uses the active Neon/Vercel connection string.
 - `npm run test:db` runs the migration/seed/reset proof against an in-memory PGlite database, so CI/local tests do not require Vercel or Neon credentials.
+
+## Branch hygiene
+
+- GitHub auto-delete-head-branches is enabled so merged PR branches cannot keep holding Neon preview slots; PR #127 showed orphaned branches wedged new-branch deploys with `Resource provisioning failed` until stale Neon preview branches were deleted.
+- The Neon project keeps exactly two branches: production and `preview`.
+- Delete stray Neon branches manually. Owner: maintainer.
 
 ## Scope guard
 
