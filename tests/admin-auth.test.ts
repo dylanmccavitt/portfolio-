@@ -100,6 +100,21 @@ test('readAdminAuthConfig names missing env keys without leaking values', () => 
       sessionSecret: 'session-secret-value',
     },
   );
+  assert.deepEqual(
+    readAdminAuthConfig({
+      VERCEL_ENV: 'preview',
+      ADMIN_GITHUB_CLIENT_ID_PREVIEW: ' preview-id ',
+      ADMIN_GITHUB_CLIENT_SECRET_PREVIEW: 'preview-secret-value',
+      ADMIN_GITHUB_ALLOWED_LOGIN: ' DylanMcCavitt ',
+      ADMIN_SESSION_SECRET_PREVIEW: 'preview-session-secret-value',
+    }),
+    {
+      clientId: 'preview-id',
+      clientSecret: 'preview-secret-value',
+      allowedLogin: 'DylanMcCavitt',
+      sessionSecret: 'preview-session-secret-value',
+    },
+  );
 });
 
 test('login redirect carries state and sets signed state cookie', async () => {

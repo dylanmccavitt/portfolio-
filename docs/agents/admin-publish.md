@@ -49,16 +49,20 @@ Optional: `activity`, `details`, `metrics`, `links`, `media` (JSON arrays).
 | `ADMIN_GITHUB_CLIENT_SECRET` | GitHub OAuth app client secret |
 | `ADMIN_GITHUB_ALLOWED_LOGIN` | The single GitHub login allowed to act as admin (case-insensitive) |
 | `ADMIN_SESSION_SECRET` | HMAC key for signed state/session cookies |
+| `ADMIN_GITHUB_CLIENT_ID_PREVIEW` | Preview-only override for the GitHub OAuth app client id when `VERCEL_ENV=preview` |
+| `ADMIN_GITHUB_CLIENT_SECRET_PREVIEW` | Preview-only override for the GitHub OAuth app client secret when `VERCEL_ENV=preview` |
+| `ADMIN_SESSION_SECRET_PREVIEW` | Preview-only override for signed state/session cookies when `VERCEL_ENV=preview` |
 
 Plus the existing database connection env (see `src/lib/db/client.ts`).
 
 HITL setup (maintainer): create a GitHub OAuth app with callback URL
 `<origin>/api/admin/auth/callback` for each deployed origin (production and the
-preview alias if admin access from previews is wanted), then set the four env
-vars in Vercel for the matching scopes. Routes return 503
-`admin_auth_unconfigured` until env is present, so deploys stay safe before
-setup. Post-AGE-803, preview deploys write to the Neon `preview` branch;
-production publish proof requires the production deployment.
+preview alias if admin access from previews is wanted), then set the production
+env vars in Vercel for production and either the base names or the `_PREVIEW`
+override names for preview. `ADMIN_GITHUB_ALLOWED_LOGIN` is shared by both.
+Routes return 503 `admin_auth_unconfigured` until env is present, so deploys
+stay safe before setup. Post-AGE-803, preview deploys write to the Neon
+`preview` branch; production publish proof requires the production deployment.
 
 ## Actor and audit conventions
 

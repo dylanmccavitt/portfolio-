@@ -32,23 +32,33 @@ const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 12;
 const ADMIN_OAUTH_STATE_TTL_SECONDS = 60 * 10;
 
 export function readAdminAuthConfig(env: Record<string, string | undefined> = process.env): AdminAuthConfig {
-  const keys = [
-    'ADMIN_GITHUB_CLIENT_ID',
-    'ADMIN_GITHUB_CLIENT_SECRET',
-    'ADMIN_GITHUB_ALLOWED_LOGIN',
-    'ADMIN_SESSION_SECRET',
-  ] as const;
-  const missing = keys.filter((key) => !env[key]?.trim());
+  const clientId = adminEnvValue(env, 'ADMIN_GITHUB_CLIENT_ID');
+  const clientSecret = adminEnvValue(env, 'ADMIN_GITHUB_CLIENT_SECRET');
+  const allowedLogin = env.ADMIN_GITHUB_ALLOWED_LOGIN?.trim();
+  const sessionSecret = adminEnvValue(env, 'ADMIN_SESSION_SECRET');
+  const missing = [
+    ['ADMIN_GITHUB_CLIENT_ID', clientId],
+    ['ADMIN_GITHUB_CLIENT_SECRET', clientSecret],
+    ['ADMIN_GITHUB_ALLOWED_LOGIN', allowedLogin],
+    ['ADMIN_SESSION_SECRET', sessionSecret],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
   if (missing.length > 0) {
     throw new Error(`Missing admin auth environment variables: ${missing.join(', ')}`);
   }
 
   return {
-    clientId: env.ADMIN_GITHUB_CLIENT_ID!.trim(),
-    clientSecret: env.ADMIN_GITHUB_CLIENT_SECRET!,
-    allowedLogin: env.ADMIN_GITHUB_ALLOWED_LOGIN!.trim(),
-    sessionSecret: env.ADMIN_SESSION_SECRET!,
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    allowedLogin: allowedLogin!,
+    sessionSecret: sessionSecret!,
   };
+}
+
+function adminEnvValue(env: Record<string, string | undefined>, key: 'ADMIN_GITHUB_CLIENT_ID' | 'ADMIN_GITHUB_CLIENT_SECRET' | 'ADMIN_SESSION_SECRET'): string | undefined {
+  const previewKey = `${key}_PREVIEW`;
+  return (env.VERCEL_ENV === 'preview' ? env[previewKey]?.trim() : undefined) || env[key]?.trim();
 }
 
 export function requireAdminSession(request: Request, config: AdminAuthConfig): AdminSessionResult {
