@@ -591,56 +591,78 @@
   color: var(--pl-faint);
 }
 
-/* project artifact card — canonical Typographic card (#85): no image, no tile;
+/* project artifact list — canonical Typographic card (#85): no image, no tile;
    identity is the monospace id + a hue hairline tick on a flat surface */
 .eve-projs {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-.eve-proj {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
+  gap: 0;
   background: var(--pl-panel);
   border: 1px solid var(--pl-line);
   border-radius: 14px;
-  padding: 20px 18px 18px;
   overflow: hidden;
+}
+.eve-proj {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 14px 13px 17px;
+  min-width: 0;
   transition:
-    border-color 0.15s,
-    transform 0.15s,
-    background 0.15s;
+    background 0.15s,
+    color 0.15s;
+}
+.eve-proj + .eve-proj {
+  border-top: 1px solid var(--pl-line);
 }
 .eve-proj__rule {
   position: absolute;
-  top: 0;
+  top: 11px;
+  bottom: 11px;
   left: 0;
-  height: 2px;
-  width: 44px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
   background: var(--hue, var(--pl-accent));
   opacity: 0.82;
   transition:
-    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.2s ease;
+    opacity 0.2s ease,
+    bottom 0.2s ease,
+    top 0.2s ease;
 }
 .eve-proj:hover,
 .eve-proj:focus-visible {
-  border-color: var(--hue, var(--pl-accent));
-  background: var(--pl-panel-hi);
-  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--hue, var(--pl-accent)) 9%, var(--pl-panel-hi));
+}
+.eve-proj:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--hue, var(--pl-accent)) 74%, transparent);
+  outline-offset: -2px;
 }
 .eve-proj:hover .eve-proj__rule,
 .eve-proj:focus-visible .eve-proj__rule {
-  width: 100%;
+  top: 0;
+  bottom: 0;
   opacity: 1;
 }
+.eve-proj__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  min-width: 0;
+}
+.eve-proj__main {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
 .eve-proj__id {
+  flex: none;
   font-family: var(--pl-mono);
-  font-size: 11px;
+  font-size: 10.5px;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--hue, var(--pl-accent)) 58%, var(--pl-faint));
+  color: color-mix(in srgb, var(--hue, var(--pl-accent)) 62%, var(--pl-faint));
   transition: color 0.18s ease;
 }
 .eve-proj:hover .eve-proj__id,
@@ -648,10 +670,11 @@
   color: var(--hue, var(--pl-accent));
 }
 .eve-proj__title {
-  font-size: clamp(18px, 1.8vw, 22px);
+  min-width: 0;
+  font-size: clamp(15px, 1.35vw, 17px);
   font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
   color: var(--pl-text);
   overflow-wrap: anywhere;
   transition: color 0.18s ease;
@@ -664,28 +687,32 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px 8px;
+  min-width: 0;
 }
-.eve-proj__cat {
-  font-size: 12.5px;
+.eve-proj__cat,
+.eve-proj__act {
+  font-family: var(--pl-mono);
+  font-size: 10.5px;
+  line-height: 1.3;
   color: var(--pl-faint);
 }
 .eve-proj__act {
-  margin-left: auto;
-  font-family: var(--pl-mono);
-  font-size: 11px;
-  color: var(--pl-faint);
-}
-.eve-proj__line {
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--pl-dim);
-  max-width: 52ch;
   overflow-wrap: anywhere;
 }
-.eve-proj__view {
+.eve-proj__line {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--pl-dim);
+  overflow-wrap: anywhere;
+}
+.eve-proj__go {
+  align-self: center;
+  padding-left: 4px;
   font-family: var(--pl-mono);
-  font-size: 11.5px;
+  font-size: 16px;
+  line-height: 1;
   color: var(--hue, var(--pl-accent));
 }
 
@@ -1462,6 +1489,17 @@ a.eve-contact-row:hover .eve-contact-val {
   }
   .eve-entry-text {
     display: none;
+  }
+  .eve-proj {
+    gap: 8px;
+    padding: 12px 11px 12px 15px;
+  }
+  .eve-proj__main {
+    flex-wrap: wrap;
+    gap: 3px 7px;
+  }
+  .eve-proj__go {
+    font-size: 14px;
   }
 }
 
