@@ -339,12 +339,18 @@ export interface SearchableRagSource {
 export async function listSearchableRagSources(db: RagQueryable): Promise<SearchableRagSource[]> {
   return normalizeRows(
     await db.query<SearchableRagSource>(
-      `SELECT id, project_id, vector_store_id, openai_file_id
-       FROM rag_sources
-       WHERE eligibility_state = 'indexed'
-         AND vector_store_id IS NOT NULL
-         AND openai_file_id IS NOT NULL
-       ORDER BY id`,
+      `SELECT r.id, r.project_id, r.vector_store_id, r.openai_file_id
+       FROM rag_sources r
+       JOIN projects p ON p.id = r.project_id
+       JOIN evidence_sources e ON e.id = r.evidence_source_id AND e.project_id = r.project_id
+       WHERE r.eligibility_state = 'indexed'
+         AND r.vector_store_id IS NOT NULL
+         AND r.openai_file_id IS NOT NULL
+         AND p.lifecycle_state = 'published'
+         AND e.privacy_state = 'safe_public'
+         AND length(trim(e.extracted_text)) > 0
+         AND COALESCE(e.claim_map->>'generated', 'false') <> 'true'
+       ORDER BY r.id`,
     ),
   );
 }
@@ -376,6 +382,7 @@ export function buildPublicFileSearchTool(sources: SearchableRagSource[]): Publi
       type: 'and',
       filters: [
         { type: 'eq', key: 'visibility', value: 'public' },
+        { type: 'in', key: 'project_id', value: [...new Set(sources.map((source) => source.project_id))] },
         { type: 'in', key: 'rag_source_id', value: sources.map((source) => source.id) },
       ],
     },

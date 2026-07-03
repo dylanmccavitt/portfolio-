@@ -115,11 +115,21 @@ export interface ResumeBlock {
   kind: 'resume';
   trackIds: string[];
 }
+export interface RagSourceEvidence {
+  ragSourceId: string;
+  projectId: string;
+  fileId: string;
+  filename?: string;
+  score?: number;
+  text?: string;
+}
+
 export interface EvidenceBlock {
   kind: 'evidence';
   projectIds?: string[];
   projects?: ProjectArtifact[];
   resumeTrackIds?: string[];
+  ragSources?: RagSourceEvidence[];
 }
 /** Contact fields are optional; the UI merges them over {@link CONTACT}. */
 export interface ContactBlock {
@@ -148,6 +158,7 @@ export type AnswerBlock =
 const BLOCK_KINDS = new Set(['text', 'projects', 'resume', 'evidence', 'contact', 'links']);
 const MAX_EVIDENCE_PROJECTS = 4;
 const MAX_EVIDENCE_TRACKS = 3;
+const MAX_RAG_SOURCES = 3;
 
 // ---------------------------------------------------------------------------
 // Stream events — the NDJSON envelope the client consumes.
@@ -217,8 +228,9 @@ export function validateBlock(value: unknown): AnswerBlock | null {
       const projectIds = parseOptionalStringArray(value.projectIds);
       const projects = parseOptionalProjectArtifacts(value.projects);
       const resumeTrackIds = parseOptionalStringArray(value.resumeTrackIds);
-      if (projectIds === null || projects === null || resumeTrackIds === null) return null;
-      if (!projectIds?.length && !projects?.length && !resumeTrackIds?.length) return null;
+      const ragSources = parseOptionalRagSources(value.ragSources);
+      if (projectIds === null || projects === null || resumeTrackIds === null || ragSources === null) return null;
+      if (!projectIds?.length && !projects?.length && !resumeTrackIds?.length && !ragSources?.length) return null;
       return {
         kind: 'evidence',
         ...(projectIds?.length ? { projectIds: projectIds.slice(0, MAX_EVIDENCE_PROJECTS) } : {}),
@@ -226,6 +238,7 @@ export function validateBlock(value: unknown): AnswerBlock | null {
         ...(resumeTrackIds?.length
           ? { resumeTrackIds: resumeTrackIds.slice(0, MAX_EVIDENCE_TRACKS) }
           : {}),
+        ...(ragSources?.length ? { ragSources: ragSources.slice(0, MAX_RAG_SOURCES) } : {}),
       };
     }
     case 'contact': {
@@ -320,6 +333,33 @@ function parseOptionalProjectArtifacts(value: unknown): ProjectArtifact[] | null
   if (!Array.isArray(value)) return null;
   const projects = value.map(parseProjectArtifact);
   return projects.every((project): project is ProjectArtifact => Boolean(project)) ? projects : null;
+}
+
+function parseOptionalRagSources(value: unknown): RagSourceEvidence[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const sources = value.map(parseRagSourceEvidence);
+  return sources.every((source): source is RagSourceEvidence => Boolean(source)) ? sources : null;
+}
+
+function parseRagSourceEvidence(value: unknown): RagSourceEvidence | null {
+  if (
+    !isObject(value) ||
+    typeof value.ragSourceId !== 'string' ||
+    typeof value.projectId !== 'string' ||
+    typeof value.fileId !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    ragSourceId: value.ragSourceId,
+    projectId: value.projectId,
+    fileId: value.fileId,
+    ...(typeof value.filename === 'string' ? { filename: value.filename } : {}),
+    ...(typeof value.score === 'number' && Number.isFinite(value.score) ? { score: value.score } : {}),
+    ...(typeof value.text === 'string' ? { text: value.text } : {}),
+  };
 }
 
 function parseProjectArtifact(value: unknown): ProjectArtifact | null {

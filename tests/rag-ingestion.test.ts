@@ -267,10 +267,50 @@ test('public file_search filters are structurally mandatory and only cover index
     type: 'and',
     filters: [
       { type: 'eq', key: 'visibility', value: 'public' },
+      { type: 'in', key: 'project_id', value: ['proj-rag'] },
       { type: 'in', key: 'rag_source_id', value: [idA] },
     ],
   });
   assert.ok(!tool.filters.filters.some((filter) => filter.key === 'rag_source_id' && Array.isArray(filter.value) && filter.value.includes(idB)));
+});
+
+test('indexed sources stop being searchable when public approval drifts after indexing', async () => {
+  const db = await createTestDb();
+  await insertProject(db, 'proj-drift');
+  await insertEvidence(db, 'ev-project-draft', { projectId: 'proj-drift' });
+  await insertEvidence(db, 'ev-private', { projectId: 'proj-drift' });
+  await insertEvidence(db, 'ev-generated', { projectId: 'proj-drift' });
+  await insertEvidence(db, 'ev-empty', { projectId: 'proj-drift' });
+  await insertEvidence(db, 'ev-still-public', { projectId: 'proj-drift' });
+
+  const markedIds: string[] = [];
+  for (const evidenceSourceId of ['ev-project-draft', 'ev-private', 'ev-generated', 'ev-empty', 'ev-still-public']) {
+    const marked = await markRagSourceEligible(db, { projectId: 'proj-drift', evidenceSourceId, actor: ACTOR });
+    assert.equal(marked.ok, true);
+    markedIds.push(marked.ragSourceId as string);
+  }
+
+  const { client } = createFakeClient();
+  for (const ragSourceId of markedIds) {
+    const ingested = await ingestRagSource(db, client, ragSourceId, ACTOR);
+    assert.equal(ingested.ok, true);
+  }
+  assert.deepEqual((await listSearchableRagSources(db)).map((source) => source.id).sort(), [...markedIds].sort());
+
+  await db.query(`UPDATE projects SET lifecycle_state = 'draft_only', published_at = NULL WHERE id = 'proj-drift'`);
+  assert.deepEqual(await listSearchableRagSources(db), []);
+
+  await db.query(
+    `UPDATE projects SET lifecycle_state = 'published', published_at = '2026-06-28T00:00:00.000Z' WHERE id = 'proj-drift'`,
+  );
+  await db.query(`UPDATE evidence_sources SET privacy_state = 'blocked' WHERE id = 'ev-private'`);
+  await db.query(`UPDATE evidence_sources SET claim_map = '{"generated": true}'::jsonb WHERE id = 'ev-generated'`);
+  await db.query(`UPDATE evidence_sources SET extracted_text = '   ' WHERE id = 'ev-empty'`);
+
+  assert.deepEqual(
+    (await listSearchableRagSources(db)).map((source) => source.id).sort(),
+    [markedIds[0], markedIds[4]].sort(),
+  );
 });
 
 test('indexing failure disables RAG without rolling back the published project', async () => {

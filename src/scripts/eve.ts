@@ -32,6 +32,7 @@ import {
   type AnswerBlock,
   type ChatMessage,
   type ProjectArtifact,
+  type RagSourceEvidence,
   type StreamEvent,
 } from '../lib/eve';
 import type { Project } from '../data/catalog';
@@ -266,9 +267,10 @@ class Turn {
         const resolved = resolveEvidence(block);
         const projects = mergeProjectArtifacts(block.projects, resolved.projects);
         const tracks = resolved.tracks;
-        if (!projects.length && !tracks.length) break;
+        const ragSources = block.ragSources ?? [];
+        if (!projects.length && !tracks.length && !ragSources.length) break;
 
-        const count = projects.length + tracks.length;
+        const count = projects.length + tracks.length + ragSources.length;
         const wrap = make('section', { class: 'eve-evidence', 'aria-label': 'Evidence summary' }, [
           make('div', { class: 'eve-evidence-head' }, [
             make('span', { class: 'eve-evidence-kicker', text: 'evidence summary' }),
@@ -285,6 +287,10 @@ class Turn {
         for (const track of tracks) {
           wrap.append(this.resumeEvidence(track));
         }
+        for (const source of ragSources) {
+          wrap.append(this.ragSourceEvidence(source));
+        }
+
 
         this.canvas().append(wrap);
         break;
@@ -357,6 +363,26 @@ class Turn {
       this.evidenceFacts(track.credits.slice(0, 3)),
       track.notes[0] ? make('p', { class: 'eve-evidence-note', text: track.notes[0] }) : null,
       make('span', { class: 'eve-evidence-route', text: 'Open resume entry →' }),
+    ]);
+  }
+
+  private ragSourceEvidence(source: RagSourceEvidence): HTMLElement {
+    const facts: [string, string][] = [
+      [source.ragSourceId, 'source id'],
+      [source.projectId, 'project id'],
+    ];
+    if (source.score !== undefined) facts.push([source.score.toFixed(2), 'score']);
+
+    const text = source.text && source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
+    return make('article', { class: 'eve-evidence-item' }, [
+      make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'eve-evidence-top' }, [
+        make('span', { class: 'eve-evidence-type', text: 'approved source' }),
+        make('span', { class: 'badge done', text: 'RAG' }),
+      ]),
+      make('h3', { class: 'eve-evidence-title', text: source.filename ?? source.ragSourceId }),
+      make('p', { class: 'eve-evidence-line', text: text ?? `Approved public source ${source.ragSourceId}` }),
+      this.evidenceFacts(facts),
     ]);
   }
 

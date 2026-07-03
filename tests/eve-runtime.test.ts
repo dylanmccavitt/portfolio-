@@ -232,6 +232,34 @@ test('evidence block validation accepts canonical ids and rejects unsafe shapes'
     },
   );
 
+  const ragSource = {
+    ragSourceId: 'rag-public',
+    projectId: 'agentic-trader',
+    fileId: 'file_public',
+    filename: 'approved-readme.md',
+    score: 0.91,
+    text: 'Approved public source text cited by DM.',
+  };
+  assert.deepEqual(validateBlock({ kind: 'evidence', ragSources: [ragSource] }), {
+    kind: 'evidence',
+    ragSources: [ragSource],
+  });
+  assert.equal(validateBlock({ kind: 'evidence', ragSources: [{ ragSourceId: 'rag-public', projectId: 'agentic-trader' }] }), null);
+  assert.equal(validateBlock({ kind: 'evidence', ragSources: 'rag-public' }), null);
+
+  assert.deepEqual(
+    parseStreamLine(
+      JSON.stringify({
+        type: 'block',
+        block: { kind: 'evidence', ragSources: [ragSource] },
+      }),
+    ),
+    {
+      type: 'block',
+      block: { kind: 'evidence', ragSources: [ragSource] },
+    },
+  );
+
   const event = parseStreamLine(
     JSON.stringify({
       type: 'block',

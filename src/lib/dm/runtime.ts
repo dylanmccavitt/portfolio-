@@ -1,7 +1,13 @@
-import { openai } from '@ai-sdk/openai';
+import { openai, type OpenAILanguageModelResponsesOptions } from '@ai-sdk/openai';
 import { isStepCount, streamText, tool, type LanguageModel, type ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ProjectReadQueryable } from '../db/project-reads';
+import {
+  createPublicRagSearchConfig,
+  publicRagCitationsFromFileSearchResult,
+  publicRagProjectIds,
+  type PublicRagSearchConfig,
+} from '../rag/retrieval';
 import { createPublicDMDataTools, DMToolError, type PublicDMDataTools } from './data-tools';
 import { createDMMetricsRecorder, shouldRecordDMMetrics } from './metrics';
 import type { AnswerBlock, DMChatRequest, DMStreamEvent, ProjectSummary, ToolTraceItem, ToolTraceMetadata } from './contract';
@@ -76,6 +82,10 @@ export function createDMChatStream(
       const answer: AnswerBlock[] = [];
       let blockIndex = 0;
       let finalText = '';
+      let pendingText = '';
+      let latestFileSearchAccepted = false;
+      let latestFileSearchRejected = false;
+      let fileSearchStarted = false;
 
       const emit = (event: DMStreamEvent): void => {
         metrics.record(event);
@@ -100,11 +110,20 @@ export function createDMChatStream(
           trace: trace(traceItems),
         });
 
+        const ragConfig = await createPublicRagSearchConfig(deps.db).catch((error: unknown) => {
+          console.error('[dm] rag setup failure', safeLogError(error));
+          return null;
+        });
+        const providerOptions = ragConfig
+          ? { openai: { include: ['file_search_call.results'] } satisfies OpenAILanguageModelResponsesOptions }
+          : undefined;
+
         const result = streamText({
           model,
           system: systemPrompt(),
           messages: modelMessages(request),
-          tools: aiTools(tools),
+          tools: aiTools(tools, ragConfig),
+          providerOptions,
           stopWhen: isStepCount(4),
         });
 
@@ -112,14 +131,49 @@ export function createDMChatStream(
           if (part.type === 'text-delta') {
             const delta = textDelta(part);
             if (delta) {
-              finalText += delta;
-              emit({ type: 'text-delta', delta });
+              if (ragConfig && fileSearchStarted) {
+                pendingText += delta;
+              } else {
+                finalText += delta;
+                emit({ type: 'text-delta', delta });
+              }
             }
           } else if (part.type === 'tool-call') {
+            if (part.toolName === 'file_search' && ragConfig) {
+              if (pendingText.trim() && latestFileSearchAccepted && !latestFileSearchRejected) {
+                finalText += pendingText;
+                emit({ type: 'text-delta', delta: pendingText });
+              }
+              pendingText = '';
+              latestFileSearchAccepted = false;
+              latestFileSearchRejected = false;
+              fileSearchStarted = true;
+            }
             const item = traceItem(part.toolName, toolSummary(part.toolName));
             traceItems.push(item);
             emit({ type: 'tool', name: item.tool, summary: item.label });
           } else if (part.type === 'tool-result') {
+            if (part.toolName === 'file_search' && ragConfig) {
+              const citations = publicRagCitationsFromFileSearchResult(part.output, ragConfig);
+              if (citations.length === 0) {
+                latestFileSearchRejected = true;
+                latestFileSearchAccepted = false;
+                pendingText = '';
+              }
+              if (citations.length > 0) {
+                latestFileSearchAccepted = true;
+                latestFileSearchRejected = false;
+                const block: AnswerBlock = {
+                  kind: 'evidence',
+                  projectIds: publicRagProjectIds(citations),
+                  ragSources: citations,
+                };
+                answer.push(block);
+                emit({ type: 'block', index: blockIndex, block });
+                blockIndex += 1;
+              }
+              continue;
+            }
             const blocks = blocksFromToolResult(part.output);
             for (const block of blocks) {
               answer.push(block);
@@ -131,6 +185,21 @@ export function createDMChatStream(
           } else if (part.type === 'error') {
             throw new DMAgentError('model_stream_failed', 'DM model stream failed.');
           }
+        }
+
+        if (ragConfig && pendingText.trim() && latestFileSearchAccepted && !latestFileSearchRejected) {
+          finalText += pendingText;
+          emit({ type: 'text-delta', delta: pendingText });
+        }
+
+        if (ragConfig && latestFileSearchRejected) {
+          const fallback: AnswerBlock = {
+            kind: 'text',
+            text: 'That source context was not strong enough to cite. I can still answer from published project records, public resume facts, or contact details.',
+          };
+          answer.push(fallback);
+          emit({ type: 'block', index: blockIndex, block: fallback });
+          blockIndex += 1;
         }
 
         if (finalText.trim()) {
@@ -160,8 +229,8 @@ export function isDMToolError(error: unknown): error is DMToolError {
   return error instanceof Error && error.name === 'DMToolError';
 }
 
-function aiTools(tools: PublicDMDataTools): ToolSet {
-  return {
+function aiTools(tools: PublicDMDataTools, ragConfig?: PublicRagSearchConfig | null): ToolSet {
+  const dmTools: ToolSet = {
     searchProjects: tool({
       description: 'Search published public portfolio projects by recruiter-facing query. Returns published records only.',
       inputSchema: z.object({
@@ -200,6 +269,11 @@ function aiTools(tools: PublicDMDataTools): ToolSet {
       inputSchema: z.object({}),
       execute: () => tools.getContact(),
     }),
+  };
+  if (!ragConfig) return dmTools;
+  return {
+    ...dmTools,
+    file_search: openai.tools.fileSearch(ragConfig.tool),
   };
 }
 
@@ -269,10 +343,11 @@ function modelMessages(request: DMChatRequest): Array<{ role: 'user' | 'assistan
 
 function systemPrompt(): string {
   return [
-    'You are DM, Dylan McCavitt\'s public portfolio agent for recruiters and hiring managers.',
-    'Answer only from tool results over published portfolio project records and static public resume/contact data.',
+    "You are DM, Dylan McCavitt's public portfolio agent for recruiters and hiring managers.",
+    'Answer only from tool results over published portfolio project records, approved public RAG sources, and static public resume/contact data.',
     'Never claim access to drafts, candidate records, private repos, Slack/admin notes, visitor chats, database metadata, or hidden plans.',
-    'If asked for private, draft, candidate-record, unsupported, or unknown facts, refuse briefly and redirect to public project, resume, or contact facts.',
+    'If asked for private, draft, candidate-record, unsupported, or unknown facts, refuse briefly and redirect to public project, resume, contact, or approved public source facts.',
+    'When file search returns weak or empty context, fall back to structured public project/resume/contact tools or refuse unsupported claims.',
     'Keep answers concise, concrete, jargon-light, and outcome-focused.',
   ].join(' ');
 }
@@ -365,6 +440,8 @@ function toolSummary(toolName: string): string {
       return 'Read static resume data.';
     case 'getContact':
       return 'Read public contact data.';
+    case 'file_search':
+      return 'Searched approved public RAG sources.';
     default:
       return 'Used a public DM data tool.';
   }

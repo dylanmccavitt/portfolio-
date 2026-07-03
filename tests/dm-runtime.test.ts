@@ -67,6 +67,7 @@ test('DM data tools expose published project records and static resume/contact o
 
 test('DM stream refuses private/draft prompts before model execution', async () => {
   const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
   const model = throwingModel();
   const events = await readNdjson(
     createDMChatStream(
@@ -81,6 +82,8 @@ test('DM stream refuses private/draft prompts before model execution', async () 
     ['text'],
   );
   assert.match(String(events.find((event) => event.type === 'block')?.block?.text), /published portfolio projects/);
+  assert.equal(model.doStreamCalls.length, 0);
+  assert.ok(!events.some((event) => event.type === 'ready' || event.type === 'tool' || event.type === 'text-delta'));
   assert.ok(events.some((event) => event.type === 'done'));
 });
 
@@ -111,6 +114,82 @@ test('DM stream emits AI SDK tool traces and DB-backed answer-block artifacts', 
   assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
   assert.equal(projectBlock?.block?.items?.[0]?.title, 'agentic-trader');
   assert.equal(projectBlock?.block?.items?.[0]?.href, '/projects/agentic-trader');
+});
+
+test('DM stream registers OpenAI file_search alongside structured tools when indexed public RAG exists', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  const model = streamingModel('Published RAG is available for this answer.');
+
+  const events = await readNdjson(
+    createDMChatStream({ message: 'Use approved public source evidence about agentic trader.' }, TEST_CONFIG, {
+      db,
+      model,
+    }),
+  );
+
+  assert.ok(events.some((event) => event.type === 'text-delta' && event.delta === 'Published RAG is available for this answer.'));
+  const call = model.doStreamCalls[0];
+  const tools = call?.tools as Array<{ name?: string; type?: string; id?: string; args?: Record<string, unknown> }> | undefined;
+  assert.ok(tools?.some((tool) => tool.name === 'searchProjects'));
+  const fileSearch = tools?.find((tool) => tool.name === 'file_search');
+  assert.equal(fileSearch?.type, 'provider');
+  assert.equal(fileSearch?.id, 'openai.file_search');
+  assert.deepEqual(fileSearch?.args, {
+    vectorStoreIds: ['vs_public'],
+    filters: {
+      type: 'and',
+      filters: [
+        { type: 'eq', key: 'visibility', value: 'public' },
+        { type: 'in', key: 'project_id', value: ['agentic-trader'] },
+        { type: 'in', key: 'rag_source_id', value: ['rag-public'] },
+      ],
+    },
+    maxNumResults: 4,
+    ranking: { ranker: 'auto', scoreThreshold: 0.2 },
+  });
+  assert.deepEqual(call?.providerOptions?.openai, { include: ['file_search_call.results'] });
+});
+
+test('DM stream suppresses model text after uncited weak file_search context and emits safe fallback', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  const events = await readNdjson(
+    createDMChatStream({ message: 'Use retrieved source context only.' }, TEST_CONFIG, {
+      db,
+      model: rejectedFileSearchThenTextModel('Unsupported claim from uncited retrieval.'),
+    }),
+  );
+
+  assert.ok(events.some((event) => event.type === 'tool' && event.name === 'file_search'));
+  assert.ok(!events.some((event) => event.type === 'text-delta'));
+  assert.ok(!JSON.stringify(events).includes('Unsupported claim from uncited retrieval.'));
+  assert.ok(!events.some((event) => event.type === 'block' && event.block?.kind === 'evidence'));
+  const fallback = events.find((event) => event.type === 'block' && event.block?.kind === 'text');
+  assert.match(String(fallback?.block?.text), /not strong enough to cite/);
+  assert.ok(events.some((event) => event.type === 'done'));
+});
+
+test('DM stream keeps accepted file_search citation but suppresses text after a later weak search', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  const unsupportedText = 'Unsupported claim after the weak search should never reach the stream.';
+
+  const events = await readNdjson(
+    createDMChatStream({ message: 'Use approved public source context only.' }, TEST_CONFIG, {
+      db,
+      model: acceptedThenWeakFileSearchThenTextModel(unsupportedText),
+    }),
+  );
+
+  assert.equal(events.filter((event) => event.type === 'tool' && event.name === 'file_search').length, 2);
+  const ragEvidence = events.find((event) => event.type === 'block' && event.block?.ragSources?.length);
+  assert.equal(ragEvidence?.block?.ragSources?.[0]?.ragSourceId, 'rag-public');
+  assert.equal(ragEvidence?.block?.ragSources?.[0]?.projectId, 'agentic-trader');
+  assert.equal(ragEvidence?.block?.ragSources?.[0]?.score, 0.91);
+  assert.ok(!events.some((event) => event.type === 'text-delta'));
+  assert.ok(!JSON.stringify(events).includes(unsupportedText));
+  assert.ok(events.some((event) => event.type === 'done'));
 });
 
 test('DM stream validates injected context ids against published DB records', async () => {
@@ -199,6 +278,22 @@ async function publishedProjectDb(): Promise<Queryable> {
   );
 
   return db;
+}
+
+async function insertIndexedPublicRagSource(db: Queryable): Promise<void> {
+  await db.query(
+    `INSERT INTO evidence_sources (id, project_id, source_type, source_ref, privacy_state, extracted_text, claim_map)
+     VALUES ('ev-public-rag', 'agentic-trader', 'readme', 'test:public-rag', 'safe_public', $1, '{}'::jsonb)`,
+    ['Approved public RAG source text with enough detail to support a recruiter-facing answer.'],
+  );
+  await db.query(
+    `INSERT INTO rag_sources (
+       id, project_id, evidence_source_id, eligibility_state, openai_file_id, vector_store_id, last_synced_at
+     ) VALUES (
+       'rag-public', 'agentic-trader', 'ev-public-rag', 'indexed', 'file_public', 'vs_public', $1
+     )`,
+    [new Date().toISOString()],
+  );
 }
 
 async function insertProjectRecord(db: Queryable, record: CatalogShadowRecord): Promise<void> {
@@ -301,6 +396,134 @@ function toolCallingModel(): MockLanguageModelV4 {
   });
 }
 
+function rejectedFileSearchThenTextModel(text: string): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        chunks: [
+          { type: 'stream-start', warnings: [] },
+          {
+            type: 'tool-call',
+            toolCallId: 'call-file-search',
+            toolName: 'file_search',
+            input: '{}',
+            providerExecuted: true,
+          },
+          {
+            type: 'tool-result',
+            toolCallId: 'call-file-search',
+            toolName: 'file_search',
+            result: {
+              queries: ['agentic trader approved source'],
+              results: [
+                {
+                  fileId: 'file_public',
+                  filename: 'approved-readme.md',
+                  text: 'Approved public RAG source text with enough detail to support a recruiter-facing answer.',
+                  attributes: {
+                    visibility: 'public',
+                    project_id: 'agentic-trader',
+                    rag_source_id: 'rag-public',
+                  },
+                },
+              ],
+            },
+          },
+          { type: 'text-start', id: 'text-after-rejected-search' },
+          { type: 'text-delta', id: 'text-after-rejected-search', delta: text },
+          { type: 'text-end', id: 'text-after-rejected-search' },
+          {
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: {
+              inputTokens: { total: 12, noCache: 12, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 6, text: 6, reasoning: undefined },
+            },
+          },
+        ],
+      }),
+    }),
+  });
+}
+
+function acceptedThenWeakFileSearchThenTextModel(text: string): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        chunks: [
+          { type: 'stream-start', warnings: [] },
+          {
+            type: 'tool-call',
+            toolCallId: 'call-file-search-accepted',
+            toolName: 'file_search',
+            input: '{}',
+            providerExecuted: true,
+          },
+          {
+            type: 'tool-result',
+            toolCallId: 'call-file-search-accepted',
+            toolName: 'file_search',
+            result: {
+              queries: ['agentic trader approved source'],
+              results: [
+                {
+                  fileId: 'file_public',
+                  filename: 'approved-readme.md',
+                  score: 0.91,
+                  text: 'Approved public RAG source text with enough detail to support a recruiter-facing answer.',
+                  attributes: {
+                    visibility: 'public',
+                    project_id: 'agentic-trader',
+                    rag_source_id: 'rag-public',
+                  },
+                },
+              ],
+            },
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'call-file-search-weak',
+            toolName: 'file_search',
+            input: '{}',
+            providerExecuted: true,
+          },
+          {
+            type: 'tool-result',
+            toolCallId: 'call-file-search-weak',
+            toolName: 'file_search',
+            result: {
+              queries: ['agentic trader weak source'],
+              results: [
+                {
+                  fileId: 'file_public',
+                  filename: 'unscored-readme.md',
+                  text: 'This matching public source text is long enough but has no relevance score, so it must not justify generated text.',
+                  attributes: {
+                    visibility: 'public',
+                    project_id: 'agentic-trader',
+                    rag_source_id: 'rag-public',
+                  },
+                },
+              ],
+            },
+          },
+          { type: 'text-start', id: 'text-after-weak-search' },
+          { type: 'text-delta', id: 'text-after-weak-search', delta: text },
+          { type: 'text-end', id: 'text-after-weak-search' },
+          {
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: {
+              inputTokens: { total: 16, noCache: 16, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 8, text: 8, reasoning: undefined },
+            },
+          },
+        ],
+      }),
+    }),
+  });
+}
+
 function throwingModel(): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doStream: async () => {
@@ -309,9 +532,19 @@ function throwingModel(): MockLanguageModelV4 {
   });
 }
 
-type JsonProject = { id?: string; title?: string; href?: string };
-type JsonBlock = { kind?: string; text?: string; items?: JsonProject[]; projects?: JsonProject[] };
-type JsonEvent = { type?: string; name?: string; block?: JsonBlock; delta?: string; message?: string };
+type JsonEvent = {
+  type?: string;
+  name?: string;
+  block?: {
+    kind?: string;
+    text?: string;
+    items?: Array<{ id?: string; title?: string; href?: string }>;
+    projects?: Array<{ id?: string; title?: string; href?: string }>;
+    ragSources?: Array<{ ragSourceId?: string; projectId?: string; score?: number }>;
+  };
+  delta?: string;
+  message?: string;
+};
 
 async function readNdjson(stream: ReadableStream<Uint8Array> | null): Promise<JsonEvent[]> {
   assert.ok(stream, 'expected a response body stream');

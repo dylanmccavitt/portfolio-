@@ -7,9 +7,18 @@ export type AnswerBlock =
   | { kind: 'text'; text: string }
   | { kind: 'projects'; ids: string[]; items?: ProjectSummary[] }
   | { kind: 'resume'; trackIds: string[] }
-  | { kind: 'evidence'; projectIds?: string[]; projects?: ProjectSummary[]; resumeTrackIds?: string[] }
+  | { kind: 'evidence'; projectIds?: string[]; projects?: ProjectSummary[]; resumeTrackIds?: string[]; ragSources?: PublicRagCitation[] }
   | { kind: 'contact'; email?: string; github?: string; resume?: string; location?: string; status?: string }
   | { kind: 'links'; items: [label: string, href: string][] };
+
+export interface PublicRagCitation {
+  ragSourceId: string;
+  projectId: string;
+  fileId: string;
+  filename?: string;
+  score?: number;
+  text?: string;
+}
 
 export interface DMConversationMessage {
   role: 'user' | 'assistant';
