@@ -78,6 +78,18 @@ export async function markRagSourceEligible(
     };
   }
 
+  // Never null out remote handles while cleanup is outstanding; doing so would
+  // orphan the uploaded file on OpenAI with no way to delete it later.
+  if (existing && (existing.openai_file_id || existing.vector_store_id)) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'rag_source_cleanup_pending',
+      message: `RAG source ${existing.id} still has remote artifacts; retry revocation cleanup before re-marking.`,
+      ragSourceId: existing.id,
+    };
+  }
+
   let ragSourceId: string;
   if (existing) {
     ragSourceId = existing.id;
@@ -171,7 +183,9 @@ export async function ingestRagSource(
   try {
     fileId = (await client.uploadFile({ filename: `${ragSourceId}.md`, content })).fileId;
     vectorStoreId =
-      options.vectorStoreId ?? (await client.createVectorStore({ name: PUBLIC_RAG_VECTOR_STORE_NAME })).vectorStoreId;
+      options.vectorStoreId ??
+      (await findExistingVectorStoreId(db)) ??
+      (await client.createVectorStore({ name: PUBLIC_RAG_VECTOR_STORE_NAME })).vectorStoreId;
     await client.attachFile({
       vectorStoreId,
       fileId,
@@ -247,7 +261,8 @@ export async function revokeRagSource(
   const source = await fetchRagSource(db, ragSourceId);
   if (!source) return ragSourceNotFound(ragSourceId);
 
-  if (source.eligibility_state === 'revoked') {
+  const alreadyRevoked = source.eligibility_state === 'revoked';
+  if (alreadyRevoked && !source.openai_file_id && !source.vector_store_id) {
     return {
       ok: true,
       status: 200,
@@ -257,25 +272,27 @@ export async function revokeRagSource(
     };
   }
 
-  // Revoke in the database before any remote cleanup so public retrieval
-  // (which only trusts indexed DB rows) is blocked even if cleanup fails.
-  await db.query(
-    `UPDATE rag_sources
-     SET eligibility_state = 'revoked',
-         revoked_at = now(),
-         updated_at = now()
-     WHERE id = $1`,
-    [ragSourceId],
-  );
-  await insertReviewEvent(db, {
-    projectId: source.project_id,
-    actor,
-    action: 'rag_revoked',
-    beforeState: source.eligibility_state,
-    afterState: 'revoked',
-    notes: 'RAG source revoked from public search.',
-    metadata: { source: 'rag_ingestion', ragSourceId },
-  });
+  if (!alreadyRevoked) {
+    // Revoke in the database before any remote cleanup so public retrieval
+    // (which only trusts indexed DB rows) is blocked even if cleanup fails.
+    await db.query(
+      `UPDATE rag_sources
+       SET eligibility_state = 'revoked',
+           revoked_at = now(),
+           updated_at = now()
+       WHERE id = $1`,
+      [ragSourceId],
+    );
+    await insertReviewEvent(db, {
+      projectId: source.project_id,
+      actor,
+      action: 'rag_revoked',
+      beforeState: source.eligibility_state,
+      afterState: 'revoked',
+      notes: 'RAG source revoked from public search.',
+      metadata: { source: 'rag_ingestion', ragSourceId },
+    });
+  }
 
   let cleanupError: string | null = null;
   try {
@@ -287,7 +304,7 @@ export async function revokeRagSource(
     }
     await db.query(
       `UPDATE rag_sources
-       SET openai_file_id = NULL, vector_store_id = NULL, updated_at = now()
+       SET openai_file_id = NULL, vector_store_id = NULL, failure_message = NULL, updated_at = now()
        WHERE id = $1`,
       [ragSourceId],
     );
@@ -488,6 +505,19 @@ async function bestEffortCleanup(client: RagIndexClient, vectorStoreId: string |
     // Cleanup failures are recorded via failure_message on the row; the file
     // is never searchable because it only enters filters once state=indexed.
   }
+}
+
+async function findExistingVectorStoreId(db: RagQueryable): Promise<string | null> {
+  const rows = normalizeRows(
+    await db.query<{ vector_store_id: string }>(
+      `SELECT vector_store_id
+       FROM rag_sources
+       WHERE eligibility_state = 'indexed' AND vector_store_id IS NOT NULL
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+    ),
+  );
+  return rows[0]?.vector_store_id ?? null;
 }
 
 async function fetchRagSource(db: RagQueryable, ragSourceId: string): Promise<RagSourceRow | null> {

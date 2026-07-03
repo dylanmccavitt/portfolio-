@@ -247,8 +247,14 @@ test('public file_search filters are structurally mandatory and only cover index
   const idA = markedA.ragSourceId as string;
   const idB = markedB.ragSourceId as string;
 
-  const { client } = createFakeClient();
+  const { client, calls } = createFakeClient();
   await ingestRagSource(db, client, idA, ACTOR);
+
+  // A second ingestion reuses the vector store recorded on an indexed row
+  // instead of creating one store per source.
+  await ingestRagSource(db, client, idB, ACTOR);
+  assert.equal(calls.createVectorStore.length, 1);
+  await revokeRagSource(db, client, idB, ACTOR);
 
   const searchable = await listSearchableRagSources(db);
   assert.deepEqual(searchable.map((source) => source.id), [idA]);
@@ -335,7 +341,41 @@ test('revocation blocks retrieval in the DB before remote cleanup completes', as
   );
   assert.equal((Array.isArray(events) ? events : events.rows).length, 1);
 
-  const again = await revokeRagSource(db, failingClient, ragSourceId, ACTOR);
+  // Remote handles survive the failed cleanup, so re-marking is blocked until
+  // cleanup succeeds; otherwise the OpenAI file would be orphaned forever.
+  const blockedRemark = await markRagSourceEligible(db, {
+    projectId: 'proj-rag',
+    evidenceSourceId: 'ev-public',
+    actor: ACTOR,
+  });
+  assert.equal(blockedRemark.ok, false);
+  assert.equal(blockedRemark.code, 'rag_source_cleanup_pending');
+  const pendingRow = await fetchRagRow(db, ragSourceId);
+  assert.equal(pendingRow?.openai_file_id, 'file_1');
+  assert.equal(pendingRow?.vector_store_id, 'vs_test');
+
+  // Revoking again with a working client retries and completes the cleanup.
+  const { client: workingClient, calls: retryCalls } = createFakeClient();
+  const retried = await revokeRagSource(db, workingClient, ragSourceId, ACTOR);
+  assert.equal(retried.ok, true);
+  assert.equal(retried.code, 'rag_source_revoked');
+  assert.equal(retried.cleanup, 'completed');
+  assert.equal(retryCalls.detachFile.length, 1);
+  assert.equal(retryCalls.deleteFile.length, 1);
+
+  const cleanedRow = await fetchRagRow(db, ragSourceId);
+  assert.equal(cleanedRow?.eligibility_state, 'revoked');
+  assert.equal(cleanedRow?.openai_file_id, null);
+  assert.equal(cleanedRow?.vector_store_id, null);
+  assert.equal(cleanedRow?.failure_message, null);
+
+  // Only one rag_revoked event: the retry does not double-log the revocation.
+  const retryEvents = await db.query<{ action: string }>(
+    `SELECT action FROM review_events WHERE project_id = 'proj-rag' AND action = 'rag_revoked'`,
+  );
+  assert.equal((Array.isArray(retryEvents) ? retryEvents : retryEvents.rows).length, 1);
+
+  const again = await revokeRagSource(db, workingClient, ragSourceId, ACTOR);
   assert.equal(again.ok, true);
   assert.equal(again.code, 'rag_source_already_revoked');
 
