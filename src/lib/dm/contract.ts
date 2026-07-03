@@ -17,7 +17,7 @@ export interface PublicRagCitation {
   fileId: string;
   filename?: string;
   score?: number;
-  text?: string;
+  text: string;
 }
 
 export interface DMConversationMessage {

@@ -92,6 +92,14 @@ export function createDMChatStream(
         enqueueJson(controller, encoder, event);
       };
 
+      const flushPendingFileSearchText = (): void => {
+        if (pendingText.trim() && latestFileSearchAccepted && !latestFileSearchRejected) {
+          finalText += pendingText;
+          emit({ type: 'text-delta', delta: pendingText });
+        }
+        pendingText = '';
+      };
+
       try {
         await validateContext(request, tools);
         await assertPublicDataAvailable(tools);
@@ -140,11 +148,7 @@ export function createDMChatStream(
             }
           } else if (part.type === 'tool-call') {
             if (part.toolName === 'file_search' && ragConfig) {
-              if (pendingText.trim() && latestFileSearchAccepted && !latestFileSearchRejected) {
-                finalText += pendingText;
-                emit({ type: 'text-delta', delta: pendingText });
-              }
-              pendingText = '';
+              flushPendingFileSearchText();
               latestFileSearchAccepted = false;
               latestFileSearchRejected = false;
               fileSearchStarted = true;
@@ -175,6 +179,12 @@ export function createDMChatStream(
               continue;
             }
             const blocks = blocksFromToolResult(part.output);
+            if (blocks.length > 0 && ragConfig && fileSearchStarted) {
+              flushPendingFileSearchText();
+              latestFileSearchAccepted = false;
+              latestFileSearchRejected = false;
+              fileSearchStarted = false;
+            }
             for (const block of blocks) {
               answer.push(block);
               emit({ type: 'block', index: blockIndex, block });
@@ -187,10 +197,7 @@ export function createDMChatStream(
           }
         }
 
-        if (ragConfig && pendingText.trim() && latestFileSearchAccepted && !latestFileSearchRejected) {
-          finalText += pendingText;
-          emit({ type: 'text-delta', delta: pendingText });
-        }
+        flushPendingFileSearchText();
 
         if (ragConfig && latestFileSearchRejected) {
           const fallback: AnswerBlock = {

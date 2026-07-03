@@ -121,7 +121,7 @@ export interface RagSourceEvidence {
   fileId: string;
   filename?: string;
   score?: number;
-  text?: string;
+  text: string;
 }
 
 export interface EvidenceBlock {
@@ -347,7 +347,9 @@ function parseRagSourceEvidence(value: unknown): RagSourceEvidence | null {
     !isObject(value) ||
     typeof value.ragSourceId !== 'string' ||
     typeof value.projectId !== 'string' ||
-    typeof value.fileId !== 'string'
+    typeof value.fileId !== 'string' ||
+    typeof value.text !== 'string' ||
+    !value.text.trim()
   ) {
     return null;
   }
@@ -358,7 +360,7 @@ function parseRagSourceEvidence(value: unknown): RagSourceEvidence | null {
     fileId: value.fileId,
     ...(typeof value.filename === 'string' ? { filename: value.filename } : {}),
     ...(typeof value.score === 'number' && Number.isFinite(value.score) ? { score: value.score } : {}),
-    ...(typeof value.text === 'string' ? { text: value.text } : {}),
+    text: value.text.trim(),
   };
 }
 

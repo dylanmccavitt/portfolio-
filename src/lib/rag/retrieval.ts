@@ -71,13 +71,12 @@ export function publicRagCitationsFromFileSearchResult(
   const results = fileSearchResults(output);
   if (results.length === 0) return [];
 
-  const byRagSourceId = new Map(config.sources.map((source) => [source.id, source]));
   const byFileId = new Map(config.sources.map((source) => [source.openai_file_id, source]));
   const citations: PublicRagCitation[] = [];
   const seen = new Set<string>();
 
   for (const result of results) {
-    const citation = citationFromResult(result, byRagSourceId, byFileId, config);
+    const citation = citationFromResult(result, byFileId, config);
     if (!citation) continue;
 
     const key = `${citation.ragSourceId}:${citation.fileId}:${citation.text}`;
@@ -95,7 +94,6 @@ export function publicRagProjectIds(citations: PublicRagCitation[]): string[] {
 
 function citationFromResult(
   value: unknown,
-  byRagSourceId: Map<string, SearchableRagSource>,
   byFileId: Map<string, SearchableRagSource>,
   config: PublicRagSearchConfig,
 ): PublicRagCitation | null {
@@ -108,11 +106,10 @@ function citationFromResult(
   const ragSourceId = stringValue(attributes.rag_source_id) ?? stringValue(attributes.ragSourceId);
   const projectId = stringValue(attributes.project_id) ?? stringValue(attributes.projectId);
 
-  const sourceByFileId = fileId ? byFileId.get(fileId) : undefined;
-  const sourceByRagId = ragSourceId ? byRagSourceId.get(ragSourceId) : undefined;
-  const source = sourceByFileId ?? sourceByRagId;
+  if (!fileId) return null;
+
+  const source = byFileId.get(fileId);
   if (!source) return null;
-  if (sourceByFileId && sourceByRagId && sourceByFileId.id !== sourceByRagId.id) return null;
   if (ragSourceId && ragSourceId !== source.id) return null;
   if (projectId && projectId !== source.project_id) return null;
 

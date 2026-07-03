@@ -156,6 +156,44 @@ test('file_search results without relevance scores are rejected even when source
   assert.deepEqual(citations, []);
 });
 
+test('file_search results without an approved file identity are rejected even when source metadata matches', async () => {
+  const db = await createTestDb();
+  const ragSourceId = await indexedPublicSource(db);
+  const config = await createPublicRagSearchConfig(db, { scoreThreshold: 0.5, minTextChars: 40 });
+  assert.ok(config);
+
+  const citations = publicRagCitationsFromFileSearchResult(
+    {
+      results: [
+        {
+          fileId: 'file_stale_or_unapproved',
+          filename: 'stale-approved-metadata.md',
+          score: 0.95,
+          text: 'This result carries approved public source metadata and enough text, but its file identity is not approved.',
+          attributes: {
+            visibility: 'public',
+            project_id: 'proj-public-rag',
+            rag_source_id: ragSourceId,
+          },
+        },
+        {
+          filename: 'missing-file-id.md',
+          score: 0.95,
+          text: 'This result also carries approved public source metadata and enough text, but it has no file identity.',
+          attributes: {
+            visibility: 'public',
+            project_id: 'proj-public-rag',
+            rag_source_id: ragSourceId,
+          },
+        },
+      ],
+    },
+    config,
+  );
+
+  assert.deepEqual(citations, []);
+});
+
 test('weak or irrelevant file_search results produce no citations so callers can fall back safely', async () => {
   const db = await createTestDb();
   const ragSourceId = await indexedPublicSource(db);

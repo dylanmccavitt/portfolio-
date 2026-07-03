@@ -170,6 +170,27 @@ test('DM stream suppresses model text after uncited weak file_search context and
   assert.ok(events.some((event) => event.type === 'done'));
 });
 
+test('DM stream emits structured-tool text after weak file_search is superseded by a trusted tool result', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  const structuredToolText = 'Agentic Trader matches because the published project index lists trading automation work.';
+
+  const events = await readNdjson(
+    createDMChatStream({ message: 'Use retrieved source context and the public project index.' }, TEST_CONFIG, {
+      db,
+      model: weakFileSearchThenStructuredToolTextModel(structuredToolText),
+    }),
+  );
+
+  assert.ok(events.some((event) => event.type === 'tool' && event.name === 'file_search'));
+  assert.ok(events.some((event) => event.type === 'tool' && event.name === 'searchProjects'));
+  const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
+  assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
+  assert.ok(events.some((event) => event.type === 'text-delta' && event.delta === structuredToolText));
+  assert.ok(!events.some((event) => event.type === 'block' && /not strong enough to cite/.test(String(event.block?.text))));
+  assert.ok(events.some((event) => event.type === 'done'));
+});
+
 test('DM stream keeps accepted file_search citation but suppresses text after a later weak search', async () => {
   const db = await publishedProjectDb();
   await insertIndexedPublicRagSource(db);
@@ -443,6 +464,79 @@ function rejectedFileSearchThenTextModel(text: string): MockLanguageModelV4 {
         ],
       }),
     }),
+  });
+}
+
+function weakFileSearchThenStructuredToolTextModel(text: string): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    doStream: [
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            {
+              type: 'tool-call',
+              toolCallId: 'call-file-search-weak',
+              toolName: 'file_search',
+              input: '{}',
+              providerExecuted: true,
+            },
+            {
+              type: 'tool-result',
+              toolCallId: 'call-file-search-weak',
+              toolName: 'file_search',
+              result: {
+                queries: ['agentic trader weak source'],
+                results: [
+                  {
+                    fileId: 'file_public',
+                    filename: 'unscored-readme.md',
+                    text: 'This matching public source text is long enough but has no relevance score, so it must not justify generated text.',
+                    attributes: {
+                      visibility: 'public',
+                      project_id: 'agentic-trader',
+                      rag_source_id: 'rag-public',
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              type: 'tool-call',
+              toolCallId: 'call-search-projects',
+              toolName: 'searchProjects',
+              input: JSON.stringify({ query: 'trading automation robinhood', limit: 3 }),
+            },
+            {
+              type: 'finish',
+              finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+              usage: {
+                inputTokens: { total: 18, noCache: 18, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 6, text: 6, reasoning: undefined },
+              },
+            },
+          ],
+        }),
+      },
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'text-start', id: 'text-after-structured-tool' },
+            { type: 'text-delta', id: 'text-after-structured-tool', delta: text },
+            { type: 'text-end', id: 'text-after-structured-tool' },
+            {
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage: {
+                inputTokens: { total: 20, noCache: 20, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 8, text: 8, reasoning: undefined },
+              },
+            },
+          ],
+        }),
+      },
+    ],
   });
 }
 

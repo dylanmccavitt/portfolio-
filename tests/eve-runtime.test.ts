@@ -276,6 +276,27 @@ test('evidence block validation accepts canonical ids and rejects unsafe shapes'
   );
 });
 
+test('rag evidence rejects citations without non-empty text', () => {
+  const citationWithoutText = {
+    ragSourceId: 'rag-public',
+    projectId: 'agentic-trader',
+    fileId: 'file_public',
+    filename: 'approved-readme.md',
+    score: 0.91,
+  };
+  const invalidCases = [
+    { name: 'missing text', citation: citationWithoutText },
+    { name: 'empty text', citation: { ...citationWithoutText, text: '' } },
+    { name: 'blank text', citation: { ...citationWithoutText, text: ' \n\t ' } },
+  ];
+
+  for (const { name, citation } of invalidCases) {
+    const block = { kind: 'evidence', ragSources: [citation] };
+    assert.equal(validateBlock(block), null, name);
+    assert.equal(parseStreamLine(JSON.stringify({ type: 'block', block })), null, name);
+  }
+});
+
 test('evidence resolution drops stale ids without throwing', () => {
   const previousWarn = console.warn;
   console.warn = () => undefined;

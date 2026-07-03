@@ -267,7 +267,7 @@ class Turn {
         const resolved = resolveEvidence(block);
         const projects = mergeProjectArtifacts(block.projects, resolved.projects);
         const tracks = resolved.tracks;
-        const ragSources = block.ragSources ?? [];
+        const ragSources = (block.ragSources ?? []).filter((source) => typeof source.text === 'string' && source.text.trim().length);
         if (!projects.length && !tracks.length && !ragSources.length) break;
 
         const count = projects.length + tracks.length + ragSources.length;
@@ -373,7 +373,7 @@ class Turn {
     ];
     if (source.score !== undefined) facts.push([source.score.toFixed(2), 'score']);
 
-    const text = source.text && source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
+    const text = source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
     return make('article', { class: 'eve-evidence-item' }, [
       make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
       make('span', { class: 'eve-evidence-top' }, [
@@ -381,7 +381,7 @@ class Turn {
         make('span', { class: 'badge done', text: 'RAG' }),
       ]),
       make('h3', { class: 'eve-evidence-title', text: source.filename ?? source.ragSourceId }),
-      make('p', { class: 'eve-evidence-line', text: text ?? `Approved public source ${source.ragSourceId}` }),
+      make('p', { class: 'eve-evidence-line', text }),
       this.evidenceFacts(facts),
     ]);
   }
