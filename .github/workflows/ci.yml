@@ -2,9 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - preview/**
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - preview/**
+      - codex/**
+      - claude/**
+      - glm/**
+      - cursor/**
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,7 +27,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -32,3 +40,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm run test:db && npm run test:discovery && npm run test:slack && npm run test:admin && npm run test:eve && npm run test:dm && npm run test:metrics && npm run test:rag
