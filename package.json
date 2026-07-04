@@ -20,6 +20,7 @@
     "test:metrics": "node --import tsx --test tests/dm-metrics.test.ts",
     "test:rag": "node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts",
     "test:benchmark": "node --import tsx --test tests/dm-benchmark.test.ts",
+    "test:proof": "node --import tsx --test tests/publish-proof.test.ts",
     "dm:eval": "node --import tsx scripts/dm-eval.ts",
     "dm:bench": "node --import tsx scripts/dm-benchmark.ts",
     "typecheck": "astro check",
