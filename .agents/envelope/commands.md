@@ -9,14 +9,24 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Dev server | `npm run dev`      | `astro dev` |
 | Build      | `npm run build`    | `astro build` |
 | Preview    | `npm run preview`  | `astro preview` |
+| Astro CLI  | `npm run astro`    | `astro` |
 | Lint       | `npm run lint`     | `eslint .` |
 | Typecheck  | `npm run typecheck`| `astro check` |
+| Verify gate | `npm run verify`  | `npm run lint && npm run typecheck && npm run build` |
 | Test DB foundation | `npm run test:db` | `node --import tsx --test tests/db-foundation.test.ts` |
 | Test GitHub discovery | `npm run test:discovery` | `node --import tsx --test tests/github-discovery.test.ts` |
+| Test Slack control plane | `npm run test:slack` | `node --import tsx --test tests/slack-control-plane.test.ts` |
 | Admin publish test | `npm run test:admin` | `node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts` |
-| RAG ingestion test | `npm run test:rag` | `node --import tsx --test tests/rag-ingestion.test.ts` |
+| RAG tests | `npm run test:rag` | `node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts` |
 | DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
+| DM metrics test | `npm run test:metrics` | `node --import tsx --test tests/dm-metrics.test.ts` |
 | Legacy Eve test | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
+| DM eval | `npm run dm:eval` | `node --import tsx scripts/dm-eval.ts` |
+| DB migrate | `npm run db:migrate` | `tsx scripts/db.ts migrate` |
+| DB seed | `npm run db:seed` | `tsx scripts/db.ts seed` |
+| DB reset | `npm run db:reset` | `tsx scripts/db.ts reset` |
+| Catalog shadow import | `npm run db:catalog:shadow` | `tsx scripts/catalog-shadow.ts import-and-report` |
+| Catalog parity report | `npm run db:catalog:parity` | `tsx scripts/catalog-shadow.ts report` |
 | Manual GitHub discovery scan | `npm run db:github:scan -- <repo-fixture.json>` | `tsx scripts/github-discovery.ts <repo-fixture.json>` |
 
 ## Verify gate
