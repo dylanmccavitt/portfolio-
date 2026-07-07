@@ -20,8 +20,10 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | RAG tests | `npm run test:rag` | `node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts` |
 | DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
 | DM metrics test | `npm run test:metrics` | `node --import tsx --test tests/dm-metrics.test.ts` |
+| DM benchmark test | `npm run test:benchmark` | `node --import tsx --test tests/dm-benchmark.test.ts` |
 | Legacy Eve test | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
 | DM eval | `npm run dm:eval` | `node --import tsx scripts/dm-eval.ts` |
+| DM latency benchmark | `npm run dm:bench` | `node --import tsx scripts/dm-benchmark.ts` |
 | DB migrate | `npm run db:migrate` | `tsx scripts/db.ts migrate` |
 | DB seed | `npm run db:seed` | `tsx scripts/db.ts seed` |
 | DB reset | `npm run db:reset` | `tsx scripts/db.ts reset` |
