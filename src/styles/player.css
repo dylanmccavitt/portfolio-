@@ -1,6 +1,6 @@
 /* Shared redesign tokens and primitives.
 
-   This file keeps the `--pl-*` token contract used by the Eve, Editorial, and
+   This file keeps the `--pl-*` token contract used by the DM, Editorial, and
    Tour layouts. It intentionally contains no retired app-shell chrome,
    route-level layout, or stateful interaction styles.
 */
