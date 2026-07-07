@@ -102,7 +102,7 @@ export function createDMChatStream(
 
       try {
         const { request: normalizedRequest, leadingBlocks, endTurnAfterNotice } = await validateContext(request, tools);
-        await assertPublicDataAvailable(tools);
+        await assertPublicDataAvailable(tools, normalizedRequest);
         const refusal = privateDataRefusal(normalizedRequest.message);
         if (refusal) {
           emit({ type: 'block', index: blockIndex, block: refusal });
@@ -330,10 +330,7 @@ async function validateContext(
   const hasContext = Boolean(nextContext.projectIds?.length || nextContext.resumeTrackIds?.length || nextContext.fitCheck);
   const hasOtherContextGrounding = Boolean(nextContext.resumeTrackIds?.length || nextContext.fitCheck);
   const endTurnAfterNotice =
-    allRequestedProjectsUnpublished &&
-    leadingBlocks.length > 0 &&
-    !hasOtherContextGrounding &&
-    !hasAlternateGroundingIntent(request.message);
+    allRequestedProjectsUnpublished && leadingBlocks.length > 0 && !hasOtherContextGrounding;
 
   return {
     request: hasContext ? { ...request, context: nextContext } : { ...request, context: undefined },
@@ -342,11 +339,21 @@ async function validateContext(
   };
 }
 
-async function assertPublicDataAvailable(tools: PublicDMDataTools): Promise<void> {
+async function assertPublicDataAvailable(tools: PublicDMDataTools, request: DMChatRequest): Promise<void> {
+  const normalized = request.message.toLowerCase();
+  const needsProjectData =
+    Boolean(request.context?.projectIds?.length) ||
+    /\b(projects?|work|built|ship|backend|ai|client)\b/.test(normalized);
+  if (!needsProjectData) return;
+
   try {
     await tools.publishedProjectIds();
   } catch (error) {
-    console.error('[dm] public project data unavailable', safeLogError(error));
+    throw new DMAgentError(
+      'public_data_unavailable',
+      error instanceof Error ? error.message : 'Public project data is unavailable.',
+      'DM could not read the public portfolio data needed for that answer.',
+    );
   }
 }
 
@@ -361,7 +368,9 @@ async function deterministicBlocks(
   const hasResume = existing.some((block) => block.kind === 'resume');
   const hasContact = existing.some((block) => block.kind === 'contact');
 
-  const shouldResolveProjects = Boolean(request.context?.projectIds?.length) || matchesAny(normalized, ['project', 'work', 'built', 'ship', 'backend', 'ai', 'client']);
+  const shouldResolveProjects =
+    Boolean(request.context?.projectIds?.length) ||
+    /\b(projects?|work|built|ship|backend|ai|client)\b/.test(normalized);
   if (!hasProjects && shouldResolveProjects) {
     const projectItems = request.context?.projectIds?.length
       ? (await tools.rankProjects({ ids: request.context.projectIds })).projects
@@ -530,12 +539,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function matchesAny(value: string, needles: string[]): boolean {
   return needles.some((needle) => value.includes(needle));
-}
-
-function hasAlternateGroundingIntent(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    matchesAny(normalized, ['resume', 'experience', 'background', 'education', 'career']) ||
-    matchesAny(normalized, ['contact', 'email', 'reach', 'hire', 'available', 'opportunities'])
-  );
 }

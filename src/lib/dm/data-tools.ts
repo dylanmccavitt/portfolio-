@@ -65,21 +65,17 @@ export function createPublicDMDataTools(db: ProjectReadQueryable): PublicDMDataT
     return projectsPromise;
   }
 
-  async function projectsOrEmpty(): Promise<ProjectDetailReadModel[]> {
-    try {
-      return await projects();
-    } catch (error) {
-      if (isPublicDataUnavailableError(error)) return [];
-      throw error;
-    }
-  }
-
   async function projectIds(): Promise<Set<string>> {
     return new Set((await projects()).map((project) => project.id));
   }
 
   async function projectIdsOrEmpty(): Promise<Set<string>> {
-    return new Set((await projectsOrEmpty()).map((project) => project.id));
+    try {
+      return await projectIds();
+    } catch (error) {
+      if (isPublicDataUnavailableError(error)) return new Set();
+      throw error;
+    }
   }
 
   async function assertProjectIds(ids: string[]): Promise<void> {
@@ -105,7 +101,7 @@ export function createPublicDMDataTools(db: ProjectReadQueryable): PublicDMDataT
     async searchProjects(input) {
       const query = input.query.trim();
       const tokens = tokenize(query);
-      const ranked = (await projectsOrEmpty())
+      const ranked = (await projects())
         .map((project) => ({ project, score: scoreProject(project, tokens) }))
         .filter((item) => item.score > 0)
         .sort((a, b) => b.score - a.score || a.project.id.localeCompare(b.project.id))
@@ -116,7 +112,7 @@ export function createPublicDMDataTools(db: ProjectReadQueryable): PublicDMDataT
 
     async filterProjects(input = {}) {
       const normalizedArea = input.area?.trim().toLowerCase();
-      const filtered = (await projectsOrEmpty())
+      const filtered = (await projects())
         .filter((project) => !normalizedArea || project.area.toLowerCase() === normalizedArea)
         .filter((project) => !input.status || project.status[0] === input.status)
         .slice(0, clampLimit(input.limit, 6))
@@ -125,9 +121,8 @@ export function createPublicDMDataTools(db: ProjectReadQueryable): PublicDMDataT
     },
 
     async rankProjects(input = {}) {
-      const all = await projectsOrEmpty();
+      const all = await projects();
       if (input.ids?.length) {
-        if (all.length === 0) return { projects: [] };
         await assertProjectIds(input.ids);
         const byId = new Map(all.map((project) => [project.id, project]));
         return {

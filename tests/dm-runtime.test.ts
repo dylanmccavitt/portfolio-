@@ -237,7 +237,7 @@ test('DM stream ends after unpublished project notice without model text', async
   assert.ok(!events.some((event) => event.type === 'error'));
 });
 
-test('DM stream still answers contact questions when unpublished project context is dropped', async () => {
+test('DM stream ends after unpublished project notice even when the message asks for contact details', async () => {
   const db = await publishedProjectDb();
   const modelText = 'You can reach Dylan at his published email.';
   const events = await readNdjson(
@@ -257,7 +257,35 @@ test('DM stream still answers contact questions when unpublished project context
         /isn't in my published records yet/i.test(String(event.block?.text)),
     ),
   );
-  assert.ok(events.some((event) => event.type === 'text-delta' && event.delta === modelText));
+  assert.ok(!events.some((event) => event.type === 'text-delta'));
+  assert.ok(events.some((event) => event.type === 'done'));
+  assert.ok(!events.some((event) => event.type === 'error'));
+});
+
+test('DM stream ends after unpublished project notice for mixed project and resume intent', async () => {
+  const db = await publishedProjectDb();
+  const modelText = 'Dylan has shipped several backend-heavy projects.';
+  const events = await readNdjson(
+    createDMChatStream(
+      {
+        message: "Tell me about tastytrade-exit-manager and Dylan's resume",
+        context: { projectIds: ['exit-manager'] },
+      },
+      TEST_CONFIG,
+      { db, model: streamingModel(modelText) },
+    ),
+  );
+
+  assert.ok(events.some((event) => event.type === 'ready'));
+  assert.ok(
+    events.some(
+      (event) =>
+        event.type === 'block' &&
+        event.block?.kind === 'text' &&
+        /isn't in my published records yet/i.test(String(event.block?.text)),
+    ),
+  );
+  assert.ok(!events.some((event) => event.type === 'text-delta'));
   assert.ok(events.some((event) => event.type === 'done'));
   assert.ok(!events.some((event) => event.type === 'error'));
 });
@@ -275,7 +303,7 @@ test('DM runtime config keeps provider and model env-configurable without secret
   );
 });
 
-test('DM route masks setup failures and keeps resume/contact answers available with DB project-read failures', async () => {
+test('DM route and stream mask setup and data failures safely', async () => {
   const missingConfigPost = createDMPostHandler({ env: {} });
   const missingConfigResponse = await missingConfigPost({
     request: new Request('https://example.test/api/dm/chat', {
@@ -289,6 +317,27 @@ test('DM route masks setup failures and keeps resume/contact answers available w
     error: { code: 'missing_config', message: 'DM is not configured for chat yet.' },
   });
 
+  const failingDb = {
+    async query() {
+      throw new Error('select * from private_drafts using secret-token');
+    },
+  } satisfies Queryable;
+  const events = await readNdjson(
+    createDMChatStream({ message: 'Which projects show backend work?' }, TEST_CONFIG, {
+      db: failingDb,
+      model: streamingModel('This should not leak database failures.'),
+    }),
+  );
+
+  assert.deepEqual(events, [
+    {
+      type: 'error',
+      message: 'DM could not read the public portfolio data needed for that answer.',
+    },
+  ]);
+});
+
+test('DM route keeps resume/contact answers available with DB project-read failures', async () => {
   const failingDb = {
     async query() {
       throw new Error('select * from private_drafts using secret-token');
