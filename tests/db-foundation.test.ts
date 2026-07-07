@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test, { afterEach } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, applySeeds, resetDatabase, type Queryable } from '../scripts/db';
@@ -91,7 +94,7 @@ test('migrations create the DM project foundation tables', async () => {
   const db = createTestDb();
   const applied = await applyMigrations(db);
 
-  assert.deepEqual(applied, ['0001_dm_project_foundation.sql']);
+  assert.deepEqual(applied, ['0001_dm_project_foundation.sql', '0002_review_events_seq.sql']);
 
   const tables = await db.query<{ table_name: string }>(
     `SELECT table_name
@@ -104,6 +107,54 @@ test('migrations create the DM project foundation tables', async () => {
   for (const table of FOUNDATION_TABLES) {
     assert.ok(tableNames.includes(table), `expected ${table} table`);
   }
+});
+
+test('review_events seq migration upgrades an existing database deterministically', async () => {
+  const db = createTestDb();
+
+  // Upgrade path: apply 0001 alone (as preview/prod DBs did), insert rows,
+  // then apply the remaining migrations through the real runner.
+  const foundationMigration = '0001_dm_project_foundation.sql';
+  const stageDir = await mkdtemp(join(tmpdir(), 'age839-mig-'));
+  await copyFile(
+    fileURLToPath(new URL(`../db/migrations/${foundationMigration}`, import.meta.url)),
+    join(stageDir, foundationMigration),
+  );
+  assert.deepEqual(await applyMigrations(db, stageDir), [foundationMigration]);
+
+  // project_candidates is the lightest parent satisfying the review_events CHECK.
+  await db.query(
+    `INSERT INTO project_candidates (id, source_kind, source_ref) VALUES ('cand_seq', 'manual', 'seq-upgrade-test')`,
+  );
+  await db.query(
+    `INSERT INTO review_events (id, candidate_id, actor, action, created_at)
+     VALUES ('review_seq_a', 'cand_seq', 'test', 'note', '2026-01-01T00:00:00Z'),
+            ('review_seq_b', 'cand_seq', 'test', 'note', '2026-01-01T00:00:00Z')`,
+  );
+
+  assert.deepEqual(await applyMigrations(db), ['0002_review_events_seq.sql']);
+
+  const upgraded = await db.query<{ id: string; seq: string | number | null }>(
+    `SELECT id, seq FROM review_events WHERE candidate_id = 'cand_seq'`,
+  );
+  assert.equal(upgraded.rows.length, 2);
+  for (const row of upgraded.rows) {
+    assert.notEqual(row.seq, null, `expected backfilled seq for ${row.id}`);
+  }
+
+  // New rows written in the same clock tick order deterministically by seq.
+  await db.query(
+    `INSERT INTO review_events (id, candidate_id, actor, action, created_at)
+     VALUES ('review_seq_c', 'cand_seq', 'test', 'note', '2026-01-02T00:00:00Z')`,
+  );
+  await db.query(
+    `INSERT INTO review_events (id, candidate_id, actor, action, created_at)
+     VALUES ('review_seq_d', 'cand_seq', 'test', 'note', '2026-01-02T00:00:00Z')`,
+  );
+  const latest = await db.query<{ id: string }>(
+    `SELECT id FROM review_events WHERE candidate_id = 'cand_seq' ORDER BY created_at DESC, seq DESC LIMIT 1`,
+  );
+  assert.equal(latest.rows[0]?.id, 'review_seq_d');
 });
 
 test('planned lifecycle states are constrained in SQL and exported types', async () => {
@@ -188,7 +239,7 @@ test('seed and reset path works without external credentials', async () => {
   );
   assert.equal(afterReset.rows[0]?.count, '0');
 
-  assert.deepEqual(await applyMigrations(db), ['0001_dm_project_foundation.sql']);
+  assert.deepEqual(await applyMigrations(db), ['0001_dm_project_foundation.sql', '0002_review_events_seq.sql']);
   assert.deepEqual(await applySeeds(db), ['001_foundation_smoke.sql']);
 
   const reseeded = await db.query<{ id: string }>(

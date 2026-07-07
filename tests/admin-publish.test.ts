@@ -239,6 +239,54 @@ test('field updates after approval invalidate stale admin approval events', asyn
   assert.equal(freshJson.code, 'published');
 });
 
+test('approval freshness survives created_at ties using insertion order', async () => {
+  const TIE = '2026-01-03T00:00:00Z';
+  const insertTieEvent = async (db: Queryable, draftId: string, kind: 'note' | 'approval'): Promise<void> => {
+    await db.query(
+      `INSERT INTO review_events (id, draft_id, actor, action, before_state, after_state, notes, metadata, created_at)
+       VALUES ($1, $2, $3, $4, 'needs_review', $4, '', $5::jsonb, $6)`,
+      [
+        `review_tie_${draftId}_${kind}_${crypto.randomUUID()}`,
+        draftId,
+        ACTOR,
+        kind === 'approval' ? 'approved_for_publish' : 'note',
+        JSON.stringify(kind === 'approval' ? { source: 'admin_publish' } : { kind: 'fields_updated' }),
+        TIE,
+      ],
+    );
+  };
+  const setupDraft = async (db: Queryable, suffix: string): Promise<string> => {
+    const candidateId = await insertCandidate(db, `candidate_tie_${suffix}`);
+    const draftId = await insertDraft(db, {
+      id: `draft_tie_${suffix}`,
+      candidateId,
+      fields: VALID_FIELDS,
+      provenance: { repo: true },
+      lifecycle: 'approved_for_publish',
+    });
+    await insertEvidence(db, { id: `evidence_tie_${suffix}`, draftId, privacy: 'safe_public' });
+    return draftId;
+  };
+
+  // Approval inserted after the note at the SAME created_at: program order wins → publish succeeds.
+  const dbFresh = await createMigratedDb();
+  const freshDraft = await setupDraft(dbFresh, 'fresh');
+  await insertTieEvent(dbFresh, freshDraft, 'note');
+  await insertTieEvent(dbFresh, freshDraft, 'approval');
+  const freshPublish = await publishDraft(dbFresh, freshDraft, { confirmProvenance: true, confirmPrivacy: true });
+  assert.equal(freshPublish.status, 200);
+
+  // Note inserted after the approval at the SAME created_at: the stale-approval invariant holds → 409.
+  const dbStale = await createMigratedDb();
+  const staleDraft = await setupDraft(dbStale, 'stale');
+  await insertTieEvent(dbStale, staleDraft, 'approval');
+  await insertTieEvent(dbStale, staleDraft, 'note');
+  const stalePublish = await publishDraft(dbStale, staleDraft, { confirmProvenance: true, confirmPrivacy: true });
+  const staleJson = await responseJson(stalePublish);
+  assert.equal(stalePublish.status, 409);
+  assert.equal(staleJson.code, 'admin_approval_missing');
+});
+
 test('approve requires valid public fields and records admin approval after PATCH', async () => {
   const db = await createMigratedDb();
   const candidateId = await insertCandidate(db, 'candidate_approve');

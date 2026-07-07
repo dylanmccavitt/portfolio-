@@ -106,7 +106,7 @@ export async function getAdminDraft(db: AdminPublishQueryable, draftId: string):
       `SELECT id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata, created_at
        FROM review_events
        WHERE draft_id = $1
-       ORDER BY created_at DESC
+       ORDER BY created_at DESC, seq DESC
        LIMIT 20`,
       [draft.id],
     ),
@@ -413,7 +413,7 @@ async function hasFreshAdminPublishApproval(db: AdminPublishQueryable, draftId: 
            action = 'approved_for_publish'
            OR (action = 'note' AND metadata->>'kind' = 'fields_updated')
          )
-       ORDER BY created_at DESC
+       ORDER BY created_at DESC, seq DESC
        LIMIT 1`,
       [draftId],
     ),
