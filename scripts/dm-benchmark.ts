@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { aggregateBenchmarkRuns, classifyBenchmarkRun, type DMBenchmarkRunRecord, type TimedDMEvent } from '../src/lib/dm/benchmark';
 import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES } from '../src/lib/dm/eval-fixtures';
@@ -97,7 +98,9 @@ async function main(): Promise<void> {
   if (dryRun) {
     console.log('[dm:bench] dry mode uses deterministic stubs. These timings are plumbing checks only, not valid latency evidence.');
   }
-  console.log(`[dm:bench] live latency evidence runs=${runRecords.filter((run) => run.validLatency && !run.dryRun).length}/${runRecords.length}`);
+  console.log(
+    `[dm:bench] live latency evidence runs=${runRecords.filter((run) => run.validLatency && run.modelExercised && !run.dryRun).length}/${runRecords.length}`,
+  );
 
   const report = {
     generatedAt: new Date().toISOString(),
@@ -110,6 +113,7 @@ async function main(): Promise<void> {
   };
 
   if (options.jsonPath) {
+    await mkdir(dirname(options.jsonPath), { recursive: true });
     await writeFile(options.jsonPath, JSON.stringify(report, null, 2));
     console.log(`[dm:bench] wrote JSON report to ${options.jsonPath}`);
   }

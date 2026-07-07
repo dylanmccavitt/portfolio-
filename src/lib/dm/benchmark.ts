@@ -23,6 +23,7 @@ export interface DMBenchmarkClassification {
   failureClass: DMBenchmarkFailureClass;
   failureDetail: string | null;
   validLatency: boolean;
+  modelExercised: boolean;
   evalPassed: boolean;
 }
 
@@ -38,6 +39,8 @@ export interface DMBenchmarkModelSummary {
   model: string;
   runs: number;
   validLatencyRuns: number;
+  modelExercisedRuns: number;
+  nonModelRuns: number;
   liveLatencyRuns: number;
   invalidRuns: number;
   evalPassedRuns: number;
@@ -62,6 +65,7 @@ export function classifyBenchmarkRun(input: DMBenchmarkClassificationInput): DMB
   const errorCount = errorEvents.length;
   const hasDone = input.events.some((entry) => entry.event.type === 'done');
   const errorMessage = errorEvents.length > 0 ? errorEvents.map((event) => event.message).join(' | ') : null;
+  const modelExercised = input.events.some((entry) => entry.event.type === 'ready');
 
   let failureClass: DMBenchmarkFailureClass;
   let validLatency = false;
@@ -97,6 +101,7 @@ export function classifyBenchmarkRun(input: DMBenchmarkClassificationInput): DMB
     failureClass,
     failureDetail,
     validLatency,
+    modelExercised,
     evalPassed: input.evalFailure === null,
   };
 }
@@ -113,17 +118,20 @@ export function aggregateBenchmarkRuns(runs: DMBenchmarkRunRecord[]): DMBenchmar
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([model, modelRuns]) => {
       const validLatencyRuns = modelRuns.filter((run) => run.validLatency);
-      const timedRuns = validLatencyRuns.filter((run) => run.firstTokenMs !== null);
+      const modelLatencyRuns = validLatencyRuns.filter((run) => run.modelExercised);
+      const timedRuns = modelLatencyRuns.filter((run) => run.firstTokenMs !== null);
 
       const firstTokens = timedRuns.map((run) => run.firstTokenMs as number);
-      const completions = validLatencyRuns.map((run) => run.completionMs);
-      const toolCounts = validLatencyRuns.map((run) => run.toolCount);
+      const completions = modelLatencyRuns.map((run) => run.completionMs);
+      const toolCounts = modelLatencyRuns.map((run) => run.toolCount);
 
       return {
         model,
         runs: modelRuns.length,
         validLatencyRuns: validLatencyRuns.length,
-        liveLatencyRuns: validLatencyRuns.filter((run) => !run.dryRun).length,
+        modelExercisedRuns: modelRuns.filter((run) => run.modelExercised).length,
+        nonModelRuns: modelRuns.filter((run) => !run.modelExercised).length,
+        liveLatencyRuns: modelLatencyRuns.filter((run) => !run.dryRun).length,
         invalidRuns: modelRuns.length - validLatencyRuns.length,
         evalPassedRuns: modelRuns.filter((run) => run.evalPassed).length,
         evalTotalRuns: modelRuns.length,

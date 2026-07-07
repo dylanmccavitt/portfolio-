@@ -12,6 +12,7 @@ test('benchmark classification marks no-token errors as MODEL_CALL_FAILED invali
   assert.equal(result.failureClass, 'MODEL_CALL_FAILED');
   assert.equal(result.firstTokenMs, null);
   assert.equal(result.validLatency, false);
+  assert.equal(result.modelExercised, true);
   assert.equal(result.errorCount, 1);
 });
 
@@ -25,8 +26,32 @@ test('benchmark classification keeps eval failures latency-valid when stream com
 
   assert.equal(result.failureClass, 'EVAL_FAILED');
   assert.equal(result.validLatency, true);
+  assert.equal(result.modelExercised, true);
   assert.equal(result.firstTokenMs, 9);
   assert.equal(result.evalPassed, false);
+});
+
+test('benchmark classification marks deterministic refusal paths as non-model', () => {
+  const events: TimedDMEvent[] = [
+    {
+      elapsedMs: 2,
+      event: {
+        type: 'block',
+        index: 0,
+        block: {
+          kind: 'text',
+          text: 'I can only discuss published portfolio projects, public resume facts, and contact details.',
+        },
+      },
+    },
+    { elapsedMs: 4, event: { type: 'done', answer: [], trace: emptyTrace() } },
+  ];
+  const result = classifyBenchmarkRun({ events, completionMs: 5, evalFailure: null });
+
+  assert.equal(result.failureClass, 'OK');
+  assert.equal(result.validLatency, true);
+  assert.equal(result.modelExercised, false);
+  assert.equal(result.firstTokenMs, 2);
 });
 
 test('benchmark aggregation excludes invalid latency runs from median and p95', () => {
@@ -40,6 +65,8 @@ test('benchmark aggregation excludes invalid latency runs from median and p95', 
   assert.ok(summary, 'expected model summary');
 
   assert.equal(summary.validLatencyRuns, 2);
+  assert.equal(summary.modelExercisedRuns, 3);
+  assert.equal(summary.nonModelRuns, 0);
   assert.equal(summary.invalidRuns, 1);
   assert.equal(summary.firstTokenMedianMs, 145);
   assert.equal(summary.firstTokenP95Ms, 186);
@@ -52,6 +79,29 @@ test('benchmark aggregation excludes invalid latency runs from median and p95', 
     STREAM_ERROR: 0,
     PARTIAL_STREAM: 0,
   });
+});
+
+test('benchmark aggregation excludes non-model refusal runs from latency medians', () => {
+  const runs: DMBenchmarkRunRecord[] = [
+    runRecord({ model: 'openai/model-a', firstTokenMs: 100, completionMs: 320, failureClass: 'OK', validLatency: true }),
+    runRecord({
+      model: 'openai/model-a',
+      firstTokenMs: 3,
+      completionMs: 5,
+      failureClass: 'OK',
+      validLatency: true,
+      modelExercised: false,
+    }),
+  ];
+
+  const [summary] = aggregateBenchmarkRuns(runs);
+  assert.ok(summary, 'expected model summary');
+
+  assert.equal(summary.validLatencyRuns, 2);
+  assert.equal(summary.modelExercisedRuns, 1);
+  assert.equal(summary.nonModelRuns, 1);
+  assert.equal(summary.firstTokenMedianMs, 100);
+  assert.equal(summary.completionMedianMs, 320);
 });
 
 test('median and percentile return null for empty arrays', () => {
@@ -75,6 +125,7 @@ function runRecord(overrides: Partial<DMBenchmarkRunRecord>): DMBenchmarkRunReco
     failureClass: 'OK',
     failureDetail: null,
     validLatency: true,
+    modelExercised: true,
     evalPassed: true,
     ...overrides,
   };
