@@ -1,6 +1,6 @@
 ---
 name: portfolio-agent-first-redesign
-description: Use when working on the portfolio agent-first redesign, DM runtime, legacy Eve runtime migration, Split-canvas landing, Typographic cards, Editorial project pages, or retiring the Spotify/player shell.
+description: Use when working on the portfolio agent-first redesign, DM runtime, Split-canvas landing, Typographic cards, Editorial project pages, or retiring the Spotify/player shell.
 ---
 
 # Portfolio Agent-First Redesign
@@ -25,7 +25,7 @@ description: Use when working on the portfolio agent-first redesign, DM runtime,
 
 ## Locked design decisions
 
-- Landing: Split-canvas agent UI from `src/pages/prototype/_AgentVariantB.astro`; treat Eve naming there as legacy prototype naming and DM as the product seam.
+- Landing: Split-canvas agent UI from `src/pages/prototype/_AgentVariantB.astro`; treat historical Eve prototype naming there as archival only and DM as the product seam.
 - Cards: Typographic project card from `src/pages/prototype/_CardsVariantB.astro`.
 - Detail pages: Editorial case study from `src/pages/prototype/_ProjectVariantA.astro`.
 - Retire the Spotify/player shell after replacement production routes exist.

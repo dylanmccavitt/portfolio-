@@ -55,7 +55,7 @@ export interface ResumeTrack {
   role: string;
   /** Time span, e.g. `'2020 — 2023'`. */
   when: string;
-  /** Legacy duration-style metadata retained for Eve/data compatibility. */
+  /** Legacy duration-style metadata retained for DM data compatibility. */
   len: string;
   /** Accent color (hex). */
   hue: string;

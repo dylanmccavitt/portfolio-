@@ -33,8 +33,8 @@ Map each Linear acceptance criterion to where it is satisfied.
 ## Proof
 
 The targeted checks/tests run for the changed behavior and the evidence captured
-(`npm run lint && npm run typecheck && npm run build`; add `npm run test:eve` for
-legacy Eve runtime/tool paths or DM runtime code that mines/replaces them).
+(`npm run lint && npm run typecheck && npm run build`; add `npm run test:dm` for
+DM runtime/API seam changes).
 
 ## Continuity constraints checked
 

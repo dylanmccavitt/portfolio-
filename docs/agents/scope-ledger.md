@@ -6,7 +6,7 @@ Use this file to keep product intent alive after work is sliced into issues. V1 
 
 The portfolio becomes agent-first: visitors land on DM, a public agent that answers questions about Dylan and his work, backed by published project records, approved public sources, résumé data, and contact data. The experience stays recruiter-friendly, jargon-light, and static-first outside the deliberate chat island.
 
-DM supersedes Eve for new product architecture. Eve remains legacy prototype/runtime evidence in `src/lib/eve/` and `/api/eve/chat`; mine or replace it during migration, but do not add new Eve-specific product seams. The old root `agent/` Eve app was retired by AGE-739 when the public DM Vercel AI SDK seam replaced the remote Eve app dependency.
+DM supersedes Eve for new product architecture. Eve runtime paths (`src/lib/eve/`, `/api/eve/chat`) were retired in AGE-818; do not resurrect Eve-specific product seams. The old root `agent/` Eve app was retired by AGE-739 when the public DM Vercel AI SDK seam replaced the remote Eve app dependency.
 
 Public DM answers may use only published DB project records, approved public RAG sources, and static résumé/contact data from `src/data/resume.ts`. Hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor chats, and unsupported/generated claims stay out of public answers.
 
@@ -23,9 +23,9 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 
 ## Now
 
-- Supersede Eve with DM in repo planning/domain docs before runnable DM implementation.
+- Superseded Eve with DM in repo planning/domain docs (Eve runtime retired in AGE-818).
 - Build the DM implementation graph on preview branch `preview/agent-first-redesign`.
-- Keep Eve-era runtime paths as legacy implementation evidence to mine or replace, not as new product direction.
+- DM is the sole live runtime (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`).
 - Use Neon on Vercel for the DB foundation; keep secrets out of tracked files.
 - Keep `src/data/catalog.ts` as a shadow/fallback public project source until parity plus one-publish proof; keep `src/data/resume.ts` as the v1 résumé/contact source.
 
@@ -92,9 +92,9 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Constraint: DM public answers use only published DB project records, approved public RAG sources, and static résumé/contact data.
   - Deferred capability protected: Privacy-safe RAG and publish flow.
   - Verification evidence: Runtime/eval fixtures or PR review evidence prove drafts/private/candidate data stay excluded.
-- Constraint: Eve-era runtime paths remain mine/replace legacy evidence until migration removes or replaces them.
-  - Deferred capability protected: Future agents can reuse proven code without treating Eve as new product direction.
-  - Verification evidence: PR diff updates or removes `src/lib/eve/` and `/api/eve/chat` deliberately; root `agent/` removal is recorded in AGE-739.
+- Constraint: Do not resurrect Eve-specific runtime paths retired in AGE-818.
+  - Deferred capability protected: DM remains the sole live agent runtime seam.
+  - Verification evidence: Live stack uses `src/lib/dm/` and `/api/dm/chat`; Eve paths removed in AGE-818; root `agent/` removal is recorded in AGE-739.
 - Constraint: Retire the player shell only after replacement UI slices cover production routes.
   - Deferred capability protected: No broken route while migrating.
   - Verification evidence: Build plus route smoke checks.
@@ -102,7 +102,7 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 ## Naming anchors
 
 - DM
-- Eve (legacy implementation evidence, not new product direction)
+- Eve (retired in AGE-818; DM supersedes Eve — historical naming only)
 - agent-first portfolio
 - Split-canvas landing
 - Typographic project card

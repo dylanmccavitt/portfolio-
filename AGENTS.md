@@ -6,17 +6,17 @@ Clean, recruiter-friendly portfolio site on the **agent-first redesign** preview
 
 - **Astro + TypeScript** — static-first site framework (see `package.json` for the pinned `astro` version)
 - **@astrojs/vercel** — Vercel adapter for server/API routes and deployment
-- **Global CSS** — design tokens in `src/styles/player.css` (`--pl-*`); Split-canvas landing styles in `src/styles/eve.css`
-- **Vanilla TypeScript client island** — `src/scripts/eve.ts` streams against `/api/dm/chat` on the DM landing and fit-check routes
+- **Global CSS** — design tokens in `src/styles/player.css` (`--pl-*`); Split-canvas landing styles in `src/styles/dm.css`
+- **Vanilla TypeScript client island** — `src/scripts/dm.ts` streams against `/api/dm/chat` on the DM landing and fit-check routes
 - **TypeScript data modules** — `src/data/catalog.ts` (project shadow/fallback) and `src/data/resume.ts` (résumé/contact v1 source); no Markdown/MDX content collections
 - **Neon Postgres** — DM project records, admin publish flow, RAG; see `docs/agents/db-foundation.md`
 - **Deployed** to Vercel
 
-Default to zero client JS: static `.astro` pages everywhere. Client JS only for the deliberate DM chat island (`src/scripts/eve.ts`) and the hiring-tour stepper (`src/scripts/tour.ts`).
+Default to zero client JS: static `.astro` pages everywhere. Client JS only for the deliberate DM chat island (`src/scripts/dm.ts`) and the hiring-tour stepper (`src/scripts/tour.ts`).
 
 ## Design Direction
 
-> DM supersedes Eve for new product architecture; Eve-era runtime paths (`src/lib/eve/`, `/api/eve/chat`) are legacy implementation evidence to mine or replace. The authoritative product/design direction is `.agents/envelope/domain.md` plus `docs/agents/scope-ledger.md`. The retired Spotify **player shell** (sidebar + bottom player bar) is not extended — `/player` and other legacy routes 301 via `vercel.json`.
+> DM is the public portfolio agent (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`, `src/styles/dm.css`). The authoritative product/design direction is `.agents/envelope/domain.md` plus `docs/agents/scope-ledger.md`. The retired Spotify **player shell** (sidebar + bottom player bar) is not extended — `/player` and other legacy routes 301 via `vercel.json`.
 
 Current preview-branch UI:
 
@@ -56,7 +56,7 @@ This repo runs the Factorio workflow kit. The per-repo envelope is the single
 binding point — read it before planning or building:
 
 - `.agents/envelope/linear-map.md` — Linear team (`dmcc`/AGE) + Portfolio project, labels, states, the inserter triage map, and the GitHub bridge.
-- `.agents/envelope/domain.md` — domain glossary (DM, Eve legacy evidence, Split-canvas landing, Typographic card, Editorial detail, answer block, artifact card).
+- `.agents/envelope/domain.md` — domain glossary (DM, Split-canvas landing, Typographic card, Editorial detail, answer block, artifact card).
 - `.agents/envelope/commands.md` — build/test/lint/run + default branch and the redesign stack.
 - `.agents/envelope/templates/` — PR / issue / project-doc templates.
 
@@ -78,9 +78,8 @@ non-obvious cloud caveats.
   (or prepend `$HOME/.nvm/versions/node/v24.18.0/bin` to `PATH`).
 - **Tests need no external services or secrets.** The `test:*` scripts use an
   in-memory Postgres via `@electric-sql/pglite`; the CI test set is
-  `test:db test:discovery test:slack test:admin test:eve test:dm test:metrics test:rag`.
-- **DM/Eve chat is disabled without config.** `/api/dm/chat` and `/api/eve/chat`
-  return HTTP 503 `missing_config` unless `OPENAI_API_KEY` (DM) / `EVE_AGENT_HOST`
-  (legacy Eve) are set; the site shell, browsing, and all tests work without them.
-  The chat UI degrades to a "DM is unavailable right now" notice. Set those env
-  vars (never commit them) to exercise live chat.
+  `test:db test:discovery test:slack test:admin test:dm test:metrics test:rag`.
+- **DM chat is disabled without config.** `/api/dm/chat` returns HTTP 503
+  `missing_config` unless `OPENAI_API_KEY` is set; the site shell, browsing, and
+  all tests work without it. The chat UI degrades to a "DM is unavailable right
+  now" notice. Set that env var (never commit it) to exercise live chat.

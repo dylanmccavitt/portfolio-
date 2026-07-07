@@ -5,7 +5,7 @@
  * so this catalog ships 13 projects.
  *
  * Copy (about, notes, metrics, captions, hues, and progress metadata) is kept
- * here so static pages and Eve tools read the same facts.
+ * here so static pages and DM tools read the same facts.
  *
  * Link integrity (#30, 2026-06-10): every link points at a live destination.
  * Seven projects originally linked the bare GitHub profile as a placeholder.

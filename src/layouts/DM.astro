@@ -1,17 +1,17 @@
 ---
 /**
- * Eve landing layout (#86) — the full-height shell for the Split-canvas chat
+ * DM landing layout (#86) — the full-height shell for the Split-canvas chat
  * surface. It carries the same per-page SEO head the rest of the site uses,
- * then hands the whole viewport to the Eve conversation island.
+ * then hands the whole viewport to the DM conversation island.
  *
  * Tokens + the `.badge` primitive come from `player.css`; the Split-canvas
- * styling (global, `.eve-`-namespaced so the JS-built thread is styled too)
- * comes from `eve.css`. The chat client (`scripts/eve.ts`) is the one earned
+ * styling (global, `.dm-`-namespaced so the JS-built thread is styled too)
+ * comes from `dm.css`. The chat client (`scripts/dm.ts`) is the one earned
  * client-JS island on the landing.
  */
 import { OG_FALLBACK, type PageMeta } from '../lib/seo';
 import '../styles/player.css';
-import '../styles/eve.css';
+import '../styles/dm.css';
 
 export interface Props {
   title: string;
@@ -65,8 +65,8 @@ const jsonLd = meta.jsonLd;
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
     />
   </head>
-  <body class="eve-body">
+  <body class="dm-body">
     <slot />
-    <script src="../scripts/eve.ts"></script>
+    <script src="../scripts/dm.ts"></script>
   </body>
 </html>

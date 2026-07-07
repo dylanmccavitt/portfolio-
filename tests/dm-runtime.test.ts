@@ -7,7 +7,17 @@ import { applyMigrations, type Queryable } from '../scripts/db';
 import { CATALOG } from '../src/data/catalog';
 import { buildCatalogShadowRecords, type CatalogShadowRecord } from '../src/lib/db/catalog-shadow';
 import { createPublicDMDataTools, DMToolError } from '../src/lib/dm/data-tools';
+import {
+  FIT_CHECK_CONTEXT_LIMIT,
+  sanitizeJobDescriptionForFitCheck,
+} from '../src/lib/dm/fit-check';
 import { createDMChatStream, readDMRuntimeConfig } from '../src/lib/dm/runtime';
+import {
+  parseStreamLine,
+  resolveEvidence,
+  validateBlock,
+  type ProjectArtifact,
+} from '../src/lib/dm/client';
 import { createDMPostHandler } from '../src/pages/api/dm/chat';
 
 const TEST_CONFIG = { provider: 'openai' as const, model: 'test-model' };
@@ -408,6 +418,231 @@ test('DM route keeps resume/contact answers available with DB project-read failu
   assert.ok(events.some((event) => event.type === 'done'));
   assert.ok(!events.some((event) => event.type === 'error'));
 });
+
+test('fit-check sanitizes and bounds pasted job descriptions', () => {
+  const pasted = [
+    'Contact recruiter@example.com or visit https://jobs.example.test/private.',
+    'Call +1 (212) 555-0199 for details.',
+    'We need a software engineer with backend systems, automation, AI tools, product judgment, reliability, testing, and clear communication.',
+    'Extra context '.repeat(900),
+  ].join('\n\n');
+
+  const sanitized = sanitizeJobDescriptionForFitCheck(pasted);
+
+  assert.ok(sanitized.jobDescription.length <= FIT_CHECK_CONTEXT_LIMIT);
+  assert.equal(sanitized.truncated, true);
+  assert.equal(sanitized.originalLength, pasted.length);
+  assert.ok(!sanitized.jobDescription.includes('recruiter@example.com'));
+  assert.ok(!sanitized.jobDescription.includes('https://jobs.example.test/private'));
+  assert.ok(!sanitized.jobDescription.includes('(212) 555-0199'));
+});
+
+test('evidence block validation accepts canonical ids and rejects unsafe shapes', () => {
+  assert.deepEqual(validateBlock({ kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] }), {
+    kind: 'evidence',
+    projectIds: ['agentic-trader'],
+    resumeTrackIds: ['now'],
+  });
+  assert.equal(validateBlock({ kind: 'evidence' }), null);
+  assert.equal(validateBlock({ kind: 'evidence', projectIds: ['agentic-trader', 42] }), null);
+  assert.deepEqual(
+    validateBlock({
+      kind: 'evidence',
+      projectIds: ['a', 'b', 'c', 'd', 'e'],
+      resumeTrackIds: ['one', 'two', 'three', 'four'],
+    }),
+    {
+      kind: 'evidence',
+      projectIds: ['a', 'b', 'c', 'd'],
+      resumeTrackIds: ['one', 'two', 'three'],
+    },
+  );
+
+  const ragSource = {
+    ragSourceId: 'rag-public',
+    projectId: 'agentic-trader',
+    fileId: 'file_public',
+    filename: 'approved-readme.md',
+    score: 0.91,
+    text: 'Approved public source text cited by DM.',
+  };
+  assert.deepEqual(validateBlock({ kind: 'evidence', ragSources: [ragSource] }), {
+    kind: 'evidence',
+    ragSources: [ragSource],
+  });
+  assert.equal(validateBlock({ kind: 'evidence', ragSources: [{ ragSourceId: 'rag-public', projectId: 'agentic-trader' }] }), null);
+  assert.equal(validateBlock({ kind: 'evidence', ragSources: 'rag-public' }), null);
+
+  assert.deepEqual(
+    parseStreamLine(
+      JSON.stringify({
+        type: 'block',
+        block: { kind: 'evidence', ragSources: [ragSource] },
+      }),
+    ),
+    {
+      type: 'block',
+      block: { kind: 'evidence', ragSources: [ragSource] },
+    },
+  );
+
+  const event = parseStreamLine(
+    JSON.stringify({
+      type: 'block',
+      block: { kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
+    }),
+  );
+  assert.deepEqual(event, {
+    type: 'block',
+    block: { kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
+  });
+  assert.equal(
+    parseStreamLine(JSON.stringify({ type: 'block', block: { kind: 'evidence', projectIds: [42] } })),
+    null,
+  );
+});
+
+test('rag evidence rejects citations without non-empty text', () => {
+  const citationWithoutText = {
+    ragSourceId: 'rag-public',
+    projectId: 'agentic-trader',
+    fileId: 'file_public',
+    filename: 'approved-readme.md',
+    score: 0.91,
+  };
+  const invalidCases = [
+    { name: 'missing text', citation: citationWithoutText },
+    { name: 'empty text', citation: { ...citationWithoutText, text: '' } },
+    { name: 'blank text', citation: { ...citationWithoutText, text: ' \n\t ' } },
+  ];
+
+  for (const { name, citation } of invalidCases) {
+    const block = { kind: 'evidence', ragSources: [citation] };
+    assert.equal(validateBlock(block), null, name);
+    assert.equal(parseStreamLine(JSON.stringify({ type: 'block', block })), null, name);
+  }
+});
+
+test('evidence resolution drops stale ids without throwing', () => {
+  const previousWarn = console.warn;
+  console.warn = () => undefined;
+
+  try {
+    const resolved = resolveEvidence({
+      kind: 'evidence',
+      projectIds: ['agentic-trader', 'missing-project'],
+      resumeTrackIds: ['now', 'missing-track'],
+    });
+
+    assert.deepEqual(
+      resolved.projects.map((project) => project.id),
+      ['agentic-trader'],
+    );
+    assert.deepEqual(
+      resolved.tracks.map((track) => track.id),
+      ['now'],
+    );
+  } finally {
+    console.warn = previousWarn;
+  }
+});
+
+test('streamed project artifacts satisfy DB-only project ids without catalog fallback', () => {
+  const artifact: ProjectArtifact = {
+    id: 'db-only-project',
+    title: 'DB-only Project',
+    area: 'Agents & MCP',
+    status: ['done', 'Published'],
+    year: 2026,
+    activity: 'Published from DB',
+    line: 'A project that exists only in the DB read model.',
+    href: '/projects/db-only-project',
+  };
+  const previousWarn = console.warn;
+  const warnings: unknown[] = [];
+  console.warn = (...args: unknown[]) => warnings.push(args);
+
+  try {
+    assert.deepEqual(validateBlock({ kind: 'projects', ids: [artifact.id], items: [artifact] }), {
+      kind: 'projects',
+      ids: [artifact.id],
+      items: [artifact],
+    });
+
+    const resolved = resolveEvidence({
+      kind: 'evidence',
+      projectIds: [artifact.id],
+      projects: [artifact],
+    });
+
+    assert.deepEqual(resolved.projects, []);
+    assert.deepEqual(warnings, []);
+  } finally {
+    console.warn = previousWarn;
+  }
+});
+
+test('DM route validates fit-check pasted context safely', async () => {
+  const db = await publishedProjectDb();
+  const post = createDMPostHandler({
+    config: TEST_CONFIG,
+    db,
+    model: streamingModel('Fit-check overlap looks strongest on backend and automation work.'),
+  });
+
+  const tooShort = await post({
+    request: new Request('https://example.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Fit-check this job description.',
+        context: {
+          fitCheck: {
+            kind: 'job-description',
+            jobDescription: 'short',
+            originalLength: 5,
+            truncated: false,
+          },
+        },
+      }),
+    }),
+  } as never);
+  assert.equal(tooShort.status, 400);
+  assert.match(JSON.stringify(await tooShort.json()), /at least/);
+
+  const valid = await post({
+    request: new Request('https://example.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Fit-check this job description.',
+        context: {
+          fitCheck: {
+            kind: 'job-description',
+            jobDescription:
+              'Software engineer role needing backend services, automation, AI tooling, testing, reliability, product judgment, customer-facing shipping, and communication. '.repeat(3),
+            originalLength: 450,
+            truncated: false,
+          },
+        },
+      }),
+    }),
+  } as never);
+  const events = await readNdjson(valid.body);
+
+  assert.equal(valid.status, 200);
+  assert.ok(events.some((event) => event.type === 'ready'));
+  assert.ok(
+    events.some(
+      (event) =>
+        event.type === 'text-delta' &&
+        typeof event.delta === 'string' &&
+        /backend and automation/.test(event.delta),
+    ),
+  );
+  assert.ok(!events.some((event) => event.type === 'error'));
+});
+
 
 async function publishedProjectDb(): Promise<Queryable> {
   const db = new PGlite() as Queryable;

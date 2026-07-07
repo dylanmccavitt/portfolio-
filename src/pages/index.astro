@@ -1,21 +1,21 @@
 ---
 /**
- * Home — the Split-canvas Eve landing (#86). The portfolio is agent-first: you
- * land on Eve, a chat agent that answers questions about Dylan and renders
+ * Home — the Split-canvas DM landing (#86). The portfolio is agent-first: you
+ * land on DM, a chat agent that answers questions about Dylan and renders
  * project, résumé, and contact artifacts. This is the winning Split-canvas
- * layout folded into production and wired to the Eve streaming endpoint (#84)
- * via the chat island (`scripts/eve.ts`); canned demo driver/data are not
+ * layout folded into production and wired to the DM streaming endpoint (#84)
+ * via the chat island (`scripts/dm.ts`); canned demo driver/data are not
  * shipped.
  *
- * Structure: a persistent left rail (Eve identity, suggested prompts,
+ * Structure: a persistent left rail (DM identity, suggested prompts,
  * new-conversation) and a main pane (empty-state greeting, the
  * conversation thread the island fills, and a docked composer). The thread's
- * turns are built client-side from streamed payloads — see `scripts/eve.ts`.
+ * turns are built client-side from streamed payloads — see `scripts/dm.ts`.
  *
  * This page renders the static shell only; all interaction lives in the island.
  */
-import EveLayout from '../layouts/Eve.astro';
-import { AGENT_NAME, CONTACT, GREETING, SUBGREETING, SUGGESTED } from '../lib/eve';
+import DMLayout from '../layouts/DM.astro';
+import { AGENT_NAME, CONTACT, GREETING, SUBGREETING, SUGGESTED } from '../lib/dm/client';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 const meta = {
@@ -60,32 +60,32 @@ const ENTRY_LINKS = [
 ] as const;
 ---
 
-<EveLayout title="Dylan McCavitt · Software engineer" meta={meta}>
-  <div class="eve-root eve-root--home" data-eve-root>
+<DMLayout title="Dylan McCavitt · Software engineer" meta={meta}>
+  <div class="dm-root dm-root--home" data-dm-root>
     <!-- ============ persistent left rail ============ -->
-    <aside class="eve-side">
-      <div class="eve-id">
-        <span class="eve-monogram" aria-hidden="true">✦</span>
-        <span class="eve-id-text">
-          <span class="eve-id-name">{AGENT_NAME}</span>
-          <span class="eve-id-sub">portfolio agent</span>
+    <aside class="dm-side">
+      <div class="dm-id">
+        <span class="dm-monogram" aria-hidden="true">✦</span>
+        <span class="dm-id-text">
+          <span class="dm-id-name">{AGENT_NAME}</span>
+          <span class="dm-id-sub">portfolio agent</span>
         </span>
-        <span class="eve-dot" title="online" aria-hidden="true"></span>
+        <span class="dm-dot" title="online" aria-hidden="true"></span>
       </div>
 
-      <section class="eve-section eve-section--grow">
-        <p class="eve-label">Suggested</p>
-        <ul class="eve-suggest">
+      <section class="dm-section dm-section--grow">
+        <p class="dm-label">Suggested</p>
+        <ul class="dm-suggest">
           {
             SUGGESTED.map((prompt) => (
               <li>
                 <button
-                  class="eve-suggest-row"
+                  class="dm-suggest-row"
                   type="button"
-                  data-eve-send
+                  data-dm-send
                   data-label={prompt.label}
                 >
-                  <span class="eve-suggest-label">{prompt.label}</span>
+                  <span class="dm-suggest-label">{prompt.label}</span>
                 </button>
               </li>
             ))
@@ -93,59 +93,59 @@ const ENTRY_LINKS = [
         </ul>
       </section>
 
-      <button class="eve-reset" type="button" data-eve-reset>
+      <button class="dm-reset" type="button" data-dm-reset>
         <span aria-hidden="true">↺</span> New conversation
       </button>
-      <a class="eve-reset eve-fit-link" href="/fit-check">
+      <a class="dm-reset dm-fit-link" href="/fit-check">
         <span aria-hidden="true">▤</span> Paste a job description
       </a>
     </aside>
 
     <!-- ============ main conversation pane ============ -->
-    <main class="eve-main">
-      <header class="eve-bar">
-        <span class="eve-bar-title"
-          >{AGENT_NAME} <span class="eve-bar-sub">· portfolio agent</span></span
+    <main class="dm-main">
+      <header class="dm-bar">
+        <span class="dm-bar-title"
+          >{AGENT_NAME} <span class="dm-bar-sub">· portfolio agent</span></span
         >
-        <span class="eve-bar-status"
-          ><span class="eve-dot" aria-hidden="true"></span> ready</span
+        <span class="dm-bar-status"
+          ><span class="dm-dot" aria-hidden="true"></span> ready</span
         >
       </header>
 
-      <div class="eve-stage">
+      <div class="dm-stage">
         <!-- empty state -->
-        <div class="eve-empty">
-          <div class="eve-card">
-            <span class="eve-card-tile" aria-hidden="true">✦</span>
-            <p class="eve-entry-kicker">Dylan McCavitt · software engineer</p>
-            <h1 class="eve-greeting">{GREETING}</h1>
-            <p class="eve-subgreeting">{SUBGREETING}</p>
-            <nav class="eve-entry-grid" aria-label="Recruiter entry paths">
+        <div class="dm-empty">
+          <div class="dm-card">
+            <span class="dm-card-tile" aria-hidden="true">✦</span>
+            <p class="dm-entry-kicker">Dylan McCavitt · software engineer</p>
+            <h1 class="dm-greeting">{GREETING}</h1>
+            <p class="dm-subgreeting">{SUBGREETING}</p>
+            <nav class="dm-entry-grid" aria-label="Recruiter entry paths">
               {
                 ENTRY_LINKS.map((link) => (
-                  <a class="eve-entry-link" href={link.href}>
-                    <span class="eve-entry-eyebrow">{link.eyebrow}</span>
-                    <span class="eve-entry-label">{link.label}</span>
-                    <span class="eve-entry-text">{link.text}</span>
+                  <a class="dm-entry-link" href={link.href}>
+                    <span class="dm-entry-eyebrow">{link.eyebrow}</span>
+                    <span class="dm-entry-label">{link.label}</span>
+                    <span class="dm-entry-text">{link.text}</span>
                   </a>
                 ))
               }
             </nav>
-            <p class="eve-hint">Suggested questions stay in the side rail, or type your own below ↓</p>
+            <p class="dm-hint">Suggested questions stay in the side rail, or type your own below ↓</p>
           </div>
         </div>
 
         <!-- conversation thread (filled by the island) -->
-        <div class="eve-thread" data-eve-thread role="log" aria-label="Conversation with DM"></div>
+        <div class="dm-thread" data-dm-thread role="log" aria-label="Conversation with DM"></div>
       </div>
 
       <!-- docked composer -->
-      <form class="eve-composer" data-eve-form>
-        <div class="eve-composer-inner">
-          <span class="eve-composer-glyph" aria-hidden="true">⌁</span>
+      <form class="dm-composer" data-dm-form>
+        <div class="dm-composer-inner">
+          <span class="dm-composer-glyph" aria-hidden="true">⌁</span>
           <input
-            class="eve-input"
-            data-eve-input
+            class="dm-input"
+            data-dm-input
             type="text"
             name="message"
             autocomplete="off"
@@ -153,9 +153,9 @@ const ENTRY_LINKS = [
             placeholder="Ask DM about Dylan's work…"
             aria-label="Ask DM about Dylan"
           />
-          <button class="eve-send" type="submit" data-eve-submit aria-label="Send message">→</button>
+          <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">→</button>
         </div>
       </form>
     </main>
   </div>
-</EveLayout>
+</DMLayout>

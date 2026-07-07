@@ -8,7 +8,7 @@
  * from the canonical Typographic card language (#85).
  *
  * Static-first: the gallery lightbox is pure CSS `:target`, and the only client
- * island is the deliberate contextual Eve popup. Routes and SEO are preserved —
+ * island is the deliberate contextual DM popup. Routes and SEO are preserved —
  * one prerendered page per `CATALOG` entry, meta via `projectMeta(p)`. Tokens,
  * the two web fonts, and the global `.badge.<kind>` classes come from
  * `player.css` (imported by the Editorial layout).
@@ -23,8 +23,8 @@ import type { ProjectDetailReadModel } from '../../lib/db/project-reads';
 import { publicProjectStaticPaths } from '../../lib/public-project-route-resolver';
 import { loadPublicProjectDetails } from '../../lib/public-projects';
 import { projectMeta } from '../../lib/seo';
-import { AGENT_NAME } from '../../lib/eve';
-import '../../styles/eve.css';
+import { AGENT_NAME } from '../../lib/dm/client';
+import '../../styles/dm.css';
 
 export async function getStaticPaths() {
   const { projects } = await loadPublicProjectDetails();
@@ -97,11 +97,11 @@ const gallery = p.shots.slice(1);
           )
         }
 
-        <div class="project-agent" data-eve-root data-eve-project-id={p.id}>
+        <div class="project-agent" data-dm-root data-dm-project-id={p.id}>
           <button
             class="project-agent-trigger"
             type="button"
-            data-eve-open
+            data-dm-open
             aria-haspopup="dialog"
             aria-expanded="false"
             aria-controls={agentDialogId}
@@ -110,10 +110,10 @@ const gallery = p.shots.slice(1);
             <small>Answers in place</small>
           </button>
 
-          <div class="eve-popup" data-eve-dialog hidden>
+          <div class="dm-popup" data-dm-dialog hidden>
             <section
-              class="eve-popup-panel"
-              data-eve-panel
+              class="dm-popup-panel"
+              data-dm-panel
               id={agentDialogId}
               role="dialog"
               aria-modal="true"
@@ -121,39 +121,39 @@ const gallery = p.shots.slice(1);
               aria-describedby={agentDescriptionId}
               tabindex="-1"
             >
-              <header class="eve-popup-head">
+              <header class="dm-popup-head">
                 <div>
-                  <p class="eve-label">DM project guide</p>
+                  <p class="dm-label">DM project guide</p>
                   <h2 id={agentTitleId}>Ask DM about {p.title}</h2>
                 </div>
-                <button class="eve-popup-close" type="button" data-eve-close>
+                <button class="dm-popup-close" type="button" data-dm-close>
                   <span aria-hidden="true">×</span>
-                  <span class="eve-sr-only">Close DM project guide</span>
+                  <span class="dm-sr-only">Close DM project guide</span>
                 </button>
               </header>
 
-              <div class="eve-main eve-main--popup">
-                <p id={agentDescriptionId} class="eve-sr-only">
+              <div class="dm-main dm-main--popup">
+                <p id={agentDescriptionId} class="dm-sr-only">
                   Chat with {AGENT_NAME} about this project without leaving the page.
                 </p>
-                <div class="eve-stage">
-                  <div class="eve-empty">
-                    <div class="eve-card">
-                      <span class="eve-card-tile" aria-hidden="true">✦</span>
-                      <h3 class="eve-greeting">Ask DM about this project.</h3>
-                      <p class="eve-subgreeting">
+                <div class="dm-stage">
+                  <div class="dm-empty">
+                    <div class="dm-card">
+                      <span class="dm-card-tile" aria-hidden="true">✦</span>
+                      <h3 class="dm-greeting">Ask DM about this project.</h3>
+                      <p class="dm-subgreeting">
                         {AGENT_NAME} will use {p.title} as the active project context.
                       </p>
-                      <ul class="eve-suggest project-agent-suggest">
+                      <ul class="dm-suggest project-agent-suggest">
                         <li>
                           <button
-                            class="eve-suggest-row"
+                            class="dm-suggest-row"
                             type="button"
-                            data-eve-send
+                            data-dm-send
                             data-label={defaultProjectPrompt}
                           >
-                            <span class="eve-suggest-label">Start with the project overview</span>
-                            <span class="eve-suggest-hint">context.projectIds: {p.id}</span>
+                            <span class="dm-suggest-label">Start with the project overview</span>
+                            <span class="dm-suggest-hint">context.projectIds: {p.id}</span>
                           </button>
                         </li>
                       </ul>
@@ -161,19 +161,19 @@ const gallery = p.shots.slice(1);
                   </div>
 
                   <div
-                    class="eve-thread"
-                    data-eve-thread
+                    class="dm-thread"
+                    data-dm-thread
                     role="log"
                     aria-label={`${AGENT_NAME} conversation about ${p.title}`}
                   ></div>
                 </div>
 
-                <form class="eve-composer" data-eve-form>
-                  <div class="eve-composer-inner">
-                    <span class="eve-composer-glyph" aria-hidden="true">⌁</span>
+                <form class="dm-composer" data-dm-form>
+                  <div class="dm-composer-inner">
+                    <span class="dm-composer-glyph" aria-hidden="true">⌁</span>
                     <input
-                      class="eve-input"
-                      data-eve-input
+                      class="dm-input"
+                      data-dm-input
                       type="text"
                       name="message"
                       autocomplete="off"
@@ -181,7 +181,7 @@ const gallery = p.shots.slice(1);
                       placeholder={`Ask about ${p.title}…`}
                       aria-label={`Ask ${AGENT_NAME} about ${p.title}`}
                     />
-                    <button class="eve-send" type="submit" data-eve-submit aria-label="Send message">
+                    <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">
                       →
                     </button>
                   </div>
@@ -343,7 +343,7 @@ const gallery = p.shots.slice(1);
       )
     }
   </article>
-  <script src="../../scripts/eve.ts"></script>
+  <script src="../../scripts/dm.ts"></script>
 </Editorial>
 
 <style>

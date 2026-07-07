@@ -18,9 +18,9 @@ Use these exact words; avoid synonyms.
 
 - **DM** — the portfolio's public agent for new architecture. Not "the bot",
   "assistant", or "chatbot".
-- **Eve** — legacy prototype/runtime name in `src/lib/eve/` and `/api/eve/chat`;
-  mine or replace this code during migration, but do not add new Eve-specific
-  product seams. The old root `agent/` Eve app was retired by AGE-739.
+- **Eve** — retired prototype/runtime name (AGE-818). Historically used
+  `src/lib/eve/` and `/api/eve/chat`; the old root `agent/` Eve app was retired
+  by AGE-739. DM supersedes Eve for all live product seams.
 - **agent-first portfolio** — the product framing.
 - **Split-canvas landing** — the landing UI hosting DM.
 - **Typographic project card** — the canonical project card.
@@ -41,9 +41,9 @@ Use these exact words; avoid synonyms.
   records, approved public RAG sources, and static résumé/contact data. Never use
   hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor
   chats, or unsupported/generated claims as public answer sources.
-- **DM runtime:** the agent/service layer, streaming endpoint, and data tools for
-  the new architecture. Existing Eve paths (`src/lib/eve/`, `/api/eve/chat`) are
-  legacy implementation evidence to mine or replace; the old root `agent/` Eve app is retired.
+- **DM runtime:** the agent/service layer (`src/lib/dm/`), streaming endpoint
+  (`/api/dm/chat`), client island (`src/scripts/dm.ts`), and data tools for the
+  architecture.
 - **Site:** static Astro pages; client JS only for the deliberate DM chat island.
 
 ## Read first for this repo
