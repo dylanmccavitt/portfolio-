@@ -16,7 +16,7 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Test DB foundation | `npm run test:db` | `node --import tsx --test tests/db-foundation.test.ts` |
 | Test GitHub discovery | `npm run test:discovery` | `node --import tsx --test tests/github-discovery.test.ts` |
 | Test Slack control plane | `npm run test:slack` | `node --import tsx --test tests/slack-control-plane.test.ts` |
-| Admin publish test | `npm run test:admin` | `node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts` |
+| Admin publish test | `npm run test:admin` | `node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts && node --import tsx --test tests/admin-rag-sources.test.ts` |
 | RAG tests | `npm run test:rag` | `node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts` |
 | DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
 | DM metrics test | `npm run test:metrics` | `node --import tsx --test tests/dm-metrics.test.ts` |
