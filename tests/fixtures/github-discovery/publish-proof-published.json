@@ -1,0 +1,17 @@
+{
+  "actor": "age-737-proof-scan",
+  "repo": {
+    "owner": "DylanMcCavitt",
+    "name": "publish-proof-published",
+    "htmlUrl": "https://github.com/DylanMcCavitt/publish-proof-published",
+    "description": "Fixture repo for one-project publish proof.",
+    "homepageUrl": "https://example.com/publish-proof-published",
+    "language": "TypeScript",
+    "topics": ["portfolio-candidate", "astro"],
+    "isPrivate": false,
+    "defaultBranch": "main",
+    "pushedAt": "2026-07-04T00:00:00.000Z",
+    "stars": 2,
+    "readmeMarkdown": "# Publish proof published fixture\n\nPublic README evidence for the publish proof flow."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "actor": "age-737-proof-scan",
+  "repo": {
+    "owner": "DylanMcCavitt",
+    "name": "publish-proof-unpublished",
+    "htmlUrl": "https://github.com/DylanMcCavitt/publish-proof-unpublished",
+    "description": "Fixture repo that remains unpublished for exclusion checks.",
+    "homepageUrl": "https://example.com/publish-proof-unpublished",
+    "language": "TypeScript",
+    "topics": ["portfolio-candidate", "automation"],
+    "isPrivate": false,
+    "defaultBranch": "main",
+    "pushedAt": "2026-07-04T00:00:00.000Z",
+    "stars": 1,
+    "readmeMarkdown": "# Publish proof unpublished fixture\n\nThis candidate remains draft-only."
+  }
+}

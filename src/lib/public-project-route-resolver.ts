@@ -7,6 +7,20 @@ export interface RequiredProjectReferenceOptions {
   label?: string;
 }
 
+export interface PublicProjectStaticPath {
+  params: { id: string };
+  props: { project: ProjectDetailReadModel; projects: ProjectDetailReadModel[] };
+}
+
+export function publicProjectStaticPaths(
+  projects: ProjectDetailReadModel[],
+): PublicProjectStaticPath[] {
+  return projects.map((project) => ({
+    params: { id: project.slug },
+    props: { project, projects },
+  }));
+}
+
 export function resolvePublicProjectByReference(
   projects: ProjectDetailReadModel[],
   reference: string,

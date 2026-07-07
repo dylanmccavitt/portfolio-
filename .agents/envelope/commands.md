@@ -21,6 +21,7 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
 | DM metrics test | `npm run test:metrics` | `node --import tsx --test tests/dm-metrics.test.ts` |
 | DM benchmark test | `npm run test:benchmark` | `node --import tsx --test tests/dm-benchmark.test.ts` |
+| Publish proof gate | `npm run test:proof` | `node --import tsx --test tests/publish-proof.test.ts` |
 | Legacy Eve test | `npm run test:eve` | `node --import tsx --test tests/eve-runtime.test.ts` |
 | DM eval | `npm run dm:eval` | `node --import tsx scripts/dm-eval.ts` |
 | DM latency benchmark | `npm run dm:bench` | `node --import tsx scripts/dm-benchmark.ts` |

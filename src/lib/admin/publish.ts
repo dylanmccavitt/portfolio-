@@ -364,6 +364,16 @@ export async function publishAdminDraft(
 
   await db.query(`UPDATE project_drafts SET proposed_project_id = $2, updated_at = now() WHERE id = $1`, [draft.id, projectId]);
   await db.query(
+    `UPDATE evidence_sources
+     SET project_id = $1
+     WHERE project_id IS NULL
+       AND (
+         ($2::text IS NOT NULL AND candidate_id = $2)
+         OR draft_id = $3
+       )`,
+    [projectId, draft.candidate_id, draft.id],
+  );
+  await db.query(
     `INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
      VALUES ($1, $2, $3, $4, $5, 'published', 'approved_for_publish', 'published', $6, $7::jsonb)`,
     [
