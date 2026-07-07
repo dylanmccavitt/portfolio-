@@ -27,6 +27,10 @@ import {
   shouldUsePublicProjectDb,
 } from '../src/lib/public-projects';
 import {
+  resolvePublicProjectByReference,
+  resolveRequiredPublicProjectByReference,
+} from '../src/lib/public-project-route-resolver';
+import {
   CANDIDATE_LIFECYCLE_STATES,
   DRAFT_LIFECYCLE_STATES,
   PROJECT_LIFECYCLE_STATES,
@@ -546,11 +550,32 @@ test('catalog parity report names missing extra and mismatched fields', () => {
   assert.ok(firstProject.mismatchedFields.includes('title'));
 });
 
+test('public route project reference resolver matches id/slug and throws on required misses', () => {
+  const [record] = buildCatalogShadowRecords(CATALOG.slice(0, 1));
+  assert.ok(record, 'expected at least one catalog shadow record');
+  const detail = projectRecordToReadModels({ ...record, slug: `${record.id}-public-slug` }).detail;
+
+  assert.equal(resolvePublicProjectByReference([detail], detail.id)?.id, detail.id);
+  assert.equal(resolvePublicProjectByReference([detail], detail.slug)?.id, detail.id);
+
+  assert.throws(
+    () =>
+      resolveRequiredPublicProjectByReference([detail], 'missing-featured-id', {
+        route: 'hiring.astro',
+        source: 'db',
+        label: 'featured project id',
+      }),
+    /hiring\.astro: featured project id "missing-featured-id" not found in db public project source/,
+  );
+});
+
 test('public project routes use the gated public project source', async () => {
   const routeFiles = [
     'src/pages/library/index.astro',
     'src/pages/library/[filter].astro',
     'src/pages/projects/[id].astro',
+    'src/pages/hiring.astro',
+    'src/pages/journey/[track].astro',
     'src/pages/sitemap.xml.ts',
     'src/pages/og/projects/[id].png.ts',
   ];

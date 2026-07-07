@@ -10,14 +10,17 @@
  *   7  the ask            — resume + contact CTAs (the one resume CTA here)
  *   8  handoff            — "Continue to the full site →" → /library
  *
- * ALL project/resume copy reads from `catalog.ts` / `resume.ts` — nothing is
- * duplicated here. Built on the lightweight `Tour` layout.
+ * All project/resume copy reads from the gated public project source and
+ * `resume.ts` — nothing is duplicated here. Built on the lightweight `Tour`
+ * layout.
  * The stepper is progressive enhancement: with JS off, every beat is stacked
  * and scrollable (see the scoped `<style>` and `src/scripts/tour.ts`).
  */
 import Tour from '../layouts/Tour.astro';
 import ShotRail from '../components/ShotRail.astro';
-import { getProjectById, type Project } from '../data/catalog';
+import type { ProjectDetailReadModel } from '../lib/db/project-reads';
+import { loadPublicProjectDetails } from '../lib/public-projects';
+import { resolveRequiredPublicProjectByReference } from '../lib/public-project-route-resolver';
 import { RESUME } from '../data/resume';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
@@ -39,18 +42,20 @@ const FEATURED_IDS = [
   'slurmlet',
 ] as const;
 
+const { projects: publicProjects, source: publicProjectSource } = await loadPublicProjectDetails();
+
 /**
- * Resolve the featured projects from the catalog. THROW on a null lookup so a
- * renamed/removed catalog id fails the build loudly rather than rendering a
- * silent gap (mirrors `resume.ts`'s assertCatalogIdsInSync intent).
+ * Resolve featured projects from the gated public source. THROW on a missing
+ * id/slug match so a drifted featured reference fails the build loudly rather
+ * than rendering a silent gap.
  */
-const FEATURED: Project[] = FEATURED_IDS.map((id) => {
-  const project = getProjectById(id);
-  if (!project) {
-    throw new Error(`hiring.astro: featured project id "${id}" not found in catalog`);
-  }
-  return project;
-});
+const FEATURED: ProjectDetailReadModel[] = FEATURED_IDS.map((id) =>
+  resolveRequiredPublicProjectByReference(publicProjects, id, {
+    route: 'hiring.astro',
+    source: publicProjectSource,
+    label: 'featured project id',
+  }),
+);
 
 // The full career timeline, in chronological order, for the resume beat.
 const TRACKS = RESUME.tracks;

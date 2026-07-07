@@ -1,22 +1,24 @@
 /**
  * Sitemap (#25) — emitted as a static `/sitemap.xml` at build time.
  *
- * Built from the canonical static routes, filter-slug map, résumé data, and the
- * public project source selected by the DB gate.
- * aligned with the canonical redesign route set. Retired
- * Sera-era URLs are handled by `vercel.json` 301s and never appear here.
+ * Built from canonical static routes, filter slugs, resume tracks, and the
+ * gated public project source (`loadPublicProjectDetails()`).
  *
- * Canonical set (33 URLs):
- *   /                        — the concierge landing (#60)
- *   /fit-check               — recruiter job-description fit-check flow (#108)
- *   /hiring                  — the "I'm hiring" guided tour (#62)
- *   /library                 — all-work library (relocated from `/` in #60)
- *   /library/<slug>          — 8 filtered project indexes (wip, 7 areas)
- *   /projects/<id-or-slug>  — project detail pages
- *   /journey                 — the resume timeline
- *   /journey/<track>         — 7 resume entry pages
+ * Route families included:
+ *   /                       — concierge landing (#60)
+ *   /fit-check              — recruiter job-description fit-check flow (#108)
+ *   /hiring                 — "I'm hiring" guided tour (#62)
+ *   /library                — all-work library
+ *   /library/<slug>         — filtered project indexes (from PLAYLIST_SLUGS)
+ *   /projects/<id-or-slug>  — project detail pages from the active source
+ *   /journey                — resume timeline
+ *   /journey/<track>        — one route per resume entry
+ *
+ * Total URL count is gate-dependent because the public project route set comes
+ * from either published DB rows or the catalog shadow fallback.
  *
  * `/projects` (the index) is intentionally absent — it now 301s to `/library`.
+ * Retired Sera-era URLs are handled by `vercel.json` 301s and never appear here.
  */
 import type { APIRoute } from 'astro';
 import { PLAYLIST_SLUGS } from '../data/catalog';
