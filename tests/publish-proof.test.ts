@@ -419,19 +419,22 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
   assert.equal(refusalModel.doStreamCalls.length, 0);
   assert.ok(!prePublishRefusal.some((event) => event.type === 'ready' || event.type === 'tool' || event.type === 'text-delta'));
 
+  const prePublishContextModel = throwingModel();
   const prePublishContext = await readNdjson(
     createDMChatStream(
       { message: 'Tell me about this project.', context: { projectIds: [prePublishProjectId] } },
       TEST_CONFIG,
-      { db, model: throwingModel() },
+      { db, model: prePublishContextModel },
     ),
   );
-  assert.deepEqual(prePublishContext, [
-    {
-      type: 'error',
-      message: 'DM can only discuss published portfolio projects and public resume facts.',
-    },
-  ]);
+  assert.ok(prePublishContext.some((event) => event.type === 'ready'));
+  assert.match(
+    String(prePublishContext.find((event) => event.type === 'block')?.block?.text),
+    /isn't in my published records yet/i,
+  );
+  assert.ok(!prePublishContext.some((event) => event.type === 'text-delta' || event.type === 'error'));
+  assert.ok(prePublishContext.some((event) => event.type === 'done'));
+  assert.equal(prePublishContextModel.doStreamCalls.length, 0);
 
   const patchResult = await patchDraft(db, hiddenDraft.id, PUBLISHED_FIELDS);
   assert.equal(patchResult.code, 'draft_fields_updated');
