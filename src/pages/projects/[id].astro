@@ -20,6 +20,7 @@ import {
   type ProjectShot,
 } from '../../data/catalog';
 import type { ProjectDetailReadModel } from '../../lib/db/project-reads';
+import { publicProjectStaticPaths } from '../../lib/public-project-route-resolver';
 import { loadPublicProjectDetails } from '../../lib/public-projects';
 import { projectMeta } from '../../lib/seo';
 import { AGENT_NAME } from '../../lib/eve';
@@ -27,10 +28,7 @@ import '../../styles/eve.css';
 
 export async function getStaticPaths() {
   const { projects } = await loadPublicProjectDetails();
-  return projects.map((project) => ({
-    params: { id: project.slug },
-    props: { project, projects },
-  }));
+  return publicProjectStaticPaths(projects);
 }
 
 interface Props {

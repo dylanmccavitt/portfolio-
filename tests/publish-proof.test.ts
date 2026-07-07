@@ -22,6 +22,7 @@ import {
   signSlackBody,
   type SlackControlPlaneConfig,
 } from '../src/lib/slack/control-plane';
+import { publicProjectStaticPaths } from '../src/lib/public-project-route-resolver';
 import { loadPublicProjectDetails, resetPublicProjectDetailsLoadForTests } from '../src/lib/public-projects';
 import { createAdminDraftApprovePostHandler } from '../src/pages/api/admin/drafts/[id]/approve';
 import { createAdminDraftDetailPatchHandler } from '../src/pages/api/admin/drafts/[id]';
@@ -268,7 +269,7 @@ async function projectStaticPathSlugs(db: Queryable): Promise<string[]> {
     env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' },
     db,
   });
-  return projects.map((project) => project.slug);
+  return publicProjectStaticPaths(projects).map((path) => path.params.id);
 }
 
 async function readNdjson(stream: ReadableStream<Uint8Array> | null): Promise<JsonEvent[]> {
