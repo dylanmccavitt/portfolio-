@@ -1,11 +1,11 @@
 ---
-import EveLayout from '../layouts/Eve.astro';
+import DMLayout from '../layouts/DM.astro';
 import {
   AGENT_NAME,
   FIT_CHECK_CONTEXT_LIMIT,
   FIT_CHECK_INPUT_LIMIT,
   FIT_CHECK_MIN_CHARS,
-} from '../lib/eve';
+} from '../lib/dm/client';
 import { libraryMeta, personJsonLd } from '../lib/seo';
 
 const meta = {
@@ -17,58 +17,58 @@ const meta = {
 };
 ---
 
-<EveLayout title="Fit check · Dylan McCavitt" meta={meta}>
-  <div class="eve-root eve-root--fit" data-eve-root>
-    <aside class="eve-side">
-      <div class="eve-id">
-        <span class="eve-monogram" aria-hidden="true">▤</span>
-        <span class="eve-id-text">
-          <span class="eve-id-name">Fit check</span>
-          <span class="eve-id-sub">recruiter flow</span>
+<DMLayout title="Fit check · Dylan McCavitt" meta={meta}>
+  <div class="dm-root dm-root--fit" data-dm-root>
+    <aside class="dm-side">
+      <div class="dm-id">
+        <span class="dm-monogram" aria-hidden="true">▤</span>
+        <span class="dm-id-text">
+          <span class="dm-id-name">Fit check</span>
+          <span class="dm-id-sub">recruiter flow</span>
         </span>
-        <span class="eve-dot" title="online" aria-hidden="true"></span>
+        <span class="dm-dot" title="online" aria-hidden="true"></span>
       </div>
 
-      <section class="eve-section eve-section--fit">
-        <p class="eve-label">Privacy</p>
-        <p class="eve-fit-note">
+      <section class="dm-section dm-section--fit">
+        <p class="dm-label">Privacy</p>
+        <p class="dm-fit-note">
           Paste text for one active request. DM sends a bounded, sanitized excerpt to the chat endpoint and does not store the full paste in the conversation.
         </p>
       </section>
 
-      <a class="eve-reset" href="/">
+      <a class="dm-reset" href="/">
         <span aria-hidden="true">←</span> Back to DM
       </a>
     </aside>
 
-    <main class="eve-main">
-      <header class="eve-bar">
-        <span class="eve-bar-title"
-          >{AGENT_NAME} <span class="eve-bar-sub">· job-description fit check</span></span
+    <main class="dm-main">
+      <header class="dm-bar">
+        <span class="dm-bar-title"
+          >{AGENT_NAME} <span class="dm-bar-sub">· job-description fit check</span></span
         >
-        <span class="eve-bar-status"
-          ><span class="eve-dot" aria-hidden="true"></span> ready</span
+        <span class="dm-bar-status"
+          ><span class="dm-dot" aria-hidden="true"></span> ready</span
         >
       </header>
 
-      <div class="eve-stage">
-        <div class="eve-thread" data-eve-thread role="log" aria-label="Conversation with DM"></div>
+      <div class="dm-stage">
+        <div class="dm-thread" data-dm-thread role="log" aria-label="Conversation with DM"></div>
 
-        <div class="eve-empty eve-empty--fit">
-          <form class="eve-fit" data-eve-fit-form novalidate>
-            <div class="eve-fit-head">
-              <p class="eve-label">Recruiter flow</p>
-              <h1 class="eve-greeting">Paste a job description for an evidence-grounded fit check.</h1>
-              <p class="eve-subgreeting">
+        <div class="dm-empty dm-empty--fit">
+          <form class="dm-fit" data-dm-fit-form novalidate>
+            <div class="dm-fit-head">
+              <p class="dm-label">Recruiter flow</p>
+              <h1 class="dm-greeting">Paste a job description for an evidence-grounded fit check.</h1>
+              <p class="dm-subgreeting">
                 DM will compare the role against Dylan's canonical portfolio and resume, then call out strengths, evidence, gaps, and contact steps.
               </p>
             </div>
 
-            <label class="eve-fit-label" for="fit-check-job-description">Job description</label>
+            <label class="dm-fit-label" for="fit-check-job-description">Job description</label>
             <textarea
               id="fit-check-job-description"
-              class="eve-fit-textarea"
-              data-eve-fit-input
+              class="dm-fit-textarea"
+              data-dm-fit-input
               name="jobDescription"
               minlength={FIT_CHECK_MIN_CHARS}
               maxlength={FIT_CHECK_INPUT_LIMIT}
@@ -76,26 +76,26 @@ const meta = {
               placeholder="Paste the role description, responsibilities, and requirements..."
               aria-describedby="fit-check-help fit-check-count fit-check-error"
             ></textarea>
-            <div class="eve-fit-meta">
-              <span id="fit-check-count" data-eve-fit-count>0 / {FIT_CHECK_INPUT_LIMIT.toLocaleString()}</span>
+            <div class="dm-fit-meta">
+              <span id="fit-check-count" data-dm-fit-count>0 / {FIT_CHECK_INPUT_LIMIT.toLocaleString()}</span>
               <span id="fit-check-help">
                 Minimum {FIT_CHECK_MIN_CHARS.toLocaleString()} characters. DM reads up to {FIT_CHECK_CONTEXT_LIMIT.toLocaleString()} sanitized characters.
               </span>
             </div>
-            <p class="eve-fit-error" id="fit-check-error" data-eve-fit-error hidden></p>
-            <button class="eve-fit-submit" type="submit" data-eve-fit-submit>
+            <p class="dm-fit-error" id="fit-check-error" data-dm-fit-error hidden></p>
+            <button class="dm-fit-submit" type="submit" data-dm-fit-submit>
               Fit-check with DM
             </button>
           </form>
         </div>
       </div>
 
-      <form class="eve-composer" data-eve-form>
-        <div class="eve-composer-inner">
-          <span class="eve-composer-glyph" aria-hidden="true">⌁</span>
+      <form class="dm-composer" data-dm-form>
+        <div class="dm-composer-inner">
+          <span class="dm-composer-glyph" aria-hidden="true">⌁</span>
           <input
-            class="eve-input"
-            data-eve-input
+            class="dm-input"
+            data-dm-input
             type="text"
             name="message"
             autocomplete="off"
@@ -103,9 +103,9 @@ const meta = {
             placeholder="Ask a follow-up about the fit..."
             aria-label="Ask DM a follow-up"
           />
-          <button class="eve-send" type="submit" data-eve-submit aria-label="Send message">→</button>
+          <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">→</button>
         </div>
       </form>
     </main>
   </div>
-</EveLayout>
+</DMLayout>

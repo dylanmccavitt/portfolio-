@@ -1,9 +1,9 @@
 /**
- * Eve landing — production chat client island (#86).
+ * DM landing — production chat client island (#86).
  *
  * The one deliberate client-JS island on the landing (the rest of the site
  * stays static). It replaces the canned reveal driver
- * (`_agentProto.client.ts`) with a real integration against the Eve streaming
+ * (`_agentProto.client.ts`) with a real integration against the DM streaming
  * endpoint (#84): it submits the visitor's question, consumes the NDJSON stream
  * incrementally, and renders the user turn, streamed answer text, the tool
  * trace (live "working…" log + `USED N tools`), and project / résumé /
@@ -16,7 +16,7 @@
  * written via `textContent`, so streamed content can never inject markup.
  *
  * The contract (answer-block + stream-event types, the tolerant NDJSON parser,
- * and id resolvers over canonical catalog/résumé data) lives in `lib/eve.ts`.
+ * and id resolvers over canonical catalog/résumé data) lives in `lib/dm/client.ts`.
  */
 
 import {
@@ -34,7 +34,7 @@ import {
   type ProjectArtifact,
   type RagSourceEvidence,
   type StreamEvent,
-} from '../lib/eve';
+} from '../lib/dm/client';
 import type { Project } from '../data/catalog';
 import type { ResumeTrack } from '../data/resume';
 
@@ -110,44 +110,44 @@ class Turn {
   text = '';
 
   constructor(question: string) {
-    this.logEl = make('ul', { class: 'eve-log' });
-    this.typingEl = make('div', { class: 'eve-typing', 'data-eve-typing': '' }, [
-      make('div', { class: 'eve-typing-head' }, [
-        make('span', { class: 'eve-spin', 'aria-hidden': 'true' }),
+    this.logEl = make('ul', { class: 'dm-log' });
+    this.typingEl = make('div', { class: 'dm-typing', 'data-dm-typing': '' }, [
+      make('div', { class: 'dm-typing-head' }, [
+        make('span', { class: 'dm-spin', 'aria-hidden': 'true' }),
         `${AGENT_NAME} is working…`,
       ]),
       this.logEl,
     ]);
 
     this.usedSummaryCount = make('span', { text: '' });
-    this.usedListEl = make('ul', { class: 'eve-used-list' });
-    this.usedEl = make('details', { class: 'eve-used', hidden: true }, [
+    this.usedListEl = make('ul', { class: 'dm-used-list' });
+    this.usedEl = make('details', { class: 'dm-used', hidden: true }, [
       make('summary', {}, [
-        make('span', { class: 'eve-check', 'aria-hidden': 'true', text: '✓' }),
+        make('span', { class: 'dm-check', 'aria-hidden': 'true', text: '✓' }),
         ' ',
         this.usedSummaryCount,
       ]),
       this.usedListEl,
     ]);
 
-    this.proseEl = make('div', { class: 'eve-prose' });
-    this.splitEl = make('div', { class: 'eve-split eve-split--solo' }, [this.proseEl]);
+    this.proseEl = make('div', { class: 'dm-prose' });
+    this.splitEl = make('div', { class: 'dm-split dm-split--solo' }, [this.proseEl]);
     this.answerEl = make(
       'div',
-      { class: 'eve-answer', hidden: true, 'aria-live': 'polite' },
+      { class: 'dm-answer', hidden: true, 'aria-live': 'polite' },
       [
-        make('div', { class: 'eve-answer-head' }, [
-          make('span', { class: 'eve-tag', text: AGENT_NAME }),
+        make('div', { class: 'dm-answer-head' }, [
+          make('span', { class: 'dm-tag', text: AGENT_NAME }),
           this.usedEl,
         ]),
         this.splitEl,
       ],
     );
 
-    this.root = make('article', { class: 'eve-turn' }, [
-      make('div', { class: 'eve-user-row' }, [
-        make('span', { class: 'eve-user-tag', text: 'You' }),
-        make('p', { class: 'eve-user', text: question }),
+    this.root = make('article', { class: 'dm-turn' }, [
+      make('div', { class: 'dm-user-row' }, [
+        make('span', { class: 'dm-user-tag', text: 'You' }),
+        make('p', { class: 'dm-user', text: question }),
       ]),
       this.typingEl,
       this.answerEl,
@@ -184,8 +184,8 @@ class Turn {
     const label = summary ? `${name} · ${summary}` : `${name}()`;
     // live "working…" log (visible only until the answer reveals)
     this.logEl.append(
-      make('li', { class: 'eve-log-line' }, [
-        make('span', { class: 'eve-spin', 'aria-hidden': 'true' }),
+      make('li', { class: 'dm-log-line' }, [
+        make('span', { class: 'dm-spin', 'aria-hidden': 'true' }),
         make('code', { text: label }),
       ]),
     );
@@ -200,7 +200,7 @@ class Turn {
   private appendDelta(delta: string): void {
     this.revealAnswer();
     if (!this.openTextEl) {
-      this.openTextEl = make('p', { class: 'eve-p' });
+      this.openTextEl = make('p', { class: 'dm-p' });
       this.proseEl.append(this.openTextEl);
     }
     this.openTextEl.textContent = (this.openTextEl.textContent ?? '') + delta;
@@ -212,7 +212,7 @@ class Turn {
     switch (block.kind) {
       case 'text': {
         this.openTextEl = null; // a complete paragraph closes any open stream
-        this.proseEl.append(make('p', { class: 'eve-p', text: block.text }));
+        this.proseEl.append(make('p', { class: 'dm-p', text: block.text }));
         this.text += (this.text ? '\n\n' : '') + block.text;
         break;
       }
@@ -223,25 +223,25 @@ class Turn {
           resolveProjects(block.ids.filter((id) => !streamedProjectIds.has(id))),
         );
         if (!projects.length) break;
-        const wrap = make('div', { class: 'eve-projs' });
+        const wrap = make('div', { class: 'dm-projs' });
         for (const p of projects) {
           const [kind, statusLabel] = p.status;
           wrap.append(
-            make('a', { class: 'eve-proj', href: projectHref(p), hue: projectHue(p) }, [
-              make('span', { class: 'eve-proj__rule', 'aria-hidden': 'true' }),
-              make('span', { class: 'eve-proj__body' }, [
-                make('span', { class: 'eve-proj__main' }, [
-                  make('span', { class: 'eve-proj__id', text: p.id }),
-                  make('span', { class: 'eve-proj__title', text: p.title }),
+            make('a', { class: 'dm-proj', href: projectHref(p), hue: projectHue(p) }, [
+              make('span', { class: 'dm-proj__rule', 'aria-hidden': 'true' }),
+              make('span', { class: 'dm-proj__body' }, [
+                make('span', { class: 'dm-proj__main' }, [
+                  make('span', { class: 'dm-proj__id', text: p.id }),
+                  make('span', { class: 'dm-proj__title', text: p.title }),
                 ]),
-                make('span', { class: 'eve-proj__meta' }, [
+                make('span', { class: 'dm-proj__meta' }, [
                   make('span', { class: `badge ${kind}`, text: statusLabel }),
-                  make('span', { class: 'eve-proj__cat', text: `${p.area} · ${p.year}` }),
-                  make('span', { class: 'eve-proj__act', text: p.activity }),
+                  make('span', { class: 'dm-proj__cat', text: `${p.area} · ${p.year}` }),
+                  make('span', { class: 'dm-proj__act', text: p.activity }),
                 ]),
-                make('span', { class: 'eve-proj__line', text: p.line }),
+                make('span', { class: 'dm-proj__line', text: p.line }),
               ]),
-              make('span', { class: 'eve-proj__go', 'aria-hidden': 'true', text: '→' }),
+              make('span', { class: 'dm-proj__go', 'aria-hidden': 'true', text: '→' }),
             ]),
           );
         }
@@ -251,16 +251,16 @@ class Turn {
       case 'resume': {
         const tracks = resolveTracks(block.trackIds);
         if (!tracks.length) break;
-        const wrap = make('div', { class: 'eve-resume' });
+        const wrap = make('div', { class: 'dm-resume' });
         for (const t of tracks) {
           wrap.append(
-            make('div', { class: 'eve-track', hue: t.hue }, [
-              make('span', { class: 'eve-track-top' }, [
-                make('span', { class: 'eve-track-title', text: t.title }),
+            make('div', { class: 'dm-track', hue: t.hue }, [
+              make('span', { class: 'dm-track-top' }, [
+                make('span', { class: 'dm-track-title', text: t.title }),
                 t.current ? make('span', { class: 'badge live', text: 'Now' }) : null,
               ]),
-              make('span', { class: 'eve-track-role', text: t.role }),
-              make('span', { class: 'eve-track-when', text: t.when }),
+              make('span', { class: 'dm-track-role', text: t.role }),
+              make('span', { class: 'dm-track-when', text: t.when }),
             ]),
           );
         }
@@ -275,11 +275,11 @@ class Turn {
         if (!projects.length && !tracks.length && !ragSources.length) break;
 
         const count = projects.length + tracks.length + ragSources.length;
-        const wrap = make('section', { class: 'eve-evidence', 'aria-label': 'Evidence summary' }, [
-          make('div', { class: 'eve-evidence-head' }, [
-            make('span', { class: 'eve-evidence-kicker', text: 'evidence summary' }),
+        const wrap = make('section', { class: 'dm-evidence', 'aria-label': 'Evidence summary' }, [
+          make('div', { class: 'dm-evidence-head' }, [
+            make('span', { class: 'dm-evidence-kicker', text: 'evidence summary' }),
             make('span', {
-              class: 'eve-evidence-count',
+              class: 'dm-evidence-count',
               text: `${count} source${count === 1 ? '' : 's'}`,
             }),
           ]),
@@ -302,15 +302,15 @@ class Turn {
       case 'contact': {
         const c = resolveContact(block);
         this.canvas().append(
-          make('div', { class: 'eve-contact' }, [
+          make('div', { class: 'dm-contact' }, [
             this.contactRow('email', c.email, `mailto:${c.email}`),
             this.contactRow('github', c.github.replace(/^https?:\/\//, ''), c.github, true),
             this.contactRow('résumé', 'Download PDF →', c.resume),
             this.contactRow('based', c.location),
-            make('div', { class: 'eve-contact-row' }, [
-              make('span', { class: 'eve-contact-key', text: 'status' }),
-              make('span', { class: 'eve-contact-val eve-contact-status' }, [
-                make('span', { class: 'eve-dot', 'aria-hidden': 'true' }),
+            make('div', { class: 'dm-contact-row' }, [
+              make('span', { class: 'dm-contact-key', text: 'status' }),
+              make('span', { class: 'dm-contact-val dm-contact-status' }, [
+                make('span', { class: 'dm-dot', 'aria-hidden': 'true' }),
                 c.status,
               ]),
             ]),
@@ -321,13 +321,13 @@ class Turn {
       case 'links': {
         if (!block.items.length) break;
         this.proseEl.append(
-          make('div', { class: 'eve-next' }, [
-            make('p', { class: 'eve-next-label', text: 'Suggested next steps:' }),
+          make('div', { class: 'dm-next' }, [
+            make('p', { class: 'dm-next-label', text: 'Suggested next steps:' }),
             make(
               'div',
-              { class: 'eve-next-chips' },
+              { class: 'dm-next-chips' },
               block.items.map(([label, href]) =>
-                make('a', { class: 'eve-chip', href, text: label }),
+                make('a', { class: 'dm-chip', href, text: label }),
               ),
             ),
           ]),
@@ -341,32 +341,32 @@ class Turn {
     const [kind, statusLabel] = project.status;
     const facts = [...projectMetrics(project).slice(0, 2), ...projectStack(project).slice(0, 2)];
 
-    return make('a', { class: 'eve-evidence-item', href: projectHref(project), hue: projectHue(project) }, [
-      make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
-      make('span', { class: 'eve-evidence-top' }, [
-        make('span', { class: 'eve-evidence-type', text: 'project' }),
+    return make('a', { class: 'dm-evidence-item', href: projectHref(project), hue: projectHue(project) }, [
+      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'dm-evidence-top' }, [
+        make('span', { class: 'dm-evidence-type', text: 'project' }),
         make('span', { class: `badge ${kind}`, text: statusLabel }),
       ]),
-      make('h3', { class: 'eve-evidence-title', text: project.title }),
-      make('p', { class: 'eve-evidence-line', text: project.line }),
+      make('h3', { class: 'dm-evidence-title', text: project.title }),
+      make('p', { class: 'dm-evidence-line', text: project.line }),
       this.evidenceFacts(facts),
-      projectNotes(project)[0] ? make('p', { class: 'eve-evidence-note', text: projectNotes(project)[0] }) : null,
-      make('span', { class: 'eve-evidence-route', text: 'Open project →' }),
+      projectNotes(project)[0] ? make('p', { class: 'dm-evidence-note', text: projectNotes(project)[0] }) : null,
+      make('span', { class: 'dm-evidence-route', text: 'Open project →' }),
     ]);
   }
 
   private resumeEvidence(track: ResumeTrack): HTMLElement {
-    return make('a', { class: 'eve-evidence-item', href: `/journey/${track.id}`, hue: track.hue }, [
-      make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
-      make('span', { class: 'eve-evidence-top' }, [
-        make('span', { class: 'eve-evidence-type', text: 'resume' }),
+    return make('a', { class: 'dm-evidence-item', href: `/journey/${track.id}`, hue: track.hue }, [
+      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'dm-evidence-top' }, [
+        make('span', { class: 'dm-evidence-type', text: 'resume' }),
         track.current ? make('span', { class: 'badge live', text: 'Now' }) : null,
       ]),
-      make('h3', { class: 'eve-evidence-title', text: track.title }),
-      make('p', { class: 'eve-evidence-line', text: `${track.role} · ${track.when}` }),
+      make('h3', { class: 'dm-evidence-title', text: track.title }),
+      make('p', { class: 'dm-evidence-line', text: `${track.role} · ${track.when}` }),
       this.evidenceFacts(track.credits.slice(0, 3)),
-      track.notes[0] ? make('p', { class: 'eve-evidence-note', text: track.notes[0] }) : null,
-      make('span', { class: 'eve-evidence-route', text: 'Open resume entry →' }),
+      track.notes[0] ? make('p', { class: 'dm-evidence-note', text: track.notes[0] }) : null,
+      make('span', { class: 'dm-evidence-route', text: 'Open resume entry →' }),
     ]);
   }
 
@@ -378,14 +378,14 @@ class Turn {
     if (source.score !== undefined) facts.push([source.score.toFixed(2), 'score']);
 
     const text = source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
-    return make('article', { class: 'eve-evidence-item' }, [
-      make('span', { class: 'eve-evidence-rule', 'aria-hidden': 'true' }),
-      make('span', { class: 'eve-evidence-top' }, [
-        make('span', { class: 'eve-evidence-type', text: 'approved source' }),
+    return make('article', { class: 'dm-evidence-item' }, [
+      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'dm-evidence-top' }, [
+        make('span', { class: 'dm-evidence-type', text: 'approved source' }),
         make('span', { class: 'badge done', text: 'RAG' }),
       ]),
-      make('h3', { class: 'eve-evidence-title', text: source.filename ?? source.ragSourceId }),
-      make('p', { class: 'eve-evidence-line', text }),
+      make('h3', { class: 'dm-evidence-title', text: source.filename ?? source.ragSourceId }),
+      make('p', { class: 'dm-evidence-line', text }),
       this.evidenceFacts(facts),
     ]);
   }
@@ -393,24 +393,24 @@ class Turn {
   private evidenceFacts(facts: [string, string][]): HTMLElement {
     return make(
       'ul',
-      { class: 'eve-evidence-facts' },
+      { class: 'dm-evidence-facts' },
       facts.map(([value, label]) =>
         make('li', {}, [
-          make('span', { class: 'eve-evidence-fact-value', text: value }),
-          make('span', { class: 'eve-evidence-fact-label', text: label }),
+          make('span', { class: 'dm-evidence-fact-value', text: value }),
+          make('span', { class: 'dm-evidence-fact-label', text: label }),
         ]),
       ),
     );
   }
 
   private contactRow(key: string, value: string, href?: string, external = false): HTMLElement {
-    const valueEl = make('span', { class: 'eve-contact-val', text: value });
-    const keyEl = make('span', { class: 'eve-contact-key', text: key });
-    if (!href) return make('div', { class: 'eve-contact-row' }, [keyEl, valueEl]);
+    const valueEl = make('span', { class: 'dm-contact-val', text: value });
+    const keyEl = make('span', { class: 'dm-contact-key', text: key });
+    if (!href) return make('div', { class: 'dm-contact-row' }, [keyEl, valueEl]);
     return make(
       'a',
       {
-        class: 'eve-contact-row',
+        class: 'dm-contact-row',
         href,
         ...(external ? { target: '_blank', rel: 'noopener' } : {}),
       },
@@ -422,10 +422,10 @@ class Turn {
   private canvas(): HTMLElement {
     this.revealAnswer();
     if (!this.canvasEl) {
-      this.canvasEl = make('div', { class: 'eve-canvas' }, [
-        make('p', { class: 'eve-canvas-label', 'aria-hidden': 'true', text: 'artifacts' }),
+      this.canvasEl = make('div', { class: 'dm-canvas' }, [
+        make('p', { class: 'dm-canvas-label', 'aria-hidden': 'true', text: 'artifacts' }),
       ]);
-      this.splitEl.classList.remove('eve-split--solo');
+      this.splitEl.classList.remove('dm-split--solo');
       this.splitEl.append(this.canvasEl);
     }
     return this.canvasEl;
@@ -434,7 +434,7 @@ class Turn {
   showError(message: string): void {
     this.revealAnswer();
     this.proseEl.append(
-      make('div', { class: 'eve-error' }, [
+      make('div', { class: 'dm-error' }, [
         make('p', { text: message }),
         make('p', {}, [
           'You can still reach Dylan directly at ',
@@ -451,7 +451,7 @@ class Turn {
     this.revealAnswer();
     this.proseEl.append(
       make('p', {
-        class: 'eve-p',
+        class: 'dm-p',
         text: `${AGENT_NAME} didn't return an answer for that. Try rephrasing, or pick a suggested prompt.`,
       }),
     );
@@ -477,7 +477,7 @@ async function streamInto(
     signal,
   });
   if (!res.ok || !res.body) {
-    throw new Error(`Eve endpoint responded ${res.status}`);
+    throw new Error(`DM endpoint responded ${res.status}`);
   }
 
   const reader = res.body.getReader();
@@ -507,27 +507,27 @@ async function streamInto(
 // ---------------------------------------------------------------------------
 
 function initRoot(root: HTMLElement): void {
-  const thread = root.querySelector<HTMLElement>('[data-eve-thread]');
-  const form = root.querySelector<HTMLFormElement>('[data-eve-form]');
-  const input = root.querySelector<HTMLInputElement>('[data-eve-input]');
-  const sendBtn = root.querySelector<HTMLButtonElement>('[data-eve-submit]');
+  const thread = root.querySelector<HTMLElement>('[data-dm-thread]');
+  const form = root.querySelector<HTMLFormElement>('[data-dm-form]');
+  const input = root.querySelector<HTMLInputElement>('[data-dm-input]');
+  const sendBtn = root.querySelector<HTMLButtonElement>('[data-dm-submit]');
   if (!thread || !form || !input) return;
 
-  const projectId = root.dataset.eveProjectId?.trim();
+  const projectId = root.dataset.dmProjectId?.trim();
   const context = projectId ? { projectIds: [projectId] } : undefined;
-  const fitForm = root.querySelector<HTMLFormElement>('[data-eve-fit-form]');
-  const fitInput = root.querySelector<HTMLTextAreaElement>('[data-eve-fit-input]');
-  const fitSubmit = root.querySelector<HTMLButtonElement>('[data-eve-fit-submit]');
-  const fitCount = root.querySelector<HTMLElement>('[data-eve-fit-count]');
-  const fitError = root.querySelector<HTMLElement>('[data-eve-fit-error]');
+  const fitForm = root.querySelector<HTMLFormElement>('[data-dm-fit-form]');
+  const fitInput = root.querySelector<HTMLTextAreaElement>('[data-dm-fit-input]');
+  const fitSubmit = root.querySelector<HTMLButtonElement>('[data-dm-fit-submit]');
+  const fitCount = root.querySelector<HTMLElement>('[data-dm-fit-count]');
+  const fitError = root.querySelector<HTMLElement>('[data-dm-fit-error]');
 
   const history: ChatMessage[] = [];
   let busy = false;
   let controller: AbortController | null = null;
 
-  const trigger = root.querySelector<HTMLElement>('[data-eve-open]');
-  const dialog = root.querySelector<HTMLElement>('[data-eve-dialog]');
-  const panel = root.querySelector<HTMLElement>('[data-eve-panel]');
+  const trigger = root.querySelector<HTMLElement>('[data-dm-open]');
+  const dialog = root.querySelector<HTMLElement>('[data-dm-dialog]');
+  const panel = root.querySelector<HTMLElement>('[data-dm-panel]');
   const shouldAvoidAutoKeyboard = (): boolean => window.matchMedia('(max-width: 820px)').matches;
   const setBusy = (next: boolean): void => {
     busy = next;
@@ -541,7 +541,7 @@ function initRoot(root: HTMLElement): void {
     const displayMessage = options.displayMessage?.trim() || message;
     const requestContext = mergeContext(context, options.transientContext);
     setBusy(true);
-    root.classList.add('eve-started');
+    root.classList.add('dm-started');
 
     const historySnapshot = history.slice();
     history.push({ role: 'user', content: displayMessage });
@@ -556,7 +556,7 @@ function initRoot(root: HTMLElement): void {
       turn.finishEmptyIfNeeded();
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
-      console.error('[eve] stream failed', err);
+      console.error('[dm] stream failed', err);
       turn.showError(`${AGENT_NAME} is unavailable right now. Please try again in a moment.`);
     } finally {
       history.push({ role: 'assistant', content: turn.text });
@@ -589,7 +589,7 @@ function initRoot(root: HTMLElement): void {
       ).filter((el) => !el.hasAttribute('disabled') && !el.closest('[hidden]'));
 
     trigger.addEventListener('click', open);
-    root.querySelectorAll<HTMLElement>('[data-eve-close]').forEach((btn) => {
+    root.querySelectorAll<HTMLElement>('[data-dm-close]').forEach((btn) => {
       btn.addEventListener('click', close);
     });
     dialog.addEventListener('click', (e) => {
@@ -623,7 +623,7 @@ function initRoot(root: HTMLElement): void {
   }
 
   // suggested prompts submit their label as a real question
-  root.querySelectorAll<HTMLElement>('[data-eve-send]').forEach((btn) => {
+  root.querySelectorAll<HTMLElement>('[data-dm-send]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       const label = btn.dataset.label ?? btn.textContent ?? '';
@@ -684,13 +684,13 @@ function initRoot(root: HTMLElement): void {
     });
   }
 
-  root.querySelector<HTMLElement>('[data-eve-reset]')?.addEventListener('click', () => {
+  root.querySelector<HTMLElement>('[data-dm-reset]')?.addEventListener('click', () => {
     controller?.abort();
     controller = null;
     setBusy(false);
     history.length = 0;
     thread.replaceChildren();
-    root.classList.remove('eve-started');
+    root.classList.remove('dm-started');
     input.focus();
   });
 }
@@ -723,7 +723,7 @@ function projectNotes(project: RenderProject): string[] {
   return 'notes' in project && Array.isArray(project.notes) ? project.notes : [];
 }
 
-document.querySelectorAll<HTMLElement>('[data-eve-root]').forEach(initRoot);
+document.querySelectorAll<HTMLElement>('[data-dm-root]').forEach(initRoot);
 
 function mergeContext(base: ChatContext | undefined, transient: ChatContext | undefined): ChatContext | undefined {
   if (!base && !transient) return undefined;
