@@ -1,0 +1,147 @@
+---
+/**
+ * Admin drafts list (`/admin`) — server-rendered, never prerendered.
+ *
+ * Auth is gated entirely on the server: the admin session cookie is validated
+ * with the same helper the API routes use. Only an authenticated, allowed admin
+ * ever receives draft data; unconfigured and signed-out visitors get a friendly
+ * shell with no draft information at all.
+ */
+import Admin from '@/layouts/Admin.astro';
+import { authenticateAdminPage, createAdminPageDb } from '@/lib/admin/page';
+import { listAdminDrafts } from '@/lib/admin/publish';
+import type { DraftLifecycleState } from '@/lib/db/schema';
+
+export const prerender = false;
+
+interface DraftListItem {
+  id: string;
+  candidate_id: string | null;
+  proposed_project_id: string | null;
+  lifecycle_state: DraftLifecycleState;
+  created_at: string;
+  updated_at: string;
+  slug: string | null;
+  title: string | null;
+}
+
+const auth = authenticateAdminPage(Astro.request);
+
+let drafts: DraftListItem[] = [];
+let loadError: string | null = null;
+
+if (auth.status === 'authenticated') {
+  const dbResult = createAdminPageDb();
+  if (!dbResult.ok) {
+    loadError = 'The admin database connection is not configured.';
+  } else {
+    const result = await listAdminDrafts(dbResult.db);
+    if (result.ok) drafts = (result.drafts as DraftListItem[]) ?? [];
+    else loadError = result.message;
+  }
+}
+
+const STATE_LABELS: Record<DraftLifecycleState, string> = {
+  hidden: 'Hidden',
+  needs_review: 'Needs review',
+  changes_requested: 'Changes requested',
+  approved_for_publish: 'Approved for publish',
+};
+
+function formatWhen(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+---
+
+<Admin title="Admin · Drafts">
+  <div class="admin-wrap">
+    <header class="admin-top">
+      <span class="admin-kicker">Admin</span>
+      <h1 class="admin-title">Review drafts</h1>
+      <p class="admin-sub">Hidden project drafts waiting for review and publish.</p>
+    </header>
+
+    {
+      auth.status === 'unconfigured' && (
+        <section class="admin-notice">
+          <h2>Admin isn't configured</h2>
+          <p>
+            Admin sign-in isn't set up in this environment yet. Once the GitHub
+            sign-in settings are in place, this page will show drafts to review.
+          </p>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'unauthenticated' && (
+        <section class="admin-notice">
+          <h2>Sign in to review</h2>
+          <p>You need to sign in with the admin GitHub account to see drafts.</p>
+          <a class="admin-login-link" href="/api/admin/auth/login">Sign in with GitHub</a>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'forbidden' && (
+        <section class="admin-notice">
+          <h2>Not allowed</h2>
+          <p>{auth.message}</p>
+          <a class="admin-login-link" href="/api/admin/auth/login">Try a different account</a>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'authenticated' && loadError && (
+        <section class="admin-notice">
+          <h2>Couldn't load drafts</h2>
+          <p>{loadError}</p>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'authenticated' && !loadError && drafts.length === 0 && (
+        <section class="admin-notice">
+          <h2>No drafts yet</h2>
+          <p>There are no project drafts to review right now.</p>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'authenticated' && !loadError && drafts.length > 0 && (
+        <ul class="admin-list">
+          {drafts.map((draft) => (
+            <li>
+              <a class="admin-card" href={`/admin/drafts/${draft.id}`}>
+                <span class="admin-card-title">{draft.title ?? 'Untitled draft'}</span>
+                <span class="admin-state" data-state={draft.lifecycle_state}>
+                  {STATE_LABELS[draft.lifecycle_state] ?? draft.lifecycle_state}
+                </span>
+                <span class="admin-card-id">{draft.id}</span>
+                <span class="admin-meta">
+                  <span>Created <span class="mono">{formatWhen(draft.created_at)}</span></span>
+                  <span>Updated <span class="mono">{formatWhen(draft.updated_at)}</span></span>
+                  {draft.candidate_id && (
+                    <span>Candidate <span class="mono">{draft.candidate_id}</span></span>
+                  )}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</Admin>

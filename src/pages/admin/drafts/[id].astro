@@ -1,0 +1,277 @@
+---
+/**
+ * Admin draft detail + edit (`/admin/drafts/<id>`) — server-rendered, never
+ * prerendered.
+ *
+ * Server-side auth uses the same session helper as the API routes; only an
+ * authenticated, allowed admin receives draft data. The page renders the public
+ * review surface only — lifecycle, the editable public fields, the evidence
+ * privacy summary, and the review timeline. It never renders `private_notes`,
+ * provenance contents, or raw evidence text.
+ *
+ * Every mutation (save / approve / publish) is performed by the one client
+ * island (`scripts/admin-drafts.ts`) against the existing JSON API routes.
+ */
+import Admin from '@/layouts/Admin.astro';
+import { authenticateAdminPage, createAdminPageDb } from '@/lib/admin/page';
+import { getAdminDraft } from '@/lib/admin/publish';
+import type { DraftLifecycleState } from '@/lib/db/schema';
+
+export const prerender = false;
+
+interface DraftDetail {
+  id: string;
+  candidate_id: string | null;
+  proposed_project_id: string | null;
+  proposed_fields: Record<string, unknown>;
+  lifecycle_state: DraftLifecycleState;
+  created_at: string;
+  updated_at: string;
+}
+interface EvidencePrivacyItem {
+  privacy_state: string;
+  count: number;
+}
+interface ReviewEventItem {
+  id: string;
+  actor: string;
+  action: string;
+  created_at: string;
+}
+
+const draftId = Astro.params.id ?? '';
+const auth = authenticateAdminPage(Astro.request);
+
+let draft: DraftDetail | null = null;
+let evidencePrivacy: EvidencePrivacyItem[] = [];
+let reviewEvents: ReviewEventItem[] = [];
+let loadError: string | null = null;
+
+if (auth.status === 'authenticated') {
+  const dbResult = createAdminPageDb();
+  if (!dbResult.ok) {
+    loadError = 'The admin database connection is not configured.';
+  } else {
+    const result = await getAdminDraft(dbResult.db, draftId);
+    if (result.ok) {
+      draft = result.draft as DraftDetail;
+      evidencePrivacy = (result.evidencePrivacy as EvidencePrivacyItem[]) ?? [];
+      reviewEvents = (result.reviewEvents as ReviewEventItem[]) ?? [];
+    } else {
+      loadError = result.message;
+    }
+  }
+}
+
+const STATE_LABELS: Record<DraftLifecycleState, string> = {
+  hidden: 'Hidden',
+  needs_review: 'Needs review',
+  changes_requested: 'Changes requested',
+  approved_for_publish: 'Approved for publish',
+};
+
+const PRIVACY_LABELS: Record<string, string> = {
+  unreviewed: 'Unreviewed',
+  safe_public: 'Safe public',
+  private_allowed_for_draft: 'Private (allowed for draft)',
+  blocked: 'Blocked',
+};
+
+function asText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function asJsonText(value: unknown): string {
+  return Array.isArray(value) ? JSON.stringify(value, null, 2) : '';
+}
+
+function formatWhen(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+const fields = draft?.proposed_fields ?? {};
+---
+
+<Admin title={`Admin · ${asText(fields.title) || draftId}`}>
+  <div class="admin-wrap">
+    <a class="admin-back" href="/admin">← All drafts</a>
+
+    {
+      auth.status === 'unconfigured' && (
+        <section class="admin-notice">
+          <h2>Admin isn't configured</h2>
+          <p>Admin sign-in isn't set up in this environment yet.</p>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'unauthenticated' && (
+        <section class="admin-notice">
+          <h2>Sign in to review</h2>
+          <p>You need to sign in with the admin GitHub account to see this draft.</p>
+          <a class="admin-login-link" href="/api/admin/auth/login">Sign in with GitHub</a>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'forbidden' && (
+        <section class="admin-notice">
+          <h2>Not allowed</h2>
+          <p>{auth.message}</p>
+          <a class="admin-login-link" href="/api/admin/auth/login">Try a different account</a>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'authenticated' && (loadError || !draft) && (
+        <section class="admin-notice">
+          <h2>Couldn't load this draft</h2>
+          <p>{loadError ?? `Draft ${draftId} was not found.`}</p>
+        </section>
+      )
+    }
+
+    {
+      auth.status === 'authenticated' && !loadError && draft && (
+        <Fragment>
+        <div class="admin-root" data-admin-root data-draft-id={draft.id}>
+          <header class="admin-top">
+            <span class="admin-kicker">Draft</span>
+            <h1 class="admin-title">{asText(fields.title) || 'Untitled draft'}</h1>
+            <span class="admin-state" data-state={draft.lifecycle_state}>
+              {STATE_LABELS[draft.lifecycle_state] ?? draft.lifecycle_state}
+            </span>
+            <p class="admin-sub admin-card-id">{draft.id}</p>
+          </header>
+
+          <section class="admin-section">
+            <h2>Evidence privacy</h2>
+            {evidencePrivacy.length > 0 ? (
+              <ul class="admin-privacy">
+                {evidencePrivacy.map((item) => (
+                  <li>
+                    {PRIVACY_LABELS[item.privacy_state] ?? item.privacy_state}: {item.count}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p class="admin-empty">No linked evidence sources.</p>
+            )}
+          </section>
+
+          <section class="admin-section">
+            <h2>Recent review activity</h2>
+            {reviewEvents.length > 0 ? (
+              <ul class="admin-events">
+                {reviewEvents.map((event) => (
+                  <li>
+                    <span class="mono">{event.action}</span>
+                    <span>{event.actor}</span>
+                    <span class="mono">{formatWhen(event.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p class="admin-empty">No review activity yet.</p>
+            )}
+          </section>
+
+          <form class="admin-form" data-admin-form novalidate>
+            <div class="admin-field">
+              <label for="field-slug">Slug</label>
+              <input id="field-slug" name="slug" type="text" value={asText(fields.slug)} autocapitalize="none" spellcheck="false" />
+            </div>
+            <div class="admin-field">
+              <label for="field-title">Title</label>
+              <input id="field-title" name="title" type="text" value={asText(fields.title)} />
+            </div>
+            <div class="admin-field">
+              <label for="field-tagline">Tagline</label>
+              <input id="field-tagline" name="tagline" type="text" value={asText(fields.tagline)} />
+            </div>
+            <div class="admin-field">
+              <label for="field-area">Area</label>
+              <input id="field-area" name="area" type="text" value={asText(fields.area)} />
+            </div>
+            <div class="admin-field">
+              <label for="field-year">Year</label>
+              <input id="field-year" name="year" type="number" inputmode="numeric" min="2000" max="2100" value={asText(fields.year)} />
+            </div>
+            <div class="admin-field">
+              <label for="field-summary">Summary</label>
+              <textarea id="field-summary" name="summary" rows="4">{asText(fields.summary)}</textarea>
+            </div>
+
+            <fieldset class="admin-fieldset">
+              <legend>Optional</legend>
+              <div class="admin-field">
+                <label for="field-activity">Activity <span class="hint">optional</span></label>
+                <input id="field-activity" name="activity" type="text" value={asText(fields.activity)} />
+              </div>
+              <div class="admin-field">
+                <label for="field-details">Details <span class="hint">optional · JSON array</span></label>
+                <textarea id="field-details" name="details" class="mono" rows="4" spellcheck="false">{asJsonText(fields.details)}</textarea>
+              </div>
+              <div class="admin-field">
+                <label for="field-metrics">Metrics <span class="hint">optional · JSON array</span></label>
+                <textarea id="field-metrics" name="metrics" class="mono" rows="4" spellcheck="false">{asJsonText(fields.metrics)}</textarea>
+              </div>
+              <div class="admin-field">
+                <label for="field-links">Links <span class="hint">optional · JSON array</span></label>
+                <textarea id="field-links" name="links" class="mono" rows="4" spellcheck="false">{asJsonText(fields.links)}</textarea>
+              </div>
+              <div class="admin-field">
+                <label for="field-media">Media <span class="hint">optional · JSON array</span></label>
+                <textarea id="field-media" name="media" class="mono" rows="4" spellcheck="false">{asJsonText(fields.media)}</textarea>
+              </div>
+            </fieldset>
+
+            <div class="admin-actions">
+              <button class="admin-btn" type="button" data-admin-save>Save fields</button>
+              <button class="admin-btn" type="button" data-admin-approve>Approve for publish</button>
+            </div>
+          </form>
+
+          <section class="admin-section">
+            <h2>Publish</h2>
+            <p class="admin-empty">
+              Confirm both checks, then publish. Publishing makes the project public at
+              <span class="mono"> /projects/&lt;slug&gt;</span>.
+            </p>
+            <div class="admin-confirm">
+              <label class="admin-check">
+                <input type="checkbox" data-admin-confirm-provenance />
+                <span>I confirm provenance</span>
+              </label>
+              <label class="admin-check">
+                <input type="checkbox" data-admin-confirm-privacy />
+                <span>I confirm privacy review</span>
+              </label>
+            </div>
+            <div class="admin-actions">
+              <button class="admin-btn admin-btn--primary" type="button" data-admin-publish>Publish</button>
+            </div>
+          </section>
+
+          <div class="admin-feedback" data-admin-feedback role="status" aria-live="polite" hidden></div>
+        </div>
+
+        <script src="../../../scripts/admin-drafts.ts"></script>
+        </Fragment>
+      )
+    }
+  </div>
+</Admin>
