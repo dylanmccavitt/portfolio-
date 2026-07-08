@@ -17,6 +17,7 @@ import Editorial from '@/layouts/Editorial.astro';
 import ProjectCardGrid from '@/components/ProjectCardGrid.astro';
 import {
   isImageShot,
+  isVideoShot,
   type ProjectShot,
 } from '@/data/catalog';
 import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
@@ -46,7 +47,7 @@ const agentDescriptionId = `${agentDialogId}-description`;
 const defaultProjectPrompt = `Tell me about ${p.title} and what Dylan did.`;
 
 const isPhone = (shot: ProjectShot): boolean =>
-  isImageShot(shot) ? shot.phone === true : shot.kind === 'phone';
+  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.kind === 'phone';
 
 /** Explicit intrinsic dimensions so images reserve layout (zero CLS). */
 const DIMS = { wide: { w: 1200, h: 800 }, phone: { w: 360, h: 640 } } as const;
@@ -62,6 +63,7 @@ const SKEL_LABEL: Record<string, string> = {
 
 const lead = p.shots[0];
 const gallery = p.shots.slice(1);
+const galleryHasVideo = gallery.some(isVideoShot);
 ---
 
 <Editorial title={meta.title} meta={meta}>
@@ -206,6 +208,19 @@ const gallery = p.shots.slice(1);
                   decoding="async"
                 />
               </a>
+            ) : isVideoShot(lead) ? (
+              <div class="frame">
+                <video
+                  src={lead.video}
+                  width={(isPhone(lead) ? DIMS.phone : DIMS.wide).w}
+                  height={(isPhone(lead) ? DIMS.phone : DIMS.wide).h}
+                  controls
+                  muted
+                  playsinline
+                  preload="metadata"
+                  poster={lead.poster}
+                ></video>
+              </div>
             ) : (
               <div
                 class:list={['frame', 'skel', { phone: isPhone(lead) }]}
@@ -278,7 +293,7 @@ const gallery = p.shots.slice(1);
       {
         gallery.length > 0 && (
           <section class="gallery-wrap">
-            <h2 class="h">Screenshots</h2>
+            <h2 class="h">{galleryHasVideo ? 'Screenshots & demos' : 'Screenshots'}</h2>
             <div class="gallery">
               {gallery.map((shot, idx) => {
                 const i = idx + 1;
@@ -301,6 +316,19 @@ const gallery = p.shots.slice(1);
                           decoding="async"
                         />
                       </a>
+                    ) : isVideoShot(shot) ? (
+                      <div class="frame">
+                        <video
+                          src={shot.video}
+                          width={dims.w}
+                          height={dims.h}
+                          controls
+                          muted
+                          playsinline
+                          preload="metadata"
+                          poster={shot.poster}
+                        ></video>
+                      </div>
                     ) : (
                       <div
                         class:list={['frame', 'skel', { phone }]}
@@ -502,7 +530,8 @@ const gallery = p.shots.slice(1);
   a.frame {
     cursor: zoom-in;
   }
-  .frame img {
+  .frame img,
+  .frame video {
     display: block;
     width: 100%;
     height: auto;

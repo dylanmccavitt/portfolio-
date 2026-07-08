@@ -357,6 +357,17 @@ function projectShotsForRecord(
       (typeof media.alt === 'string' && media.alt) ||
       (typeof media.label === 'string' && media.label) ||
       `${record.title} screenshot`;
+    if (Object.hasOwn(media, 'video')) {
+      if (typeof media.video === 'string' && media.video.trim()) {
+        shots.push({
+          video: media.video,
+          cap: caption,
+          ...(typeof media.poster === 'string' ? { poster: media.poster } : {}),
+          ...(typeof media.phone === 'boolean' ? { phone: media.phone } : {}),
+        });
+      }
+      continue;
+    }
     const source = media.src ?? media.img ?? media.url;
     if (typeof source === 'string') {
       shots.push({
@@ -387,9 +398,18 @@ function isProjectShotJson(value: JsonValue): boolean {
   if (typeof shot.cap !== 'string') return false;
   const hasImg = Object.hasOwn(shot, 'img');
   const hasKind = Object.hasOwn(shot, 'kind');
-  if (hasImg === hasKind) return false;
+  const hasVideo = Object.hasOwn(shot, 'video');
+  if ([hasImg, hasKind, hasVideo].filter(Boolean).length !== 1) return false;
   if (hasImg) {
     return typeof shot.img === 'string' && (shot.phone === undefined || typeof shot.phone === 'boolean');
+  }
+  if (hasVideo) {
+    return (
+      typeof shot.video === 'string' &&
+      Boolean(shot.video.trim()) &&
+      (shot.poster === undefined || typeof shot.poster === 'string') &&
+      (shot.phone === undefined || typeof shot.phone === 'boolean')
+    );
   }
   return typeof shot.kind === 'string' && Object.hasOwn(PROJECT_SHOT_KINDS, shot.kind);
 }

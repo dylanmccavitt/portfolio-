@@ -485,6 +485,35 @@ test('public DB read helpers render admin-published rows without legacy snapshot
   assert.equal(byId?.slug, 'manual-db-slug');
 });
 
+test('DB read layer parses valid video media and drops invalid video entries', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+       details, metrics, links, media, source, published_at, archived_at
+     ) VALUES (
+       'video-media-project', 'video-media-project', 'Video Media Project', 'Demo video media',
+       'Agents & MCP', 2026, 'published', 'Published from admin',
+       'Public summary for video media.',
+       $1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb, 'manual', '2026-07-04T00:00:00.000Z', null
+     )`,
+    [
+      JSON.stringify(['Public admin paragraph.']),
+      JSON.stringify([]),
+      JSON.stringify([]),
+      JSON.stringify([
+        { video: '/demos/x.mp4', cap: 'Demo' },
+        { video: '', cap: 'Invalid demo', img: '/should-not-become-image.png' },
+      ]),
+    ],
+  );
+
+  const detail = await fetchPublicProjectDetail(db, 'video-media-project');
+  assert.deepEqual(detail?.shots, [{ video: '/demos/x.mp4', cap: 'Demo' }]);
+});
+
 test('public project DB gate falls back to catalog until explicitly enabled and populated', async () => {
   assert.equal(shouldUsePublicProjectDb({}), false);
   assert.equal(shouldUsePublicProjectDb({ PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }), true);

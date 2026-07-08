@@ -53,6 +53,15 @@ export interface ProjectImageShot {
   phone?: boolean;
 }
 
+/** A captured demo video with an optional poster frame. */
+export interface ProjectVideoShot {
+  video: string;
+  cap: string;
+  poster?: string;
+  /** True for 9:16 phone captures (iOS), so the rail uses the narrow frame. */
+  phone?: boolean;
+}
+
 /** Skeleton placeholder kinds for shots without a captured screenshot. */
 export type SkeletonKind = 'chart' | 'dash' | 'list' | 'code' | 'phone';
 
@@ -62,8 +71,8 @@ export interface ProjectSkeletonShot {
   cap: string;
 }
 
-/** A shot is either a real image or a skeleton placeholder. */
-export type ProjectShot = ProjectImageShot | ProjectSkeletonShot;
+/** A shot is either a real image, demo video, or skeleton placeholder. */
+export type ProjectShot = ProjectImageShot | ProjectVideoShot | ProjectSkeletonShot;
 
 /** Catalog areas — also serve as project library filters. */
 export type ProjectArea =
@@ -107,6 +116,11 @@ export interface Project {
 /** Type guard: is this shot a real captured image? */
 export function isImageShot(shot: ProjectShot): shot is ProjectImageShot {
   return 'img' in shot;
+}
+
+/** Type guard: is this shot a captured demo video? */
+export function isVideoShot(shot: ProjectShot): shot is ProjectVideoShot {
+  return typeof (shot as { video?: unknown }).video === 'string';
 }
 
 export const CATALOG: Project[] = [

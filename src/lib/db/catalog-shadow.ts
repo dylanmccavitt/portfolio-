@@ -124,6 +124,7 @@ function mediaSummary(project: Project): JsonValue {
   return {
     total: project.shots.length,
     images: project.shots.filter((shot) => 'img' in shot).length,
+    videos: project.shots.filter((shot) => 'video' in shot).length,
     placeholders: project.shots.filter((shot) => 'kind' in shot).length,
     captions: project.shots.map((shot) => shot.cap),
   };
@@ -444,6 +445,7 @@ function recordMediaSummary(record: CatalogShadowRecord): JsonValue {
   return {
     total: record.media.length,
     images: record.media.filter((shot) => isRecordWithField(shot, 'img')).length,
+    videos: record.media.filter((shot) => isRecordWithField(shot, 'video')).length,
     placeholders: record.media.filter((shot) => isRecordWithField(shot, 'kind')).length,
     captions: record.media.map((shot) => (isRecordWithField(shot, 'cap') ? shot.cap : null)),
   };

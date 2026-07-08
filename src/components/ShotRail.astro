@@ -4,7 +4,7 @@
  * Each shot is either a real captured image or a small CSS placeholder keyed by
  * its artifact kind. Pure CSS, no client JavaScript.
  */
-import { isImageShot, type ProjectShot } from '@/data/catalog';
+import { isImageShot, isVideoShot, type ProjectShot } from '@/data/catalog';
 
 export interface Props {
   shots: ProjectShot[];
@@ -14,7 +14,7 @@ const { shots, hue } = Astro.props;
 
 const DIMS = { wide: { w: 400, h: 267 }, phone: { w: 180, h: 320 } };
 const isPhone = (shot: ProjectShot) =>
-  isImageShot(shot) ? shot.phone === true : shot.kind === 'phone';
+  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.kind === 'phone';
 ---
 
 <div class="shots" role="group" aria-label="Screenshots" tabindex="0">
@@ -38,6 +38,20 @@ const isPhone = (shot: ProjectShot) =>
           />
           <span class="cap">{shot.cap}</span>
         </a>
+      ) : isVideoShot(shot) ? (
+        <div class:list={['shot', { phone }]}>
+          <video
+            src={shot.video}
+            width={dims.w}
+            height={dims.h}
+            controls
+            muted
+            playsinline
+            preload="metadata"
+            poster={shot.poster}
+          ></video>
+          <span class="cap">{shot.cap}</span>
+        </div>
       ) : (
         <div class:list={['shot', { phone }]}>
           <div class="sk" data-kind={shot.kind} style={`--sk:${hue}66`} aria-hidden="true">
@@ -128,7 +142,8 @@ const isPhone = (shot: ProjectShot) =>
     flex: 0 0 min(180px, 60vw);
     aspect-ratio: 9 / 16;
   }
-  .shot img {
+  .shot img,
+  .shot video {
     position: absolute;
     inset: 0;
     width: 100%;
