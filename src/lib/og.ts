@@ -7,7 +7,7 @@ import satori, { type SatoriOptions } from 'satori';
 import { Resvg } from '@resvg/resvg-js';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import type { StatusKind } from '../data/catalog';
+import type { StatusKind } from '@/data/catalog';
 
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;

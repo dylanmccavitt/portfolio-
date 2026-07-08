@@ -1,5 +1,5 @@
-import type { Project } from '../../data/catalog';
-import type { ResumeTrack } from '../../data/resume';
+import type { Project } from '@/data/catalog';
+import type { ResumeTrack } from '@/data/resume';
 
 export const AGENT_NAME = 'DM';
 

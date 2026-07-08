@@ -1,4 +1,4 @@
-import type { GithubRepositorySnapshot } from '../db/github-discovery';
+import type { GithubRepositorySnapshot } from '@/lib/db/github-discovery';
 
 const GITHUB_API_VERSION = '2022-11-28';
 const GITHUB_USER_AGENT = 'portfolio-dm-scan';

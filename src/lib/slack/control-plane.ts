@@ -3,8 +3,8 @@ import {
   scanGithubRepositoryCandidate,
   type GithubDiscoveryScanResult,
   type GithubRepositorySnapshot,
-} from '../db/github-discovery';
-import type { JsonRecord } from '../db/schema';
+} from '@/lib/db/github-discovery';
+import type { JsonRecord } from '@/lib/db/schema';
 import { GithubSnapshotFetchError, type GithubSnapshotFetcher } from './github-fetch';
 
 export const SLACK_SIGNATURE_VERSION = 'v0';

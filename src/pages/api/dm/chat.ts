@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
-import { createDbClient, getDatabaseUrl, type DbClient } from '../../../lib/db/client';
-import type { ProjectReadQueryable } from '../../../lib/db/project-reads';
+import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
+import type { ProjectReadQueryable } from '@/lib/db/project-reads';
 import {
   createDMChatStream,
   DMAgentError,
@@ -9,14 +9,14 @@ import {
   type DMRuntimeConfig,
   type DMRuntimeDeps,
   type DMRuntimeEnv,
-} from '../../../lib/dm/runtime';
-import type { DMChatContext, DMChatRequest } from '../../../lib/dm/contract';
+} from '@/lib/dm/runtime';
+import type { DMChatContext, DMChatRequest } from '@/lib/dm/contract';
 import {
   FIT_CHECK_INPUT_LIMIT,
   FIT_CHECK_MIN_CHARS,
   FIT_CHECK_REQUEST_BODY_LIMIT,
   sanitizeJobDescriptionForFitCheck,
-} from '../../../lib/dm/fit-check';
+} from '@/lib/dm/fit-check';
 
 export const prerender = false;
 

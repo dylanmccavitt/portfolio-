@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { applyMigrations, createQueryable } from './db';
-import { scanGithubRepositoryCandidate, type GithubRepositorySnapshot } from '../src/lib/db/github-discovery';
+import { scanGithubRepositoryCandidate, type GithubRepositorySnapshot } from '@/lib/db/github-discovery';
 
 interface GithubDiscoveryFixture {
   actor?: string;

@@ -1,5 +1,5 @@
-import { CATALOG, PLAYLIST_SLUGS, type Project } from '../../data/catalog';
-import { projectMeta } from '../seo';
+import { CATALOG, PLAYLIST_SLUGS, type Project } from '@/data/catalog';
+import { projectMeta } from '@/lib/seo';
 import type { JsonValue, ProjectRecord } from './schema';
 
 export type DbQueryResult<Row = unknown> = { rows: Row[] } | Row[];

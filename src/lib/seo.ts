@@ -9,9 +9,9 @@
  * OG image paths point at the static `/og/**.png` endpoints rendered at build
  * (see `src/pages/og/`). Shared routes use one fallback image.
  */
-import type { ProjectLink } from '../data/catalog';
-import type { ResumeTrack } from '../data/resume';
-import { RESUME } from '../data/resume';
+import type { ProjectLink } from '@/data/catalog';
+import type { ResumeTrack } from '@/data/resume';
+import { RESUME } from '@/data/resume';
 
 /** Site owner — reused in titles and JSON-LD. */
 const OWNER = 'Dylan McCavitt';

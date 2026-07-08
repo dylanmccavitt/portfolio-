@@ -22,9 +22,9 @@ import {
   type ProjectArtifact,
   type RagSourceEvidence,
   type StreamEvent,
-} from '../lib/dm/client';
-import type { Project } from '../data/catalog';
-import type { ResumeTrack } from '../data/resume';
+} from '@/lib/dm/client';
+import type { Project } from '@/data/catalog';
+import type { ResumeTrack } from '@/data/resume';
 
 type RenderProject = Project | ProjectArtifact;
 

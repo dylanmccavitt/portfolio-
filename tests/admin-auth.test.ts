@@ -6,10 +6,10 @@ import {
   requireAdminSession,
   verifyAdminOAuthState,
   type AdminAuthConfig,
-} from '../src/lib/admin/auth';
-import { createAdminAuthCallbackHandler } from '../src/pages/api/admin/auth/callback';
-import { createAdminAuthLoginHandler } from '../src/pages/api/admin/auth/login';
-import { createAdminAuthLogoutHandler } from '../src/pages/api/admin/auth/logout';
+} from '@/lib/admin/auth';
+import { createAdminAuthCallbackHandler } from '@/pages/api/admin/auth/callback';
+import { createAdminAuthLoginHandler } from '@/pages/api/admin/auth/login';
+import { createAdminAuthLogoutHandler } from '@/pages/api/admin/auth/logout';
 
 const NOW = new Date('2026-07-02T12:00:00.000Z');
 const CONFIG: AdminAuthConfig = {

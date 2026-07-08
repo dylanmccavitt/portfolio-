@@ -1,11 +1,11 @@
 import type { APIRoute } from 'astro';
-import { createDbClient, getDatabaseUrl, type DbClient } from '../../../lib/db/client';
+import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
 import {
   readAdminAuthConfig,
   requireAdminSession,
   type AdminAuthConfig,
   type AdminSessionResult,
-} from '../../../lib/admin/auth';
+} from '@/lib/admin/auth';
 import {
   ingestRagSource,
   markRagSourceEligible,
@@ -13,8 +13,8 @@ import {
   type IngestOptions,
   type RagIndexClient,
   type RagQueryable,
-} from '../../../lib/rag/ingestion';
-import { createOpenAiRagIndexClient, readRagVectorStoreId } from '../../../lib/rag/openai';
+} from '@/lib/rag/ingestion';
+import { createOpenAiRagIndexClient, readRagVectorStoreId } from '@/lib/rag/openai';
 
 export const prerender = false;
 

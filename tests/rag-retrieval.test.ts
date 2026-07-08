@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import { ingestRagSource, markRagSourceEligible, type RagIndexClient } from '../src/lib/rag/ingestion';
+import { ingestRagSource, markRagSourceEligible, type RagIndexClient } from '@/lib/rag/ingestion';
 import {
   createPublicRagSearchConfig,
   publicRagCitationsFromFileSearchResult,
   publicRagProjectIds,
-} from '../src/lib/rag/retrieval';
+} from '@/lib/rag/retrieval';
 
 const ACTOR = 'rag-retrieval-test';
 

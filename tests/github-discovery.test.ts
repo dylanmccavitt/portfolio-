@@ -7,7 +7,7 @@ import {
   scanGithubRepositoryCandidate,
   type GithubDiscoveryQueryable,
   type GithubRepositorySnapshot,
-} from '../src/lib/db/github-discovery';
+} from '@/lib/db/github-discovery';
 
 function createTestDb(): Queryable {
   return new PGlite() as Queryable;

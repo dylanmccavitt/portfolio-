@@ -1,10 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { aggregateBenchmarkRuns, classifyBenchmarkRun, type DMBenchmarkRunRecord, type TimedDMEvent } from '../src/lib/dm/benchmark';
-import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES } from '../src/lib/dm/eval-fixtures';
-import type { DMStreamEvent } from '../src/lib/dm/contract';
-import { createDMChatStream } from '../src/lib/dm/runtime';
+import { aggregateBenchmarkRuns, classifyBenchmarkRun, type DMBenchmarkRunRecord, type TimedDMEvent } from '@/lib/dm/benchmark';
+import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES } from '@/lib/dm/eval-fixtures';
+import type { DMStreamEvent } from '@/lib/dm/contract';
+import { createDMChatStream } from '@/lib/dm/runtime';
 
 process.env.DM_METRICS ??= '0';
 

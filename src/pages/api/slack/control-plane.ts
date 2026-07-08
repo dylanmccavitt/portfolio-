@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { createDbClient, getDatabaseUrl, type DbClient } from '../../../lib/db/client';
+import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
 import {
   handleSlackFormEncodedRequest,
   safeSlackError,
@@ -7,8 +7,8 @@ import {
   type SlackBlock,
   type SlackControlPlaneConfig,
   type SlackControlPlaneQueryable,
-} from '../../../lib/slack/control-plane';
-import { createGithubSnapshotFetcher } from '../../../lib/slack/github-fetch';
+} from '@/lib/slack/control-plane';
+import { createGithubSnapshotFetcher } from '@/lib/slack/github-fetch';
 
 export const prerender = false;
 

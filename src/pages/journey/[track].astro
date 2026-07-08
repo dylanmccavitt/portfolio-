@@ -4,13 +4,13 @@
  * existing `/journey/[track]` parameter for compatibility while presenting the
  * content as plain resume history.
  */
-import Editorial from '../../layouts/Editorial.astro';
-import ProjectCardGrid from '../../components/ProjectCardGrid.astro';
-import { RESUME, getResumeTrackById, type ResumeTrack } from '../../data/resume';
-import type { ProjectDetailReadModel } from '../../lib/db/project-reads';
-import { loadPublicProjectDetails } from '../../lib/public-projects';
-import { resolvePublicProjectByReference } from '../../lib/public-project-route-resolver';
-import { journeyTrackMeta } from '../../lib/seo';
+import Editorial from '@/layouts/Editorial.astro';
+import ProjectCardGrid from '@/components/ProjectCardGrid.astro';
+import { RESUME, getResumeTrackById, type ResumeTrack } from '@/data/resume';
+import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
+import { resolvePublicProjectByReference } from '@/lib/public-project-route-resolver';
+import { journeyTrackMeta } from '@/lib/seo';
 
 export function getStaticPaths() {
   return RESUME.tracks.map((track) => ({

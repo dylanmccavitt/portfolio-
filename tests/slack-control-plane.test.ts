@@ -3,15 +3,15 @@ import test from 'node:test';
 import { format } from 'node:util';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import { PORTFOLIO_CANDIDATE_TOPIC, type GithubRepositorySnapshot } from '../src/lib/db/github-discovery';
+import { PORTFOLIO_CANDIDATE_TOPIC, type GithubRepositorySnapshot } from '@/lib/db/github-discovery';
 import {
   handleSlackFormEncodedRequest,
   signSlackBody,
   verifySlackRequest,
   type SlackControlPlaneConfig,
-} from '../src/lib/slack/control-plane';
-import { createGithubSnapshotFetcher } from '../src/lib/slack/github-fetch';
-import { createSlackControlPlanePostHandler } from '../src/pages/api/slack/control-plane';
+} from '@/lib/slack/control-plane';
+import { createGithubSnapshotFetcher } from '@/lib/slack/github-fetch';
+import { createSlackControlPlanePostHandler } from '@/pages/api/slack/control-plane';
 
 const SIGNING_SECRET = 'test-signing-secret';
 const DYLAN_SLACK_USER = 'U_DYLAN';

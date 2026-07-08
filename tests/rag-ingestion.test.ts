@@ -10,7 +10,7 @@ import {
   publicRagAttributes,
   revokeRagSource,
   type RagIndexClient,
-} from '../src/lib/rag/ingestion';
+} from '@/lib/rag/ingestion';
 
 const ACTOR = 'rag-ingestion-test';
 

@@ -21,9 +21,9 @@
  * Retired legacy URLs are handled by `vercel.json` 301s and never appear here.
  */
 import type { APIRoute } from 'astro';
-import { PLAYLIST_SLUGS } from '../data/catalog';
-import { RESUME } from '../data/resume';
-import { loadPublicProjectDetails } from '../lib/public-projects';
+import { PLAYLIST_SLUGS } from '@/data/catalog';
+import { RESUME } from '@/data/resume';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
 
 /**
  * Canonical path list, in sitemap order. Nested routes carry a trailing slash

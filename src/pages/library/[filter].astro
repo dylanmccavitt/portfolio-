@@ -12,15 +12,15 @@
  * Static rendering, zero client JS — the filter is the route, not a click.
  */
 import type { GetStaticPaths } from 'astro';
-import Editorial from '../../layouts/Editorial.astro';
-import LibraryView from '../../components/LibraryView.astro';
+import Editorial from '@/layouts/Editorial.astro';
+import LibraryView from '@/components/LibraryView.astro';
 import {
   PLAYLIST_SLUGS,
   playlistFromSlug,
   type PlaylistId,
-} from '../../data/catalog';
-import { filterPublicProjectDetails, loadPublicProjectDetails } from '../../lib/public-projects';
-import { libraryMeta } from '../../lib/seo';
+} from '@/data/catalog';
+import { filterPublicProjectDetails, loadPublicProjectDetails } from '@/lib/public-projects';
+import { libraryMeta } from '@/lib/seo';
 
 /** Page titles per filter; areas fall back to their own label. */
 const PAGE_TITLE: Partial<Record<PlaylistId, string>> = {

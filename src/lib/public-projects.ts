@@ -1,4 +1,4 @@
-import { CATALOG, type PlaylistId } from '../data/catalog';
+import { CATALOG, type PlaylistId } from '@/data/catalog';
 import { buildCatalogShadowRecords } from './db/catalog-shadow';
 import { createDbClient, getDatabaseUrl, type DatabaseEnv, type DbClient } from './db/client';
 import {

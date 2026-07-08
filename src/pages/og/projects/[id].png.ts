@@ -3,9 +3,9 @@
  * source selected by the DB gate.
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
-import { loadPublicProjectDetails } from '../../../lib/public-projects';
-import type { ProjectDetailReadModel } from '../../../lib/db/project-reads';
-import { renderOgImage } from '../../../lib/og';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
+import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
+import { renderOgImage } from '@/lib/og';
 
 export const getStaticPaths = (async () => {
   const { projects } = await loadPublicProjectDetails();

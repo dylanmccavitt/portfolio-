@@ -4,22 +4,22 @@ import { PGlite } from '@electric-sql/pglite';
 import { MockLanguageModelV4 } from 'ai/test';
 import { simulateReadableStream } from 'ai';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import { CATALOG } from '../src/data/catalog';
-import { buildCatalogShadowRecords, type CatalogShadowRecord } from '../src/lib/db/catalog-shadow';
-import { createPublicDMDataTools, DMToolError } from '../src/lib/dm/data-tools';
-import { resetPublicProjectDetailsLoadForTests } from '../src/lib/public-projects';
+import { CATALOG } from '@/data/catalog';
+import { buildCatalogShadowRecords, type CatalogShadowRecord } from '@/lib/db/catalog-shadow';
+import { createPublicDMDataTools, DMToolError } from '@/lib/dm/data-tools';
+import { resetPublicProjectDetailsLoadForTests } from '@/lib/public-projects';
 import {
   FIT_CHECK_CONTEXT_LIMIT,
   sanitizeJobDescriptionForFitCheck,
-} from '../src/lib/dm/fit-check';
-import { createDMChatStream, readDMRuntimeConfig } from '../src/lib/dm/runtime';
+} from '@/lib/dm/fit-check';
+import { createDMChatStream, readDMRuntimeConfig } from '@/lib/dm/runtime';
 import {
   parseStreamLine,
   resolveEvidence,
   validateBlock,
   type ProjectArtifact,
-} from '../src/lib/dm/client';
-import { createDMPostHandler } from '../src/pages/api/dm/chat';
+} from '@/lib/dm/client';
+import { createDMPostHandler } from '@/pages/api/dm/chat';
 
 const TEST_CONFIG = { provider: 'openai' as const, model: 'test-model' };
 
