@@ -10,8 +10,8 @@
  * site keeps one card system, never parallel ones.
  */
 import ProjectCard from './ProjectCard.astro';
-import type { Project } from '../data/catalog';
-import type { ProjectCardReadModel } from '../lib/db/project-reads';
+import type { Project } from '@/data/catalog';
+import type { ProjectCardReadModel } from '@/lib/db/project-reads';
 
 export interface Props {
   projects: (Project | ProjectCardReadModel)[];

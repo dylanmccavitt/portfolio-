@@ -2,7 +2,7 @@
  * Fallback OG image for home, library, resume, and hiring routes.
  */
 import type { APIRoute } from 'astro';
-import { renderOgImage } from '../../lib/og';
+import { renderOgImage } from '@/lib/og';
 
 export const GET: APIRoute = async () => {
   const png = await renderOgImage({

@@ -7,31 +7,31 @@ import { PGlite } from '@electric-sql/pglite';
 import { MockLanguageModelV4 } from 'ai/test';
 import { simulateReadableStream } from 'ai';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import type { GithubRepositorySnapshot } from '../src/lib/db/github-discovery';
-import { scanGithubRepositoryCandidate } from '../src/lib/db/github-discovery';
-import { fetchPublicProjectCards, fetchPublicProjectDetail } from '../src/lib/db/project-reads';
-import { createPublicDMDataTools, DMToolError } from '../src/lib/dm/data-tools';
-import { createDMChatStream } from '../src/lib/dm/runtime';
-import { type RagIndexClient } from '../src/lib/rag/ingestion';
+import type { GithubRepositorySnapshot } from '@/lib/db/github-discovery';
+import { scanGithubRepositoryCandidate } from '@/lib/db/github-discovery';
+import { fetchPublicProjectCards, fetchPublicProjectDetail } from '@/lib/db/project-reads';
+import { createPublicDMDataTools, DMToolError } from '@/lib/dm/data-tools';
+import { createDMChatStream } from '@/lib/dm/runtime';
+import { type RagIndexClient } from '@/lib/rag/ingestion';
 import {
   createPublicRagSearchConfig,
   publicRagCitationsFromFileSearchResult,
   publicRagProjectIds,
-} from '../src/lib/rag/retrieval';
+} from '@/lib/rag/retrieval';
 import {
   signSlackBody,
   type SlackControlPlaneConfig,
-} from '../src/lib/slack/control-plane';
-import { publicProjectStaticPaths } from '../src/lib/public-project-route-resolver';
-import { loadPublicProjectDetails, resetPublicProjectDetailsLoadForTests } from '../src/lib/public-projects';
-import { createAdminDraftApprovePostHandler } from '../src/pages/api/admin/drafts/[id]/approve';
-import { createAdminDraftDetailPatchHandler } from '../src/pages/api/admin/drafts/[id]';
-import { createAdminDraftPublishPostHandler } from '../src/pages/api/admin/drafts/[id]/publish';
+} from '@/lib/slack/control-plane';
+import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
+import { loadPublicProjectDetails, resetPublicProjectDetailsLoadForTests } from '@/lib/public-projects';
+import { createAdminDraftApprovePostHandler } from '@/pages/api/admin/drafts/[id]/approve';
+import { createAdminDraftDetailPatchHandler } from '@/pages/api/admin/drafts/[id]';
+import { createAdminDraftPublishPostHandler } from '@/pages/api/admin/drafts/[id]/publish';
 import {
   createAdminRagSourcesGetHandler,
   createAdminRagSourcesPostHandler,
-} from '../src/pages/api/admin/rag-sources';
-import { createSlackControlPlanePostHandler } from '../src/pages/api/slack/control-plane';
+} from '@/pages/api/admin/rag-sources';
+import { createSlackControlPlanePostHandler } from '@/pages/api/slack/control-plane';
 
 type JsonObject = Record<string, unknown>;
 type DiscoveryFixture = { actor?: string; repo: GithubRepositorySnapshot };

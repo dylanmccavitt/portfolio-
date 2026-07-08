@@ -14,9 +14,9 @@
  *
  * This page renders the static shell only; all interaction lives in the island.
  */
-import DMLayout from '../layouts/DM.astro';
-import { AGENT_NAME, CONTACT, GREETING, SUBGREETING, SUGGESTED } from '../lib/dm/client';
-import { libraryMeta, personJsonLd } from '../lib/seo';
+import DMLayout from '@/layouts/DM.astro';
+import { AGENT_NAME, CONTACT, GREETING, SUBGREETING, SUGGESTED } from '@/lib/dm/client';
+import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 const meta = {
   ...libraryMeta(

@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createDbClient } from '../src/lib/db/client';
+import { createDbClient } from '@/lib/db/client';
 
 export interface QueryResult<Row = unknown> {
   rows: Row[];

@@ -13,18 +13,18 @@
  * the two web fonts, and the global `.badge.<kind>` classes come from
  * `player.css` (imported by the Editorial layout).
  */
-import Editorial from '../../layouts/Editorial.astro';
-import ProjectCardGrid from '../../components/ProjectCardGrid.astro';
+import Editorial from '@/layouts/Editorial.astro';
+import ProjectCardGrid from '@/components/ProjectCardGrid.astro';
 import {
   isImageShot,
   type ProjectShot,
-} from '../../data/catalog';
-import type { ProjectDetailReadModel } from '../../lib/db/project-reads';
-import { publicProjectStaticPaths } from '../../lib/public-project-route-resolver';
-import { loadPublicProjectDetails } from '../../lib/public-projects';
-import { projectMeta } from '../../lib/seo';
-import { AGENT_NAME } from '../../lib/dm/client';
-import '../../styles/dm.css';
+} from '@/data/catalog';
+import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
+import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
+import { projectMeta } from '@/lib/seo';
+import { AGENT_NAME } from '@/lib/dm/client';
+import '@/styles/dm.css';
 
 export async function getStaticPaths() {
   const { projects } = await loadPublicProjectDetails();

@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import { type AdminSessionResult } from '../src/lib/admin/auth';
-import { type RagIndexClient } from '../src/lib/rag/ingestion';
+import { type AdminSessionResult } from '@/lib/admin/auth';
+import { type RagIndexClient } from '@/lib/rag/ingestion';
 import {
   createAdminRagSourcesGetHandler,
   createAdminRagSourcesPostHandler,
-} from '../src/pages/api/admin/rag-sources';
+} from '@/pages/api/admin/rag-sources';
 
 const NOW = '2026-07-02T12:00:00.000Z';
 const ACTOR = 'github:dylan';

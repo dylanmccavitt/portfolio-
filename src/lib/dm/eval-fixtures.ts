@@ -1,8 +1,8 @@
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
-import { CATALOG } from '../../data/catalog';
-import { buildCatalogShadowRecords, type CatalogShadowRecord } from '../db/catalog-shadow';
-import type { ProjectReadQueryable } from '../db/project-reads';
+import { CATALOG } from '@/data/catalog';
+import { buildCatalogShadowRecords, type CatalogShadowRecord } from '@/lib/db/catalog-shadow';
+import type { ProjectReadQueryable } from '@/lib/db/project-reads';
 import type { DMStreamEvent } from './contract';
 
 export interface DMEvalCase {

@@ -1,6 +1,6 @@
-import { RESUME, getResumeTrackById, type ResumeTrack } from '../../data/resume';
-import type { ProjectDetailReadModel, ProjectReadQueryable } from '../db/project-reads';
-import { loadPublicProjectDetails } from '../public-projects';
+import { RESUME, getResumeTrackById, type ResumeTrack } from '@/data/resume';
+import type { ProjectDetailReadModel, ProjectReadQueryable } from '@/lib/db/project-reads';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
 import type { ContactBlock, ProjectSummary, ResumeTrackSummary } from './contract';
 
 export class DMToolError extends Error {

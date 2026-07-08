@@ -16,13 +16,13 @@
  * The stepper is progressive enhancement: with JS off, every beat is stacked
  * and scrollable (see the scoped `<style>` and `src/scripts/tour.ts`).
  */
-import Tour from '../layouts/Tour.astro';
-import ShotRail from '../components/ShotRail.astro';
-import type { ProjectDetailReadModel } from '../lib/db/project-reads';
-import { loadPublicProjectDetails } from '../lib/public-projects';
-import { resolveRequiredPublicProjectByReference } from '../lib/public-project-route-resolver';
-import { RESUME } from '../data/resume';
-import { libraryMeta, personJsonLd } from '../lib/seo';
+import Tour from '@/layouts/Tour.astro';
+import ShotRail from '@/components/ShotRail.astro';
+import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
+import { resolveRequiredPublicProjectByReference } from '@/lib/public-project-route-resolver';
+import { RESUME } from '@/data/resume';
+import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 /**
 /** Site convention for the off-site CTAs. */

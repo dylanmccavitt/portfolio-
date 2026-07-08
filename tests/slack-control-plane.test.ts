@@ -3,15 +3,15 @@ import test from 'node:test';
 import { format } from 'node:util';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import { PORTFOLIO_CANDIDATE_TOPIC, type GithubRepositorySnapshot } from '../src/lib/db/github-discovery';
+import { PORTFOLIO_CANDIDATE_TOPIC, type GithubRepositorySnapshot } from '@/lib/db/github-discovery';
 import {
   handleSlackFormEncodedRequest,
   signSlackBody,
   verifySlackRequest,
   type SlackControlPlaneConfig,
-} from '../src/lib/slack/control-plane';
-import { createGithubSnapshotFetcher } from '../src/lib/slack/github-fetch';
-import { createSlackControlPlanePostHandler } from '../src/pages/api/slack/control-plane';
+} from '@/lib/slack/control-plane';
+import { createGithubSnapshotFetcher } from '@/lib/slack/github-fetch';
+import { createSlackControlPlanePostHandler } from '@/pages/api/slack/control-plane';
 
 const SIGNING_SECRET = 'test-signing-secret';
 const DYLAN_SLACK_USER = 'U_DYLAN';
@@ -228,15 +228,26 @@ async function insertCandidate(db: Queryable, id = 'candidate_test'): Promise<st
   return id;
 }
 
-function interactionBody(actionId: string, candidateId: string, userId = DYLAN_SLACK_USER): string {
+function interactionBody(
+  actionId: string,
+  candidateId: string,
+  userId = DYLAN_SLACK_USER,
+  responseUrl = 'https://hooks.slack.test/response',
+): string {
   return formBody({
     payload: JSON.stringify({
       type: 'block_actions',
-      response_url: 'https://hooks.slack.test/response',
+      response_url: responseUrl,
       user: { id: userId },
       actions: [{ action_id: actionId, value: candidateId }],
     }),
   });
+}
+
+function fetchBodyJson(init: RequestInit | undefined): Record<string, unknown> {
+  const body = init?.body;
+  assert.equal(typeof body, 'string');
+  return JSON.parse(body as string) as Record<string, unknown>;
 }
 
 test('Slack request verification accepts valid signatures and rejects missing stale or invalid signatures', () => {
@@ -700,6 +711,126 @@ test('Slack draft action creates a hidden draft only and never publishes a proje
   assert.equal(events.rows[0]?.action, 'draft_requested');
   assert.equal(events.rows[0]?.after_state, 'draft_requested');
   assert.equal(events.rows[0]?.metadata.decision, 'draft');
+});
+
+test('Slack draft interaction posts ephemeral response_url ack without changing HTTP result', async () => {
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db);
+  const responseUrl = 'https://hooks.slack.com/actions/T123/B456/secret';
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const config: SlackControlPlaneConfig = {
+    ...CONFIG,
+    fetchImpl: async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response('', { status: 200 });
+    },
+  };
+
+  const response = await callRoute(
+    interactionBody('dm_candidate_draft', candidateId, DYLAN_SLACK_USER, responseUrl),
+    db,
+    config,
+  );
+  const json = await responseJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(json.ok, true);
+  assert.equal(json.code, 'hidden_draft_requested');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, responseUrl);
+  assert.equal(calls[0]?.init?.method, 'POST');
+  assert.equal(fetchHeaders(calls[0]?.init)['content-type'], 'application/json; charset=utf-8');
+  assert.deepEqual(fetchBodyJson(calls[0]?.init), {
+    response_type: 'ephemeral',
+    replace_original: false,
+    text: json.text,
+  });
+});
+
+test('Slack interaction ack fetch failures do not change the success result', async (t) => {
+  const logged: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    logged.push(format(...args));
+  };
+  t.after(() => {
+    console.warn = originalWarn;
+  });
+
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db);
+  const config: SlackControlPlaneConfig = {
+    ...CONFIG,
+    fetchImpl: async () => {
+      throw new Error('network failure with slack response secret');
+    },
+  };
+
+  const result = await handleSlackFormEncodedRequest(
+    db,
+    config,
+    interactionBody('dm_candidate_snooze', candidateId, DYLAN_SLACK_USER, 'https://hooks.slack.com/actions/T123/B456/secret'),
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 200);
+  assert.equal(result.code, 'candidate_snoozed');
+  assert.equal(result.message, `Snoozed candidate ${candidateId}.`);
+  assert.equal(logged.length, 1);
+  assert.ok(!logged.join('\n').includes('slack response secret'), 'ack warning must not log free error text');
+});
+
+test('Slack interaction skips response_url ack for non-Slack hosts', async () => {
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db);
+  let fetchCalls = 0;
+  const config: SlackControlPlaneConfig = {
+    ...CONFIG,
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return new Response('', { status: 200 });
+    },
+  };
+
+  const result = await handleSlackFormEncodedRequest(
+    db,
+    config,
+    interactionBody('dm_candidate_snooze', candidateId, DYLAN_SLACK_USER, 'https://example.com/slack-response'),
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'candidate_snoozed');
+  assert.equal(fetchCalls, 0);
+});
+
+test('Slack interaction posts response_url ack for safe error results', async () => {
+  const db = await createMigratedDb();
+  const responseUrl = 'https://hooks.slack.com/actions/T123/B456/missing';
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const config: SlackControlPlaneConfig = {
+    ...CONFIG,
+    fetchImpl: async (input, init) => {
+      calls.push({ url: String(input), init });
+      return new Response('', { status: 200 });
+    },
+  };
+
+  const result = await handleSlackFormEncodedRequest(
+    db,
+    config,
+    interactionBody('dm_candidate_draft', 'candidate_missing', DYLAN_SLACK_USER, responseUrl),
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 404);
+  assert.equal(result.code, 'candidate_not_found');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, responseUrl);
+  assert.deepEqual(fetchBodyJson(calls[0]?.init), {
+    response_type: 'ephemeral',
+    replace_original: false,
+    text: result.message,
+  });
 });
 
 test('Slack candidate actions dismiss and snooze candidates using compact ids', async () => {

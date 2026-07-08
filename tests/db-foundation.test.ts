@@ -6,14 +6,14 @@ import { fileURLToPath } from 'node:url';
 import test, { afterEach } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, applySeeds, resetDatabase, type Queryable } from '../scripts/db';
-import { CATALOG } from '../src/data/catalog';
+import { CATALOG } from '@/data/catalog';
 import {
   buildCatalogShadowRecords,
   fetchCatalogShadowRecords,
   generateCatalogParityReport,
   importCatalogShadowRecords,
   type CatalogShadowRecord,
-} from '../src/lib/db/catalog-shadow';
+} from '@/lib/db/catalog-shadow';
 import {
   fetchInternalShadowProjectReadModels,
   fetchPublicProjectCards,
@@ -22,25 +22,25 @@ import {
   projectRecordToReadModels,
   tryFetchInternalShadowProjectReadModels,
   type ProjectReadQueryable,
-} from '../src/lib/db/project-reads';
+} from '@/lib/db/project-reads';
 import {
   filterPublicProjectDetails,
   loadPublicProjectDetails,
   resetPublicProjectDetailsLoadForTests,
   shouldUsePublicProjectDb,
-} from '../src/lib/public-projects';
+} from '@/lib/public-projects';
 import {
   resolvePublicProjectByReference,
   resolveRequiredPublicProjectByReference,
-} from '../src/lib/public-project-route-resolver';
+} from '@/lib/public-project-route-resolver';
 import {
   CANDIDATE_LIFECYCLE_STATES,
   DRAFT_LIFECYCLE_STATES,
   PROJECT_LIFECYCLE_STATES,
   RAG_SOURCE_ELIGIBILITY_STATES,
   SCAN_RUN_LIFECYCLE_STATES,
-} from '../src/lib/db/schema';
-import { projectMeta } from '../src/lib/seo';
+} from '@/lib/db/schema';
+import { projectMeta } from '@/lib/seo';
 
 afterEach(() => {
   resetPublicProjectDetailsLoadForTests();

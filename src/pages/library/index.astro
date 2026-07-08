@@ -3,10 +3,10 @@
  * All-work library. The home route is the DM chat shell; `/library` is the canonical project
  * index, with filtered indexes under `/library/[filter]`.
  */
-import Editorial from '../../layouts/Editorial.astro';
-import LibraryView from '../../components/LibraryView.astro';
-import { filterPublicProjectDetails, loadPublicProjectDetails } from '../../lib/public-projects';
-import { libraryMeta } from '../../lib/seo';
+import Editorial from '@/layouts/Editorial.astro';
+import LibraryView from '@/components/LibraryView.astro';
+import { filterPublicProjectDetails, loadPublicProjectDetails } from '@/lib/public-projects';
+import { libraryMeta } from '@/lib/seo';
 
 const { projects } = await loadPublicProjectDetails();
 const allProjects = filterPublicProjectDetails(projects, 'all');

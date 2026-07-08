@@ -3,7 +3,7 @@ import {
   createAdminOAuthStateCookie,
   readAdminAuthConfig,
   type AdminAuthConfig,
-} from '../../../../lib/admin/auth';
+} from '@/lib/admin/auth';
 
 export const prerender = false;
 

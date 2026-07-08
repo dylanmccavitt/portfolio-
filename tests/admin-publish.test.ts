@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, type Queryable } from '../scripts/db';
-import { createAdminSessionCookie, type AdminAuthConfig, type AdminSessionResult } from '../src/lib/admin/auth';
-import { createAdminDraftsGetHandler } from '../src/pages/api/admin/drafts';
-import { createAdminDraftDetailGetHandler, createAdminDraftDetailPatchHandler } from '../src/pages/api/admin/drafts/[id]';
-import { createAdminDraftApprovePostHandler } from '../src/pages/api/admin/drafts/[id]/approve';
-import { createAdminDraftPublishPostHandler } from '../src/pages/api/admin/drafts/[id]/publish';
+import { createAdminSessionCookie, type AdminAuthConfig, type AdminSessionResult } from '@/lib/admin/auth';
+import { createAdminDraftsGetHandler } from '@/pages/api/admin/drafts';
+import { createAdminDraftDetailGetHandler, createAdminDraftDetailPatchHandler } from '@/pages/api/admin/drafts/[id]';
+import { createAdminDraftApprovePostHandler } from '@/pages/api/admin/drafts/[id]/approve';
+import { createAdminDraftPublishPostHandler } from '@/pages/api/admin/drafts/[id]/publish';
 
 const NOW = new Date('2026-07-02T12:00:00.000Z');
 const ACTOR = 'github:dylan';

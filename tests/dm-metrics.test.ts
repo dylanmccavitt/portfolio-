@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDMMetricsRecorder } from '../src/lib/dm/metrics';
+import { createDMMetricsRecorder } from '@/lib/dm/metrics';
 
 test('DM metrics records first-token timing once and completion outcome', () => {
   let currentTime = 1_000;

@@ -4,7 +4,7 @@ import {
   fetchCatalogShadowRecords,
   generateCatalogParityReport,
   importCatalogShadowRecords,
-} from '../src/lib/db/catalog-shadow';
+} from '@/lib/db/catalog-shadow';
 
 async function importAndReport(): Promise<void> {
   const db = createQueryable();

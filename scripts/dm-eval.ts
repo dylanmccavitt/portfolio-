@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
-import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES, readNdjsonEvents } from '../src/lib/dm/eval-fixtures';
-import { createDMChatStream } from '../src/lib/dm/runtime';
+import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES, readNdjsonEvents } from '@/lib/dm/eval-fixtures';
+import { createDMChatStream } from '@/lib/dm/runtime';
 
 process.env.DM_METRICS ??= '0';
 

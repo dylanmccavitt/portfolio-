@@ -3,8 +3,8 @@
  * resume entry, pre-rendered at build.
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
-import { RESUME, getResumeTrackById } from '../../../data/resume';
-import { renderOgImage } from '../../../lib/og';
+import { RESUME, getResumeTrackById } from '@/data/resume';
+import { renderOgImage } from '@/lib/og';
 
 export const getStaticPaths = (() =>
   RESUME.tracks.map((t) => ({ params: { track: t.id } }))) satisfies GetStaticPaths;

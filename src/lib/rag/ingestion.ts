@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { JsonRecord, PrivacyState, ProjectLifecycleState, RagSourceEligibilityState } from '../db/schema';
+import type { JsonRecord, PrivacyState, ProjectLifecycleState, RagSourceEligibilityState } from '@/lib/db/schema';
 
 export interface RagQueryable {
   query<Row = unknown>(sql: string, params?: unknown[]): Promise<{ rows: Row[] } | Row[]>;

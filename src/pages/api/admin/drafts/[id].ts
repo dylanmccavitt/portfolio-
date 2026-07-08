@@ -1,12 +1,12 @@
 import type { APIRoute } from 'astro';
-import { createDbClient, getDatabaseUrl, type DbClient } from '../../../../lib/db/client';
-import { getAdminDraft, updateAdminDraftFields, type AdminPublishQueryable } from '../../../../lib/admin/publish';
+import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
+import { getAdminDraft, updateAdminDraftFields, type AdminPublishQueryable } from '@/lib/admin/publish';
 import {
   readAdminAuthConfig,
   requireAdminSession,
   type AdminAuthConfig,
   type AdminSessionResult,
-} from '../../../../lib/admin/auth';
+} from '@/lib/admin/auth';
 
 export const prerender = false;
 

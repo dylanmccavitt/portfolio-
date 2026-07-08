@@ -1,13 +1,13 @@
 import { openai, type OpenAILanguageModelResponsesOptions } from '@ai-sdk/openai';
 import { isStepCount, streamText, tool, type LanguageModel, type ToolSet } from 'ai';
 import { z } from 'zod';
-import type { ProjectReadQueryable } from '../db/project-reads';
+import type { ProjectReadQueryable } from '@/lib/db/project-reads';
 import {
   createPublicRagSearchConfig,
   publicRagCitationsFromFileSearchResult,
   publicRagProjectIds,
   type PublicRagSearchConfig,
-} from '../rag/retrieval';
+} from '@/lib/rag/retrieval';
 import { createPublicDMDataTools, DMToolError, type PublicDMDataTools } from './data-tools';
 import { createDMMetricsRecorder, shouldRecordDMMetrics } from './metrics';
 import { AGENT_NAME, type AnswerBlock, type DMChatRequest, type DMStreamEvent, type ProjectSummary, type ToolTraceItem, type ToolTraceMetadata } from './contract';

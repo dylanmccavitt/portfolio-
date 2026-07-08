@@ -1,12 +1,12 @@
 ---
-import DMLayout from '../layouts/DM.astro';
+import DMLayout from '@/layouts/DM.astro';
 import {
   AGENT_NAME,
   FIT_CHECK_CONTEXT_LIMIT,
   FIT_CHECK_INPUT_LIMIT,
   FIT_CHECK_MIN_CHARS,
-} from '../lib/dm/client';
-import { libraryMeta, personJsonLd } from '../lib/seo';
+} from '@/lib/dm/client';
+import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 const meta = {
   ...libraryMeta(

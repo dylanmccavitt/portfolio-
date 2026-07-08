@@ -3,8 +3,8 @@ import {
   scanGithubRepositoryCandidate,
   type GithubDiscoveryScanResult,
   type GithubRepositorySnapshot,
-} from '../db/github-discovery';
-import type { JsonRecord } from '../db/schema';
+} from '@/lib/db/github-discovery';
+import type { JsonRecord } from '@/lib/db/schema';
 import { GithubSnapshotFetchError, type GithubSnapshotFetcher } from './github-fetch';
 
 export const SLACK_SIGNATURE_VERSION = 'v0';
@@ -20,6 +20,7 @@ export interface SlackControlPlaneConfig {
   signatureToleranceSeconds?: number;
   now?: () => Date;
   githubFetcher?: GithubSnapshotFetcher;
+  fetchImpl?: typeof fetch;
 }
 
 export interface SlackRequestVerificationInput {
@@ -138,11 +139,21 @@ export async function handleSlackFormEncodedRequest(
   const form = new URLSearchParams(body);
   const interactionPayload = form.get('payload');
 
-  try {
-    if (interactionPayload) {
-      return await handleSlackInteraction(db, config, parseSlackInteractionPayload(interactionPayload));
+  if (interactionPayload) {
+    const responseUrl = parseSlackInteractionResponseUrl(interactionPayload);
+    let result: SlackControlPlaneResult;
+
+    try {
+      result = await handleSlackInteraction(db, config, parseSlackInteractionPayload(interactionPayload));
+    } catch (error) {
+      result = safeSlackError(error);
     }
 
+    await postSlackInteractionAck(config, responseUrl, result);
+    return result;
+  }
+
+  try {
     return await handleSlackCommand(db, config, parseSlackCommandPayload(form));
   } catch (error) {
     return safeSlackError(error);
@@ -280,6 +291,59 @@ export function parseSlackInteractionPayload(payloadJson: string): SlackInteract
   }
 
   return { userId, action, candidateId, responseUrl: stringValue(payload, 'response_url', true) };
+}
+
+function parseSlackInteractionResponseUrl(payloadJson: string): string | undefined {
+  try {
+    const payload = parseJsonRecord(payloadJson, 'Slack interaction payload must be JSON.');
+    const responseUrl = payload.response_url;
+    return typeof responseUrl === 'string' && responseUrl.trim() ? responseUrl.trim() : undefined;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+async function postSlackInteractionAck(
+  config: SlackControlPlaneConfig,
+  responseUrl: string | undefined,
+  result: SlackControlPlaneResult,
+): Promise<void> {
+  const trustedUrl = trustedSlackResponseUrl(responseUrl);
+  if (!trustedUrl) return;
+
+  try {
+    const response = await (config.fetchImpl ?? globalThis.fetch)(trustedUrl.href, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        response_type: 'ephemeral',
+        replace_original: false,
+        text: result.message,
+      }),
+    });
+    if (!response.ok) {
+      logSlackInteractionAckWarning({ reason: 'http_status', status: response.status });
+    }
+  } catch (error) {
+    const details =
+      error instanceof Error
+        ? { name: typeof error.name === 'string' ? error.name : 'Error', frames: stackFrames(error) }
+        : { thrownType: typeof error };
+    logSlackInteractionAckWarning({
+      reason: 'fetch_error',
+      ...details,
+    });
+  }
+}
+
+function trustedSlackResponseUrl(responseUrl: string | undefined): URL | null {
+  if (!responseUrl) return null;
+  try {
+    const url = new URL(responseUrl);
+    return url.protocol === 'https:' && url.hostname === 'hooks.slack.com' ? url : null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 export function parseSlackRepoSnapshot(text: string): GithubRepositorySnapshot {
@@ -723,6 +787,13 @@ export function safeSlackError(error: unknown): SlackControlPlaneResult {
     responseType: 'ephemeral',
     message: `Slack control-plane action failed before changing public project visibility. Error ref ${errorRef}.`,
   };
+}
+
+function logSlackInteractionAckWarning(details: Record<string, unknown>): void {
+  console.warn(
+    '[slack-control-plane]',
+    JSON.stringify({ event: 'interaction_ack_warning', ...details }),
+  );
 }
 
 /**
