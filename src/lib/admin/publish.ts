@@ -315,8 +315,8 @@ export async function publishAdminDraft(
     };
   }
 
-  const projectId = draft.proposed_project_id ?? projectIdFromDraftId(draft.id);
   const publicFields = publicProjectFields(draft.proposed_fields);
+  const projectId = await resolvePublishProjectId(db, draft, publicFields.slug);
 
   try {
     await db.query(
@@ -447,6 +447,18 @@ async function countPublishBlockingEvidence(
 
 function projectIdFromDraftId(draftId: string): string {
   return draftId.startsWith('draft_') ? `proj_${draftId.slice(6)}` : `proj_${draftId}`;
+}
+
+async function resolvePublishProjectId(
+  db: AdminPublishQueryable,
+  draft: DraftRow,
+  slug: string,
+): Promise<string> {
+  const derivedId = draft.proposed_project_id ?? projectIdFromDraftId(draft.id);
+  const existing = normalizeRows(
+    await db.query<{ id: string }>(`SELECT id FROM projects WHERE slug = $1`, [slug]),
+  )[0];
+  return existing?.id ?? derivedId;
 }
 
 function validateRequiredFields(fields: JsonRecord): ValidationIssue[] {

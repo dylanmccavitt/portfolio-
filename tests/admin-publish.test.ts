@@ -433,6 +433,72 @@ test('happy path publishes public project fields only and republish updates the 
   assert.equal(countRows.rows[0].title, 'Updated Project Title');
 });
 
+test('new draft with an existing published slug refreshes the same project record', async () => {
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db, 'candidate_loom_refresh');
+  const originalDraftId = 'draft_loom_original';
+  const refreshDraftId = 'draft_loom_refresh';
+
+  await insertDraft(db, {
+    id: originalDraftId,
+    candidateId,
+    fields: VALID_FIELDS,
+    provenance: { repo: 'loom' },
+    lifecycle: 'hidden',
+  });
+  await insertEvidence(db, { id: 'evidence_loom_original', draftId: originalDraftId, privacy: 'safe_public' });
+
+  const originalPatch = await patchDraft(db, originalDraftId, VALID_FIELDS);
+  assert.equal(originalPatch.status, 200);
+  const originalApprove = await approveDraft(db, originalDraftId);
+  assert.equal(originalApprove.status, 200);
+  const originalPublish = await publishDraft(db, originalDraftId, { confirmProvenance: true, confirmPrivacy: true });
+  const originalJson = await responseJson(originalPublish);
+  assert.equal(originalPublish.status, 200);
+  const originalProjectId = String(originalJson.projectId);
+
+  await insertDraft(db, {
+    id: refreshDraftId,
+    candidateId,
+    fields: {
+      ...VALID_FIELDS,
+      title: 'Loom refresh title',
+      media: [{ video: '/demos/loom-install.mp4', cap: 'Installing Loom' }],
+    },
+    provenance: { repo: 'loom' },
+    lifecycle: 'hidden',
+  });
+  await insertEvidence(db, { id: 'evidence_loom_refresh', draftId: refreshDraftId, privacy: 'safe_public' });
+
+  const refreshPatch = await patchDraft(db, refreshDraftId, {
+    title: 'Loom refresh title',
+    media: [{ video: '/demos/loom-install.mp4', cap: 'Installing Loom' }],
+  });
+  assert.equal(refreshPatch.status, 200);
+  const refreshApprove = await approveDraft(db, refreshDraftId);
+  assert.equal(refreshApprove.status, 200);
+  const refreshPublish = await publishDraft(db, refreshDraftId, { confirmProvenance: true, confirmPrivacy: true });
+  const refreshJson = await responseJson(refreshPublish);
+
+  assert.equal(refreshPublish.status, 200);
+  assert.equal(refreshJson.code, 'published');
+  assert.equal(refreshJson.projectId, originalProjectId);
+
+  const projectRows = await db.query<{ count: string; title: string; media: JsonBody[] }>(
+    `SELECT count(*) OVER () AS count, title, media FROM projects WHERE slug = $1 LIMIT 1`,
+    [VALID_FIELDS.slug],
+  );
+  assert.equal(Number(projectRows.rows[0].count), 1);
+  assert.equal(projectRows.rows[0].title, 'Loom refresh title');
+  assert.deepEqual(projectRows.rows[0].media, [{ video: '/demos/loom-install.mp4', cap: 'Installing Loom' }]);
+
+  const refreshDraftRows = await db.query<{ proposed_project_id: string }>(
+    `SELECT proposed_project_id FROM project_drafts WHERE id = $1`,
+    [refreshDraftId],
+  );
+  assert.equal(refreshDraftRows.rows[0].proposed_project_id, originalProjectId);
+});
+
 test('PATCH rejects invalid fields without changing proposed fields after each rejection', async () => {
   const db = await createMigratedDb();
   const candidateId = await insertCandidate(db, 'candidate_invalid');
