@@ -1,0 +1,38 @@
+---
+/**
+ * Admin review shell — a deliberately plain, dark, phone-first scaffold for the
+ * authenticated review pages (`/admin`, `/admin/drafts/[id]`).
+ *
+ * These pages are private tooling, not public content: they carry
+ * `robots: noindex`, no OG/Twitter/JSON-LD, and are absent from the sitemap.
+ * Design tokens (`--pl-*`) come from `player.css`; the small admin-only layer
+ * lives in `admin.css`.
+ */
+import '@/styles/player.css';
+import '@/styles/admin.css';
+
+export interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+  </head>
+  <body class="admin-body">
+    <slot />
+  </body>
+</html>
