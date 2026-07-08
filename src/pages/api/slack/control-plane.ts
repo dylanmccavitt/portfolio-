@@ -4,6 +4,7 @@ import {
   handleSlackFormEncodedRequest,
   safeSlackError,
   verifySlackRequest,
+  type SlackBlock,
   type SlackControlPlaneConfig,
   type SlackControlPlaneQueryable,
 } from '../../../lib/slack/control-plane';
@@ -53,7 +54,7 @@ export function createSlackControlPlanePostHandler(deps: SlackControlPlanePostHa
 
       const db = dbResult.db;
       const result = await handleSlackFormEncodedRequest(db, config, body);
-      return slackJson(slackHttpStatus(result.status), result.ok, result.code, result.message, result.responseType);
+      return slackJson(slackHttpStatus(result.status), result.ok, result.code, result.message, result.responseType, result.blocks);
     } catch (error) {
       // Last-resort guard: without it, anything thrown outside
       // handleSlackFormEncodedRequest becomes an Astro 500 and Slack shows
@@ -131,6 +132,7 @@ function slackJson(
   code: string,
   message: string,
   responseType: 'ephemeral' | 'in_channel' = 'ephemeral',
+  blocks?: SlackBlock[],
 ): Response {
   return new Response(
     JSON.stringify({
@@ -138,6 +140,7 @@ function slackJson(
       code,
       response_type: responseType,
       text: message,
+      ...(blocks?.length ? { blocks } : {}),
     }),
     {
       status,

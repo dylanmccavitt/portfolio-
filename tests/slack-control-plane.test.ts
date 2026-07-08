@@ -351,6 +351,30 @@ test('single-user Slack scan trigger routes authorized repo input to GitHub disc
   assert.equal(json.code, 'scan_qualified');
   assert.match(String(json.text), /Queued review candidate candidate_/);
 
+  const blocks = json.blocks;
+  assert.ok(Array.isArray(blocks), 'scan_qualified response must carry Block Kit blocks');
+  const actionsBlock = blocks.find(
+    (block) => typeof block === 'object' && block !== null && 'elements' in block,
+  );
+  assert.ok(
+    actionsBlock && typeof actionsBlock === 'object' && 'elements' in actionsBlock,
+    'expected an actions block with elements',
+  );
+  const elements = actionsBlock.elements;
+  assert.ok(Array.isArray(elements), 'actions block must carry button elements');
+  const buttons = elements.map((element) =>
+    element && typeof element === 'object' && 'action_id' in element && 'value' in element
+      ? { actionId: element.action_id, value: element.value }
+      : { actionId: undefined, value: undefined },
+  );
+  assert.deepEqual(
+    buttons.map((button) => button.actionId),
+    ['dm_candidate_draft', 'dm_candidate_snooze', 'dm_candidate_dismiss'],
+  );
+  for (const button of buttons) {
+    assert.match(String(button.value), /^candidate_/, 'button value must reference the candidate id');
+  }
+
   const scanRuns = await db.query<{ trigger: string; actor: string; lifecycle_state: string; result_counts: Record<string, unknown> }>(
     `SELECT trigger, actor, lifecycle_state, result_counts FROM scan_runs`,
   );

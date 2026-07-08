@@ -47,12 +47,15 @@ export interface SlackInteractionPayload {
   responseUrl?: string;
 }
 
+export type SlackBlock = Record<string, unknown>;
+
 export type SlackControlPlaneResult = {
   ok: boolean;
   status: number;
   code: string;
   message: string;
   responseType?: 'ephemeral' | 'in_channel';
+  blocks?: SlackBlock[];
   scan?: GithubDiscoveryScanResult;
   candidateId?: string;
   draftId?: string;
@@ -150,12 +153,14 @@ export async function handleSlackCommand(
   const scan = await scanGithubRepositoryCandidate(db, { actor, trigger: 'slack', repo });
 
   if (scan.status === 'qualified') {
+    const repoLabel = repo.fullName ?? `${repo.owner}/${repo.name}`;
     return {
       ok: true,
       status: 200,
       code: 'scan_qualified',
       responseType: 'ephemeral',
-      message: `Queued review candidate ${scan.candidateId} from ${repo.fullName ?? `${repo.owner}/${repo.name}`}.`,
+      message: `Queued review candidate ${scan.candidateId} from ${repoLabel}.`,
+      blocks: candidateActionBlocks(scan.candidateId, repoLabel, scan.confidence),
       scan,
       candidateId: scan.candidateId,
     };
@@ -195,6 +200,44 @@ export async function handleSlackInteraction(
   }
 
   return snoozeCandidate(db, payload.candidateId, `slack:${payload.userId}`);
+}
+
+function candidateActionBlocks(candidateId: string, repoLabel: string, confidence: number): SlackBlock[] {
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Review candidate* \`${candidateId}\`\n${repoLabel} — confidence ${confidence.toFixed(2)}`,
+      },
+    },
+    {
+      type: 'actions',
+      block_id: `candidate_actions_${candidateId}`,
+      elements: [
+        {
+          type: 'button',
+          style: 'primary',
+          action_id: 'dm_candidate_draft',
+          value: candidateId,
+          text: { type: 'plain_text', text: 'Draft' },
+        },
+        {
+          type: 'button',
+          action_id: 'dm_candidate_snooze',
+          value: candidateId,
+          text: { type: 'plain_text', text: 'Snooze' },
+        },
+        {
+          type: 'button',
+          style: 'danger',
+          action_id: 'dm_candidate_dismiss',
+          value: candidateId,
+          text: { type: 'plain_text', text: 'Dismiss' },
+        },
+      ],
+    },
+  ];
 }
 
 export function parseSlackCommandPayload(form: URLSearchParams): SlackCommandPayload {
