@@ -192,7 +192,7 @@ test('callback for allowed GitHub login sets session cookie and redirects', asyn
 
   const response = await GET({ request: callbackRequest(`?code=abc123&state=${state}`, cookieHeader(login)) } as never);
   assert.equal(response.status, 302);
-  assert.equal(response.headers.get('location'), '/api/admin/drafts');
+  assert.equal(response.headers.get('location'), '/admin');
   const setCookie = setCookieHeader(response);
   assert.match(setCookie, /admin_session=v1\./);
   assert.match(setCookie, /HttpOnly/);

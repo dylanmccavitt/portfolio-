@@ -51,7 +51,7 @@ export function createAdminAuthCallbackHandler(deps: AdminAuthCallbackDeps = {})
         ]);
       }
 
-      return redirectResponse('/api/admin/drafts', [createAdminSessionCookie(login, config), clearAdminOAuthStateCookie()]);
+      return redirectResponse('/admin', [createAdminSessionCookie(login, config), clearAdminOAuthStateCookie()]);
     } catch (error) {
       return safeAdminError(error);
     }
