@@ -207,7 +207,28 @@ test('GitHub snapshot fetcher repo failures throw safe errors without body or to
   );
 });
 
-async function insertCandidate(db: Queryable, id = 'candidate_test'): Promise<string> {
+type CandidateFixtureInput =
+  | string
+  | {
+      id?: string;
+      fullName?: string;
+      sourceRef?: string;
+      repoVisibility?: 'public' | 'private';
+      language?: string | null;
+      pushedAt?: string | null;
+      description?: string | null;
+    };
+
+async function insertCandidate(db: Queryable, input: CandidateFixtureInput = 'candidate_test'): Promise<string> {
+  const options = typeof input === 'string' ? { id: input } : input;
+  const id = options.id ?? 'candidate_test';
+  const fullName = options.fullName ?? 'DylanMcCavitt/portfolio-candidate-app';
+  const sourceRef = options.sourceRef ?? `https://github.com/${fullName}`;
+  const repoVisibility = options.repoVisibility ?? 'public';
+  const language = options.language ?? 'TypeScript';
+  const pushedAt = options.pushedAt ?? '2026-06-01T00:00:00.000Z';
+  const description = options.description ?? 'A test GitHub repo worth reviewing for the portfolio.';
+
   await db.query(
     `INSERT INTO scan_runs (id, trigger, actor, lifecycle_state, started_at, finished_at)
      VALUES ($1, 'test', 'test', 'completed', $2, $2)`,
@@ -216,13 +237,38 @@ async function insertCandidate(db: Queryable, id = 'candidate_test'): Promise<st
   await db.query(
     `INSERT INTO project_candidates (
        id, scan_run_id, source_kind, source_ref, repo_visibility, signals, confidence, evidence_packet, lifecycle_state
-     ) VALUES ($1, $2, 'github_repo', $3, 'public', $4::jsonb, 0.91, $5::jsonb, 'qualified')`,
+     ) VALUES ($1, $2, 'github_repo', $3, $4, $5::jsonb, 0.91, $6::jsonb, 'qualified')`,
     [
       id,
       `scan_${id}`,
-      'https://github.com/DylanMcCavitt/portfolio-candidate-app',
-      JSON.stringify({ topic: PORTFOLIO_CANDIDATE_TOPIC, language: 'TypeScript' }),
-      JSON.stringify({ repo: 'DylanMcCavitt/portfolio-candidate-app', audit: { allowlisted: true } }),
+      sourceRef,
+      repoVisibility,
+      JSON.stringify({
+        repo: fullName,
+        topics: [PORTFOLIO_CANDIDATE_TOPIC],
+        allowlistTopic: PORTFOLIO_CANDIDATE_TOPIC,
+        descriptionPresent: Boolean(description?.trim()),
+        readmePresent: false,
+        language,
+        stars: 0,
+        pushedAt,
+        homepageUrl: null,
+      }),
+      JSON.stringify({ repo: fullName, audit: { allowlisted: true } }),
+    ],
+  );
+  await db.query(
+    `INSERT INTO evidence_sources (
+       id, candidate_id, source_type, source_url, source_ref, repo_visibility, extracted_text, privacy_state, claim_map
+     ) VALUES ($1, $2, 'repo', $3, $4, $5, $6, $7, '{}'::jsonb)`,
+    [
+      `evidence_${id}_repo`,
+      id,
+      repoVisibility === 'public' ? sourceRef : null,
+      fullName,
+      repoVisibility,
+      description,
+      repoVisibility === 'public' ? 'safe_public' : 'private_allowed_for_draft',
     ],
   );
   return id;
@@ -697,6 +743,15 @@ test('Slack draft action creates a hidden draft only and never publishes a proje
   assert.equal(drafts.rows[0]?.lifecycle_state, 'hidden');
   assert.equal(drafts.rows[0]?.proposed_project_id, null);
   assert.equal(drafts.rows[0]?.proposed_fields.visibility, 'hidden');
+  assert.equal(drafts.rows[0]?.proposed_fields.slug, 'portfolio-candidate-app');
+  assert.equal(drafts.rows[0]?.proposed_fields.title, 'Portfolio Candidate App');
+  assert.equal(drafts.rows[0]?.proposed_fields.tagline, 'A test GitHub repo worth reviewing for the portfolio.');
+  assert.equal(drafts.rows[0]?.proposed_fields.summary, 'A test GitHub repo worth reviewing for the portfolio.');
+  assert.equal(drafts.rows[0]?.proposed_fields.area, 'TypeScript');
+  assert.equal(drafts.rows[0]?.proposed_fields.year, 2026);
+  assert.deepEqual(drafts.rows[0]?.proposed_fields.links, [
+    ['GitHub', 'https://github.com/DylanMcCavitt/portfolio-candidate-app'],
+  ]);
   assert.equal(drafts.rows[0]?.provenance_map.publicPublish, false);
 
   const publishedProjects = await db.query<{ count: string }>(
@@ -711,6 +766,33 @@ test('Slack draft action creates a hidden draft only and never publishes a proje
   assert.equal(events.rows[0]?.action, 'draft_requested');
   assert.equal(events.rows[0]?.after_state, 'draft_requested');
   assert.equal(events.rows[0]?.metadata.decision, 'draft');
+});
+
+test('Slack draft action seeds private candidates without publishable links', async () => {
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db, {
+    id: 'candidate_private',
+    fullName: 'DylanMcCavitt/tastytrade-exit-manager',
+    sourceRef: 'https://github.com/DylanMcCavitt/tastytrade-exit-manager',
+    repoVisibility: 'private',
+    description: 'Private automation for managing trading exits. Internal notes stay hidden.',
+  });
+
+  const response = await callRoute(interactionBody('dm_candidate_draft', candidateId), db);
+  const json = await responseJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(json.ok, true);
+
+  const drafts = await db.query<{ proposed_fields: Record<string, unknown> }>(
+    `SELECT proposed_fields FROM project_drafts WHERE candidate_id = $1`,
+    [candidateId],
+  );
+  assert.equal(drafts.rows[0]?.proposed_fields.slug, 'tastytrade-exit-manager');
+  assert.equal(drafts.rows[0]?.proposed_fields.title, 'Tastytrade Exit Manager');
+  assert.equal(drafts.rows[0]?.proposed_fields.tagline, 'Private automation for managing trading exits.');
+  assert.equal(drafts.rows[0]?.proposed_fields.summary, 'Private automation for managing trading exits. Internal notes stay hidden.');
+  assert.equal(drafts.rows[0]?.proposed_fields.year, 2026);
+  assert.deepEqual(drafts.rows[0]?.proposed_fields.links, []);
 });
 
 test('Slack draft interaction posts ephemeral response_url ack without changing HTTP result', async () => {

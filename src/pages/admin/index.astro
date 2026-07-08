@@ -23,6 +23,8 @@ interface DraftListItem {
   updated_at: string;
   slug: string | null;
   title: string | null;
+  source_ref: string | null;
+  signals: Record<string, unknown> | null;
 }
 
 const auth = authenticateAdminPage(Astro.request);
@@ -48,16 +50,38 @@ const STATE_LABELS: Record<DraftLifecycleState, string> = {
   approved_for_publish: 'Approved for publish',
 };
 
-function formatWhen(value: string): string {
+function fallbackWhen(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('en-US', {
     year: 'numeric',
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'UTC',
+    timeZoneName: 'short',
   });
+}
+
+function repoLabelFromDraft(draft: DraftListItem): string {
+  const repo = draft.signals?.repo;
+  if (typeof repo === 'string' && repo.trim()) return repo.trim();
+  if (!draft.source_ref) return '';
+
+  try {
+    const url = new URL(draft.source_ref);
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (url.hostname === 'github.com' && parts.length >= 2) return `${parts[0]}/${parts[1]}`;
+    return parts.slice(-2).join('/') || draft.source_ref;
+  } catch (_error) {
+    const parts = draft.source_ref.split('/').filter(Boolean);
+    return parts.slice(-2).join('/') || draft.source_ref;
+  }
+}
+
+function draftTitle(draft: DraftListItem): string {
+  return draft.title?.trim() || repoLabelFromDraft(draft) || 'Untitled draft';
 }
 ---
 
@@ -125,14 +149,14 @@ function formatWhen(value: string): string {
           {drafts.map((draft) => (
             <li>
               <a class="admin-card" href={`/admin/drafts/${draft.id}`}>
-                <span class="admin-card-title">{draft.title ?? 'Untitled draft'}</span>
+                <span class="admin-card-title">{draftTitle(draft)}</span>
                 <span class="admin-state" data-state={draft.lifecycle_state}>
                   {STATE_LABELS[draft.lifecycle_state] ?? draft.lifecycle_state}
                 </span>
                 <span class="admin-card-id">{draft.id}</span>
                 <span class="admin-meta">
-                  <span>Created <span class="mono">{formatWhen(draft.created_at)}</span></span>
-                  <span>Updated <span class="mono">{formatWhen(draft.updated_at)}</span></span>
+                  <span>Created <time class="mono" datetime={draft.created_at} data-local-time>{fallbackWhen(draft.created_at)}</time></span>
+                  <span>Updated <time class="mono" datetime={draft.updated_at} data-local-time>{fallbackWhen(draft.updated_at)}</time></span>
                   {draft.candidate_id && (
                     <span>Candidate <span class="mono">{draft.candidate_id}</span></span>
                   )}
@@ -144,4 +168,13 @@ function formatWhen(value: string): string {
       )
     }
   </div>
+  <script is:inline>
+    (() => {
+      const options = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+      for (const time of document.querySelectorAll('time[data-local-time][datetime]')) {
+        const date = new Date(time.dateTime);
+        if (!Number.isNaN(date.getTime())) time.textContent = date.toLocaleString(undefined, options);
+      }
+    })();
+  </script>
 </Admin>

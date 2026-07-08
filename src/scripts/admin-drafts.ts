@@ -24,6 +24,21 @@ type PayloadResult =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; message: string };
 
+function formatLocalTimes(): void {
+  const options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  };
+
+  document.querySelectorAll<HTMLTimeElement>('time[data-local-time][datetime]').forEach((time) => {
+    const date = new Date(time.dateTime);
+    if (!Number.isNaN(date.getTime())) time.textContent = date.toLocaleString(undefined, options);
+  });
+}
+
 function initRoot(root: HTMLElement): void {
   const draftId = root.dataset.draftId?.trim();
   const form = root.querySelector<HTMLFormElement>('[data-admin-form]');
@@ -158,4 +173,5 @@ function initRoot(root: HTMLElement): void {
   });
 }
 
+formatLocalTimes();
 document.querySelectorAll<HTMLElement>('[data-admin-root]').forEach(initRoot);

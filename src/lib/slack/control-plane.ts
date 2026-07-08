@@ -4,7 +4,7 @@ import {
   type GithubDiscoveryScanResult,
   type GithubRepositorySnapshot,
 } from '@/lib/db/github-discovery';
-import type { JsonRecord } from '@/lib/db/schema';
+import type { JsonRecord, RepoVisibility } from '@/lib/db/schema';
 import { GithubSnapshotFetchError, type GithubSnapshotFetcher } from './github-fetch';
 
 export const SLACK_SIGNATURE_VERSION = 'v0';
@@ -68,6 +68,7 @@ interface CandidateRow {
   id: string;
   scan_run_id: string | null;
   source_ref: string;
+  repo_visibility: RepoVisibility;
   signals: JsonRecord;
   confidence: string;
   evidence_packet: JsonRecord;
@@ -76,6 +77,10 @@ interface CandidateRow {
 
 interface DraftRow {
   id: string;
+}
+
+interface RepoEvidenceRow {
+  extracted_text: string | null;
 }
 
 interface ParsedSlackRepoSnapshotInput {
@@ -474,6 +479,7 @@ async function requestHiddenDraft(
   );
 
   if (!existingDraft) {
+    const repoDescription = await fetchCandidateRepoDescription(db, candidateId);
     await db.query(
       `INSERT INTO project_drafts (
          id, candidate_id, proposed_fields, private_notes, provenance_map, lifecycle_state
@@ -481,7 +487,7 @@ async function requestHiddenDraft(
       [
         draftId,
         candidateId,
-        JSON.stringify(buildHiddenDraftFields(candidate)),
+        JSON.stringify(buildHiddenDraftFields(candidate, repoDescription)),
         'Created from Slack draft action. Hidden until admin review and publish.',
         JSON.stringify(buildHiddenDraftProvenance(candidate)),
       ],
@@ -597,12 +603,29 @@ async function fetchCandidate(
   candidateId: string,
 ): Promise<CandidateRow | null> {
   const result = await db.query<CandidateRow>(
-    `SELECT id, scan_run_id, source_ref, signals, confidence, evidence_packet, lifecycle_state
+    `SELECT id, scan_run_id, source_ref, repo_visibility, signals, confidence, evidence_packet, lifecycle_state
      FROM project_candidates
      WHERE id = $1`,
     [candidateId],
   );
   return normalizeRows(result)[0] ?? null;
+}
+
+async function fetchCandidateRepoDescription(
+  db: SlackControlPlaneQueryable,
+  candidateId: string,
+): Promise<string> {
+  const result = await db.query<RepoEvidenceRow>(
+    `SELECT extracted_text
+     FROM evidence_sources
+     WHERE candidate_id = $1
+       AND source_type = 'repo'
+       AND extracted_text IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [candidateId],
+  );
+  return normalizeRows(result)[0]?.extracted_text?.trim() ?? '';
 }
 
 async function fetchDraftForCandidate(
@@ -615,7 +638,8 @@ async function fetchDraftForCandidate(
   return normalizeRows(result)[0] ?? null;
 }
 
-function buildHiddenDraftFields(candidate: CandidateRow): JsonRecord {
+function buildHiddenDraftFields(candidate: CandidateRow, repoDescription: string): JsonRecord {
+  const repoName = repoNameFromCandidate(candidate);
   return {
     source: 'github_discovery',
     candidateId: candidate.id,
@@ -624,7 +648,65 @@ function buildHiddenDraftFields(candidate: CandidateRow): JsonRecord {
     signals: candidate.signals,
     evidencePacket: candidate.evidence_packet,
     visibility: 'hidden',
+    slug: slugFromRepoName(repoName) || slugFromRepoName(candidate.id) || 'draft',
+    title: titleFromRepoName(repoName),
+    tagline: taglineFromDescription(repoDescription),
+    area: typeof candidate.signals.language === 'string' ? candidate.signals.language : '',
+    year: yearFromSignals(candidate.signals),
+    summary: repoDescription,
+    links: candidate.repo_visibility === 'public' ? [['GitHub', candidate.source_ref]] : [],
   };
+}
+
+function repoNameFromCandidate(candidate: CandidateRow): string {
+  const repo = candidate.signals.repo;
+  if (typeof repo === 'string') {
+    const name = repo.split('/').filter(Boolean).at(-1);
+    if (name) return name;
+  }
+
+  try {
+    const url = new URL(candidate.source_ref);
+    const name = url.pathname.split('/').filter(Boolean).at(-1)?.replace(/\.git$/i, '');
+    if (name) return name;
+  } catch (_error) {
+    const name = candidate.source_ref.split('/').filter(Boolean).at(-1)?.replace(/\.git$/i, '');
+    if (name) return name;
+  }
+
+  return candidate.id;
+}
+
+function slugFromRepoName(repoName: string): string {
+  return repoName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function titleFromRepoName(repoName: string): string {
+  const words = repoName
+    .replace(/[-_]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+}
+
+function taglineFromDescription(description: string): string {
+  const trimmed = description.trim();
+  if (!trimmed) return '';
+  const sentence = trimmed.match(/^(.+?[.!?])(?:\s|$)/s)?.[1]?.trim();
+  return (sentence || trimmed).slice(0, 140).trim();
+}
+
+function yearFromSignals(signals: JsonRecord): number {
+  const pushedAt = signals.pushedAt;
+  if (typeof pushedAt === 'string') {
+    const date = new Date(pushedAt);
+    if (!Number.isNaN(date.getTime())) return date.getFullYear();
+  }
+  return new Date().getFullYear();
 }
 
 function buildHiddenDraftProvenance(candidate: CandidateRow): JsonRecord {
