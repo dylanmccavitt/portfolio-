@@ -9,10 +9,11 @@ import {
 } from './db/project-reads';
 
 const PUBLIC_PROJECT_DB_FLAGS = ['PUBLIC_PROJECT_PAGES_FROM_DB', 'PORTFOLIO_PUBLIC_PROJECTS_FROM_DB'] as const;
+const DATABASE_ENV_KEYS = ['DATABASE_URL', 'POSTGRES_URL', 'PORTFOLIO_DATABASE_URL', 'PORTFOLIO_POSTGRES_URL'] as const;
 const TRUTHY_ENV_VALUES: Record<string, true> = { '1': true, true: true, yes: true, on: true };
 
 type PublicProjectFlag = (typeof PUBLIC_PROJECT_DB_FLAGS)[number];
-export type PublicProjectEnv = DatabaseEnv & Partial<Record<PublicProjectFlag, string>>;
+export type PublicProjectEnv = DatabaseEnv & Partial<Record<PublicProjectFlag, string>> & { VERCEL_ENV?: string };
 
 export type PublicProjectSource = 'catalog' | 'db';
 
@@ -28,7 +29,23 @@ export interface PublicProjectLoadOptions {
 }
 
 export function shouldUsePublicProjectDb(env: PublicProjectEnv = process.env): boolean {
-  return PUBLIC_PROJECT_DB_FLAGS.some((key) => Object.hasOwn(TRUTHY_ENV_VALUES, env[key]?.trim().toLowerCase() ?? ''));
+  if (PUBLIC_PROJECT_DB_FLAGS.some((key) => Object.hasOwn(TRUTHY_ENV_VALUES, env[key]?.trim().toLowerCase() ?? ''))) {
+    return true;
+  }
+
+  // Preview deploys share the Neon preview branch; read published rows when DB is configured.
+  if (env.VERCEL_ENV === 'preview' && hasDatabaseUrl(env)) return true;
+
+  return false;
+}
+
+/** Public project pages should SSR from the DB instead of prerendering at build time. */
+export function shouldRenderPublicProjectsLive(env: PublicProjectEnv = process.env): boolean {
+  return shouldUsePublicProjectDb(env);
+}
+
+function hasDatabaseUrl(env: DatabaseEnv): boolean {
+  return DATABASE_ENV_KEYS.some((key) => Boolean(env[key]?.trim()));
 }
 
 function catalogProjectDetails(): ProjectDetailReadModel[] {
@@ -72,6 +89,11 @@ async function resolvePublicProjectDetails(options: PublicProjectLoadOptions): P
 }
 
 export async function loadPublicProjectDetails(options: PublicProjectLoadOptions = {}): Promise<PublicProjectLoadResult> {
+  const env = options.env ?? process.env;
+  if (shouldUsePublicProjectDb(env) || options.db) {
+    return resolvePublicProjectDetails(options);
+  }
+
   publicProjectLoadPromise ??= resolvePublicProjectDetails(options);
   return publicProjectLoadPromise;
 }

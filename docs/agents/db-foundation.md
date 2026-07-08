@@ -6,9 +6,10 @@ AGE-728 adds the Neon-on-Vercel foundation for future DM project records. AGE-73
 
 - Entry point: `loadPublicProjectDetails()` in `src/lib/public-projects.ts`.
 - Gate env flags (either truthy enables DB reads): `PUBLIC_PROJECT_PAGES_FROM_DB`, `PORTFOLIO_PUBLIC_PROJECTS_FROM_DB` (accepted values: `1`, `true`, `yes`, `on`).
+- Preview auto-gate: when `VERCEL_ENV=preview` and a database connection string is configured, published DB rows are read even without an explicit gate flag.
 - When enabled: queries `projects` where `lifecycle_state = 'published'` via `fetchPublicProjectDetails()` / `fetchPublicProjectCards()` in `src/lib/db/project-reads.ts`.
 - Fallback: when the gate is disabled, the DB is unavailable, no published rows exist, or the query throws, routes receive catalog-backed shadow read models from `buildCatalogShadowRecords(CATALOG)` in `src/data/catalog.ts`.
-- Consumers: `/library`, `/library/[filter]`, `/projects/[id]` static paths, sitemap, and OG image routes.
+- Live rendering: when the gate is enabled, `/library`, `/library/[filter]`, `/projects/[id]`, and `/hiring` set `prerender = false` so newly published rows appear without a redeploy.
 
 ## Environment story
 

@@ -19,10 +19,12 @@
 import Tour from '@/layouts/Tour.astro';
 import ShotRail from '@/components/ShotRail.astro';
 import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
-import { loadPublicProjectDetails } from '@/lib/public-projects';
+import { loadPublicProjectDetails, shouldRenderPublicProjectsLive } from '@/lib/public-projects';
 import { resolveRequiredPublicProjectByReference } from '@/lib/public-project-route-resolver';
 import { RESUME } from '@/data/resume';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
+
+export const prerender = !shouldRenderPublicProjectsLive(process.env);
 
 /**
 /** Site convention for the off-site CTAs. */

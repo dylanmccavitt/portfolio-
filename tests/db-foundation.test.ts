@@ -517,6 +517,8 @@ test('DB read layer parses valid video media and drops invalid video entries', a
 test('public project DB gate falls back to catalog until explicitly enabled and populated', async () => {
   assert.equal(shouldUsePublicProjectDb({}), false);
   assert.equal(shouldUsePublicProjectDb({ PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }), true);
+  assert.equal(shouldUsePublicProjectDb({ VERCEL_ENV: 'preview', DATABASE_URL: 'postgres://preview' }), true);
+  assert.equal(shouldUsePublicProjectDb({ VERCEL_ENV: 'preview' }), false);
 
   resetPublicProjectDetailsLoadForTests();
   const disabled = await loadPublicProjectDetails({ env: {} });
@@ -548,7 +550,7 @@ test('public project DB gate falls back to catalog until explicitly enabled and 
   assert.deepEqual(filterPublicProjectDetails(enabled.projects, 'all').map((project) => project.id), [published.id]);
 });
 
-test('loadPublicProjectDetails keeps one source set per process after a DB failure', async () => {
+test('loadPublicProjectDetails retries live DB reads after a transient failure', async () => {
   resetPublicProjectDetailsLoadForTests();
 
   const db = createTestDb();
@@ -579,14 +581,19 @@ test('loadPublicProjectDetails keeps one source set per process after a DB failu
 
   shouldFail = false;
   const second = await loadPublicProjectDetails({ env, db: flakyDb });
-  assert.equal(second.source, 'catalog');
-  assert.equal(second.projects.length, CATALOG.length);
-  assert.equal(second, first);
+  assert.equal(second.source, 'db');
+  assert.deepEqual(second.projects.map((project) => project.id), [published.id]);
 
   resetPublicProjectDetailsLoadForTests();
   const gateOff = await loadPublicProjectDetails({ env: {} });
   assert.equal(gateOff.source, 'catalog');
   assert.equal(gateOff.reason, 'Public project DB gate is disabled.');
+
+  resetPublicProjectDetailsLoadForTests();
+  const cachedFirst = await loadPublicProjectDetails({ env: {} });
+  const cachedSecond = await loadPublicProjectDetails({ env: {} });
+  assert.equal(cachedFirst.source, 'catalog');
+  assert.equal(cachedSecond, cachedFirst);
 });
 
 test('shadow read helper reports unavailable instead of throwing on missing or failed DB', async () => {

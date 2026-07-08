@@ -5,8 +5,10 @@
  */
 import Editorial from '@/layouts/Editorial.astro';
 import LibraryView from '@/components/LibraryView.astro';
-import { filterPublicProjectDetails, loadPublicProjectDetails } from '@/lib/public-projects';
+import { filterPublicProjectDetails, loadPublicProjectDetails, shouldRenderPublicProjectsLive } from '@/lib/public-projects';
 import { libraryMeta } from '@/lib/seo';
+
+export const prerender = !shouldRenderPublicProjectsLive(process.env);
 
 const { projects } = await loadPublicProjectDetails();
 const allProjects = filterPublicProjectDetails(projects, 'all');

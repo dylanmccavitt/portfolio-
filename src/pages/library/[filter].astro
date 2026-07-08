@@ -19,7 +19,7 @@ import {
   playlistFromSlug,
   type PlaylistId,
 } from '@/data/catalog';
-import { filterPublicProjectDetails, loadPublicProjectDetails } from '@/lib/public-projects';
+import { filterPublicProjectDetails, loadPublicProjectDetails, shouldRenderPublicProjectsLive } from '@/lib/public-projects';
 import { libraryMeta } from '@/lib/seo';
 
 /** Page titles per filter; areas fall back to their own label. */
@@ -28,6 +28,8 @@ const PAGE_TITLE: Partial<Record<PlaylistId, string>> = {
   School: 'School · Stevens',
   Research: 'Research & retired',
 };
+
+export const prerender = !shouldRenderPublicProjectsLive(process.env);
 
 export const getStaticPaths = (() => {
   return Object.values(PLAYLIST_SLUGS).map((filter) => ({ params: { filter } }));
