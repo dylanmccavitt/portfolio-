@@ -3,8 +3,9 @@
  * Project card — the canonical "Typographic" project card (#85).
  *
  * Image-free and tile-free by intent: a project's identity is type + color only.
- * The monospace project `id` is the sole mark, over a strong title, a `area ·
- * year` / status badge / activity meta line, and the tagline. Hue is a fine
+ * The monospace project mark (slug on DB rows, id on catalog rows) is the sole
+ * visual identifier, over a strong title, a `area · year` / status badge /
+ * activity meta line, and the tagline. Hue is a fine
  * accent — a hairline top rule carries a short hue tick that extends full-width
  * and brightens on hover/focus, and the id/title pick up the hue. Surfaces stay
  * flat (no boxes); hairlines + whitespace do the framing.
@@ -19,6 +20,7 @@
  */
 import type { Project } from '@/data/catalog';
 import type { ProjectCardReadModel } from '@/lib/db/project-reads';
+import { projectPublicMark } from '@/lib/public-project-route-resolver';
 
 type RenderProjectCard = Project | ProjectCardReadModel;
 
@@ -28,11 +30,12 @@ export interface Props {
 const { project } = Astro.props;
 const [kind, label] = project.status;
 const href = 'href' in project ? project.href : `/projects/${project.id}`;
+const mark = projectPublicMark(project);
 ---
 
 <a class="pcard" href={href} style={`--hue:${project.hue}`}>
   <span class="pcard__rule" aria-hidden="true"></span>
-  <span class="pcard__id">{project.id}</span>
+  <span class="pcard__id">{mark}</span>
   <span class="pcard__title">{project.title}</span>
   <div class="pcard__meta">
     <span class="pcard__cat">{project.area} · {project.year}</span>

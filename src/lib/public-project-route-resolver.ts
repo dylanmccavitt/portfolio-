@@ -21,6 +21,16 @@ export function publicProjectStaticPaths(
   }));
 }
 
+/**
+ * Recruiter-facing monospace mark for typographic cards and tour rails.
+ * DB-published rows keep an internal `proj_*` id but expose a public slug;
+ * catalog rows use the same string for both.
+ */
+export function projectPublicMark(project: { id: string; slug?: string }): string {
+  const slug = project.slug?.trim();
+  return slug || project.id;
+}
+
 export function resolvePublicProjectByReference(
   projects: ProjectDetailReadModel[],
   reference: string,

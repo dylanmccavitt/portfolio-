@@ -20,7 +20,7 @@ import Tour from '@/layouts/Tour.astro';
 import ShotRail from '@/components/ShotRail.astro';
 import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
-import { resolveRequiredPublicProjectByReference } from '@/lib/public-project-route-resolver';
+import { resolveRequiredPublicProjectByReference, projectPublicMark } from '@/lib/public-project-route-resolver';
 import { RESUME } from '@/data/resume';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
 
@@ -128,7 +128,7 @@ const meta = {
                 </div>
                 <div class="wtop">
                   <div>
-                    <span class="work-id" style={`--accent:${project.hue}`}>{project.id}</span>
+                    <span class="work-id" style={`--accent:${project.hue}`}>{projectPublicMark(project)}</span>
                     <h2>{project.title}</h2>
                     <div class="meta">
                       <span class:list={['badge', project.status[0]]}>{project.status[1]}</span>

@@ -30,6 +30,7 @@ import {
   shouldUsePublicProjectDb,
 } from '@/lib/public-projects';
 import {
+  projectPublicMark,
   resolvePublicProjectByReference,
   resolveRequiredPublicProjectByReference,
 } from '@/lib/public-project-route-resolver';
@@ -470,6 +471,8 @@ test('public DB read helpers render admin-published rows without legacy snapshot
 
   const detail = await fetchPublicProjectDetail(db, 'manual-db-slug');
   assert.equal(detail?.id, 'manual-db-project');
+  assert.equal(detail?.slug, 'manual-db-slug');
+  assert.equal(projectPublicMark(detail!), 'manual-db-slug');
   assert.equal(detail?.href, '/projects/manual-db-slug');
   assert.deepEqual(detail?.status, ['done', 'Published']);
   assert.equal(detail?.hue, '#8b7cf6');
@@ -664,6 +667,11 @@ test('public route project reference resolver matches id/slug and throws on requ
       }),
     /hiring\.astro: featured project id "missing-featured-id" not found in db public project source/,
   );
+
+  // Any admin-published row: internal proj_* id, public slug for card marks.
+  assert.equal(projectPublicMark({ id: 'proj_internal-uuid', slug: 'any-published-slug' }), 'any-published-slug');
+  assert.equal(projectPublicMark({ id: 'agentic-trader', slug: 'agentic-trader' }), 'agentic-trader');
+  assert.equal(projectPublicMark({ id: 'agentic-trader' }), 'agentic-trader');
 });
 
 test('public project routes use the gated public project source', async () => {
@@ -681,4 +689,7 @@ test('public project routes use the gated public project source', async () => {
     const source = await readFile(path, 'utf8');
     assert.match(source, /loadPublicProjectDetails/);
   }
+
+  const projectCard = await readFile('src/components/ProjectCard.astro', 'utf8');
+  assert.match(projectCard, /projectPublicMark/);
 });
