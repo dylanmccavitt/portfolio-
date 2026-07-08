@@ -664,14 +664,14 @@ test('Slack scan shorthand fetcher failures return safe ephemeral errors before 
   assert.equal(scanRuns.rows[0]?.count, '0');
 });
 
-test('Slack scan explicit topic option preserves manual snapshot behavior and does not fetch', async () => {
+test('Slack scan with explicit topic still fetches live metadata and merges topics', async () => {
   const db = await createMigratedDb();
   let fetchCalls = 0;
   const config: SlackControlPlaneConfig = {
     ...CONFIG,
     githubFetcher: async () => {
       fetchCalls += 1;
-      return LIVE_REPO;
+      return { ...LIVE_REPO, topics: ['astro'] };
     },
   };
 
@@ -685,7 +685,39 @@ test('Slack scan explicit topic option preserves manual snapshot behavior and do
     }),
   );
 
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'scan_qualified');
+  assert.equal(result.scan?.audit.scannerMode, 'live-github');
+
+  // Fetched metadata (description + readme) reaches evidence even though the
+  // allowlist topic came from the manual topic= option, not the repo.
+  const evidence = await db.query<{ source_type: string }>(`SELECT source_type FROM evidence_sources ORDER BY source_type`);
+  assert.deepEqual(
+    evidence.rows.map((row) => row.source_type),
+    ['readme', 'repo'],
+  );
+});
+
+test('Slack scan with explicit topic degrades to manual snapshot when the fetch fails', async () => {
+  const db = await createMigratedDb();
+  const config: SlackControlPlaneConfig = {
+    ...CONFIG,
+    githubFetcher: async () => {
+      throw new Error('network down');
+    },
+  };
+
+  const result = await handleSlackFormEncodedRequest(
+    db,
+    config,
+    formBody({
+      user_id: DYLAN_SLACK_USER,
+      command: '/dm-scan',
+      text: `DylanMcCavitt/portfolio-candidate-app topic=${PORTFOLIO_CANDIDATE_TOPIC}`,
+    }),
+  );
+
   assert.equal(result.ok, true);
   assert.equal(result.code, 'scan_qualified');
   assert.equal(result.scan?.audit.scannerMode, 'manual-snapshot');

@@ -416,7 +416,7 @@ async function resolveSlackRepoSnapshot(
   config: SlackControlPlaneConfig,
   parsed: ParsedSlackRepoSnapshotInput,
 ): Promise<{ repo: GithubRepositorySnapshot; scannerMode: 'manual-snapshot' | 'live-github' }> {
-  if (parsed.isJson || parsed.hasExplicitTopics || !config.githubFetcher) {
+  if (parsed.isJson || !config.githubFetcher) {
     return { repo: parsed.repo, scannerMode: 'manual-snapshot' };
   }
 
@@ -424,6 +424,11 @@ async function resolveSlackRepoSnapshot(
   try {
     fetched = await config.githubFetcher(parsed.repo.owner, parsed.repo.name);
   } catch (error) {
+    // With an explicit topic= the scan can still qualify from the manual
+    // snapshot alone, so fetch enrichment failures degrade instead of aborting.
+    if (parsed.hasExplicitTopics) {
+      return { repo: parsed.repo, scannerMode: 'manual-snapshot' };
+    }
     if (error instanceof GithubSnapshotFetchError) {
       throw userFacingError(error.code, error.message);
     }
@@ -444,6 +449,7 @@ function applySlackTextOverrides(
   parsed: GithubRepositorySnapshot,
   options: Record<string, string>,
 ): GithubRepositorySnapshot {
+  const hasExplicitTopics = hasOwnOption(options, 'topic') || hasOwnOption(options, 'topics');
   return {
     ...fetched,
     owner: fetched.owner || parsed.owner,
@@ -456,7 +462,13 @@ function applySlackTextOverrides(
     isPrivate: hasOwnOption(options, 'private') ? parsed.isPrivate : fetched.isPrivate,
     defaultBranch: hasOwnOption(options, 'branch') ? parsed.defaultBranch : fetched.defaultBranch,
     readmeMarkdown: hasOwnOption(options, 'readme') ? parsed.readmeMarkdown : fetched.readmeMarkdown,
+    topics: hasExplicitTopics ? mergeTopics(fetched.topics, parsed.topics) : fetched.topics,
   };
+}
+
+/** Explicit topic= options add to (never replace) fetched topics, so a manual allowlist tag qualifies untagged repos. */
+function mergeTopics(fetched: string[], explicit: string[]): string[] {
+  return [...new Set([...fetched, ...explicit])];
 }
 
 async function requestHiddenDraft(
