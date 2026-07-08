@@ -548,6 +548,11 @@ test('public project DB gate falls back to catalog until explicitly enabled and 
   assert.equal(enabled.source, 'db');
   assert.deepEqual(enabled.projects.map((project) => project.id), [published.id]);
   assert.deepEqual(filterPublicProjectDetails(enabled.projects, 'all').map((project) => project.id), [published.id]);
+
+  resetPublicProjectDetailsLoadForTests();
+  const injectedDb = await loadPublicProjectDetails({ db });
+  assert.equal(injectedDb.source, 'db');
+  assert.deepEqual(injectedDb.projects.map((project) => project.id), [published.id]);
 });
 
 test('loadPublicProjectDetails retries live DB reads after a transient failure', async () => {

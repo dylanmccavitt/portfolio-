@@ -48,6 +48,11 @@ function hasDatabaseUrl(env: DatabaseEnv): boolean {
   return DATABASE_ENV_KEYS.some((key) => Boolean(env[key]?.trim()));
 }
 
+function isPublicProjectDbSourceEnabled(options: PublicProjectLoadOptions = {}): boolean {
+  const env = options.env ?? process.env;
+  return shouldUsePublicProjectDb(env) || options.db !== undefined;
+}
+
 function catalogProjectDetails(): ProjectDetailReadModel[] {
   return buildCatalogShadowRecords(CATALOG).map((record) => projectRecordToReadModels(record).detail);
 }
@@ -64,7 +69,7 @@ let publicProjectLoadPromise: Promise<PublicProjectLoadResult> | null = null;
 
 async function resolvePublicProjectDetails(options: PublicProjectLoadOptions): Promise<PublicProjectLoadResult> {
   const env = options.env ?? process.env;
-  const gateEnabled = shouldUsePublicProjectDb(env);
+  const gateEnabled = isPublicProjectDbSourceEnabled(options);
   const catalogFallback = (reason?: string): PublicProjectLoadResult => {
     if (gateEnabled && reason) {
       console.warn(`[public-projects] Using catalog fallback: ${reason}`);
@@ -89,8 +94,7 @@ async function resolvePublicProjectDetails(options: PublicProjectLoadOptions): P
 }
 
 export async function loadPublicProjectDetails(options: PublicProjectLoadOptions = {}): Promise<PublicProjectLoadResult> {
-  const env = options.env ?? process.env;
-  if (shouldUsePublicProjectDb(env) || options.db) {
+  if (isPublicProjectDbSourceEnabled(options)) {
     return resolvePublicProjectDetails(options);
   }
 
