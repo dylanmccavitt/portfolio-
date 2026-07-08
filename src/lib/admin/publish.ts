@@ -40,6 +40,8 @@ type DraftListRow = Pick<
 > & {
   slug: string | null;
   title: string | null;
+  source_ref: string | null;
+  signals: JsonRecord | null;
 };
 
 type EvidencePrivacyRow = { privacy_state: PrivacyState; count: string | number };
@@ -77,7 +79,9 @@ export async function listAdminDrafts(db: AdminPublishQueryable): Promise<AdminP
               created_at,
               updated_at,
               proposed_fields->>'slug' AS slug,
-              proposed_fields->>'title' AS title
+              proposed_fields->>'title' AS title,
+              proposed_fields->>'sourceRef' AS source_ref,
+              proposed_fields->'signals' AS signals
        FROM project_drafts
        ORDER BY updated_at DESC, created_at DESC`,
     ),

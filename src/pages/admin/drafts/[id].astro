@@ -87,15 +87,17 @@ function asJsonText(value: unknown): string {
   return Array.isArray(value) ? JSON.stringify(value, null, 2) : '';
 }
 
-function formatWhen(value: string): string {
+function fallbackWhen(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('en-US', {
     year: 'numeric',
-    month: 'short',
+    month: 'numeric',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'UTC',
+    timeZoneName: 'short',
   });
 }
 
@@ -180,7 +182,7 @@ const fields = draft?.proposed_fields ?? {};
                   <li>
                     <span class="mono">{event.action}</span>
                     <span>{event.actor}</span>
-                    <span class="mono">{formatWhen(event.created_at)}</span>
+                    <time class="mono" datetime={event.created_at} data-local-time>{fallbackWhen(event.created_at)}</time>
                   </li>
                 ))}
               </ul>
