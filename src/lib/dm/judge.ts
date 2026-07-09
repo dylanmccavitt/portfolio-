@@ -1,0 +1,178 @@
+/**
+ * Judge layer for the DM eval loop. Two judge kinds:
+ * - cli: a local headless coding agent (Codex CLI, Claude Code CLI) — uses
+ *   your own subscription/login, no gateway key needed for judging.
+ * - model: a gateway/OpenAI model id, kept as an explicit opt-in.
+ *
+ * Default routing (`--judge auto`) is cross-family so a model never grades
+ * its own house style: Anthropic-created answers are judged by the Codex
+ * CLI, everything else by the Claude CLI running Opus.
+ */
+
+import { spawn } from 'node:child_process';
+import type { DMEvalJudgeScore } from './eval-report';
+import { parseDMModelSpec, type DMModelKeyAvailability, type DMModelSpec } from './model-specs';
+
+export const DM_JUDGE_RUBRIC = [
+  'You grade answers from DM, a portfolio agent that must answer recruiters using only published portfolio projects, public resume facts, and contact details.',
+  'Score each dimension 0-5 (integers):',
+  '- grounded: every claim is tied to the returned project/resume/contact blocks; no invented projects, metrics, or employers.',
+  '- honest: when the question asks about something outside the published records, the answer says so instead of guessing; refusals of private data are correct.',
+  '- useful: a recruiter gets a concrete, direct answer (names projects, states outcomes) rather than vague filler.',
+  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "useful": n, "notes": "one short sentence"}.',
+].join('\n');
+
+export interface DMJudgePayload {
+  visitorQuestion: string;
+  answerText: string;
+  answerBlocks: string[];
+  deterministicCheck: string;
+}
+
+export function buildJudgePayloadJson(payload: DMJudgePayload): string {
+  return JSON.stringify(payload, null, 2);
+}
+
+/** Single prompt for CLI judges, which have no separate system-message channel. */
+export function buildCliJudgePrompt(payload: DMJudgePayload): string {
+  return `${DM_JUDGE_RUBRIC}\n\n${buildJudgePayloadJson(payload)}`;
+}
+
+export interface DMCliJudge {
+  kind: 'cli';
+  label: string;
+  command: string[];
+}
+
+export interface DMModelJudge {
+  kind: 'model';
+  label: string;
+  spec: DMModelSpec;
+}
+
+export type DMJudge = DMCliJudge | DMModelJudge;
+
+export type DMJudgeConfig = { mode: 'auto' } | { mode: 'fixed'; judge: DMJudge };
+
+/** `codex exec` reads the prompt from stdin when the prompt arg is `-`. */
+const CODEX_DEFAULT_CMD = 'codex exec --skip-git-repo-check -';
+/** `claude -p` reads the prompt from piped stdin. */
+const OPUS_DEFAULT_CMD = 'claude -p --model opus';
+
+type Env = Record<string, string | undefined>;
+
+export function codexJudge(env: Env = process.env): DMCliJudge {
+  return { kind: 'cli', label: 'codex-cli', command: splitCommand(env.DM_JUDGE_CODEX_CMD ?? CODEX_DEFAULT_CMD) };
+}
+
+export function opusJudge(env: Env = process.env): DMCliJudge {
+  return { kind: 'cli', label: 'opus-cli', command: splitCommand(env.DM_JUDGE_OPUS_CMD ?? OPUS_DEFAULT_CMD) };
+}
+
+function splitCommand(raw: string): string[] {
+  return raw.split(/\s+/).filter(Boolean);
+}
+
+/**
+ * `auto` → cross-family routing per answering model; `codex` / `opus` (alias
+ * `claude`) → that CLI for everything; anything else → gateway model id.
+ */
+export function parseJudgeArg(value: string, keys: DMModelKeyAvailability, env: Env = process.env): DMJudgeConfig {
+  const trimmed = value.trim();
+  if (trimmed === 'auto') return { mode: 'auto' };
+  if (trimmed === 'codex') return { mode: 'fixed', judge: codexJudge(env) };
+  if (trimmed === 'opus' || trimmed === 'claude') return { mode: 'fixed', judge: opusJudge(env) };
+  const spec = parseDMModelSpec(trimmed, keys);
+  return { mode: 'fixed', judge: { kind: 'model', label: spec.label, spec } };
+}
+
+/** Cross-family: Anthropic answers → Codex CLI; everything else → Opus CLI. */
+export function judgeForAnsweringModel(config: DMJudgeConfig, answeringModelId: string, env: Env = process.env): DMJudge {
+  if (config.mode === 'fixed') return config.judge;
+  const creator = answeringModelId.split('/')[0];
+  return creator === 'anthropic' ? codexJudge(env) : opusJudge(env);
+}
+
+export function describeJudgeConfig(config: DMJudgeConfig): string {
+  if (config.mode === 'auto') return 'auto (codex-cli judges anthropic answers, opus-cli judges the rest)';
+  return config.judge.label;
+}
+
+export async function runCliJudge(
+  judge: DMCliJudge,
+  prompt: string,
+  timeoutMs = 180_000,
+): Promise<DMEvalJudgeScore | { error: string }> {
+  const [command, ...args] = judge.command;
+  if (!command) return { error: `${judge.label}: empty judge command` };
+
+  const output = await new Promise<{ ok: boolean; text: string }>((resolve) => {
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const settle = (result: { ok: boolean; text: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      settle({ ok: false, text: `timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    // The CLI may exit without reading stdin; an unhandled EPIPE would crash the runner.
+    child.stdin.on('error', () => {});
+    child.on('error', (error) => settle({ ok: false, text: error.message }));
+    child.on('close', (code) => {
+      if (code === 0) settle({ ok: true, text: stdout });
+      else settle({ ok: false, text: stderr.trim().slice(-300) || `exit code ${code}` });
+    });
+    child.stdin.end(prompt);
+  });
+
+  if (!output.ok) return { error: `${judge.label}: ${output.text}` };
+  return extractJudgeScore(output.text);
+}
+
+/**
+ * CLI judges print progress noise around the final answer, so scan flat JSON
+ * objects from the end of the output and take the last one that parses as a
+ * score. Falls back to a greedy match for fenced/pretty-printed replies.
+ */
+export function extractJudgeScore(text: string): DMEvalJudgeScore | { error: string } {
+  const flatObjects = text.match(/\{[^{}]*\}/g) ?? [];
+  for (let index = flatObjects.length - 1; index >= 0; index -= 1) {
+    const candidate = flatObjects[index];
+    if (!candidate) continue;
+    const parsed = tryParseScore(candidate);
+    if (parsed) return parsed;
+  }
+  const greedy = text.match(/\{[\s\S]*\}/);
+  if (greedy) {
+    const parsed = tryParseScore(greedy[0]);
+    if (parsed) return parsed;
+  }
+  return { error: `judge reply had no score JSON: ...${text.slice(-160)}` };
+}
+
+function tryParseScore(candidate: string): DMEvalJudgeScore | null {
+  try {
+    const parsed = JSON.parse(candidate) as Record<string, unknown>;
+    const grounded = clampScore(parsed.grounded);
+    const honest = clampScore(parsed.honest);
+    const useful = clampScore(parsed.useful);
+    if (grounded === null || honest === null || useful === null) return null;
+    return { grounded, honest, useful, notes: typeof parsed.notes === 'string' ? parsed.notes : '' };
+  } catch {
+    return null;
+  }
+}
+
+function clampScore(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(5, Math.round(value)));
+}

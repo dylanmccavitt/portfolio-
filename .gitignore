@@ -40,5 +40,8 @@ docs/handoffs/*.md
 
 # conductor (retired)
 .conductor/
+
+# local DM eval reports (comparison artifacts, never committed)
+.dm-evals/
 .vercel
 .env*.local
