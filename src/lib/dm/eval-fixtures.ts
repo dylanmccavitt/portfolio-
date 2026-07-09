@@ -2,7 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import { z } from 'zod';
-import type { ProjectDetailReadModel, ProjectReadQueryable } from '@/lib/db/project-reads';
+import {
+  projectLinkFromFields,
+  projectMetricFromFields,
+  projectStackEntryFromFields,
+  type ProjectDetailReadModel,
+  type ProjectReadQueryable,
+} from '@/lib/db/project-reads';
 import type { PublishedProjectLoader } from './data-tools';
 import type { DMStreamEvent } from './contract';
 
@@ -329,9 +335,9 @@ function memoryProjectDb(): ProjectReadQueryable {
 
 function corpusProjectModel(project: z.infer<typeof CorpusProjectSchema>): ProjectDetailReadModel {
   const href = `/projects/${project.slug}`;
-  const links = project.links.map((link) => [link.label, link.href] as [string, string]);
-  const metrics = project.metrics.map((metric) => [metric.value, metric.label] as [string, string]);
-  const stack = project.stack.map((entry) => [entry.label, entry.value] as [string, string]);
+  const links = project.links.map(projectLinkFromFields);
+  const metrics = project.metrics.map(projectMetricFromFields);
+  const stack = project.stack.map(projectStackEntryFromFields);
   return {
     id: project.id,
     slug: project.slug,

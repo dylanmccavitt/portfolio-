@@ -53,6 +53,21 @@ export interface ProjectReadModels {
   dmArtifact: DmProjectArtifactReadModel;
 }
 
+export interface ProjectLinkFields {
+  label: string;
+  href: string;
+}
+
+export interface ProjectMetricFields {
+  value: string;
+  label: string;
+}
+
+export interface ProjectStackEntryFields {
+  label: string;
+  value: string;
+}
+
 export type ShadowProjectReadResult =
   | { status: 'ok'; projects: ProjectReadModels[] }
   | { status: 'unavailable'; projects: []; reason: string };
@@ -90,6 +105,17 @@ const PROJECT_COLUMNS = `id, slug, title, tagline, area, year, lifecycle_state, 
 const PROJECT_STATUS_KINDS: Record<string, true> = { dry: true, live: true, wip: true, done: true };
 const PROJECT_SHOT_KINDS: Record<string, true> = { chart: true, dash: true, list: true, code: true, phone: true };
 
+export function projectLinkFromFields(link: ProjectLinkFields): ProjectLink {
+  return [link.label, link.href];
+}
+
+export function projectMetricFromFields(metric: ProjectMetricFields): ProjectMetric {
+  return [metric.value, metric.label];
+}
+
+export function projectStackEntryFromFields(entry: ProjectStackEntryFields): ProjectStackEntry {
+  return [entry.label, entry.value];
+}
 
 export async function fetchInternalShadowProjectReadModels(
   db: ProjectReadQueryable,

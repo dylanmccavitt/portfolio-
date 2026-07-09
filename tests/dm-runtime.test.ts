@@ -521,7 +521,7 @@ test('streamed project artifacts satisfy active public-source ids absent from th
   const artifact: ProjectArtifact = {
     id: 'db-only-project',
     title: 'DB-only Project',
-    area: 'Agents & MCP',
+    area: CATALOG[0]!.area,
     status: ['done', 'Published'],
     year: 2026,
     activity: 'Published from DB',
