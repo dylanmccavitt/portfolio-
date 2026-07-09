@@ -62,8 +62,25 @@ test('DM data tools expose DB-gated public records and static resume/contact onl
   const search = await tools.searchProjects({ query: 'trading automation robinhood', limit: 5 });
   assert.equal(search.projects[0]?.id, 'agentic-trader');
 
+  const fallback = await tools.searchProjects({ query: 'loom-unpublished-topic', limit: 3 });
+  assert.equal(fallback.fallbackUsed, true);
+  assert.equal(fallback.resultStatus, 'fallback');
+  assert.match(fallback.message, /fallback results/i);
+  assert.match(fallback.message, /do not substitute projects/i);
+
+  const emptyFilter = await tools.filterProjects({ area: 'not-a-published-area' });
+  assert.equal(emptyFilter.resultStatus, 'empty');
+  assert.deepEqual(emptyFilter.projects, []);
+  assert.match(emptyFilter.message, /do not name or substitute projects/i);
+
+  const partialRank = await tools.rankProjects({ intent: 'strongest work', limit: 1 });
+  assert.equal(partialRank.resultStatus, 'partial');
+  assert.equal(partialRank.projects.length, 1);
+  assert.match(partialRank.message, /only name or discuss projects in this returned projects array/i);
+
   const ranked = await tools.rankProjects({ ids: ['agentic-trader'] });
   assert.deepEqual(ranked.projects.map((project) => project.id), ['agentic-trader']);
+  assert.equal(ranked.resultStatus, 'complete');
 
   const catalogRanked = await tools.rankProjects({ ids: ['exit-manager'] });
   assert.deepEqual(catalogRanked.projects.map((project) => project.id), ['exit-manager']);

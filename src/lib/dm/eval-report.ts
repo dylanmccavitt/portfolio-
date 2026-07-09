@@ -63,6 +63,14 @@ export function triageRun(run: DMEvalRunRecord): DMEvalTriage | null {
           'DM invented an unpublished project id. Tighten the honesty rules in the system prompt (src/lib/dm/runtime.ts) and confirm project search only returns published records (src/lib/dm/data-tools.ts).',
       };
     }
+    if (run.failure.includes('outside returned project blocks')) {
+      return {
+        severity: 'blocker',
+        classification: 'project grounding mismatch',
+        nextStep:
+          'DM named a project that was not present in the same-turn project blocks. Tighten the same-turn grounding rules in src/lib/dm/runtime.ts and the fallback/partial result messages in src/lib/dm/data-tools.ts.',
+      };
+    }
     if (run.caseName.startsWith('refusal:')) {
       return {
         severity: 'fix',

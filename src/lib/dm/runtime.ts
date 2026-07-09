@@ -221,7 +221,8 @@ function wrapTool<T>(execute: (input: T) => Promise<unknown>) {
 function aiTools(tools: PublicDMDataTools, ragConfig: PublicRagSearchConfig | null, deps: DMRuntimeDeps): ToolSet {
   const dmTools: ToolSet = {
     searchProjects: tool({
-      description: 'Search published public portfolio projects by recruiter-facing query. Returns published records only.',
+      description:
+        'Search published public portfolio projects by recruiter-facing query. Returns published records only, plus explicit complete/partial/fallback/empty status. Only projects in this result may be named or discussed.',
       inputSchema: z.object({
         query: z.string().min(1).max(200),
         limit: z.number().int().min(1).max(8).optional(),
@@ -229,7 +230,8 @@ function aiTools(tools: PublicDMDataTools, ragConfig: PublicRagSearchConfig | nu
       execute: wrapTool((input) => tools.searchProjects(input)),
     }),
     filterProjects: tool({
-      description: 'Filter published public portfolio projects by area or status.',
+      description:
+        'Filter published public portfolio projects by area or status. Returns explicit complete/partial/empty status. Only projects in this result may be named or discussed.',
       inputSchema: z.object({
         area: z.string().min(1).max(80).optional(),
         status: z.enum(['dry', 'live', 'wip', 'done']).optional(),
@@ -238,7 +240,8 @@ function aiTools(tools: PublicDMDataTools, ragConfig: PublicRagSearchConfig | nu
       execute: wrapTool((input) => tools.filterProjects(input)),
     }),
     rankProjects: tool({
-      description: 'Rank published public portfolio projects by explicit public ids or hiring intent.',
+      description:
+        'Rank published public portfolio projects by explicit public ids or hiring intent. Returns explicit complete/partial/empty status. Only projects in this result may be named or discussed.',
       inputSchema: z.object({
         ids: z.array(z.string().min(1).max(80)).max(8).optional(),
         intent: z.string().max(240).optional(),
@@ -413,7 +416,8 @@ async function buildSystemPrompt(tools: PublicDMDataTools): Promise<string> {
     'Never claim access to drafts, candidate records, private repos, Slack/admin notes, visitor chats, database metadata, or hidden plans.',
     'If asked for private or unsupported facts, refuse briefly and redirect to public projects, resume, or contact details.',
     '',
-    'Published projects you can discuss:',
+    'Project routing digest (orientation only; never answer evidence):',
+    'Use this digest only to choose a project tool. Re-fetch every project before naming, listing, comparing, or describing it.',
     ...projectLines,
     '',
     'Resume tracks you can reference:',
@@ -426,9 +430,13 @@ async function buildSystemPrompt(tools: PublicDMDataTools): Promise<string> {
     '- Resume/background/career/education -> use readResume.',
     '- Contact/hiring/reach -> use getContact.',
     '- For cited evidence from approved public sources -> use searchSources.',
-    'When you have project data, answer concretely: name the project, what it does, its status, and a real outcome or metric from the tool result.',
+    'Only name or list projects returned by project tool calls in this turn.',
+    'For every project claim, use only the projects array returned by searchProjects, filterProjects, or rankProjects in this turn. Never name or substitute a project from this digest, conversation history, or memory.',
+    'If a project result is partial or fallback, disclose that status and discuss only its returned projects. Re-call filterProjects or rankProjects when the user needs a different or broader list.',
+    'If a project result is empty, say no matching published projects were returned. Do not fill the gap with a project from the digest or memory.',
+    'When a project tool returns data, answer concretely from that result: name the project, what it does, its status, and a real outcome or metric.',
     'Keep answers concise, confident, and recruiter-friendly. If a specific request is not public, say so and offer the closest public evidence.',
-    'If searchProjects returns fallbackUsed=true, tell the user you found no exact match and are showing the most relevant published projects instead.',
+    'Treat each project tool result message as binding. If searchProjects returns fallbackUsed=true, tell the user you found no exact match and are showing only the returned fallback projects.',
   ].join('\n');
 }
 
@@ -437,7 +445,10 @@ function minimalSystemPrompt(): string {
     "You are DM, Dylan McCavitt's public portfolio agent for recruiters and hiring managers.",
     'Answer only from tool results over published portfolio project records, approved public RAG sources, and static public resume/contact data.',
     'Never claim access to private drafts, candidate records, hidden repos, or admin notes.',
-    'When you have project data, answer concretely with project name, status, and a real outcome or metric.',
+    'Only name or list projects returned by project tool calls in this turn.',
+    'The project routing digest is unavailable, so call a project tool before every project name, list, comparison, description, or claim. Use only its returned projects array; never substitute from conversation history or memory.',
+    'For partial or fallback results, disclose the status and discuss only returned projects. For empty results, say no match was returned.',
+    'When a project tool returns data, answer concretely with project name, status, and a real outcome or metric from that result.',
     "- status/area questions -> filterProjects; 'best/most impressive' -> rankProjects with intent; topics -> searchProjects; resume -> readResume; contact -> getContact; evidence -> searchSources.",
   ].join(' ');
 }

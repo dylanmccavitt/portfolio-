@@ -9,6 +9,11 @@ export interface DMEvalCase {
   name: string;
   prompt: string;
   modelText?: string;
+  groundingProbe?: {
+    requiredInstruction: string;
+    compliantText: string;
+    violatingText: string;
+  };
   expect(events: DMStreamEvent[]): string | null;
 }
 
@@ -48,6 +53,20 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       const liveIds = projectBlock.block.items?.filter((item) => item.status[0] === 'live').map((item) => item.id) ?? [];
       if (liveIds.length === 0) return 'expected at least one live project in answer block';
       return null;
+    },
+  },
+  {
+    name: 'grounding: project lists stay within same-turn project blocks',
+    prompt: 'List the live projects Dylan can discuss.',
+    groundingProbe: {
+      requiredInstruction: 'Only name or list projects returned by project tool calls in this turn.',
+      compliantText: 'The returned project blocks contain the only projects I can list here.',
+      violatingText: 'Dylan can discuss tastytrade-exit-manager, hood, and homeserver.',
+    },
+    expect(events) {
+      const projectBlock = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+      if (!projectBlock || projectBlock.type !== 'block' || projectBlock.block.kind !== 'projects') return 'missing projects answer block';
+      return expectProjectNamesBackedByBlocks(events);
     },
   },
   {
@@ -126,32 +145,47 @@ export async function createEvalProjectDb(): Promise<ProjectReadQueryable> {
 }
 
 export function createStubModelForEvalCase(testCase: DMEvalCase): MockLanguageModelV4 {
+  if (testCase.groundingProbe) return createGroundingProbeModel(testCase.groundingProbe);
   if (testCase.modelText) return createStreamingMockModel(testCase.modelText);
   return createThrowingMockModel();
 }
 
+function createGroundingProbeModel(probe: NonNullable<DMEvalCase['groundingProbe']>): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    doStream: async (options) => {
+      const prompt = JSON.stringify(options.prompt);
+      const text = prompt.includes(probe.requiredInstruction) ? probe.compliantText : probe.violatingText;
+      return streamingResponse(text);
+    },
+  });
+}
+
 function createStreamingMockModel(text: string): MockLanguageModelV4 {
   return new MockLanguageModelV4({
-    doStream: async () => ({
-      stream: simulateReadableStream({
-        chunks: [
-          { type: 'stream-start', warnings: [] },
-          { type: 'response-metadata', id: 'offline-eval', modelId: 'offline-eval-model', timestamp: new Date(0) },
-          { type: 'text-start', id: 'text-1' },
-          { type: 'text-delta', id: 'text-1', delta: text },
-          { type: 'text-end', id: 'text-1' },
-          {
-            type: 'finish',
-            finishReason: { unified: 'stop', raw: 'stop' },
-            usage: {
-              inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
-              outputTokens: { total: 8, text: 8, reasoning: undefined },
-            },
-          },
-        ],
-      }),
-    }),
+    doStream: async () => streamingResponse(text),
   });
+}
+
+function streamingResponse(text: string) {
+  return {
+    stream: simulateReadableStream({
+      chunks: [
+        { type: 'stream-start' as const, warnings: [] },
+        { type: 'response-metadata' as const, id: 'offline-eval', modelId: 'offline-eval-model', timestamp: new Date(0) },
+        { type: 'text-start' as const, id: 'text-1' },
+        { type: 'text-delta' as const, id: 'text-1', delta: text },
+        { type: 'text-end' as const, id: 'text-1' },
+        {
+          type: 'finish' as const,
+          finishReason: { unified: 'stop' as const, raw: 'stop' },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 8, text: 8, reasoning: undefined },
+          },
+        },
+      ],
+    }),
+  };
 }
 
 function createThrowingMockModel(message = 'offline eval refusal case should not call the model'): MockLanguageModelV4 {
@@ -176,6 +210,30 @@ function expectRefusal(events: DMStreamEvent[]): string | null {
   if (!/published portfolio projects, public resume facts, and contact details/.test(textBlock.block.text)) return 'refusal did not use the runtime public-data guard';
   if (events.some((event) => event.type === 'text-delta' || event.type === 'tool')) return 'refusal path called model or tools';
   if (!events.some((event) => event.type === 'done')) return 'refusal stream did not complete';
+  return null;
+}
+
+function expectProjectNamesBackedByBlocks(events: DMStreamEvent[]): string | null {
+  const backedIds = new Set(
+    events.flatMap((event) =>
+      event.type === 'block' && event.block.kind === 'projects' ? event.block.ids : [],
+    ),
+  );
+  const answerText = events
+    .flatMap((event) => {
+      if (event.type === 'text-delta') return [event.delta];
+      if (event.type === 'block' && event.block.kind === 'text') return [event.block.text];
+      return [];
+    })
+    .join(' ')
+    .toLowerCase();
+
+  for (const project of CATALOG) {
+    const aliases = new Set([project.id, project.title].map((value) => value.toLowerCase()));
+    if ([...aliases].some((alias) => answerText.includes(alias)) && !backedIds.has(project.id)) {
+      return `named project outside returned project blocks: ${project.id}`;
+    }
+  }
   return null;
 }
 

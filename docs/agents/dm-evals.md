@@ -96,6 +96,9 @@ Unknown projects (e.g. loom) are a content gap until published and/or given an a
 ## Fixture expectations
 
 - Assert on blocks and ids, not exact prose.
+- For project-list cases, fail when the answer names a known project that is absent from every
+  `projects` block returned in that turn. The system-prompt project digest is routing context only,
+  not evidence; a project must be re-fetched before DM names, lists, compares, or describes it.
 - Include a leak check (`candidate-hidden`) for project-data cases.
 - Provide `modelText` so the offline gate can run the same `expect()`.
 - Tone/concreteness belongs in the judge rubric, not `expect()`.
