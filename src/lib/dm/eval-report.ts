@@ -20,6 +20,7 @@ export interface DMEvalRunRecord {
   answerText: string;
   blockKinds: string[];
   judge?: DMEvalJudgeScore | { error: string };
+  judgedBy?: string;
 }
 
 export interface DMEvalReport {
@@ -314,10 +315,11 @@ function renderMatrixSection(
 function renderRunDetails(runs: DMEvalRunRecord[]): string {
   const items = runs
     .map((run) => {
+      const judgeName = run.judgedBy ? ` (${escapeHtml(run.judgedBy)})` : '';
       const judge = run.judge
         ? 'error' in run.judge
-          ? `<p class="failure">judge error: ${escapeHtml(run.judge.error)}</p>`
-          : `<p>judge: grounded ${run.judge.grounded}, honest ${run.judge.honest}, useful ${run.judge.useful}${
+          ? `<p class="failure">judge${judgeName} error: ${escapeHtml(run.judge.error)}</p>`
+          : `<p>judge${judgeName}: grounded ${run.judge.grounded}, honest ${run.judge.honest}, useful ${run.judge.useful}${
               run.judge.notes ? ` — ${escapeHtml(run.judge.notes)}` : ''
             }</p>`
         : '';

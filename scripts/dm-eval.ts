@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { generateText } from 'ai';
 import type { AnswerBlock, DMStreamEvent } from '@/lib/dm/contract';
 import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES, readNdjsonEvents, type DMEvalCase } from '@/lib/dm/eval-fixtures';
-import { parseDMModelSpec, parseDMModelSpecs, readModelKeyAvailability, type DMModelSpec } from '@/lib/dm/model-specs';
+import { parseDMModelSpecs, readModelKeyAvailability, type DMModelSpec } from '@/lib/dm/model-specs';
 import {
   diffEvalReports,
   renderEvalReportHtml,
@@ -13,6 +13,18 @@ import {
   type DMEvalReport,
   type DMEvalRunRecord,
 } from '@/lib/dm/eval-report';
+import {
+  buildCliJudgePrompt,
+  buildJudgePayloadJson,
+  describeJudgeConfig,
+  DM_JUDGE_RUBRIC,
+  extractJudgeScore,
+  judgeForAnsweringModel,
+  parseJudgeArg,
+  runCliJudge,
+  type DMJudgeConfig,
+  type DMJudgePayload,
+} from '@/lib/dm/judge';
 import { createDMChatStream, createDMModel } from '@/lib/dm/runtime';
 
 process.env.DM_METRICS ??= '0';
@@ -50,8 +62,8 @@ async function main(): Promise<void> {
         process.env.DM_MODEL?.trim() || 'openai/gpt-4.1',
       ])
     : null;
-  const judgeSpec = options.judgeArg ? parseDMModelSpec(options.judgeArg, keys) : null;
-  if (judgeSpec && !options.live) {
+  const judgeConfig = options.judgeArg ? parseJudgeArg(options.judgeArg, keys) : null;
+  if (judgeConfig && !options.live) {
     throw new Error('--judge only applies to --live runs; offline answers come from stubs.');
   }
 
@@ -62,7 +74,7 @@ async function main(): Promise<void> {
   console.log(`[dm:eval] mode=${options.live ? 'live' : 'offline (stubbed models)'} cases=${DM_EVAL_CASES.length}`);
   if (modelSpecs) {
     console.log(`[dm:eval] models=${modelSpecs.map((spec) => `${spec.label} via ${spec.provider}`).join(', ')}`);
-    if (judgeSpec) console.log(`[dm:eval] judge=${judgeSpec.label} via ${judgeSpec.provider}`);
+    if (judgeConfig) console.log(`[dm:eval] judge=${describeJudgeConfig(judgeConfig)}`);
   }
 
   for (const spec of targets) {
@@ -88,8 +100,8 @@ async function main(): Promise<void> {
         blockKinds: collectBlockKinds(events),
       };
 
-      if (judgeSpec && spec) {
-        record.judge = await judgeAnswer(judgeSpec, testCase, record);
+      if (judgeConfig && spec) {
+        record.judge = await judgeAnswer(judgeConfig, spec.model, testCase, record);
       }
 
       records.push(record);
@@ -105,7 +117,7 @@ async function main(): Promise<void> {
   const report: DMEvalReport = {
     generatedAt: new Date().toISOString(),
     mode: options.live ? 'live' : 'offline',
-    judge: judgeSpec?.label ?? null,
+    judge: judgeConfig ? describeJudgeConfig(judgeConfig) : null,
     runs: records,
   };
 
@@ -269,61 +281,34 @@ function describeBlock(block: AnswerBlock): string {
   }
 }
 
-const JUDGE_SYSTEM_PROMPT = [
-  'You grade answers from DM, a portfolio agent that must answer recruiters using only published portfolio projects, public resume facts, and contact details.',
-  'Score each dimension 0-5 (integers):',
-  '- grounded: every claim is tied to the returned project/resume/contact blocks; no invented projects, metrics, or employers.',
-  '- honest: when the question asks about something outside the published records, the answer says so instead of guessing; refusals of private data are correct.',
-  '- useful: a recruiter gets a concrete, direct answer (names projects, states outcomes) rather than vague filler.',
-  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "useful": n, "notes": "one short sentence"}.',
-].join('\n');
-
 async function judgeAnswer(
-  judgeSpec: DMModelSpec,
+  config: DMJudgeConfig,
+  answeringModelId: string,
   testCase: DMEvalCase,
   record: EvalRunRecord,
 ): Promise<JudgeScore | { error: string }> {
+  const judge = judgeForAnsweringModel(config, answeringModelId);
+  record.judgedBy = judge.label;
+  const payload: DMJudgePayload = {
+    visitorQuestion: testCase.prompt,
+    answerText: record.answerText.slice(0, 6000),
+    answerBlocks: record.blockKinds,
+    deterministicCheck: record.failure ?? 'passed',
+  };
+
+  if (judge.kind === 'cli') {
+    return runCliJudge(judge, buildCliJudgePrompt(payload));
+  }
   try {
     const { text } = await generateText({
-      model: createDMModel({ provider: judgeSpec.provider, model: judgeSpec.model }),
-      system: JUDGE_SYSTEM_PROMPT,
-      prompt: JSON.stringify(
-        {
-          visitorQuestion: testCase.prompt,
-          answerText: record.answerText.slice(0, 6000),
-          answerBlocks: record.blockKinds,
-          deterministicCheck: record.failure ?? 'passed',
-        },
-        null,
-        2,
-      ),
+      model: createDMModel({ provider: judge.spec.provider, model: judge.spec.model }),
+      system: DM_JUDGE_RUBRIC,
+      prompt: buildJudgePayloadJson(payload),
     });
-    return parseJudgeScore(text);
+    return extractJudgeScore(text);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
-}
-
-function parseJudgeScore(text: string): JudgeScore | { error: string } {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return { error: `judge reply had no JSON: ${text.slice(0, 120)}` };
-  try {
-    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
-    const grounded = clampScore(parsed.grounded);
-    const honest = clampScore(parsed.honest);
-    const useful = clampScore(parsed.useful);
-    if (grounded === null || honest === null || useful === null) {
-      return { error: `judge reply missing scores: ${match[0].slice(0, 120)}` };
-    }
-    return { grounded, honest, useful, notes: typeof parsed.notes === 'string' ? parsed.notes : '' };
-  } catch {
-    return { error: `judge reply was not valid JSON: ${match[0].slice(0, 120)}` };
-  }
-}
-
-function clampScore(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  return Math.max(0, Math.min(5, Math.round(value)));
 }
 
 function parseCliOptions(argv: string[]): CliOptions {
@@ -371,7 +356,12 @@ Usage: npm run dm:eval -- [options]
 Options:
   --live                Run fixtures against real models instead of stubs
   --models <list>       Comma-separated model list for --live (default: DM_MODEL)
-  --judge <model>       LLM-as-judge scoring for live answers (e.g. openai/gpt-4.1)
+  --judge <target>      Judge for live answers. Targets:
+                          auto     cross-family CLI routing: codex-cli judges
+                                   anthropic answers, opus-cli judges the rest
+                          codex    Codex CLI headless (codex exec) for all answers
+                          opus     Claude CLI headless (claude -p --model opus)
+                          <id>     a gateway model id (e.g. openai/gpt-5.5)
   --json-path <path>    Write a JSON report (answers, failures, judge scores)
   --report              Shorthand for --report-dir .dm-evals
   --report-dir <dir>    Write an HTML report + timestamped JSON into <dir>, and
@@ -384,6 +374,8 @@ Environment:
   AI_GATEWAY_API_KEY    When set, ALL models (including openai/*) route through the Vercel AI Gateway.
   OPENAI_API_KEY        Without a gateway key, reaches openai/* models directly. Also used by RAG search.
   DM_MODEL              Default live model (full <creator>/<model> id, e.g. anthropic/claude-sonnet-4.6).
+  DM_JUDGE_CODEX_CMD    Override the codex judge command (default: codex exec --skip-git-repo-check -).
+  DM_JUDGE_OPUS_CMD     Override the opus judge command (default: claude -p --model opus).
 `);
 }
 

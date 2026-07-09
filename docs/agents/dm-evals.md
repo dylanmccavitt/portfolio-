@@ -6,9 +6,26 @@ Three layers for continuous answer-quality improvement:
 | --- | --- | --- | --- |
 | Offline gate | `npm run dm:eval` | Stubbed-model pipeline: tool routing, deterministic blocks, refusals, no-leak | Every CI run |
 | Live behavioral | `npm run dm:eval -- --live` | Same fixtures against real gateway models | Model/prompt/tool changes |
-| Live judged | `npm run dm:eval -- --live --judge openai/gpt-4.1` | LLM-as-judge scores (grounded / honest / useful, 0-5) | Before switching `DM_MODEL` |
+| Live judged | `npm run dm:eval -- --live --judge auto` | Judge scores (grounded / honest / useful, 0-5) | Before switching `DM_MODEL` |
 
 Latency stays separate: `npm run dm:bench` (`docs/agents/dm-latency-benchmark.md`).
+
+## Judges
+
+`--judge` accepts four targets:
+
+| Target | Judge | Notes |
+| --- | --- | --- |
+| `auto` | Cross-family CLI routing | Codex CLI judges `anthropic/*` answers; Opus CLI judges everything else. A model never grades its own house style. |
+| `codex` | Codex CLI headless | `codex exec --skip-git-repo-check -`, prompt on stdin. Uses your local Codex login. |
+| `opus` (alias `claude`) | Claude CLI headless | `claude -p --model opus`, prompt on stdin. Uses your local Claude login. |
+| `<creator>/<model>` | Gateway model | Explicit opt-in only; needs `AI_GATEWAY_API_KEY`. |
+
+CLI judges need the respective CLI installed and logged in, and don't consume gateway credits.
+Override the exact commands with `DM_JUDGE_CODEX_CMD` / `DM_JUDGE_OPUS_CMD` (e.g. to pin
+`codex exec -m gpt-5.3-codex ... -` or `claude -p --model claude-opus-4-6`). Each judge call
+sends the rubric + answer as one prompt and parses the last JSON score object out of the CLI
+output, so agent progress noise is tolerated. The report records which judge scored each run.
 
 ## Visual report
 
@@ -28,9 +45,9 @@ Open `.dm-evals/latest.html` in a browser. Typical loop:
 
 ```bash
 npm run dm:eval:report                              # offline baseline
-npm run dm:eval -- --live --judge openai/gpt-4.1 --report   # live judged snapshot
+npm run dm:eval -- --live --judge auto --report     # live judged snapshot
 # ...make a fix...
-npm run dm:eval -- --live --judge openai/gpt-4.1 --report   # diff shows what moved
+npm run dm:eval -- --live --judge auto --report     # diff shows what moved
 ```
 
 The same triage and diff also print to the terminal, so `--report` is optional for quick runs.
@@ -42,7 +59,7 @@ With `AI_GATEWAY_API_KEY`, all model ids (including `openai/*`) route through th
 ```bash
 npm run dm:eval -- --live \
   --models anthropic/claude-sonnet-4.6,openai/gpt-4.1,google/gemini-2.5-pro \
-  --judge openai/gpt-4.1 \
+  --judge auto \
   --json-path ./.tmp/dm-eval-live.json
 
 npm run dm:bench -- --models anthropic/claude-sonnet-4.6,openai/gpt-4.1 --iterations 5
