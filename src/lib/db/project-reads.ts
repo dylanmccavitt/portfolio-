@@ -1,6 +1,7 @@
 import type { ProjectLink, ProjectMetric, ProjectSeek, ProjectShot, ProjectStackEntry, ProjectStatus } from '@/data/catalog';
 import type { ProjectSummary } from '@/lib/dm/contract';
 import {
+  adaptLegacyProjectDetails,
   adaptLegacyProjectDetailEntries,
   adaptLegacyProjectLinks,
   adaptLegacyProjectMedia,
@@ -181,13 +182,21 @@ export function projectRecordToReadModels(record: ProjectReadRecord | CatalogSha
   const status = readDetails.legacy
     ? adaptLegacyProjectStatus(readDetails.status, record.id)
     : (['done', 'Published'] satisfies ProjectStatus);
-  const links = readDetails.legacy
-    ? adaptLegacyProjectLinks(record.links, record.id)
-    : parseCanonicalArray(ProjectLinkSchema, record.links, record.id, 'links');
-  const metrics = readDetails.legacy
-    ? adaptLegacyProjectMetrics(record.metrics, record.id)
-    : parseCanonicalArray(ProjectMetricSchema, record.metrics, record.id, 'metrics');
-  const canonicalDetails = readDetails.legacy ? null : parseCanonicalArray(ProjectDetailSchema, record.details, record.id, 'details');
+  const links = parseCanonicalOrLegacyArray(
+    ProjectLinkSchema,
+    record.links,
+    record.id,
+    adaptLegacyProjectLinks,
+  );
+  const metrics = parseCanonicalOrLegacyArray(
+    ProjectMetricSchema,
+    record.metrics,
+    record.id,
+    adaptLegacyProjectMetrics,
+  );
+  const canonicalDetails = readDetails.legacy
+    ? null
+    : parseCanonicalOrLegacyArray(ProjectDetailSchema, record.details, record.id, adaptLegacyProjectDetails);
   const about = canonicalDetails
     ? canonicalDetails.filter((detail): detail is string => typeof detail === 'string')
     : strings(readDetails.about, 'about', record.id);
@@ -198,9 +207,12 @@ export function projectRecordToReadModels(record: ProjectReadRecord | CatalogSha
   const seek = readDetails.legacy
     ? adaptLegacyProjectSeek(readDetails.seek, record.id)
     : ({ from: 'Draft', to: 'Published', pct: 100 } satisfies ProjectSeek);
-  const shots = readDetails.legacy
-    ? adaptLegacyProjectMedia(record.media, record.id)
-    : parseCanonicalArray(ProjectMediaSchema, record.media, record.id, 'media');
+  const shots = parseCanonicalOrLegacyArray(
+    ProjectMediaSchema,
+    record.media,
+    record.id,
+    adaptLegacyProjectMedia,
+  );
   const area = ProjectAreaSchema.parse(record.area);
   const href = `/projects/${record.slug}`;
   const card: ProjectCardReadModel = {
@@ -301,15 +313,14 @@ function legacySnapshot(record: ProjectReadRecord | CatalogShadowRecord): Legacy
   return snapshot ?? null;
 }
 
-function parseCanonicalArray<Output>(
+function parseCanonicalOrLegacyArray<Output>(
   itemSchema: { array(): { safeParse(value: unknown): { success: true; data: Output[] } | { success: false } } },
   value: unknown,
   id: string,
-  field: string,
+  adaptLegacy: (value: unknown, id: string) => Output[],
 ): Output[] {
   const parsed = itemSchema.array().safeParse(value);
-  if (!parsed.success) throw new Error(`Project record ${id} has invalid canonical ${field}.`);
-  return parsed.data;
+  return parsed.success ? parsed.data : adaptLegacy(value, id);
 }
 
 function strings(value: JsonValue, field: string, id: string): string[] {

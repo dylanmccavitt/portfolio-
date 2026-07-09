@@ -681,6 +681,94 @@ test('public DB read helpers render admin-published rows without legacy snapshot
   assert.equal(byId?.slug, 'manual-db-slug');
 });
 
+test('markerless pre-canonical published rows normalize only supported legacy nested shapes', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+       details, metrics, links, media, source, published_at
+     ) VALUES (
+       'markerless-legacy', 'markerless-legacy', 'Markerless legacy', 'Pre-canonical persisted row',
+       'AI & Developer Tools', 2026, 'published', 'Published before schema cutover', 'Legacy public summary.',
+       $1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb, 'manual', '2026-07-04T00:00:00.000Z'
+     )`,
+    [
+      JSON.stringify([
+        ['Language', 'TypeScript'],
+        { label: 'Version', value: 2 },
+        { provenance: 'not a legacy catalog snapshot' },
+        'Legacy public paragraph.',
+      ]),
+      JSON.stringify([
+        ['1', 'published proof'],
+        { value: 2, label: 'review passes' },
+      ]),
+      JSON.stringify([
+        ['Repo', 'https://example.com/markerless-legacy'],
+        { label: 'Docs', url: 'http://example.com/markerless-legacy/docs' },
+      ]),
+      JSON.stringify([
+        { type: 'image', src: '/screenshots/markerless-legacy.png', caption: 'Legacy screenshot' },
+        {
+          video: '/demos/loom-install.mp4',
+          poster: '/demos/loom-install-poster.png',
+          cap: 'Legacy Loom demo',
+        },
+      ]),
+    ],
+  );
+
+  const detail = await fetchPublicProjectDetail(db, 'markerless-legacy');
+  assert.deepEqual(detail?.about, ['Legacy public paragraph.']);
+  assert.deepEqual(detail?.stack, [
+    { label: 'Language', value: 'TypeScript' },
+    { label: 'Version', value: '2' },
+  ]);
+  assert.deepEqual(detail?.metrics, [
+    { value: '1', label: 'published proof' },
+    { value: '2', label: 'review passes' },
+  ]);
+  assert.deepEqual(detail?.links, [
+    { label: 'Repo', href: 'https://example.com/markerless-legacy' },
+    { label: 'Docs', href: 'http://example.com/markerless-legacy/docs' },
+  ]);
+  assert.deepEqual(detail?.shots, [
+    {
+      kind: 'image',
+      src: '/screenshots/markerless-legacy.png',
+      caption: 'Legacy screenshot',
+    },
+    {
+      kind: 'video',
+      src: '/demos/loom-install.mp4',
+      poster: '/demos/loom-install-poster.png',
+      caption: 'Legacy Loom demo',
+    },
+  ]);
+
+  const [record] = (
+    await db.query<CatalogShadowRecord>(
+      `SELECT id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+              details, metrics, links, media, source, published_at, archived_at
+       FROM projects WHERE id = 'markerless-legacy'`,
+    )
+  ).rows;
+  assert.ok(record);
+  assert.throws(
+    () => projectRecordToReadModels({ ...record, links: [['Unsafe', 'javascript:alert(1)']] }),
+    /invalid legacy links/,
+  );
+  assert.throws(
+    () => projectRecordToReadModels({
+      ...record,
+      media: [{ type: 'image', src: '/assets/not-approved.png', caption: 'Unsafe legacy media' }],
+    }),
+    /invalid legacy media/,
+  );
+});
+
 test('DB read layer accepts canonical Loom demo media and rejects invalid media', async () => {
   const db = createTestDb();
   await applyMigrations(db);
@@ -717,7 +805,7 @@ test('DB read layer accepts canonical Loom demo media and rejects invalid media'
     ...(await db.query<CatalogShadowRecord>(`SELECT * FROM projects WHERE id = 'video-media-project'`)).rows[0]!,
     media: [{ kind: 'image', src: 'javascript:alert(1)', caption: 'Unsafe' }],
   };
-  assert.throws(() => projectRecordToReadModels(canonicalRecord), /invalid canonical media/);
+  assert.throws(() => projectRecordToReadModels(canonicalRecord), /invalid legacy media/);
 });
 
 test('public project DB gate falls back to catalog until explicitly enabled and populated', async () => {
