@@ -139,6 +139,23 @@ function createTestDb(): Queryable {
   return new PGlite() as Queryable;
 }
 
+interface ProjectAreaPreflightRow {
+  source: string;
+  project_ref: string;
+  current_area: string;
+  prospective_area: string;
+}
+
+async function runProjectAreaPreflight(db: Queryable): Promise<ProjectAreaPreflightRow[]> {
+  const sql = await readFile(
+    fileURLToPath(new URL('../db/preflight/0003_recruiter_project_areas.sql', import.meta.url)),
+    'utf8',
+  );
+  const statements = splitSqlStatements(sql);
+  assert.equal(statements.length, 1);
+  return (await db.query<ProjectAreaPreflightRow>(statements[0]!)).rows;
+}
+
 async function insertProjectRecord(db: Queryable, record: CatalogShadowRecord): Promise<void> {
   await db.query(
     `INSERT INTO projects (
@@ -256,7 +273,8 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
      VALUES
        ('slurmlet', 'slurmlet', 'slurmlet', 'Scheduler', 'Infrastructure', 2026, 'draft_only'),
        ('db-only-research', 'db-only-research', 'DB only', 'DB-only row', 'Research', 2026, 'draft_only'),
-       ('loom', 'loom', 'Loom', 'Loom row', 'TypeScript', 2026, 'draft_only')`,
+       ('loom', 'loom', 'Loom', 'Loom row', 'TypeScript', 2026, 'draft_only'),
+       ('unmapped-typescript', 'unmapped-typescript', 'Unmapped', 'Unmapped row', 'TypeScript', 2026, 'draft_only')`,
   );
   await db.query(
     `INSERT INTO project_drafts (id, proposed_fields)
@@ -264,8 +282,39 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
        ('draft_slurmlet', '{"slug":"slurmlet","area":"Infrastructure"}'::jsonb),
        ('draft_db_only', '{"slug":"db-only-research","area":"Research"}'::jsonb),
        ('draft_loom', '{"slug":"loom","area":"TypeScript"}'::jsonb),
+       ('draft_unmapped', '{"slug":"unmapped-rust","area":"Rust"}'::jsonb),
        ('draft_without_area', '{"slug":"unmapped-hidden"}'::jsonb)`,
   );
+
+  const preflightByReference = new Map(
+    (await runProjectAreaPreflight(db)).map((row) => [`${row.source}:${row.project_ref}`, row]),
+  );
+  assert.equal(preflightByReference.size, 2);
+  assert.deepEqual(preflightByReference.get('projects:unmapped-typescript / unmapped-typescript'), {
+    source: 'projects',
+    project_ref: 'unmapped-typescript / unmapped-typescript',
+    current_area: 'TypeScript',
+    prospective_area: 'TypeScript',
+  });
+  assert.deepEqual(preflightByReference.get('project_drafts:draft_unmapped'), {
+    source: 'project_drafts',
+    project_ref: 'draft_unmapped',
+    current_area: 'Rust',
+    prospective_area: 'Rust',
+  });
+  for (const mappedReference of [
+    'projects:slurmlet / slurmlet',
+    'projects:db-only-research / db-only-research',
+    'projects:loom / loom',
+    'project_drafts:draft_slurmlet',
+    'project_drafts:draft_db_only',
+    'project_drafts:draft_loom',
+  ]) {
+    assert.equal(preflightByReference.has(mappedReference), false, `${mappedReference} should be mapped by migration 0003`);
+  }
+
+  await db.query(`DELETE FROM projects WHERE id = 'unmapped-typescript'`);
+  await db.query(`DELETE FROM project_drafts WHERE id = 'draft_unmapped'`);
 
   assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);
 
@@ -285,13 +334,7 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
     { id: 'draft_without_area', area: null },
   ]);
 
-  const preflightSql = await readFile(
-    fileURLToPath(new URL('../db/preflight/0003_recruiter_project_areas.sql', import.meta.url)),
-    'utf8',
-  );
-  const preflightStatements = splitSqlStatements(preflightSql);
-  assert.equal(preflightStatements.length, 1);
-  assert.deepEqual((await db.query(preflightStatements[0]!)).rows, []);
+  assert.deepEqual(await runProjectAreaPreflight(db), []);
 
   await db.query(`DELETE FROM schema_migrations WHERE name = '0003_recruiter_project_areas.sql'`);
   assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);

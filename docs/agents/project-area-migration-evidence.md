@@ -18,9 +18,11 @@ omit `area`; admin approval and publish require one of the values above.
 ## Local dry-run evidence
 
 The read-only artifact is `db/preflight/0003_recruiter_project_areas.sql`. A
-safe result is zero rows. It reports every noncanonical `projects.area` and
-every present noncanonical `project_drafts.proposed_fields.area`, including
-values such as `TypeScript`.
+safe result is zero rows. It calculates the values migration 0003 would produce
+from the same seven legacy mappings and explicit ID/slug overrides, then reports
+only rows that would remain noncanonical. Known mapped values are omitted,
+including Loom's explicitly overridden `TypeScript`; an unoverridden
+`TypeScript` value is still reported.
 
 Local PGlite verification exercises:
 
@@ -29,6 +31,8 @@ Local PGlite verification exercises:
 - DB-only legacy rows through value-based mappings;
 - the explicit Loom ID/slug override;
 - draft proposed-area mappings and drafts with no area;
+- the actual read-only preflight before and after migration, with unmapped
+  project and draft controls;
 - partial-run retry/idempotence;
 - preflight failure for unmapped project and draft values;
 - the final persisted-project and proposed-draft constraints.
