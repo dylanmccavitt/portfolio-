@@ -56,6 +56,24 @@ The same triage and diff also print to the terminal, so `--report` is optional f
 
 With `AI_GATEWAY_API_KEY`, all model ids (including `openai/*`) route through the Vercel AI Gateway. Use full `<creator>/<model>` ids. `OPENAI_API_KEY` is still required for the `searchSources` RAG tool.
 
+Local runs auto-load `.env` and `.env.local` when those files exist. To compare models from
+this repo without repeating `--models`, put the list in `DM_EVAL_MODELS`:
+
+```dotenv
+AI_GATEWAY_API_KEY=...
+OPENAI_API_KEY=...
+DM_EVAL_MODELS=anthropic/claude-sonnet-4.6,openai/gpt-4.1,google/gemini-2.5-pro
+```
+
+Then run:
+
+```bash
+npm run dm:eval -- --live --judge auto --report
+```
+
+Precedence is `--models` > `DM_EVAL_MODELS` > `DM_MODEL`; `DM_BENCH_MODELS` remains only as
+a legacy fallback when neither eval-specific setting is present.
+
 ```bash
 npm run dm:eval -- --live \
   --models anthropic/claude-sonnet-4.6,openai/gpt-4.1,google/gemini-2.5-pro \

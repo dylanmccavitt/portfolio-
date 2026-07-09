@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { aggregateBenchmarkRuns, classifyBenchmarkRun, median, percentile, type DMBenchmarkRunRecord, type TimedDMEvent } from '@/lib/dm/benchmark';
-import { parseDMModelSpec, parseDMModelSpecs } from '@/lib/dm/model-specs';
+import { parseDMEvalModelSpecs, parseDMModelSpec, parseDMModelSpecs } from '@/lib/dm/model-specs';
 
 test('model specs keep full gateway ids so anthropic models resolve through the gateway', () => {
   const keys = { hasGatewayKey: true, hasOpenaiKey: true };
@@ -45,6 +45,32 @@ test('model spec lists dedupe and support dry-mode parsing without keys', () => 
   assert.equal(specs[0]?.provider, 'gateway');
   assert.throws(() => parseDMModelSpecs(undefined, keys, []), /No models configured/);
   assert.throws(() => parseDMModelSpec('anthropic/', keys), /creator.*model|<creator>\/<model>/);
+});
+
+test('eval model specs prefer cli models, then DM_EVAL_MODELS, then DM_MODEL', () => {
+  const keys = { hasGatewayKey: true, hasOpenaiKey: true };
+  const env = {
+    DM_EVAL_MODELS: 'anthropic/claude-sonnet-4.6, openai/gpt-4.1',
+    DM_BENCH_MODELS: 'openai/legacy-bench-model',
+    DM_MODEL: 'openai/fallback-model',
+  };
+
+  assert.deepEqual(
+    parseDMEvalModelSpecs('openai/cli-model', env, keys).map((spec) => spec.label),
+    ['openai/cli-model'],
+  );
+  assert.deepEqual(
+    parseDMEvalModelSpecs(undefined, env, keys).map((spec) => spec.label),
+    ['anthropic/claude-sonnet-4.6', 'openai/gpt-4.1'],
+  );
+  assert.deepEqual(
+    parseDMEvalModelSpecs(undefined, { DM_MODEL: 'openai/fallback-model', DM_BENCH_MODELS: 'openai/legacy-bench-model' }, keys).map((spec) => spec.label),
+    ['openai/fallback-model'],
+  );
+  assert.deepEqual(
+    parseDMEvalModelSpecs(undefined, { DM_BENCH_MODELS: 'openai/legacy-bench-model, anthropic/legacy-claude' }, keys).map((spec) => spec.label),
+    ['openai/legacy-bench-model', 'anthropic/legacy-claude'],
+  );
 });
 
 test('benchmark classification marks no-token errors as MODEL_CALL_FAILED invalid latency', () => {

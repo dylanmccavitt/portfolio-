@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { generateText } from 'ai';
 import type { AnswerBlock, DMStreamEvent } from '@/lib/dm/contract';
 import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES, readNdjsonEvents, type DMEvalCase } from '@/lib/dm/eval-fixtures';
-import { parseDMModelSpecs, readModelKeyAvailability, type DMModelSpec } from '@/lib/dm/model-specs';
+import { formatMissingLiveModelKeysError, parseDMEvalModelSpecs, readModelKeyAvailability, type DMModelSpec } from '@/lib/dm/model-specs';
 import {
   diffEvalReports,
   renderEvalReportHtml,
@@ -54,13 +54,11 @@ async function main(): Promise<void> {
 
   const keys = readModelKeyAvailability();
   if (options.live && !keys.hasGatewayKey && !keys.hasOpenaiKey) {
-    throw new Error('Live eval needs AI_GATEWAY_API_KEY (or OPENAI_API_KEY for openai/* models).');
+    throw new Error(formatMissingLiveModelKeysError());
   }
 
   const modelSpecs = options.live
-    ? parseDMModelSpecs(options.modelsArg ?? process.env.DM_BENCH_MODELS, keys, [
-        process.env.DM_MODEL?.trim() || 'openai/gpt-4.1',
-      ])
+    ? parseDMEvalModelSpecs(options.modelsArg, process.env, keys)
     : null;
   const judgeConfig = options.judgeArg ? parseJudgeArg(options.judgeArg, keys) : null;
   if (judgeConfig && !options.live) {
@@ -355,7 +353,7 @@ Usage: npm run dm:eval -- [options]
 
 Options:
   --live                Run fixtures against real models instead of stubs
-  --models <list>       Comma-separated model list for --live (default: DM_MODEL)
+  --models <list>       Comma-separated model list for --live (default: DM_EVAL_MODELS, then DM_MODEL)
   --judge <target>      Judge for live answers. Targets:
                           auto     cross-family CLI routing: codex-cli judges
                                    anthropic answers, opus-cli judges the rest
@@ -374,6 +372,8 @@ Environment:
   AI_GATEWAY_API_KEY    When set, ALL models (including openai/*) route through the Vercel AI Gateway.
   OPENAI_API_KEY        Without a gateway key, reaches openai/* models directly. Also used by RAG search.
   DM_MODEL              Default live model (full <creator>/<model> id, e.g. anthropic/claude-sonnet-4.6).
+  DM_EVAL_MODELS        Comma-separated live eval model list; --models overrides this.
+                        Legacy fallback only when DM_MODEL is unset: DM_BENCH_MODELS.
   DM_JUDGE_CODEX_CMD    Override the codex judge command (default: codex exec --skip-git-repo-check -).
   DM_JUDGE_OPUS_CMD     Override the opus judge command (default: claude -p --model opus).
 `);

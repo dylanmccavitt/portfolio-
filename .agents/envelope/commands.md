@@ -23,9 +23,9 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | DM benchmark test | `npm run test:benchmark` | `node --import tsx --test tests/dm-benchmark.test.ts` |
 | DM eval report test | `npm run test:eval-report` | `node --import tsx --test tests/dm-eval-report.test.ts` |
 | Publish proof gate | `npm run test:proof` | `node --import tsx --test tests/publish-proof.test.ts` |
-| DM eval | `npm run dm:eval` | `node --import tsx scripts/dm-eval.ts` |
-| DM eval + HTML report | `npm run dm:eval:report` | `node --import tsx scripts/dm-eval.ts --report` (writes `.dm-evals/latest.html`) |
-| DM latency benchmark | `npm run dm:bench` | `node --import tsx scripts/dm-benchmark.ts` |
+| DM eval | `npm run dm:eval` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-eval.ts` |
+| DM eval + HTML report | `npm run dm:eval:report` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-eval.ts --report` (writes `.dm-evals/latest.html`) |
+| DM latency benchmark | `npm run dm:bench` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-benchmark.ts` |
 | DB migrate | `npm run db:migrate` | `tsx scripts/db.ts migrate` |
 | DB seed | `npm run db:seed` | `tsx scripts/db.ts seed` |
 | DB reset | `npm run db:reset` | `tsx scripts/db.ts reset` |

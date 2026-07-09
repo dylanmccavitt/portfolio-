@@ -21,6 +21,24 @@ export function readModelKeyAvailability(
   };
 }
 
+/** Explain missing keys, including Vercel `env pull` writing empty Sensitive placeholders. */
+export function formatMissingLiveModelKeysError(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const emptyKeys = (['AI_GATEWAY_API_KEY', 'OPENAI_API_KEY'] as const).filter(
+    (name) => name in env && !env[name]?.trim(),
+  );
+  if (emptyKeys.length > 0) {
+    return (
+      `Live eval keys are present but empty (${emptyKeys.join(', ')}). ` +
+      'Vercel `env pull` writes "" for Sensitive variables — reveal them in the Vercel dashboard ' +
+      '(Project → Settings → Environment Variables) and paste the real values into .env, ' +
+      'or export them in your shell before running.'
+    );
+  }
+  return 'Live eval needs AI_GATEWAY_API_KEY (or OPENAI_API_KEY for openai/* models).';
+}
+
 /**
  * Resolve one model id to a provider route.
  * Gateway key → all models via gateway; OpenAI key only → openai/* direct; no keys → dry-mode parse.
@@ -49,6 +67,15 @@ export function parseDMModelSpec(value: string, keys: DMModelKeyAvailability): D
     );
   }
   return { provider: 'gateway', model: id, label: id };
+}
+
+export function parseDMEvalModelSpecs(
+  modelsArg: string | undefined,
+  env: Record<string, string | undefined>,
+  keys: DMModelKeyAvailability,
+): DMModelSpec[] {
+  const rawModels = [modelsArg, env.DM_EVAL_MODELS, env.DM_MODEL].find((value) => Boolean(value?.trim()));
+  return parseDMModelSpecs(rawModels ?? env.DM_BENCH_MODELS, keys, ['openai/gpt-4.1']);
 }
 
 export function parseDMModelSpecs(
