@@ -49,13 +49,18 @@ Dark-only tokens (`--pl-*` in `player.css`). Public project pages read through t
 - **No co-author lines** on commits
 - **Don't commit** spec/plan docs (`docs/superpowers/`) — those are working files, not repo artifacts
 - Dev environment runs inside a Distrobox container
+- **Tracker default:** Linear team `dmcc` / `AGE`, project **Portfolio**.
+- **Bounded production-readiness exception:** GitHub issues `#184`–`#196` are
+  authoritative for that program. Implement them on
+  `codex/gh-<issue>-<slug>` branches and close them from PRs with
+  `Fixes #<issue>`. Linear/AGE remains the default outside that issue range.
 
 ## Agent skills
 
 This repo runs the Factorio workflow kit. The per-repo envelope is the single
 binding point — read it before planning or building:
 
-- `.agents/envelope/linear-map.md` — Linear team (`dmcc`/AGE) + Portfolio project, labels, states, the inserter triage map, and the GitHub bridge.
+- `.agents/envelope/linear-map.md` — Linear team (`dmcc`/AGE) + Portfolio project, labels, states, the inserter triage map, and the bounded GitHub program exception.
 - `.agents/envelope/domain.md` — domain glossary (DM, Split-canvas landing, Typographic card, Editorial detail, answer block, artifact card).
 - `.agents/envelope/commands.md` — build/test/lint/run + default branch and the redesign stack.
 - `.agents/envelope/templates/` — PR / issue / project-doc templates.

@@ -3,6 +3,11 @@
 > Repo-local Linear issue scaffold (stamped from blueprint's canonical template).
 > `ghosts` stamps this from the spec — one tracer-bullet slice that cuts through
 > every layer and is demoable on its own. Team `dmcc` (AGE) / project Portfolio.
+>
+> Linear/AGE is the default tracker outside the bounded production-readiness
+> program. GitHub issues `#184`–`#196` are authoritative for that program and do
+> not use this Linear scaffold; their branches use `codex/gh-<issue>-<slug>` and
+> their PRs use `Fixes #<issue>`.
 
 ## Context
 

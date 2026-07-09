@@ -1,10 +1,16 @@
 # {{PR_TITLE}}
 
-> Repo-local PR scaffold (stamped from blueprint's canonical template). The branch
-> name carries the Linear issue id (`age-<n>-...`), so this PR auto-links to the
-> issue and the merge auto-closes it through Linear's GitHub bridge.
+> Repo-local PR scaffold (stamped from blueprint's canonical template).
+> Linear/AGE is the default tracker outside the bounded production-readiness
+> program. For GitHub issues `#184`–`#196`, use branch
+> `codex/gh-<issue>-<slug>` and replace the default issue line below with exactly
+> `Fixes #<issue>`. For all other work, keep the Linear/AGE convention.
 
 Fixes AGE-{{ISSUE_NUMBER}}
+
+<!-- For GitHub program issues #184-#196, replace the line above with:
+Fixes #<issue>
+-->
 
 ## Summary
 
@@ -26,7 +32,7 @@ stack order remains historical context:
 
 ## Acceptance criteria
 
-Map each Linear acceptance criterion to where it is satisfied.
+Map each tracked issue acceptance criterion to where it is satisfied.
 
 - [ ] {{criterion}} — {{how it is met}}
 

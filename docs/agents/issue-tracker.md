@@ -8,13 +8,18 @@ PRs live in GitHub repo `DylanMcCavitt/portfolio-`. The branch name carries the
 Linear issue id, so the PR auto-links to the issue and the merge auto-closes it
 through Linear's GitHub bridge.
 
+The bounded production-readiness program is the exception: GitHub issues
+`#184`–`#196` are authoritative for that program. Use
+`codex/gh-<issue>-<slug>` for each implementation branch and `Fixes #<issue>` in
+its PR. Linear/AGE remains the default for all work outside that issue range.
+
 > Legacy: GitHub issues `DylanMcCavitt/portfolio-` #84–#88 remain for the in-flight
-> agent-first redesign stack. New work is filed in Linear.
+> agent-first redesign stack.
 
 ## Working with issues and PRs
 
-- Issues: create/triage/update in Linear (see `.agents/envelope/linear-map.md` for states/labels). Stamp new issues from `.agents/envelope/templates/linear-issue.md`.
-- PRs (GitHub, run from inside the repo): `gh pr view`, `gh pr create`. Use `.agents/envelope/templates/pull-request.md`; reference the issue with `Fixes AGE-<n>`.
+- Issues: create/triage/update in Linear by default (see `.agents/envelope/linear-map.md` for states/labels). Stamp Linear issues from `.agents/envelope/templates/linear-issue.md`. Create and maintain issues `#184`–`#196` in GitHub for the bounded program.
+- PRs (GitHub, run from inside the repo): `gh pr view`, `gh pr create`. Use `.agents/envelope/templates/pull-request.md`; reference default Linear work with `Fixes AGE-<n>` and program issues `#184`–`#196` with `Fixes #<issue>`.
 
 ## Branch and agent routing
 
@@ -23,7 +28,9 @@ through Linear's GitHub bridge.
 - Legacy Eve stack order remains historical context: `preview/agent-first-redesign` -> `codex/issue-84-eve-runtime` -> `claude/issue-85-typographic-card` -> `claude/issue-86-eve-landing` -> `claude/issue-87-editorial-detail` -> `codex/issue-88-retire-shell`.
 - Each implementation issue must name an Owner engine: `Claude` or `GLM` (labels `claude`/`glm`) for UI work, `Codex` (label `codex`) for DM runtime/data/plumbing/test/cleanup work.
 - Each implementation issue should be executed as one issue / one worktree / one branch / one PR.
-- Branch shape: `<engine>/age-<n>-<slug>` (e.g. `codex/age-726-supersede-eve-with-dm`).
+- Default Linear branch shape: `<engine>/age-<n>-<slug>` (e.g. `codex/age-726-supersede-eve-with-dm`).
+- GitHub production-readiness program (`#184`–`#196`) branch shape:
+  `codex/gh-<issue>-<slug>`; use `Fixes #<issue>` in the matching PR.
 
 ## Issue packet fields
 

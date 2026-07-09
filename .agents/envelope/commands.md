@@ -49,6 +49,12 @@ Add `npm run test:dm` when the change touches the public DM runtime/API seam.
 - **Redesign stack root:** `preview/agent-first-redesign`. Agent-first redesign
   PRs target their immediate stack parent, never `main`, until a maintainer
   changes the plan.
+- **Tracker default:** Linear/AGE work uses
+  `<engine>/age-<issue>-<slug>` and the normal Linear GitHub linkage.
+- **Production-readiness exception:** GitHub issues `#184`–`#196` are
+  authoritative for that bounded program. Use `codex/gh-<issue>-<slug>` and
+  close each issue from its PR with `Fixes #<issue>`. Linear/AGE remains the
+  default outside that range.
 
 ## Runtime
 

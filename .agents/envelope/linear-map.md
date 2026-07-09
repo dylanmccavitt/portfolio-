@@ -45,12 +45,18 @@ Blocked, In Review, Human Review, Needs Fixes, Merging, Done, Canceled, Duplicat
 
 ## GitHub bridge
 
-- **Repo:** `DylanMcCavitt/portfolio-` (GitHub Issues remain for legacy #84–#88;
-  new work is tracked in Linear).
+- **Repo:** `DylanMcCavitt/portfolio-`.
+- **Default tracker:** new work is tracked in Linear/AGE. GitHub issues
+  `#84`–`#88` remain legacy redesign-stack context.
+- **Bounded production-readiness exception:** GitHub issues `#184`–`#196` are
+  authoritative for that program. Their implementation branches use
+  `codex/gh-<issue>-<slug>`, and their PRs use `Fixes #<issue>`. Linear/AGE
+  remains the default outside that issue range.
 - **Convention:** the branch name carries the Linear issue id, so the PR
   auto-links to the issue and the merge auto-closes it through Linear's GitHub
-  integration.
-- **Branch shape:** `<engine>/<issue-id-lower>-<slug>`
+  integration. This convention applies to work outside GitHub program issues
+  `#184`–`#196`.
+- **Default branch shape:** `<engine>/<issue-id-lower>-<slug>`
   (e.g. `claude/age-141-dm-landing`, `glm/age-141-dm-landing`, `codex/age-142-dm-runtime`).
 - **Default branch:** `main`. Agent-first redesign PRs stack from
   `preview/agent-first-redesign` and target their immediate stack parent, never
