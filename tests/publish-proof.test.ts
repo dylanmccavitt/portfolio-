@@ -552,7 +552,14 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
     'draft-only project rows must never surface in DM search',
   );
   const unpublishedSearch = await dmTools.searchProjects({ query: 'proof-sentinel-unpublished-737', limit: 5 });
-  assert.deepEqual(unpublishedSearch.projects, []);
+  // Zero-match queries intentionally fall back to ranked published projects (fallbackUsed)
+  // rather than returning []. The publish-gate invariant is that draft-only rows stay hidden.
+  assert.equal(unpublishedSearch.fallbackUsed, true);
+  assert.ok(unpublishedSearch.projects.length > 0, 'zero-match search should fall back to published projects');
+  assert.ok(
+    !unpublishedSearch.projects.some((project) => project.id === unpublishedProjectId),
+    'draft-only project rows must never surface in DM zero-match fallback search',
+  );
 
   await assert.rejects(
     () => dmTools.assertProjectIds([unpublishedProjectId]),
