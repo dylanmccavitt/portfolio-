@@ -1,10 +1,18 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { generateText } from 'ai';
 import type { AnswerBlock, DMStreamEvent } from '@/lib/dm/contract';
 import { createEvalProjectDb, createStubModelForEvalCase, DM_EVAL_CASES, readNdjsonEvents, type DMEvalCase } from '@/lib/dm/eval-fixtures';
 import { parseDMModelSpec, parseDMModelSpecs, readModelKeyAvailability, type DMModelSpec } from '@/lib/dm/model-specs';
+import {
+  diffEvalReports,
+  renderEvalReportHtml,
+  triageRun,
+  type DMEvalJudgeScore,
+  type DMEvalReport,
+  type DMEvalRunRecord,
+} from '@/lib/dm/eval-report';
 import { createDMChatStream, createDMModel } from '@/lib/dm/runtime';
 
 process.env.DM_METRICS ??= '0';
@@ -16,26 +24,14 @@ interface CliOptions {
   modelsArg?: string;
   judgeArg?: string;
   jsonPath?: string;
+  reportDir?: string;
+  baselinePath?: string;
   help: boolean;
 }
 
-interface JudgeScore {
-  grounded: number;
-  honest: number;
-  useful: number;
-  notes: string;
-}
+type JudgeScore = DMEvalJudgeScore;
 
-interface EvalRunRecord {
-  model: string;
-  caseName: string;
-  passed: boolean;
-  failure: string | null;
-  elapsedMs: number;
-  answerText: string;
-  blockKinds: string[];
-  judge?: JudgeScore | { error: string };
-}
+type EvalRunRecord = DMEvalRunRecord;
 
 async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
@@ -106,25 +102,98 @@ async function main(): Promise<void> {
     console.log(summary);
   }
 
+  const report: DMEvalReport = {
+    generatedAt: new Date().toISOString(),
+    mode: options.live ? 'live' : 'offline',
+    judge: judgeSpec?.label ?? null,
+    runs: records,
+  };
+
+  printTriage(records);
+
   if (options.jsonPath) {
     await mkdir(dirname(options.jsonPath), { recursive: true });
-    await writeFile(
-      options.jsonPath,
-      JSON.stringify(
-        {
-          generatedAt: new Date().toISOString(),
-          mode: options.live ? 'live' : 'offline',
-          judge: judgeSpec?.label ?? null,
-          runs: records,
-        },
-        null,
-        2,
-      ),
-    );
+    await writeFile(options.jsonPath, JSON.stringify(report, null, 2));
     console.log(`[dm:eval] wrote JSON report to ${options.jsonPath}`);
   }
 
+  if (options.reportDir) {
+    await writeReportDir(options.reportDir, report, options.baselinePath);
+  }
+
   if (records.some((record) => !record.passed)) process.exitCode = 1;
+}
+
+function printTriage(records: EvalRunRecord[]): void {
+  const triaged = records
+    .map((record) => ({ record, triage: triageRun(record) }))
+    .filter((item) => item.triage !== null);
+  if (triaged.length === 0) return;
+  console.log('');
+  console.log('[dm:eval] what to fix next:');
+  for (const { record, triage } of triaged) {
+    if (!triage) continue;
+    console.log(`  [${triage.severity}] ${triage.classification} — ${record.caseName} (${record.model})`);
+    console.log(`    ${triage.nextStep}`);
+  }
+}
+
+/**
+ * Write a timestamped run into the report directory, diff it against the
+ * baseline (explicit --baseline path, else the previous run in the dir),
+ * and refresh latest.html / latest.json convenience copies.
+ */
+async function writeReportDir(reportDir: string, report: DMEvalReport, baselinePath?: string): Promise<void> {
+  await mkdir(reportDir, { recursive: true });
+
+  const baseline = baselinePath
+    ? { label: baselinePath, report: await readReport(baselinePath) }
+    : await findPreviousRun(reportDir);
+
+  const stamp = report.generatedAt.replaceAll(':', '-').replace(/\.\d+Z$/, 'Z');
+  const runJsonPath = join(reportDir, `run-${stamp}.json`);
+  const html = renderEvalReportHtml({
+    report,
+    baseline: baseline?.report,
+    baselineLabel: baseline?.label,
+  });
+
+  await writeFile(runJsonPath, JSON.stringify(report, null, 2));
+  await writeFile(join(reportDir, `run-${stamp}.html`), html);
+  await writeFile(join(reportDir, 'latest.json'), JSON.stringify(report, null, 2));
+  await writeFile(join(reportDir, 'latest.html'), html);
+
+  if (baseline) {
+    const diff = diffEvalReports(baseline.report, report);
+    if (diff.length > 0) {
+      console.log(`[dm:eval] changes vs ${baseline.label}:`);
+      for (const entry of diff) {
+        console.log(`  ${entry.kind.toUpperCase()} ${entry.caseName} [${entry.model}] — ${entry.detail}`);
+      }
+    } else {
+      console.log(`[dm:eval] no pass/fail changes vs ${baseline.label}`);
+    }
+  }
+  console.log(`[dm:eval] report: ${join(reportDir, 'latest.html')} (open in a browser)`);
+}
+
+async function readReport(path: string): Promise<DMEvalReport> {
+  return JSON.parse(await readFile(path, 'utf8')) as DMEvalReport;
+}
+
+async function findPreviousRun(reportDir: string): Promise<{ label: string; report: DMEvalReport } | null> {
+  let names: string[];
+  try {
+    names = await readdir(reportDir);
+  } catch {
+    return null;
+  }
+  const previous = names
+    .filter((name) => /^run-.*\.json$/.test(name))
+    .sort()
+    .at(-1);
+  if (!previous) return null;
+  return { label: previous, report: await readReport(join(reportDir, previous)) };
 }
 
 function formatRunLine(record: EvalRunRecord): string {
@@ -278,6 +347,16 @@ function parseCliOptions(argv: string[]): CliOptions {
       options.jsonPath = argv[++index];
     } else if (arg.startsWith('--json-path=')) {
       options.jsonPath = arg.slice('--json-path='.length);
+    } else if (arg === '--report-dir') {
+      options.reportDir = argv[++index];
+    } else if (arg.startsWith('--report-dir=')) {
+      options.reportDir = arg.slice('--report-dir='.length);
+    } else if (arg === '--report') {
+      options.reportDir = '.dm-evals';
+    } else if (arg === '--baseline') {
+      options.baselinePath = argv[++index];
+    } else if (arg.startsWith('--baseline=')) {
+      options.baselinePath = arg.slice('--baseline='.length);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -294,6 +373,11 @@ Options:
   --models <list>       Comma-separated model list for --live (default: DM_MODEL)
   --judge <model>       LLM-as-judge scoring for live answers (e.g. openai/gpt-4.1)
   --json-path <path>    Write a JSON report (answers, failures, judge scores)
+  --report              Shorthand for --report-dir .dm-evals
+  --report-dir <dir>    Write an HTML report + timestamped JSON into <dir>, and
+                        diff against the previous run in that dir
+  --baseline <path>     Diff against a specific JSON report instead of the
+                        previous run in the report dir
   --help                Show this help
 
 Environment:
