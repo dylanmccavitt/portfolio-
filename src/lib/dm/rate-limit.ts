@@ -105,7 +105,7 @@ export async function consumeDMRateLimit(
       retryAfterSeconds: Math.max(1, Math.ceil((windowEnd - now) / 1000)),
       remaining: Math.max(0, config.limit - count),
     };
-  } catch (error) {
+  } catch {
     throw new DMRateLimitStorageError('DM rate limiter storage is unavailable.');
   }
 }
