@@ -9,15 +9,19 @@ import { applyMigrations, applySeeds, resetDatabase, splitSqlStatements, type Qu
 import { CATALOG, PLAYLIST_SLUGS } from '@/data/catalog';
 import {
   buildCatalogShadowRecords,
+  CatalogCutoverParityError,
+  fetchCatalogParityRecords,
   fetchCatalogShadowRecords,
   generateCatalogParityReport,
   importCatalogShadowRecords,
+  runCatalogCutover,
   type CatalogShadowRecord,
 } from '@/lib/db/catalog-shadow';
 import {
   fetchInternalShadowProjectReadModels,
   fetchPublicProjectCards,
   fetchPublicProjectDetail,
+  fetchPublicProjectDetailBySlug,
   fetchPublicProjectDetails,
   projectRecordToReadModels,
   tryFetchInternalShadowProjectReadModels,
@@ -25,6 +29,7 @@ import {
 } from '@/lib/db/project-reads';
 import {
   filterPublicProjectDetails,
+  loadPublicProjectDetailBySlug,
   loadPublicProjectDetails,
   PublicProjectDataError,
   resetPublicProjectDetailsLoadForTests,
@@ -205,6 +210,7 @@ test('migrations create the DM project foundation tables', async () => {
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
+    '0006_catalog_cutover.sql',
   ]);
 
   const tables = await db.query<{ table_name: string }>(
@@ -248,6 +254,7 @@ test('review_events seq migration upgrades an existing database deterministicall
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
+    '0006_catalog_cutover.sql',
   ]);
 
   const upgraded = await db.query<{ id: string; seq: string | number | null }>(
@@ -333,6 +340,7 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
+    '0006_catalog_cutover.sql',
   ]);
 
   const projects = await db.query<{ id: string; area: string }>(`SELECT id, area FROM projects ORDER BY id`);
@@ -384,6 +392,7 @@ test('project area migration preflight rejects every noncanonical project and dr
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
+    '0006_catalog_cutover.sql',
   ]);
 
   await assert.rejects(
@@ -681,6 +690,7 @@ test('seed and reset path works without external credentials', async () => {
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
+    '0006_catalog_cutover.sql',
   ]);
   assert.deepEqual(await applySeeds(db), ['001_foundation_smoke.sql']);
 
@@ -721,6 +731,181 @@ test('catalog shadow import writes every project as legacy shadow records', asyn
     report.sections.map((section) => section.name),
     ['cards', 'details', 'dm_artifacts', 'seo_og_sitemap', 'media_placeholders', 'external_links', 'fallback'],
   );
+});
+
+test('one-way catalog parity permits reviewed published DB-only projects but not extra legacy shadows', () => {
+  const records = JSON.parse(JSON.stringify(buildCatalogShadowRecords())) as CatalogShadowRecord[];
+  const template = records[0];
+  assert.ok(template, 'expected a catalog shadow record');
+
+  const reviewedDbOnly = {
+    ...template,
+    id: 'proj_loom_db_only',
+    slug: 'loom',
+    title: 'Loom',
+    lifecycle_state: 'published' as const,
+    source: 'github_discovery' as const,
+    published_at: '2026-07-10T00:00:00.000Z',
+  };
+  const oneWay = generateCatalogParityReport([...records, reviewedDbOnly]);
+  assert.equal(oneWay.status, 'pass');
+  assert.deepEqual(oneWay.extraRecordIds, ['proj_loom_db_only']);
+
+  const extraLegacyShadow = {
+    ...template,
+    id: 'legacy-extra-shadow',
+    slug: 'legacy-extra-shadow',
+    lifecycle_state: 'shadow' as const,
+    source: 'legacy_catalog' as const,
+    published_at: null,
+  };
+  const rejected = generateCatalogParityReport([...records, extraLegacyShadow]);
+  assert.equal(rejected.status, 'fail');
+  assert.deepEqual(rejected.disallowedExtraRecordIds, ['legacy-extra-shadow']);
+
+  const collidingDbOnly = {
+    ...template,
+    lifecycle_state: 'published' as const,
+    source: 'manual' as const,
+    published_at: '2026-07-10T00:00:00.000Z',
+  };
+  const collision = generateCatalogParityReport([...records.filter((record) => record.id !== template.id), collidingDbOnly]);
+  assert.equal(collision.status, 'fail');
+  assert.deepEqual(collision.conflictingRecordIds, [template.id]);
+  assert.deepEqual(collision.missingRecordIds, [template.id]);
+});
+
+test('0006 catalog cutover promotes only legacy shadow rows and preserves a published DB-only Loom row', async () => {
+  const db = createTestDb();
+  const preCutoverDir = await mkdtemp(join(tmpdir(), 'gh190-pre-cutover-'));
+  const migrations = [
+    '0001_dm_project_foundation.sql',
+    '0002_review_events_seq.sql',
+    '0003_recruiter_project_areas.sql',
+    '0004_source_identity_and_refresh_drafts.sql',
+    '0005_publish_outbox.sql',
+  ];
+  for (const migration of migrations) {
+    await copyFile(
+      fileURLToPath(new URL(`../db/migrations/${migration}`, import.meta.url)),
+      join(preCutoverDir, migration),
+    );
+  }
+  assert.deepEqual(await applyMigrations(db, preCutoverDir), migrations);
+  await importCatalogShadowRecords(db);
+
+  const [template] = buildCatalogShadowRecords(CATALOG.slice(0, 1));
+  assert.ok(template, 'expected a catalog shadow record');
+  await insertProjectRecord(db, {
+    ...template,
+    id: 'proj_loom_db_only',
+    slug: 'loom',
+    title: 'Loom',
+    lifecycle_state: 'published',
+    source: 'github_discovery',
+    published_at: '2026-07-10T00:00:00.000Z',
+  });
+  await db.query(`UPDATE projects SET publication_version = 7 WHERE id = 'proj_loom_db_only'`);
+
+  const cutoverDir = await mkdtemp(join(tmpdir(), 'gh190-cutover-'));
+  await copyFile(
+    fileURLToPath(new URL('../db/migrations/0006_catalog_cutover.sql', import.meta.url)),
+    join(cutoverDir, '0006_catalog_cutover.sql'),
+  );
+  assert.deepEqual(await applyMigrations(db, cutoverDir), ['0006_catalog_cutover.sql']);
+  const dryRun = await runCatalogCutover(db);
+  assert.equal(dryRun.applied, false);
+  assert.equal(dryRun.promoted, 0);
+  assert.equal((await db.query(`SELECT id FROM projects WHERE source = 'legacy_catalog' AND lifecycle_state = 'shadow'`)).rows.length, CATALOG.length);
+
+  const firstCutover = await runCatalogCutover(db, { apply: true });
+  assert.equal(firstCutover.applied, true);
+  assert.equal(firstCutover.promoted, CATALOG.length);
+
+  const promoted = await db.query<{
+    id: string;
+    lifecycle_state: string;
+    source: string;
+    publication_version: string | number;
+    published_at: string | null;
+  }>(
+    `SELECT id, lifecycle_state, source, publication_version, published_at
+     FROM projects
+     WHERE source = 'legacy_catalog'
+     ORDER BY id`,
+  );
+  assert.equal(promoted.rows.length, CATALOG.length);
+  assert.ok(promoted.rows.every((row) => row.lifecycle_state === 'published'));
+  assert.ok(promoted.rows.every((row) => Number(row.publication_version) === 1));
+  assert.ok(promoted.rows.every((row) => row.published_at !== null));
+
+  const loom = await db.query<{
+    lifecycle_state: string;
+    source: string;
+    publication_version: string | number;
+    published_at: string;
+  }>(`SELECT lifecycle_state, source, publication_version, published_at FROM projects WHERE id = 'proj_loom_db_only'`);
+  assert.equal(loom.rows[0]?.lifecycle_state, 'published');
+  assert.equal(loom.rows[0]?.source, 'github_discovery');
+  assert.equal(Number(loom.rows[0]?.publication_version), 7);
+  assert.equal(new Date(loom.rows[0]?.published_at ?? '').toISOString(), '2026-07-10T00:00:00.000Z');
+
+  const refreshJobs = await db.query<{
+    job_type: string;
+    state: string;
+    publication_version: string | number;
+  }>(
+    `SELECT job_type, state, publication_version
+     FROM publish_outbox
+     WHERE job_type = 'site_refresh'
+       AND project_id IN (SELECT id FROM projects WHERE source = 'legacy_catalog')`,
+  );
+  assert.deepEqual(refreshJobs.rows, [{ job_type: 'site_refresh', state: 'queued', publication_version: 1 }]);
+
+  const postCutoverReport = generateCatalogParityReport(await fetchCatalogParityRecords(db));
+  assert.equal(postCutoverReport.status, 'pass');
+  assert.deepEqual(postCutoverReport.extraRecordIds, ['proj_loom_db_only']);
+
+  await importCatalogShadowRecords(db);
+  const preservedAfterImport = await db.query<{
+    lifecycle_state: string;
+    publication_version: string | number;
+    published_at: string;
+  }>(`SELECT lifecycle_state, publication_version, published_at FROM projects WHERE source = 'legacy_catalog' ORDER BY id LIMIT 1`);
+  assert.equal(preservedAfterImport.rows[0]?.lifecycle_state, 'published');
+  assert.equal(Number(preservedAfterImport.rows[0]?.publication_version), 1);
+  assert.ok(preservedAfterImport.rows[0]?.published_at);
+
+  const repeatedCutover = await runCatalogCutover(db, { apply: true });
+  assert.equal(repeatedCutover.promoted, 0);
+  assert.equal((await db.query(`SELECT id FROM publish_outbox WHERE job_type = 'site_refresh'`)).rows.length, 1);
+  const promotionCounts = await db.query<{ lifecycle_state: string; count: string }>(
+    `SELECT lifecycle_state, count(*)::text AS count FROM projects WHERE source = 'legacy_catalog' GROUP BY lifecycle_state`,
+  );
+  assert.deepEqual(promotionCounts.rows, [{ lifecycle_state: 'published', count: String(CATALOG.length) }]);
+});
+
+test('catalog cutover refuses a reviewed-shadow mismatch without publishing anything', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+  await importCatalogShadowRecords(db);
+  const [firstCatalogProject] = CATALOG;
+  assert.ok(firstCatalogProject, 'expected a catalog project');
+  await db.query(`UPDATE projects SET title = 'Unreviewed mismatch' WHERE id = $1`, [firstCatalogProject.id]);
+
+  await assert.rejects(
+    () => runCatalogCutover(db, { apply: true }),
+    (error: unknown) =>
+      error instanceof CatalogCutoverParityError &&
+      error.report.projects.some((project) => project.id === firstCatalogProject.id && project.mismatchedFields.includes('title')),
+  );
+  const states = await db.query<{ lifecycle_state: string }>(
+    `SELECT lifecycle_state FROM projects WHERE source = 'legacy_catalog'`,
+  );
+  assert.ok(states.rows.every((row) => row.lifecycle_state === 'shadow'));
+
+  const commandSource = await readFile('scripts/catalog-shadow.ts', 'utf8');
+  assert.doesNotMatch(commandSource, /applyMigrations/);
 });
 
 test('catalog shadow import refuses to overwrite non-legacy projects', async () => {
@@ -911,7 +1096,9 @@ test('public DB read helpers render admin-published rows without legacy snapshot
   );
 
   const detail = await fetchPublicProjectDetail(db, 'manual-db-slug');
+  const directSlugDetail = await fetchPublicProjectDetailBySlug(db, 'manual-db-slug');
   assert.equal(detail?.id, 'manual-db-project');
+  assert.equal(directSlugDetail?.id, 'manual-db-project');
   assert.equal(detail?.slug, 'manual-db-slug');
   assert.equal(projectPublicMark(detail!), 'manual-db-slug');
   assert.equal(detail?.href, '/projects/manual-db-slug');
@@ -929,6 +1116,31 @@ test('public DB read helpers render admin-published rows without legacy snapshot
 
   const byId = await fetchPublicProjectDetail(db, 'manual-db-project');
   assert.equal(byId?.slug, 'manual-db-slug');
+  assert.equal(await fetchPublicProjectDetailBySlug(db, 'manual-db-project'), null);
+
+  const loadedBySlug = await loadPublicProjectDetailBySlug('manual-db-slug', {
+    env: { PUBLIC_PROJECT_SOURCE: 'database' },
+    db,
+  });
+  assert.equal(loadedBySlug.source, 'db');
+  assert.equal(loadedBySlug.project?.id, 'manual-db-project');
+  assert.equal(
+    (await loadPublicProjectDetailBySlug('not-a-public-project', {
+      env: { PUBLIC_PROJECT_SOURCE: 'database' },
+      db,
+    })).project,
+    null,
+  );
+
+  const emptyDb = createTestDb();
+  await applyMigrations(emptyDb);
+  await assert.rejects(
+    () => loadPublicProjectDetailBySlug('unknown-on-empty-set', {
+      env: { PUBLIC_PROJECT_SOURCE: 'database' },
+      db: emptyDb,
+    }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'empty_published_set',
+  );
 });
 
 test('markerless pre-canonical published rows normalize only supported legacy nested shapes', async () => {
@@ -1297,6 +1509,15 @@ test('public project routes use the shared public project source boundary', asyn
 
   const projectCard = await readFile('src/components/ProjectCard.astro', 'utf8');
   assert.match(projectCard, /projectPublicMark/);
+
+  const projectRoute = await readFile('src/pages/projects/[id].astro', 'utf8');
+  assert.match(projectRoute, /loadPublicProjectDetailBySlug/);
+  const projectOgRoute = await readFile('src/pages/og/projects/[id].png.ts', 'utf8');
+  assert.match(projectOgRoute, /loadPublicProjectDetailBySlug/);
+  const libraryFilterRoute = await readFile('src/pages/library/[filter].astro', 'utf8');
+  assert.match(libraryFilterRoute, /if \(!filter\)/);
+  const journeyRoute = await readFile('src/pages/journey/[track].astro', 'utf8');
+  assert.match(journeyRoute, /resolveRequiredPublicProjectByReference/);
 
   const vercelConfig = JSON.parse(await readFile('vercel.json', 'utf8')) as {
     redirects: Array<{ source: string; destination: string }>;

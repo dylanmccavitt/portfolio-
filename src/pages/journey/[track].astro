@@ -9,7 +9,7 @@ import ProjectCardGrid from '@/components/ProjectCardGrid.astro';
 import { RESUME, getResumeTrackById, type ResumeTrack } from '@/data/resume';
 import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
-import { resolvePublicProjectByReference } from '@/lib/public-project-route-resolver';
+import { resolveRequiredPublicProjectByReference } from '@/lib/public-project-route-resolver';
 import { journeyTrackMeta } from '@/lib/seo';
 
 export function getStaticPaths() {
@@ -25,15 +25,17 @@ interface Props {
 const { track } = Astro.props as Props;
 
 const t = track ?? getResumeTrackById(Astro.params.track as string)!;
-const { projects: publicProjects } = await loadPublicProjectDetails();
+const { projects: publicProjects, source: publicProjectSource } = await loadPublicProjectDetails();
 const index = RESUME.tracks.findIndex((x) => x.id === t.id);
 const previous = index > 0 ? RESUME.tracks[index - 1] : null;
 const next = RESUME.tracks[index + 1] ?? null;
-const era = t.era
-  // Preserve existing behavior: keep rendering when a resume-era reference is
-  // missing from the active public source (for example, DB-gated publish drift).
-  .map((id) => resolvePublicProjectByReference(publicProjects, id))
-  .filter((p): p is ProjectDetailReadModel => p !== null);
+const era: ProjectDetailReadModel[] = t.era.map((id) =>
+  resolveRequiredPublicProjectByReference(publicProjects, id, {
+    route: `journey/[track].astro (${t.id})`,
+    source: publicProjectSource,
+    label: 'featured project id',
+  }),
+);
 
 const LINKS = {
   email: 'mailto:dylanmccavitt@outlook.com',

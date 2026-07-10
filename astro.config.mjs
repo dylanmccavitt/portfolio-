@@ -20,7 +20,6 @@ const LIVE_PUBLIC_PROJECT_PAGES = [
   'src/pages/projects/[id].astro',
   'src/pages/library/index.astro',
   'src/pages/library/[filter].astro',
-  'src/pages/hiring.astro',
 ];
 
 /**

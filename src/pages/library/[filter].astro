@@ -31,8 +31,10 @@ export const getStaticPaths = (() => {
 }) satisfies GetStaticPaths;
 
 const { filter: slug } = Astro.params as { filter: string };
-// `getStaticPaths` only emits known slugs, so this always resolves.
-const filter = playlistFromSlug(slug)!;
+const filter = playlistFromSlug(slug);
+if (!filter) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
 
 const label = PAGE_TITLE[filter] ?? filter;
 const title = `Dylan McCavitt · ${label}`;

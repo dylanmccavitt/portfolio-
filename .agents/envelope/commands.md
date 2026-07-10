@@ -33,6 +33,8 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | DB reset | `npm run db:reset` | `tsx scripts/db.ts reset` |
 | Catalog shadow import | `npm run db:catalog:shadow` | `tsx scripts/catalog-shadow.ts import-and-report` |
 | Catalog parity report | `npm run db:catalog:parity` | `tsx scripts/catalog-shadow.ts report` |
+| Catalog cutover dry run | `npm run db:catalog:cutover` | `tsx scripts/catalog-shadow.ts cutover` |
+| Catalog cutover apply | `npm run db:catalog:cutover -- --apply` | `tsx scripts/catalog-shadow.ts cutover --apply` |
 | Manual GitHub discovery scan | `npm run db:github:scan -- <repo-fixture.json>` | `tsx scripts/github-discovery.ts <repo-fixture.json>` |
 
 ## Verify gate

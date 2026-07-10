@@ -3,17 +3,16 @@
  * source selected by the public-project source boundary.
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
-import { loadPublicProjectDetails } from '@/lib/public-projects';
-import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
+import { loadPublicProjectDetailBySlug, loadPublicProjectDetails } from '@/lib/public-projects';
 import { renderOgImage } from '@/lib/og';
 
 export const getStaticPaths = (async () => {
   const { projects } = await loadPublicProjectDetails();
-  return projects.map((project) => ({ params: { id: project.slug }, props: { project } }));
+  return projects.map((project) => ({ params: { id: project.slug } }));
 }) satisfies GetStaticPaths;
 
-export const GET: APIRoute = async ({ props }) => {
-  const p = (props as { project?: ProjectDetailReadModel }).project;
+export const GET: APIRoute = async ({ params }) => {
+  const { project: p } = await loadPublicProjectDetailBySlug(params.id ?? '');
   if (!p) return new Response('Not found', { status: 404 });
   const png = await renderOgImage({
     title: p.title,

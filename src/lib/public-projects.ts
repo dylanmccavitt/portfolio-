@@ -3,6 +3,8 @@ import { buildCatalogShadowRecords } from './db/catalog-shadow';
 import { createDbClient, getDatabaseUrl, type DbClient } from './db/client';
 import {
   fetchPublicProjectDetails,
+  fetchPublicProjectDetailBySlug,
+  hasPublishedPublicProjects,
   projectRecordToReadModels,
   type ProjectDetailReadModel,
   type ProjectReadQueryable,
@@ -28,6 +30,13 @@ export interface PublicProjectLoadResult {
   source: PublicProjectSource;
   mode: PublicProjectSourceMode;
   projects: ProjectDetailReadModel[];
+  reason?: string;
+}
+
+export interface PublicProjectDetailLoadResult {
+  source: PublicProjectSource;
+  mode: PublicProjectSourceMode;
+  project: ProjectDetailReadModel | null;
   reason?: string;
 }
 
@@ -120,6 +129,52 @@ export async function loadPublicProjectDetails(options: PublicProjectLoadOptions
     publicProjectLoadCache = { mode, promise: resolvePublicProjectDetails(options) };
   }
   return publicProjectLoadCache.promise;
+}
+
+/**
+ * Resolve one public project for a route/OG request. Database mode deliberately
+ * uses a published-slug query rather than loading the complete public set.
+ */
+export async function loadPublicProjectDetailBySlug(
+  slug: string,
+  options: PublicProjectLoadOptions = {},
+): Promise<PublicProjectDetailLoadResult> {
+  const env = options.env ?? process.env;
+  const mode = resolvePublicProjectSourceMode(options);
+
+  if (mode !== 'database') {
+    return {
+      source: 'catalog',
+      mode,
+      project: catalogProjectDetails().find((project) => project.slug === slug) ?? null,
+      reason:
+        mode === 'catalog_emergency'
+          ? 'Explicit operator emergency source selected.'
+          : 'Offline development catalog source selected.',
+    };
+  }
+
+  if (!options.db && !hasPublicProjectDatabaseUrl(env)) {
+    throw new PublicProjectDataError(
+      'missing_config',
+      'Database public-project source is active, but no database connection string is configured.',
+    );
+  }
+
+  try {
+    const db = options.db ?? projectReadDb(createDbClient(getDatabaseUrl(env)));
+    const project = await fetchPublicProjectDetailBySlug(db, slug);
+    if (!project && !(await hasPublishedPublicProjects(db))) {
+      throw new PublicProjectDataError(
+        'empty_published_set',
+        'Database public-project source returned an unexpected empty published set.',
+      );
+    }
+    return { source: 'db', mode, project };
+  } catch (error) {
+    if (error instanceof PublicProjectDataError) throw error;
+    throw new PublicProjectDataError('read_failed', 'Failed to read the published project record.');
+  }
 }
 
 /** Clears the per-process public project load cache. For tests only. */

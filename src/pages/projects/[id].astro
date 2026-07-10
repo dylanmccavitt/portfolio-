@@ -21,9 +21,8 @@ import {
   isVideoShot,
   type ProjectShot,
 } from '@/data/catalog';
-import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
-import { publicProjectStaticPaths, resolvePublicProjectByReference } from '@/lib/public-project-route-resolver';
-import { loadPublicProjectDetails } from '@/lib/public-projects';
+import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
+import { loadPublicProjectDetailBySlug, loadPublicProjectDetails } from '@/lib/public-projects';
 import { projectMeta } from '@/lib/seo';
 import { AGENT_NAME } from '@/lib/dm/client';
 import '@/styles/dm.css';
@@ -33,22 +32,16 @@ export async function getStaticPaths() {
   return publicProjectStaticPaths(projects);
 }
 
-interface Props {
-  project?: ProjectDetailReadModel;
-  projects?: ProjectDetailReadModel[];
-}
-
-// Prerendered builds receive props from getStaticPaths. When the DB-backed
-// public project source is active, astro.config.mjs flips this route to
-// on-demand rendering and each request loads published rows instead.
-const staticProps = Astro.props as Props;
-const projects = staticProps.projects ?? (await loadPublicProjectDetails()).projects;
-const project = staticProps.project ?? resolvePublicProjectByReference(projects, Astro.params.id ?? '');
+// A detail route always resolves its primary record through the public slug
+// query. The list query below exists only for the related-project rail.
+const slug = Astro.params.id ?? '';
+const { project } = await loadPublicProjectDetailBySlug(slug);
 
 if (!project) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
 }
 
+const { projects } = await loadPublicProjectDetails();
 const p = project;
 const related = projects.filter((o) => o.area === p.area && o.id !== p.id).slice(0, 5);
 const meta = projectMeta(p);
