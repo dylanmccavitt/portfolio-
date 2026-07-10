@@ -862,7 +862,9 @@ async function fetchDraft(db: AdminPublishQueryable, draftId: string): Promise<D
     await db.query<DraftRow>(
       `SELECT id, candidate_id, proposed_project_id, proposed_fields, private_notes, provenance_map,
               lifecycle_state, provider, repository_id, source_revision, content_fingerprint,
-              reviewed_field_diff, base_project_version, created_at, updated_at
+              reviewed_field_diff, base_project_version,
+              created_at::text AS created_at,
+              updated_at::text AS updated_at
        FROM project_drafts
        WHERE id = $1`,
       [draftId],

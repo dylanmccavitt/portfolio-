@@ -904,6 +904,42 @@ test('approval rejects a concurrent field restage instead of approving a stale v
   );
 });
 
+test('approval preserves timestamp precision when the database driver decodes timestamptz values as Date', async () => {
+  const db = await createMigratedDb();
+  await insertDraft(db, {
+    id: 'draft_date_timestamp',
+    fields: VALID_FIELDS,
+    provenance: { manual: true },
+    lifecycle: 'needs_review',
+  });
+  await db.query(
+    `UPDATE project_drafts
+     SET updated_at = '2026-07-10T21:31:12.040871Z'
+     WHERE id = 'draft_date_timestamp'`,
+  );
+
+  const dateDecodingDb: AdminPublishQueryable = {
+    async query<Row = unknown>(sql: string, params?: unknown[]) {
+      const result = await db.query<Row>(sql, params);
+      if (sql.includes('updated_at::text AS updated_at')) return result;
+      return {
+        rows: result.rows.map((row) => {
+          if (!row || typeof row !== 'object' || !('updated_at' in row)) return row;
+          const value = (row as Record<string, unknown>).updated_at;
+          return {
+            ...row,
+            ...(typeof value === 'string' ? { updated_at: new Date(value) } : {}),
+          } as Row;
+        }),
+      };
+    },
+  };
+
+  const result = await approveAdminDraftForPublish(dateDecodingDb, 'draft_date_timestamp', ACTOR);
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'approved_for_publish');
+});
+
 test('concurrent disjoint PATCH updates merge atomically without losing either field', async () => {
   const db = await createMigratedDb();
   await insertDraft(db, {
