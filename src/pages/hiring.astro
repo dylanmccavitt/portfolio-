@@ -147,7 +147,7 @@ const meta = {
                           <p>{para}</p>
                         ))}
                         <div class="dmetrics">
-                          {project.metrics.map(([value, label]) => (
+                          {project.metrics.map(({ value, label }) => (
                             <div class="dm">
                               <b>{value}</b>
                               <span>{label}</span>
@@ -156,8 +156,8 @@ const meta = {
                         </div>
                         {links.length > 0 ? (
                           <div class="dlinks">
-                            {links.map(([label, url]) => (
-                              <a class="dlink" href={url}>
+                            {links.map(({ label, href }) => (
+                              <a class="dlink" href={href}>
                                 {label}
                               </a>
                             ))}

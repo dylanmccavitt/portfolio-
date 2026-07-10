@@ -123,18 +123,18 @@ function toJsonValue(value: unknown): JsonValue {
 function mediaSummary(project: Project): JsonValue {
   return {
     total: project.shots.length,
-    images: project.shots.filter((shot) => 'img' in shot).length,
-    videos: project.shots.filter((shot) => 'video' in shot).length,
-    placeholders: project.shots.filter((shot) => 'kind' in shot).length,
-    captions: project.shots.map((shot) => shot.cap),
+    images: project.shots.filter((shot) => shot.kind === 'image').length,
+    videos: project.shots.filter((shot) => shot.kind === 'video').length,
+    placeholders: project.shots.filter((shot) => shot.kind === 'skeleton').length,
+    captions: project.shots.map((shot) => shot.caption),
   };
 }
 
 function externalLinks(project: Project): JsonValue {
-  return project.links.map(([label, url]) => ({
-    label,
-    url,
-    valid: URL.canParse(url),
+  return project.links.map((link) => ({
+    label: link.label,
+    url: link.href,
+    valid: URL.canParse(link.href),
   }));
 }
 
@@ -444,22 +444,41 @@ function extraSnapshotFields(snapshot: LegacyCatalogSnapshot | undefined): Recor
 function recordMediaSummary(record: CatalogShadowRecord): JsonValue {
   return {
     total: record.media.length,
-    images: record.media.filter((shot) => isRecordWithField(shot, 'img')).length,
-    videos: record.media.filter((shot) => isRecordWithField(shot, 'video')).length,
-    placeholders: record.media.filter((shot) => isRecordWithField(shot, 'kind')).length,
-    captions: record.media.map((shot) => (isRecordWithField(shot, 'cap') ? shot.cap : null)),
+    images: record.media.filter((shot) => recordMediaKind(shot) === 'image').length,
+    videos: record.media.filter((shot) => recordMediaKind(shot) === 'video').length,
+    placeholders: record.media.filter((shot) => recordMediaKind(shot) === 'skeleton').length,
+    captions: record.media.map((shot) => recordMediaCaption(shot)),
   };
 }
 
 function recordExternalLinks(record: CatalogShadowRecord): JsonValue {
   return record.links.map((link) => {
-    const [label, url] = Array.isArray(link) ? link : [];
+    const legacy = Array.isArray(link) ? link : [];
+    const object = isRecordWithField(link, 'label') ? link : null;
+    const label = object?.label ?? legacy[0];
+    const url = object && typeof object.href === 'string' ? object.href : legacy[1];
     return {
       label: typeof label === 'string' ? label : '',
       url: typeof url === 'string' ? url : '',
       valid: typeof url === 'string' && URL.canParse(url),
     };
   });
+}
+
+function recordMediaKind(value: JsonValue): 'image' | 'video' | 'skeleton' | null {
+  if (!isRecordWithField(value, 'kind')) {
+    if (isRecordWithField(value, 'img')) return 'image';
+    if (isRecordWithField(value, 'video')) return 'video';
+    return null;
+  }
+  if (value.kind === 'image' || value.kind === 'video' || value.kind === 'skeleton') return value.kind;
+  return 'skeleton';
+}
+
+function recordMediaCaption(value: JsonValue): JsonValue {
+  if (isRecordWithField(value, 'caption')) return value.caption;
+  if (isRecordWithField(value, 'cap')) return value.cap;
+  return null;
 }
 
 function isRecordWithField(value: JsonValue, field: string): value is Record<string, JsonValue> {

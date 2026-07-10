@@ -19,6 +19,7 @@
 
 import { CATALOG, type Project } from '@/data/catalog';
 import { RESUME, type ResumeTrack } from '@/data/resume';
+import { isProjectArea } from '@/lib/projects/schema';
 export {
   FIT_CHECK_CONTEXT_LIMIT,
   FIT_CHECK_INPUT_LIMIT,
@@ -366,7 +367,7 @@ function parseProjectArtifact(value: unknown): ProjectArtifact | null {
   if (
     typeof value.id !== 'string' ||
     typeof value.title !== 'string' ||
-    typeof value.area !== 'string' ||
+    !isProjectArea(value.area) ||
     !Array.isArray(status) ||
     status.length !== 2 ||
     typeof status[0] !== 'string' ||
@@ -382,25 +383,30 @@ function parseProjectArtifact(value: unknown): ProjectArtifact | null {
   return {
     id: value.id,
     title: value.title,
-    area: value.area as Project['area'],
+    area: value.area,
     status: status as Project['status'],
     year: value.year,
     activity: value.activity,
     line: value.line,
     href: value.href,
     ...(typeof value.hue === 'string' ? { hue: value.hue } : {}),
-    ...(isStringTupleArray(value.metrics) ? { metrics: value.metrics as Project['metrics'] } : {}),
-    ...(isStringTupleArray(value.stack) ? { stack: value.stack as Project['stack'] } : {}),
+    ...(isProjectMetricArray(value.metrics) ? { metrics: value.metrics } : {}),
+    ...(isProjectDetailEntryArray(value.stack) ? { stack: value.stack } : {}),
     ...(Array.isArray(value.notes) && value.notes.every((note) => typeof note === 'string') ? { notes: value.notes as string[] } : {}),
   };
 }
 
-function isStringTupleArray(value: unknown): boolean {
+function isProjectMetricArray(value: unknown): value is Project['metrics'] {
   return (
     Array.isArray(value) &&
-    value.every(
-      (item) => Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && typeof item[1] === 'string',
-    )
+    value.every((item) => isObject(item) && typeof item.value === 'string' && typeof item.label === 'string')
+  );
+}
+
+function isProjectDetailEntryArray(value: unknown): value is Project['stack'] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => isObject(item) && typeof item.label === 'string' && typeof item.value === 'string')
   );
 }
 

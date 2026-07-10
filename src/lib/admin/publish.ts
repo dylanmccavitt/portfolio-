@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { DraftLifecycleState, JsonRecord, JsonValue, PrivacyState, ReviewEventRecord } from '@/lib/db/schema';
+import {
+  ProjectAreaSchema,
+  ProjectDetailSchema,
+  ProjectLinkSchema,
+  ProjectMediaSchema,
+  ProjectMetricSchema,
+  parsePublicProjectFields,
+} from '@/lib/projects/schema';
 
 export interface AdminPublishQueryable {
   query<Row = unknown>(sql: string, params?: unknown[]): Promise<{ rows: Row[] } | Row[]>;
@@ -62,13 +70,6 @@ const EDITABLE_FIELDS: Record<EditablePublicField, true> = {
   links: true,
   media: true,
 };
-const ARRAY_FIELDS: Record<PublicArrayField, true> = {
-  details: true,
-  metrics: true,
-  links: true,
-  media: true,
-};
-
 export async function listAdminDrafts(db: AdminPublishQueryable): Promise<AdminPublishResult> {
   const rows = normalizeRows(
     await db.query<DraftListRow>(
@@ -149,7 +150,7 @@ export async function updateAdminDraftFields(
   for (const key of keys) {
     const result = validateEditableField(key, fields[key]);
     if (!result.ok) {
-      const status = result.issue.field === 'slug' || result.issue.field === 'year' ? 422 : 400;
+      const status = result.issue.field === 'slug' || result.issue.field === 'year' || result.issue.field === 'area' ? 422 : 400;
       return { ok: false, status, code: 'field_invalid', message: result.issue.message, field: result.issue.field };
     }
     validated[key] = result.value;
@@ -467,14 +468,23 @@ function validateRequiredFields(fields: JsonRecord): ValidationIssue[] {
     const result = validateEditableField(field, fields[field]);
     if (!result.ok) issues.push(result.issue);
   }
+  for (const field of ['activity', 'details', 'metrics', 'links', 'media'] as const) {
+    if (fields[field] === undefined) continue;
+    const result = validateEditableField(field, fields[field]);
+    if (!result.ok) issues.push(result.issue);
+  }
   return issues;
 }
 
 function validateEditableField(field: EditablePublicField, value: unknown): ValidationResult {
   if (field === 'slug') return validateSlug(value);
   if (field === 'year') return validateYear(value);
+  if (field === 'area') return validateProjectArea(value);
   if (field === 'activity') return validateOptionalString(field, value);
-  if (isArrayField(field)) return validateArray(field, value);
+  if (field === 'details') return validateNestedArray(field, ProjectDetailSchema.array(), value);
+  if (field === 'metrics') return validateNestedArray(field, ProjectMetricSchema.array(), value);
+  if (field === 'links') return validateNestedArray(field, ProjectLinkSchema.array(), value);
+  if (field === 'media') return validateNestedArray(field, ProjectMediaSchema.array(), value);
   return validateRequiredString(field, value);
 }
 
@@ -494,6 +504,14 @@ function validateYear(value: unknown): ValidationResult {
   return { ok: true, value };
 }
 
+function validateProjectArea(value: unknown): ValidationResult {
+  const parsed = ProjectAreaSchema.safeParse(value);
+  if (!parsed.success) {
+    return invalid('area', 'Area must be one of the five recruiter-facing project areas.');
+  }
+  return { ok: true, value: parsed.data };
+}
+
 function validateRequiredString(field: RequiredPublicField, value: unknown): ValidationResult {
   if (typeof value !== 'string') return invalid(field, `${field} must be a string.`);
   const trimmed = value.trim();
@@ -506,9 +524,14 @@ function validateOptionalString(field: 'activity', value: unknown): ValidationRe
   return { ok: true, value: value.trim() };
 }
 
-function validateArray(field: PublicArrayField, value: unknown): ValidationResult {
-  if (!Array.isArray(value)) return invalid(field, `${field} must be a JSON array.`);
-  return { ok: true, value: value as JsonValue[] };
+function validateNestedArray(
+  field: PublicArrayField,
+  schema: { safeParse(value: unknown): { success: true; data: unknown[] } | { success: false } },
+  value: unknown,
+): ValidationResult {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) return invalid(field, `${field} must match the canonical project schema.`);
+  return { ok: true, value: parsed.data as JsonValue[] };
 }
 
 function invalid(field: string, message: string): ValidationResult {
@@ -539,30 +562,19 @@ function publicProjectFields(fields: JsonRecord): {
   links: JsonValue[];
   media: JsonValue[];
 } {
-  const slug = fields.slug;
-  const title = fields.title;
-  const tagline = fields.tagline;
-  const area = fields.area;
-  const year = fields.year;
-  const summary = fields.summary;
-  const activity = fields.activity;
-  const details = fields.details;
-  const metrics = fields.metrics;
-  const links = fields.links;
-  const media = fields.media;
-  return {
-    slug: typeof slug === 'string' ? slug : '',
-    title: typeof title === 'string' ? title : '',
-    tagline: typeof tagline === 'string' ? tagline : '',
-    area: typeof area === 'string' ? area : '',
-    year: typeof year === 'number' ? year : 2000,
-    summary: typeof summary === 'string' ? summary : '',
-    activity: typeof activity === 'string' ? activity : '',
-    details: Array.isArray(details) ? details : [],
-    metrics: Array.isArray(metrics) ? metrics : [],
-    links: Array.isArray(links) ? links : [],
-    media: Array.isArray(media) ? media : [],
-  };
+  return parsePublicProjectFields({
+    slug: fields.slug,
+    title: fields.title,
+    tagline: fields.tagline,
+    area: fields.area,
+    year: fields.year,
+    summary: fields.summary,
+    activity: fields.activity ?? '',
+    details: fields.details ?? [],
+    metrics: fields.metrics ?? [],
+    links: fields.links ?? [],
+    media: fields.media ?? [],
+  });
 }
 
 function hasPublicProvenance(value: JsonRecord): boolean {
@@ -571,10 +583,6 @@ function hasPublicProvenance(value: JsonRecord): boolean {
 
 function isEditableField(field: string): field is EditablePublicField {
   return field in EDITABLE_FIELDS;
-}
-
-function isArrayField(field: EditablePublicField): field is PublicArrayField {
-  return field in ARRAY_FIELDS;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

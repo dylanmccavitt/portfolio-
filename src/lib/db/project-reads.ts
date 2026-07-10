@@ -1,5 +1,22 @@
-import type { Project, ProjectLink, ProjectMetric, ProjectSeek, ProjectShot, ProjectStackEntry, ProjectStatus } from '@/data/catalog';
+import type { ProjectLink, ProjectMetric, ProjectSeek, ProjectShot, ProjectStackEntry, ProjectStatus } from '@/data/catalog';
 import type { ProjectSummary } from '@/lib/dm/contract';
+import {
+  adaptLegacyProjectDetails,
+  adaptLegacyProjectDetailEntries,
+  adaptLegacyProjectLinks,
+  adaptLegacyProjectMedia,
+  adaptLegacyProjectMetrics,
+  adaptLegacyProjectSeek,
+  adaptLegacyProjectStatus,
+} from '@/lib/projects/legacy-adapter';
+import {
+  ProjectDetailSchema,
+  ProjectLinkSchema,
+  ProjectMediaSchema,
+  ProjectMetricSchema,
+  parsePublicProjectFields,
+  type ProjectArea,
+} from '@/lib/projects/schema';
 import { fetchCatalogShadowRecords, type CatalogShadowQueryable, type CatalogShadowRecord } from './catalog-shadow';
 import type { JsonValue, ProjectRecord, ProjectSource } from './schema';
 
@@ -10,7 +27,7 @@ export interface ProjectCardReadModel {
   slug: string;
   href: string;
   title: string;
-  area: Project['area'];
+  area: ProjectArea;
   status: ProjectStatus;
   year: number;
   activity: string;
@@ -102,19 +119,17 @@ type ProjectReadDetails = {
 
 const PROJECT_COLUMNS = `id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
        details, metrics, links, media, source, published_at, archived_at`;
-const PROJECT_STATUS_KINDS: Record<string, true> = { dry: true, live: true, wip: true, done: true };
-const PROJECT_SHOT_KINDS: Record<string, true> = { chart: true, dash: true, list: true, code: true, phone: true };
 
 export function projectLinkFromFields(link: ProjectLinkFields): ProjectLink {
-  return [link.label, link.href];
+  return { label: link.label, href: link.href };
 }
 
 export function projectMetricFromFields(metric: ProjectMetricFields): ProjectMetric {
-  return [metric.value, metric.label];
+  return { value: metric.value, label: metric.label };
 }
 
 export function projectStackEntryFromFields(entry: ProjectStackEntryFields): ProjectStackEntry {
-  return [entry.label, entry.value];
+  return { label: entry.label, value: entry.value };
 }
 
 export async function fetchInternalShadowProjectReadModels(
@@ -164,41 +179,80 @@ export async function fetchPublicProjectDetail(
 
 export function projectRecordToReadModels(record: ProjectReadRecord | CatalogShadowRecord): ProjectReadModels {
   const readDetails = projectReadDetails(record);
-  const status = projectStatus(readDetails.status, record.id);
-  const links = projectLinks(record.links, record.id, readDetails.legacy);
-  const metrics = projectMetrics(record.metrics, record.id, readDetails.legacy);
-  const about = strings(readDetails.about, 'about', record.id);
+  const status = readDetails.legacy
+    ? adaptLegacyProjectStatus(readDetails.status, record.id)
+    : (['done', 'Published'] satisfies ProjectStatus);
+  const adaptedLinks = parseCanonicalOrLegacyArray(
+    ProjectLinkSchema,
+    record.links,
+    record.id,
+    adaptLegacyProjectLinks,
+  );
+  const adaptedMetrics = parseCanonicalOrLegacyArray(
+    ProjectMetricSchema,
+    record.metrics,
+    record.id,
+    adaptLegacyProjectMetrics,
+  );
+  const adaptedDetails = readDetails.legacy
+    ? [
+        ...strings(readDetails.about, 'about', record.id),
+        ...adaptLegacyProjectDetailEntries(readDetails.stack, record.id),
+      ]
+    : parseCanonicalOrLegacyArray(ProjectDetailSchema, record.details, record.id, adaptLegacyProjectDetails);
   const notes = strings(readDetails.notes, 'notes', record.id);
-  const stack = stringTuples<ProjectStackEntry>(readDetails.stack, 'stack', record.id);
-  const seek = projectSeek(readDetails.seek, record.id);
-  const shots = projectShotsForRecord(record.media, record, readDetails.legacy);
-  const area = record.area as Project['area'];
-  const href = `/projects/${record.slug}`;
+  const seek = readDetails.legacy
+    ? adaptLegacyProjectSeek(readDetails.seek, record.id)
+    : ({ from: 'Draft', to: 'Published', pct: 100 } satisfies ProjectSeek);
+  const adaptedMedia = parseCanonicalOrLegacyArray(
+    ProjectMediaSchema,
+    record.media,
+    record.id,
+    adaptLegacyProjectMedia,
+  );
+  const publicFields = parsePublicProjectFields({
+    slug: record.slug,
+    title: record.title,
+    tagline: record.tagline,
+    area: record.area,
+    year: record.year,
+    summary: record.summary,
+    activity: record.activity,
+    details: adaptedDetails,
+    metrics: adaptedMetrics,
+    links: adaptedLinks,
+    media: adaptedMedia,
+  });
+  const about = publicFields.details.filter((detail): detail is string => typeof detail === 'string');
+  const stack = publicFields.details.filter(
+    (detail): detail is ProjectStackEntry => typeof detail !== 'string',
+  );
+  const href = `/projects/${publicFields.slug}`;
   const card: ProjectCardReadModel = {
     id: record.id,
-    slug: record.slug,
+    slug: publicFields.slug,
     href,
-    title: record.title,
-    area,
+    title: publicFields.title,
+    area: publicFields.area,
     status,
-    year: record.year,
-    activity: record.activity,
+    year: publicFields.year,
+    activity: publicFields.activity,
     hue: readDetails.hue,
-    line: record.tagline,
+    line: publicFields.tagline,
   };
   const dmArtifact: DmProjectArtifactReadModel = {
     kind: 'project',
     id: record.id,
-    title: record.title,
-    area,
+    title: publicFields.title,
+    area: publicFields.area,
     status,
-    year: record.year,
-    activity: record.activity,
-    line: record.tagline,
+    year: publicFields.year,
+    activity: publicFields.activity,
+    line: publicFields.tagline,
     wip: readDetails.wip,
     money: readDetails.money,
-    links,
-    metrics,
+    links: publicFields.links,
+    metrics: publicFields.metrics,
     about,
     notes,
     stack,
@@ -210,22 +264,22 @@ export function projectRecordToReadModels(record: ProjectReadRecord | CatalogSha
     card,
     detail: {
       ...card,
-      summary: record.summary,
+      summary: publicFields.summary,
       seek,
-      links,
-      metrics,
+      links: publicFields.links,
+      metrics: publicFields.metrics,
       about,
       notes,
       stack,
-      shots,
+      shots: publicFields.media,
       wip: readDetails.wip,
       money: readDetails.money,
       source: record.source,
       seo: {
-        title: `${record.title} · Dylan McCavitt`,
-        description: record.summary,
-        ogImage: `/og/projects/${record.slug}.png`,
-        sitemapPath: `/projects/${record.slug}/`,
+        title: `${publicFields.title} · Dylan McCavitt`,
+        description: publicFields.summary,
+        ogImage: `/og/projects/${publicFields.slug}.png`,
+        sitemapPath: `/projects/${publicFields.slug}/`,
       },
       dmArtifact,
     },
@@ -253,9 +307,9 @@ function projectReadDetails(record: ProjectReadRecord | CatalogShadowRecord): Pr
     wip: false,
     money: false,
     seek: { from: 'Draft', to: 'Published', pct: 100 },
-    about: aboutFromPublicDetails(record),
+    about: [],
     notes: [],
-    stack: stackFromPublicDetails(record.details),
+    stack: [],
     legacy: false,
   };
 }
@@ -272,176 +326,14 @@ function legacySnapshot(record: ProjectReadRecord | CatalogShadowRecord): Legacy
   return snapshot ?? null;
 }
 
-function aboutFromPublicDetails(record: ProjectReadRecord | CatalogShadowRecord): string[] {
-  const publicDetails = record.details.filter((detail): detail is string => typeof detail === 'string' && detail.trim().length > 0);
-  return publicDetails.length ? publicDetails : [record.summary];
-}
-
-function stackFromPublicDetails(value: JsonValue): ProjectStackEntry[] {
-  if (!Array.isArray(value)) return [];
-
-  const stack: ProjectStackEntry[] = [];
-  for (const item of value) {
-    if (Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && typeof item[1] === 'string') {
-      stack.push(item as ProjectStackEntry);
-      continue;
-    }
-    const record = jsonRecord(item);
-    const label = record?.label;
-    const detailValue = record?.value;
-    if (typeof label === 'string' && (typeof detailValue === 'string' || typeof detailValue === 'number')) {
-      stack.push([label, String(detailValue)]);
-    }
-  }
-  return stack;
-}
-
-function projectLinks(value: JsonValue, id: string, legacy: boolean): ProjectLink[] {
-  if (legacy) return stringTuples<ProjectLink>(value, 'links', id);
-  if (!Array.isArray(value)) return [];
-
-  const links: ProjectLink[] = [];
-  for (const item of value) {
-    if (Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && typeof item[1] === 'string') {
-      links.push(item as ProjectLink);
-      continue;
-    }
-    const record = jsonRecord(item);
-    const label = record?.label;
-    const href = record?.href ?? record?.url;
-    if (typeof label === 'string' && typeof href === 'string') links.push([label, href]);
-  }
-  return links;
-}
-
-function projectMetrics(value: JsonValue, id: string, legacy: boolean): ProjectMetric[] {
-  if (legacy) return stringTuples<ProjectMetric>(value, 'metrics', id);
-  if (!Array.isArray(value)) return [];
-
-  const metrics: ProjectMetric[] = [];
-  for (const item of value) {
-    if (Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && typeof item[1] === 'string') {
-      metrics.push(item as ProjectMetric);
-      continue;
-    }
-    const record = jsonRecord(item);
-    const label = record?.label;
-    const metricValue = record?.value;
-    if (typeof label === 'string' && (typeof metricValue === 'string' || typeof metricValue === 'number')) {
-      metrics.push([String(metricValue), label]);
-    }
-  }
-  return metrics;
-}
-
-function projectStatus(value: JsonValue, id: string): ProjectStatus {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    !Object.hasOwn(PROJECT_STATUS_KINDS, String(value[0])) ||
-    typeof value[1] !== 'string'
-  ) {
-    throw new Error(`Project record ${id} has invalid status read details.`);
-  }
-  return value as ProjectStatus;
-}
-
-function projectSeek(value: JsonValue, id: string): ProjectSeek {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    typeof value.from !== 'string' ||
-    typeof value.to !== 'string' ||
-    typeof value.pct !== 'number'
-  ) {
-    throw new Error(`Project record ${id} has invalid seek read details.`);
-  }
-  return value as unknown as ProjectSeek;
-}
-
-function projectShotsForRecord(
-  value: JsonValue,
-  record: ProjectReadRecord | CatalogShadowRecord,
-  legacy: boolean,
-): ProjectShot[] {
-  if (legacy) return projectShots(value, record.id);
-  if (!Array.isArray(value)) return [];
-
-  const shots: ProjectShot[] = [];
-  for (const item of value) {
-    if (isProjectShotJson(item)) {
-      shots.push(item as unknown as ProjectShot);
-      continue;
-    }
-
-    const media = jsonRecord(item);
-    if (!media) continue;
-    const caption =
-      (typeof media.cap === 'string' && media.cap) ||
-      (typeof media.caption === 'string' && media.caption) ||
-      (typeof media.alt === 'string' && media.alt) ||
-      (typeof media.label === 'string' && media.label) ||
-      `${record.title} screenshot`;
-    if (Object.hasOwn(media, 'video')) {
-      if (typeof media.video === 'string' && media.video.trim()) {
-        shots.push({
-          video: media.video,
-          cap: caption,
-          ...(typeof media.poster === 'string' ? { poster: media.poster } : {}),
-          ...(typeof media.phone === 'boolean' ? { phone: media.phone } : {}),
-        });
-      }
-      continue;
-    }
-    const source = media.src ?? media.img ?? media.url;
-    if (typeof source === 'string') {
-      shots.push({
-        img: source,
-        cap: caption,
-        ...(typeof media.phone === 'boolean' ? { phone: media.phone } : {}),
-      });
-      continue;
-    }
-    if (typeof media.kind === 'string' && Object.hasOwn(PROJECT_SHOT_KINDS, media.kind)) {
-      shots.push({ kind: media.kind, cap: caption } as ProjectShot);
-    }
-  }
-  return shots;
-}
-
-function projectShots(value: JsonValue, id: string): ProjectShot[] {
-  if (!Array.isArray(value) || !value.every((item) => isProjectShotJson(item))) {
-    throw new Error(`Project record ${id} has invalid media read details.`);
-  }
-  return value as unknown as ProjectShot[];
-}
-
-function isProjectShotJson(value: JsonValue): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-
-  const shot = value as Record<string, JsonValue | undefined>;
-  if (typeof shot.cap !== 'string') return false;
-  const hasImg = Object.hasOwn(shot, 'img');
-  const hasKind = Object.hasOwn(shot, 'kind');
-  const hasVideo = Object.hasOwn(shot, 'video');
-  if ([hasImg, hasKind, hasVideo].filter(Boolean).length !== 1) return false;
-  if (hasImg) {
-    return typeof shot.img === 'string' && (shot.phone === undefined || typeof shot.phone === 'boolean');
-  }
-  if (hasVideo) {
-    return (
-      typeof shot.video === 'string' &&
-      Boolean(shot.video.trim()) &&
-      (shot.poster === undefined || typeof shot.poster === 'string') &&
-      (shot.phone === undefined || typeof shot.phone === 'boolean')
-    );
-  }
-  return typeof shot.kind === 'string' && Object.hasOwn(PROJECT_SHOT_KINDS, shot.kind);
-}
-
-function jsonRecord(value: JsonValue): Record<string, JsonValue> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
+function parseCanonicalOrLegacyArray<Output>(
+  itemSchema: { array(): { safeParse(value: unknown): { success: true; data: Output[] } | { success: false } } },
+  value: unknown,
+  id: string,
+  adaptLegacy: (value: unknown, id: string) => Output[],
+): Output[] {
+  const parsed = itemSchema.array().safeParse(value);
+  return parsed.success ? parsed.data : adaptLegacy(value, id);
 }
 
 function strings(value: JsonValue, field: string, id: string): string[] {
@@ -449,16 +341,4 @@ function strings(value: JsonValue, field: string, id: string): string[] {
     throw new Error(`Project record ${id} has invalid ${field} read details.`);
   }
   return value;
-}
-
-function stringTuples<Tuple extends [string, string]>(value: JsonValue, field: string, id: string): Tuple[] {
-  if (
-    !Array.isArray(value) ||
-    !value.every(
-      (item) => Array.isArray(item) && item.length === 2 && typeof item[0] === 'string' && typeof item[1] === 'string',
-    )
-  ) {
-    throw new Error(`Project record ${id} has invalid ${field} read details.`);
-  }
-  return value as Tuple[];
 }

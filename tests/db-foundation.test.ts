@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test, { afterEach } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
-import { applyMigrations, applySeeds, resetDatabase, type Queryable } from '../scripts/db';
-import { CATALOG } from '@/data/catalog';
+import { applyMigrations, applySeeds, resetDatabase, splitSqlStatements, type Queryable } from '../scripts/db';
+import { CATALOG, PLAYLIST_SLUGS } from '@/data/catalog';
 import {
   buildCatalogShadowRecords,
   fetchCatalogShadowRecords,
@@ -42,6 +42,14 @@ import {
   SCAN_RUN_LIFECYCLE_STATES,
 } from '@/lib/db/schema';
 import { projectMeta } from '@/lib/seo';
+import {
+  PROJECT_AREAS,
+  ProjectAreaSchema,
+  ProjectDetailSchema,
+  ProjectLinkSchema,
+  ProjectMediaSchema,
+  ProjectMetricSchema,
+} from '@/lib/projects/schema';
 
 afterEach(() => {
   resetPublicProjectDetailsLoadForTests();
@@ -57,8 +65,97 @@ const FOUNDATION_TABLES = [
   'rag_sources',
 ] as const;
 
+test('canonical project schema has five areas and validates nested public fields', () => {
+  assert.deepEqual(PROJECT_AREAS, [
+    'Shipped & Client Work',
+    'Apps',
+    'AI & Developer Tools',
+    'Side Projects & Experiments',
+    'Coursework',
+  ]);
+  assert.equal(ProjectAreaSchema.safeParse('TypeScript').success, false);
+  assert.equal(ProjectAreaSchema.safeParse('AI & Developer Tools').success, true);
+  assert.deepEqual(PLAYLIST_SLUGS, {
+    wip: 'wip',
+    'Shipped & Client Work': 'shipped-client-work',
+    Apps: 'apps',
+    'AI & Developer Tools': 'ai-developer-tools',
+    'Side Projects & Experiments': 'side-projects-experiments',
+    Coursework: 'coursework',
+  });
+
+  assert.deepEqual(ProjectLinkSchema.parse({ label: 'Repo', href: 'http://example.test/repo' }), {
+    label: 'Repo',
+    href: 'http://example.test/repo',
+  });
+  assert.equal(ProjectLinkSchema.safeParse({ label: 'Bad', href: 'javascript:alert(1)' }).success, false);
+  assert.equal(ProjectLinkSchema.safeParse({ label: 'Bad', href: 'data:text/plain,bad' }).success, false);
+  assert.deepEqual(ProjectMetricSchema.parse({ value: ' 64 KiB ', label: ' manifest ceiling ' }), {
+    value: '64 KiB',
+    label: 'manifest ceiling',
+  });
+  assert.equal(ProjectDetailSchema.safeParse('A reviewed public paragraph.').success, true);
+  assert.equal(ProjectDetailSchema.safeParse({ label: 'Source', value: 'Published DB record' }).success, true);
+
+  assert.equal(
+    ProjectMediaSchema.safeParse({
+      kind: 'image',
+      src: '/screenshots/loom/overview.webp',
+      caption: 'Loom overview',
+    }).success,
+    true,
+  );
+  assert.equal(
+    ProjectMediaSchema.safeParse({
+      kind: 'video',
+      src: '/demos/loom-install.mp4',
+      poster: '/demos/loom-install-poster.png',
+      caption: 'Loom install demo',
+    }).success,
+    true,
+  );
+
+  for (const src of [
+    '/screenshots/../private.txt',
+    '/screenshots/%2e%2e/private.txt',
+    '/screenshots/%5c..%5cprivate.txt',
+    '/screenshots/%252e%252e%252fprivate.txt',
+    '/assets/not-approved.png',
+    '/demos/image-not-approved.png',
+    'javascript:alert(1)',
+    'data:image/png;base64,bad',
+  ]) {
+    assert.equal(
+      ProjectMediaSchema.safeParse({ kind: 'image', src, caption: 'Rejected image' }).success,
+      false,
+      `expected image source ${src} to be rejected`,
+    );
+  }
+  assert.equal(
+    ProjectMediaSchema.safeParse({ kind: 'video', src: '/assets/not-approved.mp4', caption: 'Rejected video' }).success,
+    false,
+  );
+});
+
 function createTestDb(): Queryable {
   return new PGlite() as Queryable;
+}
+
+interface ProjectAreaPreflightRow {
+  source: string;
+  project_ref: string;
+  current_area: string;
+  prospective_area: string;
+}
+
+async function runProjectAreaPreflight(db: Queryable): Promise<ProjectAreaPreflightRow[]> {
+  const sql = await readFile(
+    fileURLToPath(new URL('../db/preflight/0003_recruiter_project_areas.sql', import.meta.url)),
+    'utf8',
+  );
+  const statements = splitSqlStatements(sql);
+  assert.equal(statements.length, 1);
+  return (await db.query<ProjectAreaPreflightRow>(statements[0]!)).rows;
 }
 
 async function insertProjectRecord(db: Queryable, record: CatalogShadowRecord): Promise<void> {
@@ -95,7 +192,11 @@ test('migrations create the DM project foundation tables', async () => {
   const db = createTestDb();
   const applied = await applyMigrations(db);
 
-  assert.deepEqual(applied, ['0001_dm_project_foundation.sql', '0002_review_events_seq.sql']);
+  assert.deepEqual(applied, [
+    '0001_dm_project_foundation.sql',
+    '0002_review_events_seq.sql',
+    '0003_recruiter_project_areas.sql',
+  ]);
 
   const tables = await db.query<{ table_name: string }>(
     `SELECT table_name
@@ -133,7 +234,10 @@ test('review_events seq migration upgrades an existing database deterministicall
             ('review_seq_b', 'cand_seq', 'test', 'note', '2026-01-01T00:00:00Z')`,
   );
 
-  assert.deepEqual(await applyMigrations(db), ['0002_review_events_seq.sql']);
+  assert.deepEqual(await applyMigrations(db), [
+    '0002_review_events_seq.sql',
+    '0003_recruiter_project_areas.sql',
+  ]);
 
   const upgraded = await db.query<{ id: string; seq: string | number | null }>(
     `SELECT id, seq FROM review_events WHERE candidate_id = 'cand_seq'`,
@@ -158,6 +262,134 @@ test('review_events seq migration upgrades an existing database deterministicall
   assert.equal(latest.rows[0]?.id, 'review_seq_d');
 });
 
+test('project area migration maps legacy, explicit, DB-only, Loom, and draft values idempotently', async () => {
+  const db = createTestDb();
+  const stageDir = await mkdtemp(join(tmpdir(), 'gh187-area-mig-'));
+  for (const name of ['0001_dm_project_foundation.sql', '0002_review_events_seq.sql']) {
+    await copyFile(fileURLToPath(new URL(`../db/migrations/${name}`, import.meta.url)), join(stageDir, name));
+  }
+  await applyMigrations(db, stageDir);
+
+  await db.query(
+    `INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state)
+     VALUES
+       ('slurmlet', 'slurmlet', 'slurmlet', 'Scheduler', 'Infrastructure', 2026, 'draft_only'),
+       ('db-only-research', 'db-only-research', 'DB only', 'DB-only row', 'Research', 2026, 'draft_only'),
+       ('loom', 'loom', 'Loom', 'Loom row', 'TypeScript', 2026, 'draft_only'),
+       ('unmapped-typescript', 'unmapped-typescript', 'Unmapped', 'Unmapped row', 'TypeScript', 2026, 'draft_only')`,
+  );
+  await db.query(
+    `INSERT INTO project_drafts (id, proposed_fields)
+     VALUES
+       ('draft_slurmlet', '{"slug":"slurmlet","area":"Infrastructure"}'::jsonb),
+       ('draft_db_only', '{"slug":"db-only-research","area":"Research"}'::jsonb),
+       ('draft_loom', '{"slug":"loom","area":"TypeScript"}'::jsonb),
+       ('draft_unmapped', '{"slug":"unmapped-rust","area":"Rust"}'::jsonb),
+       ('draft_without_area', '{"slug":"unmapped-hidden"}'::jsonb)`,
+  );
+
+  const preflightByReference = new Map(
+    (await runProjectAreaPreflight(db)).map((row) => [`${row.source}:${row.project_ref}`, row]),
+  );
+  assert.equal(preflightByReference.size, 2);
+  assert.deepEqual(preflightByReference.get('projects:unmapped-typescript / unmapped-typescript'), {
+    source: 'projects',
+    project_ref: 'unmapped-typescript / unmapped-typescript',
+    current_area: 'TypeScript',
+    prospective_area: 'TypeScript',
+  });
+  assert.deepEqual(preflightByReference.get('project_drafts:draft_unmapped'), {
+    source: 'project_drafts',
+    project_ref: 'draft_unmapped',
+    current_area: 'Rust',
+    prospective_area: 'Rust',
+  });
+  for (const mappedReference of [
+    'projects:slurmlet / slurmlet',
+    'projects:db-only-research / db-only-research',
+    'projects:loom / loom',
+    'project_drafts:draft_slurmlet',
+    'project_drafts:draft_db_only',
+    'project_drafts:draft_loom',
+  ]) {
+    assert.equal(preflightByReference.has(mappedReference), false, `${mappedReference} should be mapped by migration 0003`);
+  }
+
+  await db.query(`DELETE FROM projects WHERE id = 'unmapped-typescript'`);
+  await db.query(`DELETE FROM project_drafts WHERE id = 'draft_unmapped'`);
+
+  assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);
+
+  const projects = await db.query<{ id: string; area: string }>(`SELECT id, area FROM projects ORDER BY id`);
+  assert.deepEqual(projects.rows, [
+    { id: 'db-only-research', area: 'Side Projects & Experiments' },
+    { id: 'loom', area: 'AI & Developer Tools' },
+    { id: 'slurmlet', area: 'AI & Developer Tools' },
+  ]);
+  const drafts = await db.query<{ id: string; area: string | null }>(
+    `SELECT id, proposed_fields->>'area' AS area FROM project_drafts ORDER BY id`,
+  );
+  assert.deepEqual(drafts.rows, [
+    { id: 'draft_db_only', area: 'Side Projects & Experiments' },
+    { id: 'draft_loom', area: 'AI & Developer Tools' },
+    { id: 'draft_slurmlet', area: 'AI & Developer Tools' },
+    { id: 'draft_without_area', area: null },
+  ]);
+
+  assert.deepEqual(await runProjectAreaPreflight(db), []);
+
+  await db.query(`DELETE FROM schema_migrations WHERE name = '0003_recruiter_project_areas.sql'`);
+  assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);
+  assert.deepEqual((await db.query<{ id: string; area: string }>(`SELECT id, area FROM projects ORDER BY id`)).rows, projects.rows);
+});
+
+test('project area migration preflight rejects every noncanonical project and draft value', async () => {
+  const db = createTestDb();
+  const stageDir = await mkdtemp(join(tmpdir(), 'gh187-area-preflight-'));
+  for (const name of ['0001_dm_project_foundation.sql', '0002_review_events_seq.sql']) {
+    await copyFile(fileURLToPath(new URL(`../db/migrations/${name}`, import.meta.url)), join(stageDir, name));
+  }
+  await applyMigrations(db, stageDir);
+  await db.query(
+    `INSERT INTO projects (id, slug, title, tagline, area, year)
+     VALUES ('unmapped-typescript', 'unmapped-typescript', 'Bad area', 'Bad area', 'TypeScript', 2026)`,
+  );
+  await db.query(
+    `INSERT INTO project_drafts (id, proposed_fields)
+     VALUES ('unmapped-rust-draft', '{"slug":"unmapped-rust-draft","area":"Rust"}'::jsonb)`,
+  );
+
+  await assert.rejects(() => applyMigrations(db), /projects_area_recruiter_facing_check/);
+  await db.query(`UPDATE projects SET area = 'AI & Developer Tools' WHERE id = 'unmapped-typescript'`);
+  await assert.rejects(() => applyMigrations(db), /project_drafts_area_recruiter_facing_check/);
+  await db.query(
+    `UPDATE project_drafts SET proposed_fields = proposed_fields - 'area' WHERE id = 'unmapped-rust-draft'`,
+  );
+  assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);
+
+  await assert.rejects(
+    db.query(
+      `INSERT INTO projects (id, slug, title, tagline, area, year)
+       VALUES ('post-migration-typescript', 'post-migration-typescript', 'Bad', 'Bad', 'TypeScript', 2026)`,
+    ),
+    /projects_area_recruiter_facing_check/,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_drafts (id, proposed_fields)
+       VALUES ('post-migration-typescript-draft', '{"area":"TypeScript"}'::jsonb)`,
+    ),
+    /project_drafts_area_recruiter_facing_check/,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_drafts (id, proposed_fields)
+       VALUES ('post-migration-null-area-draft', '{"area":null}'::jsonb)`,
+    ),
+    /project_drafts_area_recruiter_facing_check/,
+  );
+});
+
 test('planned lifecycle states are constrained in SQL and exported types', async () => {
   const db = createTestDb();
   await applyMigrations(db);
@@ -170,7 +402,7 @@ test('planned lifecycle states are constrained in SQL and exported types', async
 
   await db.query(`
     INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state)
-    VALUES ('state-test-project', 'state-test-project', 'State test', 'State test', 'Agents & MCP', 2026, 'draft_only')
+    VALUES ('state-test-project', 'state-test-project', 'State test', 'State test', 'AI & Developer Tools', 2026, 'draft_only')
   `);
   await db.query(`
     INSERT INTO scan_runs (id, trigger, actor, lifecycle_state)
@@ -180,7 +412,7 @@ test('planned lifecycle states are constrained in SQL and exported types', async
   await assert.rejects(
     db.query(`
       INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state)
-      VALUES ('bad-project', 'bad-project', 'Bad', 'Bad', 'Agents & MCP', 2026, 'public')
+      VALUES ('bad-project', 'bad-project', 'Bad', 'Bad', 'AI & Developer Tools', 2026, 'public')
     `),
   );
 
@@ -240,7 +472,11 @@ test('seed and reset path works without external credentials', async () => {
   );
   assert.equal(afterReset.rows[0]?.count, '0');
 
-  assert.deepEqual(await applyMigrations(db), ['0001_dm_project_foundation.sql', '0002_review_events_seq.sql']);
+  assert.deepEqual(await applyMigrations(db), [
+    '0001_dm_project_foundation.sql',
+    '0002_review_events_seq.sql',
+    '0003_recruiter_project_areas.sql',
+  ]);
   assert.deepEqual(await applySeeds(db), ['001_foundation_smoke.sql']);
 
   const reseeded = await db.query<{ id: string }>(
@@ -429,21 +665,21 @@ test('public DB read helpers expose only published project rows', async () => {
 
   assert.throws(
     () => projectRecordToReadModels({ ...published, media: ['not-a-shot'] }),
-    /invalid media read details/,
+    /invalid legacy media/,
   );
   assert.throws(
     () => projectRecordToReadModels({ ...published, media: [{ cap: 'bad hybrid', img: false, kind: 'chart' }] }),
-    /invalid media read details/,
+    /invalid legacy media/,
   );
   assert.throws(
     () => projectRecordToReadModels({ ...published, media: [{ cap: 'bad skeleton', kind: 'constructor' }] }),
-    /invalid media read details/,
+    /invalid legacy media/,
   );
   const invalidStatus = JSON.parse(JSON.stringify(published)) as CatalogShadowRecord;
   (invalidStatus.details[0] as Record<string, unknown>).status = ['constructor', 'Published'];
   assert.throws(
     () => projectRecordToReadModels(invalidStatus),
-    /invalid status read details/,
+    /invalid legacy status/,
   );
 });
 
@@ -457,15 +693,15 @@ test('public DB read helpers render admin-published rows without legacy snapshot
        details, metrics, links, media, source, published_at, archived_at
      ) VALUES (
        'manual-db-project', 'manual-db-slug', 'Manual DB Project', 'DB-only public tagline',
-       'Agents & MCP', 2026, 'published', 'Published from admin',
+       'AI & Developer Tools', 2026, 'published', 'Published from admin',
        'Public summary from admin review.',
        $1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb, 'manual', '2026-07-04T00:00:00.000Z', null
      )`,
     [
-      JSON.stringify([{ label: 'Detail', value: 'One' }, { provenance: 'not a legacy snapshot' }, 'Public admin paragraph.']),
+      JSON.stringify([{ label: 'Detail', value: 'One' }, 'Public admin paragraph.']),
       JSON.stringify([{ label: 'published proof', value: '1' }]),
       JSON.stringify([{ label: 'Live ↗', href: 'https://example.com/manual-db-project' }]),
-      JSON.stringify([{ type: 'image', src: '/manual-db-project.png', caption: 'Manual DB screenshot' }]),
+      JSON.stringify([{ kind: 'image', src: '/screenshots/manual-db-project.png', caption: 'Manual DB screenshot' }]),
     ],
   );
 
@@ -478,17 +714,120 @@ test('public DB read helpers render admin-published rows without legacy snapshot
   assert.equal(detail?.hue, '#8b7cf6');
   assert.deepEqual(detail?.about, ['Public admin paragraph.']);
   assert.deepEqual(detail?.notes, []);
-  assert.deepEqual(detail?.stack, [['Detail', 'One']]);
-  assert.deepEqual(detail?.metrics, [['1', 'published proof']]);
-  assert.deepEqual(detail?.links, [['Live ↗', 'https://example.com/manual-db-project']]);
-  assert.deepEqual(detail?.shots, [{ img: '/manual-db-project.png', cap: 'Manual DB screenshot' }]);
+  assert.deepEqual(detail?.stack, [{ label: 'Detail', value: 'One' }]);
+  assert.deepEqual(detail?.metrics, [{ value: '1', label: 'published proof' }]);
+  assert.deepEqual(detail?.links, [{ label: 'Live ↗', href: 'https://example.com/manual-db-project' }]);
+  assert.deepEqual(detail?.shots, [
+    { kind: 'image', src: '/screenshots/manual-db-project.png', caption: 'Manual DB screenshot' },
+  ]);
   assert.equal(detail?.dmArtifact.href, '/projects/manual-db-slug');
 
   const byId = await fetchPublicProjectDetail(db, 'manual-db-project');
   assert.equal(byId?.slug, 'manual-db-slug');
 });
 
-test('DB read layer parses valid video media and drops invalid video entries', async () => {
+test('markerless pre-canonical published rows normalize only supported legacy nested shapes', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+       details, metrics, links, media, source, published_at
+     ) VALUES (
+       'markerless-legacy', 'markerless-legacy', 'Markerless legacy', 'Pre-canonical persisted row',
+       'AI & Developer Tools', 2026, 'published', 'Published before schema cutover', 'Legacy public summary.',
+       $1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb, 'manual', '2026-07-04T00:00:00.000Z'
+     )`,
+    [
+      JSON.stringify([
+        ['Language', 'TypeScript'],
+        { label: 'Version', value: 2 },
+        { provenance: 'not a legacy catalog snapshot' },
+        'Legacy public paragraph.',
+      ]),
+      JSON.stringify([
+        ['1', 'published proof'],
+        { value: 2, label: 'review passes' },
+      ]),
+      JSON.stringify([
+        ['Repo', 'https://example.com/markerless-legacy'],
+        { label: 'Docs', url: 'http://example.com/markerless-legacy/docs' },
+      ]),
+      JSON.stringify([
+        { type: 'image', src: '/screenshots/markerless-legacy.png', caption: 'Legacy screenshot' },
+        {
+          video: '/demos/loom-install.mp4',
+          poster: '/demos/loom-install-poster.png',
+          cap: 'Legacy Loom demo',
+        },
+      ]),
+    ],
+  );
+
+  const detail = await fetchPublicProjectDetail(db, 'markerless-legacy');
+  assert.deepEqual(detail?.about, ['Legacy public paragraph.']);
+  assert.deepEqual(detail?.stack, [
+    { label: 'Language', value: 'TypeScript' },
+    { label: 'Version', value: '2' },
+  ]);
+  assert.deepEqual(detail?.metrics, [
+    { value: '1', label: 'published proof' },
+    { value: '2', label: 'review passes' },
+  ]);
+  assert.deepEqual(detail?.links, [
+    { label: 'Repo', href: 'https://example.com/markerless-legacy' },
+    { label: 'Docs', href: 'http://example.com/markerless-legacy/docs' },
+  ]);
+  assert.deepEqual(detail?.shots, [
+    {
+      kind: 'image',
+      src: '/screenshots/markerless-legacy.png',
+      caption: 'Legacy screenshot',
+    },
+    {
+      kind: 'video',
+      src: '/demos/loom-install.mp4',
+      poster: '/demos/loom-install-poster.png',
+      caption: 'Legacy Loom demo',
+    },
+  ]);
+
+  const [record] = (
+    await db.query<CatalogShadowRecord>(
+      `SELECT id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+              details, metrics, links, media, source, published_at, archived_at
+       FROM projects WHERE id = 'markerless-legacy'`,
+    )
+  ).rows;
+  assert.ok(record);
+  assert.throws(
+    () => projectRecordToReadModels({ ...record, links: [['Unsafe', 'javascript:alert(1)']] }),
+    /invalid legacy links/,
+  );
+  assert.throws(
+    () => projectRecordToReadModels({
+      ...record,
+      media: [{ type: 'image', src: '/assets/not-approved.png', caption: 'Unsafe legacy media' }],
+    }),
+    /invalid legacy media/,
+  );
+
+  for (const invalidFields of [
+    { slug: 'Invalid Slug' },
+    { title: '   ' },
+    { tagline: '   ' },
+    { year: 1999 },
+    { summary: '   ' },
+  ]) {
+    assert.throws(
+      () => projectRecordToReadModels({ ...record, ...invalidFields }),
+      `expected persisted field override ${JSON.stringify(invalidFields)} to be rejected`,
+    );
+  }
+});
+
+test('DB read layer accepts canonical Loom demo media and rejects invalid media', async () => {
   const db = createTestDb();
   await applyMigrations(db);
 
@@ -498,7 +837,7 @@ test('DB read layer parses valid video media and drops invalid video entries', a
        details, metrics, links, media, source, published_at, archived_at
      ) VALUES (
        'video-media-project', 'video-media-project', 'Video Media Project', 'Demo video media',
-       'Agents & MCP', 2026, 'published', 'Published from admin',
+       'AI & Developer Tools', 2026, 'published', 'Published from admin',
        'Public summary for video media.',
        $1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb, 'manual', '2026-07-04T00:00:00.000Z', null
      )`,
@@ -506,15 +845,25 @@ test('DB read layer parses valid video media and drops invalid video entries', a
       JSON.stringify(['Public admin paragraph.']),
       JSON.stringify([]),
       JSON.stringify([]),
-      JSON.stringify([
-        { video: '/demos/x.mp4', cap: 'Demo' },
-        { video: '', cap: 'Invalid demo', img: '/should-not-become-image.png' },
-      ]),
+      JSON.stringify([{ kind: 'video', src: '/demos/loom-install.mp4', poster: '/demos/loom-install-poster.png', caption: 'Loom install demo' }]),
     ],
   );
 
   const detail = await fetchPublicProjectDetail(db, 'video-media-project');
-  assert.deepEqual(detail?.shots, [{ video: '/demos/x.mp4', cap: 'Demo' }]);
+  assert.deepEqual(detail?.shots, [
+    {
+      kind: 'video',
+      src: '/demos/loom-install.mp4',
+      poster: '/demos/loom-install-poster.png',
+      caption: 'Loom install demo',
+    },
+  ]);
+
+  const canonicalRecord = {
+    ...(await db.query<CatalogShadowRecord>(`SELECT * FROM projects WHERE id = 'video-media-project'`)).rows[0]!,
+    media: [{ kind: 'image', src: 'javascript:alert(1)', caption: 'Unsafe' }],
+  };
+  assert.throws(() => projectRecordToReadModels(canonicalRecord), /invalid legacy media/);
 });
 
 test('public project DB gate falls back to catalog until explicitly enabled and populated', async () => {
@@ -692,4 +1041,16 @@ test('public project routes use the gated public project source', async () => {
 
   const projectCard = await readFile('src/components/ProjectCard.astro', 'utf8');
   assert.match(projectCard, /projectPublicMark/);
+
+  const vercelConfig = JSON.parse(await readFile('vercel.json', 'utf8')) as {
+    redirects: Array<{ source: string; destination: string }>;
+  };
+  const redirects = new Map(vercelConfig.redirects.map((redirect) => [redirect.source, redirect.destination]));
+  assert.equal(redirects.get('/library/trading-systems'), '/library/side-projects-experiments');
+  assert.equal(redirects.get('/library/agents-mcp'), '/library/ai-developer-tools');
+  assert.equal(redirects.get('/library/ios'), '/library/apps');
+  assert.equal(redirects.get('/library/shipped'), '/library/shipped-client-work');
+  assert.equal(redirects.get('/library/school'), '/library/coursework');
+  assert.equal(redirects.get('/library/infrastructure'), '/library/side-projects-experiments');
+  assert.equal(redirects.get('/library/research'), '/library/side-projects-experiments');
 });

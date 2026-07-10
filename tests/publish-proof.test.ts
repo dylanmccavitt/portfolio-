@@ -58,28 +58,28 @@ const PUBLISHED_FIELDS: JsonObject = {
   slug: 'publish-proof-published-project',
   title: 'Publish Proof Published Project',
   tagline: 'Fixture-backed publish gate proof',
-  area: 'Agents & MCP',
+  area: 'AI & Developer Tools',
   year: 2026,
   summary: 'Published via admin review from a hidden Slack draft fixture candidate.',
   activity: 'Published for recruiter-facing review',
   details: [{ label: 'Workflow', value: 'Scan -> Slack draft -> admin publish' }, 'Published proof narrative.'],
   metrics: [{ label: 'proof steps', value: '5' }],
   links: [{ label: 'Repo', href: 'https://github.com/DylanMcCavitt/publish-proof-published' }],
-  media: [{ type: 'image', src: '/publish-proof-published.png', caption: 'Published proof screenshot' }],
+  media: [{ kind: 'image', src: '/screenshots/publish-proof-published.png', caption: 'Published proof screenshot' }],
 };
 
 const UNPUBLISHED_FIELDS: JsonObject = {
   slug: 'publish-proof-unpublished-project',
   title: 'Publish Proof Unpublished Project',
   tagline: 'Fixture stays draft-only',
-  area: 'Agents & MCP',
+  area: 'AI & Developer Tools',
   year: 2026,
   summary: 'Draft-only project should never appear in public reads or DM answers. proof-sentinel-unpublished-737',
   activity: 'Still hidden draft',
   details: [{ label: 'Workflow', value: 'Candidate -> hidden draft only' }, 'Not published.'],
   metrics: [{ label: 'public visibility', value: '0' }],
   links: [{ label: 'Repo', href: 'https://github.com/DylanMcCavitt/publish-proof-unpublished' }],
-  media: [{ type: 'image', src: '/publish-proof-unpublished.png', caption: 'Unpublished draft screenshot' }],
+  media: [{ kind: 'image', src: '/screenshots/publish-proof-unpublished.png', caption: 'Unpublished draft screenshot' }],
 };
 
 function createTestDb(): Queryable {

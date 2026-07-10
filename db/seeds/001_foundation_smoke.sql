@@ -17,7 +17,7 @@ INSERT INTO projects (
   'seed-foundation-project',
   'Foundation seed project',
   'Non-public seed row for DB foundation checks.',
-  'Agents & MCP',
+  'AI & Developer Tools',
   2026,
   'shadow',
   'test only',

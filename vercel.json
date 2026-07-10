@@ -2,6 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "redirects": [
     { "source": "/projects/epl-ml-model", "destination": "/projects/epl-ml", "permanent": true },
+    { "source": "/library/trading-systems", "destination": "/library/side-projects-experiments", "permanent": true },
+    { "source": "/library/agents-mcp", "destination": "/library/ai-developer-tools", "permanent": true },
+    { "source": "/library/ios", "destination": "/library/apps", "permanent": true },
+    { "source": "/library/shipped", "destination": "/library/shipped-client-work", "permanent": true },
+    { "source": "/library/school", "destination": "/library/coursework", "permanent": true },
+    { "source": "/library/infrastructure", "destination": "/library/side-projects-experiments", "permanent": true },
+    { "source": "/library/research", "destination": "/library/side-projects-experiments", "permanent": true },
     { "source": "/experience", "destination": "/journey", "permanent": true },
     { "source": "/resume", "destination": "/journey", "permanent": true },
     { "source": "/about", "destination": "/journey/now", "permanent": true },

@@ -779,10 +779,11 @@ test('Slack draft action creates a hidden draft only and never publishes a proje
   assert.equal(drafts.rows[0]?.proposed_fields.title, 'Portfolio Candidate App');
   assert.equal(drafts.rows[0]?.proposed_fields.tagline, 'A test GitHub repo worth reviewing for the portfolio.');
   assert.equal(drafts.rows[0]?.proposed_fields.summary, 'A test GitHub repo worth reviewing for the portfolio.');
-  assert.equal(drafts.rows[0]?.proposed_fields.area, 'TypeScript');
+  assert.equal(Object.hasOwn(drafts.rows[0]?.proposed_fields ?? {}, 'area'), false);
+  assert.equal((drafts.rows[0]?.proposed_fields.signals as Record<string, unknown>)?.language, 'TypeScript');
   assert.equal(drafts.rows[0]?.proposed_fields.year, 2026);
   assert.deepEqual(drafts.rows[0]?.proposed_fields.links, [
-    ['GitHub', 'https://github.com/DylanMcCavitt/portfolio-candidate-app'],
+    { label: 'GitHub', href: 'https://github.com/DylanMcCavitt/portfolio-candidate-app' },
   ]);
   assert.equal(drafts.rows[0]?.provenance_map.publicPublish, false);
 

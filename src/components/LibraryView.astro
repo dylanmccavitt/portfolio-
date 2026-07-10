@@ -26,13 +26,11 @@ const list = filterPublicProjectDetails(projects, filter);
 const LABELS: Record<PlaylistId, string> = {
   all: 'All work',
   wip: 'Now building',
-  'Trading systems': 'Trading systems',
-  'Agents & MCP': 'Agents & MCP',
-  iOS: 'iOS',
-  Shipped: 'Shipped',
-  School: 'School · Stevens',
-  Infrastructure: 'Infrastructure',
-  Research: 'Research & retired',
+  'Shipped & Client Work': 'Shipped & Client Work',
+  Apps: 'Apps',
+  'AI & Developer Tools': 'AI & Developer Tools',
+  'Side Projects & Experiments': 'Side Projects & Experiments',
+  Coursework: 'Coursework',
 };
 
 const FILTERS = ['all', 'wip', ...AREA_PLAYLISTS] satisfies PlaylistId[];

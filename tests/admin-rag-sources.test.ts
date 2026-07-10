@@ -129,7 +129,7 @@ async function insertProject(
 ): Promise<void> {
   await db.query(
     `INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state, published_at)
-     VALUES ($1, $1, $2, 'RAG route tagline', 'Agents & MCP', 2026, $3, $4)`,
+     VALUES ($1, $1, $2, 'RAG route tagline', 'AI & Developer Tools', 2026, $3, $4)`,
     [id, `RAG route project ${id}`, lifecycleState, lifecycleState === 'published' ? NOW : null],
   );
 }

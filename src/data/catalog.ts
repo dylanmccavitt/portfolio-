@@ -20,115 +20,57 @@
  * lingoloop was removed from the portfolio entirely (above).
  */
 
+import {
+  CatalogProjectSchema,
+  type CatalogProject,
+  type ProjectArea,
+  type ProjectDetailEntry,
+  type ProjectImageMedia,
+  type ProjectLink,
+  type ProjectMedia,
+  type ProjectMetric,
+  type ProjectSeek,
+  type ProjectSkeletonKind,
+  type ProjectSkeletonMedia,
+  type ProjectStatus,
+  type ProjectVideoMedia,
+} from '@/lib/projects/schema';
+
 /** Base for real screenshot paths, served from `public/screenshots/`. */
 const SHOTS = '/screenshots';
 
-/** Status badge variants. */
-export type StatusKind = 'dry' | 'live' | 'wip' | 'done';
-
-/** `[kind, label]` status tuple, e.g. `['dry', 'Dry-run']`. */
-export type ProjectStatus = [kind: StatusKind, label: string];
-
-/** `[label, url]` link tuple, e.g. `['GitHub ↗', '…']`. */
-export type ProjectLink = [label: string, url: string];
-
-/** `[value, label]` metric tuple, e.g. `['189', 'commits to v1.2']`. */
-export type ProjectMetric = [value: string, label: string];
-
-/** `[label, value]` stack/credit tuple, e.g. `['Language', 'swift']`. */
-export type ProjectStackEntry = [label: string, value: string];
-
-/** Seek bar: where the project came from, where it's going, and a percentage. */
-export interface ProjectSeek {
-  from: string;
-  to: string;
-  pct: number;
-}
-
-/** A real screenshot: an image path under `/screenshots/...` with a caption. */
-export interface ProjectImageShot {
-  img: string;
-  cap: string;
-  /** True for 9:16 phone captures (iOS), so the rail uses the narrow frame. */
-  phone?: boolean;
-}
-
-/** A captured demo video with an optional poster frame. */
-export interface ProjectVideoShot {
-  video: string;
-  cap: string;
-  poster?: string;
-  /** True for 9:16 phone captures (iOS), so the rail uses the narrow frame. */
-  phone?: boolean;
-}
-
-/** Skeleton placeholder kinds for shots without a captured screenshot. */
-export type SkeletonKind = 'chart' | 'dash' | 'list' | 'code' | 'phone';
-
-/** A skeleton placeholder shot: a typed `kind` with a caption. */
-export interface ProjectSkeletonShot {
-  kind: SkeletonKind;
-  cap: string;
-}
-
-/** A shot is either a real image, demo video, or skeleton placeholder. */
-export type ProjectShot = ProjectImageShot | ProjectVideoShot | ProjectSkeletonShot;
-
-/** Catalog areas — also serve as project library filters. */
-export type ProjectArea =
-  | 'Trading systems'
-  | 'Agents & MCP'
-  | 'iOS'
-  | 'Shipped'
-  | 'School'
-  | 'Infrastructure'
-  | 'Research';
-
-export interface Project {
-  id: string;
-  title: string;
-  /** Short project mark retained for data consumers. */
-  sym: string;
-  area: ProjectArea;
-  status: ProjectStatus;
-  year: number;
-  activity: string;
-  /** Accent color (hex). */
-  hue: string;
-  /** Now building. */
-  wip: boolean;
-  /** Live with real money. */
-  money: boolean;
-  /** One-line tagline. */
-  line: string;
-  seek: ProjectSeek;
-  links: ProjectLink[];
-  metrics: ProjectMetric[];
-  /** Long-form description paragraphs. */
-  about: string[];
-  /** Liner notes. */
-  notes: string[];
-  /** Credits / tech stack. */
-  stack: ProjectStackEntry[];
-  shots: ProjectShot[];
-}
+export type StatusKind = ProjectStatus[0];
+export type ProjectStackEntry = ProjectDetailEntry;
+export type ProjectImageShot = ProjectImageMedia;
+export type ProjectVideoShot = ProjectVideoMedia;
+export type SkeletonKind = ProjectSkeletonKind;
+export type ProjectSkeletonShot = ProjectSkeletonMedia;
+export type ProjectShot = ProjectMedia;
+export type Project = CatalogProject;
+export type {
+  ProjectArea,
+  ProjectLink,
+  ProjectMetric,
+  ProjectSeek,
+  ProjectStatus,
+};
 
 /** Type guard: is this shot a real captured image? */
 export function isImageShot(shot: ProjectShot): shot is ProjectImageShot {
-  return 'img' in shot;
+  return shot.kind === 'image';
 }
 
 /** Type guard: is this shot a captured demo video? */
 export function isVideoShot(shot: ProjectShot): shot is ProjectVideoShot {
-  return typeof (shot as { video?: unknown }).video === 'string';
+  return shot.kind === 'video';
 }
 
-export const CATALOG: Project[] = [
+export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
   {
     id: 'agentic-trader',
     title: 'agentic-trader',
     sym: 'at',
-    area: 'Agents & MCP',
+    area: 'Side Projects & Experiments',
     status: ['dry', 'Dry-run'],
     year: 2026,
     activity: 'live 06·23',
@@ -137,11 +79,11 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'side-project trading automation: Claude Code reviews a simple RSI(2) setup and journals each proposed move',
     seek: { from: 'review loop', to: 'live jun 23', pct: 80 },
-    links: [['View repo ↗', 'https://github.com/DylanMcCavitt/agentic-trader']],
+    links: [{ label: 'View repo ↗', href: 'https://github.com/DylanMcCavitt/agentic-trader' }],
     metrics: [
-      ['15:45 ET', 'scheduled Claude Code session'],
-      ['RSI(2)', 'simple signal under review'],
-      ['06·23', 'go-live date'],
+      { value: '15:45 ET', label: 'scheduled Claude Code session' },
+      { value: 'RSI(2)', label: 'simple signal under review' },
+      { value: '06·23', label: 'go-live date' },
     ],
     about: [
       'A side-project trading automation workflow that runs on a schedule instead of as a black box. A headless Claude Code session wakes at 15:45 ET on weekdays, checks a simple RSI(2) mean-reversion signal, and routes proposed orders through Robinhood’s Agentic Trading MCP.',
@@ -153,22 +95,22 @@ export const CATALOG: Project[] = [
       'Go-live date tracked as June 23 on a dedicated account.',
     ],
     stack: [
-      ['Runtime', 'claude code · launchd'],
-      ['Broker', 'robinhood agentic mcp'],
-      ['Signal', 'rsi(2) mean-reversion'],
-      ['Status', 'review loop → live 06·23'],
+      { label: 'Runtime', value: 'claude code · launchd' },
+      { label: 'Broker', value: 'robinhood agentic mcp' },
+      { label: 'Signal', value: 'rsi(2) mean-reversion' },
+      { label: 'Status', value: 'review loop → live 06·23' },
     ],
     shots: [
-      { img: `${SHOTS}/agentic-trader/journal.webp`, cap: 'decision journal: proposed entries vs simulated fills' },
-      { img: `${SHOTS}/agentic-trader/risk-gate.webp`, cap: 'gate decision log for one session' },
-      { img: `${SHOTS}/agentic-trader/backtest.webp`, cap: 'signal backtest, walk-forward windows' },
+      { kind: 'image', src: `${SHOTS}/agentic-trader/journal.webp`, caption: 'decision journal: proposed entries vs simulated fills' },
+      { kind: 'image', src: `${SHOTS}/agentic-trader/risk-gate.webp`, caption: 'gate decision log for one session' },
+      { kind: 'image', src: `${SHOTS}/agentic-trader/backtest.webp`, caption: 'signal backtest, walk-forward windows' },
     ],
   },
   {
     id: 'exit-manager',
     title: 'tastytrade-exit-manager',
     sym: 'em',
-    area: 'Trading systems',
+    area: 'Side Projects & Experiments',
     status: ['live', 'Live'],
     year: 2026,
     activity: 'today',
@@ -177,11 +119,11 @@ export const CATALOG: Project[] = [
     money: true,
     line: 'practical exit automation for options positions Dylan already opened',
     seek: { from: 'monitoring', to: 'live', pct: 100 },
-    links: [['View repo ↗', 'https://github.com/DylanMcCavitt/tastytrade-exit-manager']],
+    links: [{ label: 'View repo ↗', href: 'https://github.com/DylanMcCavitt/tastytrade-exit-manager' }],
     metrics: [
-      ['3', 'exit mechanisms: scale-out · trail · oco'],
-      ['live', 'real money, every session'],
-      ['0', 'positions it can open'],
+      { value: '3', label: 'exit mechanisms: scale-out · trail · oco' },
+      { value: 'live', label: 'real money, every session' },
+      { value: '0', label: 'positions it can open' },
     ],
     about: [
       'Practical automation for options positions Dylan has already opened. It handles scale-outs, ratcheting trailing stops, and OCO brackets, but it cannot open a new trade or add size.',
@@ -193,22 +135,22 @@ export const CATALOG: Project[] = [
       'Running against real money since spring 2026.',
     ],
     stack: [
-      ['Language', 'python'],
-      ['Broker', 'tastytrade api'],
-      ['Orders', 'oco · trail · scale-out'],
-      ['Repo', 'public'],
+      { label: 'Language', value: 'python' },
+      { label: 'Broker', value: 'tastytrade api' },
+      { label: 'Orders', value: 'oco · trail · scale-out' },
+      { label: 'Repo', value: 'public' },
     ],
     shots: [
-      { img: `${SHOTS}/exit-manager/position-monitor.webp`, cap: 'position monitor with ratchet levels' },
-      { img: `${SHOTS}/exit-manager/exit-ladder.webp`, cap: 'exit ladder config for an iron condor' },
-      { img: `${SHOTS}/exit-manager/audit-trail.webp`, cap: 'order audit trail, one expiry' },
+      { kind: 'image', src: `${SHOTS}/exit-manager/position-monitor.webp`, caption: 'position monitor with ratchet levels' },
+      { kind: 'image', src: `${SHOTS}/exit-manager/exit-ladder.webp`, caption: 'exit ladder config for an iron condor' },
+      { kind: 'image', src: `${SHOTS}/exit-manager/audit-trail.webp`, caption: 'order audit trail, one expiry' },
     ],
   },
   {
     id: 'hood',
     title: 'hood',
     sym: 'hd',
-    area: 'Trading systems',
+    area: 'Side Projects & Experiments',
     status: ['live', 'Active'],
     year: 2026,
     activity: 'today',
@@ -219,9 +161,9 @@ export const CATALOG: Project[] = [
     seek: { from: 'tracking', to: 'active daily', pct: 100 },
     links: [],
     metrics: [
-      ['weekly', 'withdrawal cadence'],
-      ['0', 'principal touched, gains only'],
-      ['local', 'account data stays on-machine'],
+      { value: 'weekly', label: 'withdrawal cadence' },
+      { value: '0', label: 'principal touched, gains only' },
+      { value: 'local', label: 'account data stays on-machine' },
     ],
     about: [
       'A local, single-user personal finance dashboard for tracking realized gains across Robinhood accounts. Its high-water-mark rule suggests weekly withdrawals from gains only, without taking the portfolio below its best-ever level.',
@@ -233,22 +175,22 @@ export const CATALOG: Project[] = [
       'Realized P/L reconciled across multiple accounts.',
     ],
     stack: [
-      ['Language', 'typescript'],
-      ['Shape', 'local finance dashboard'],
-      ['Engine', 'high-water-mark rules'],
-      ['Status', 'active daily'],
+      { label: 'Language', value: 'typescript' },
+      { label: 'Shape', value: 'local finance dashboard' },
+      { label: 'Engine', value: 'high-water-mark rules' },
+      { label: 'Status', value: 'active daily' },
     ],
     shots: [
-      { kind: 'dash', cap: 'portfolio vs high-water mark' },
-      { kind: 'chart', cap: 'weekly withdrawal history' },
-      { kind: 'list', cap: 'withdrawal ledger with rule trace' },
+      { kind: 'skeleton', skeletonKind: 'dash', caption: 'portfolio vs high-water mark' },
+      { kind: 'skeleton', skeletonKind: 'chart', caption: 'weekly withdrawal history' },
+      { kind: 'skeleton', skeletonKind: 'list', caption: 'withdrawal ledger with rule trace' },
     ],
   },
   {
     id: 'tradingview-mcp',
     title: 'tradingview-mcp',
     sym: 'tv',
-    area: 'Agents & MCP',
+    area: 'AI & Developer Tools',
     status: ['wip', 'WIP'],
     year: 2026,
     activity: '2d ago',
@@ -259,9 +201,9 @@ export const CATALOG: Project[] = [
     seek: { from: 'scaffold', to: 'v1 charting', pct: 65 },
     links: [],
     metrics: [
-      ['5', 'stock universes configured'],
-      ['full', 'pine compile round-trip'],
-      ['v1', 'charting scope'],
+      { value: '5', label: 'stock universes configured' },
+      { value: 'full', label: 'pine compile round-trip' },
+      { value: 'v1', label: 'charting scope' },
     ],
     about: [
       'An MCP server for automating TradingView Desktop workflows Dylan already does by hand: open charts, capture chartbooks, and round-trip Pine Script by setting source, compiling, and reading console errors back.',
@@ -273,22 +215,22 @@ export const CATALOG: Project[] = [
       'Chartbook capture for daily review.',
     ],
     stack: [
-      ['Language', 'typescript'],
-      ['Protocol', 'mcp · cdp'],
-      ['Target', 'tradingview desktop'],
-      ['Status', 'v1 in progress'],
+      { label: 'Language', value: 'typescript' },
+      { label: 'Protocol', value: 'mcp · cdp' },
+      { label: 'Target', value: 'tradingview desktop' },
+      { label: 'Status', value: 'v1 in progress' },
     ],
     shots: [
-      { img: `${SHOTS}/tradingview-mcp/chartbook.webp`, cap: 'agent-driven chartbook capture' },
-      { img: `${SHOTS}/tradingview-mcp/pine-compile.webp`, cap: 'pine compile round-trip' },
-      { img: `${SHOTS}/tradingview-mcp/universe-sweep.webp`, cap: 'universe sweep, 4-up layout' },
+      { kind: 'image', src: `${SHOTS}/tradingview-mcp/chartbook.webp`, caption: 'agent-driven chartbook capture' },
+      { kind: 'image', src: `${SHOTS}/tradingview-mcp/pine-compile.webp`, caption: 'pine compile round-trip' },
+      { kind: 'image', src: `${SHOTS}/tradingview-mcp/universe-sweep.webp`, caption: 'universe sweep, 4-up layout' },
     ],
   },
   {
     id: 'evalgate',
     title: 'evalgate',
     sym: 'eg',
-    area: 'Agents & MCP',
+    area: 'AI & Developer Tools',
     status: ['wip', 'Building'],
     year: 2026,
     activity: 'in progress',
@@ -299,9 +241,9 @@ export const CATALOG: Project[] = [
     seek: { from: 'scaffold', to: 'v0.1 launch', pct: 25 },
     links: [],
     metrics: [
-      ['record once', 'replay as a repeatable test'],
-      ['every change', 'checked before it goes live'],
-      ['v0.1', 'first release, building in the open'],
+      { value: 'record once', label: 'replay as a repeatable test' },
+      { value: 'every change', label: 'checked before it goes live' },
+      { value: 'v0.1', label: 'first release, building in the open' },
     ],
     about: [
       'A practical regression-test tool for AI assistant behavior. It records a real session, replays it later, and fails when a change makes the assistant do something different or unsafe.',
@@ -313,22 +255,22 @@ export const CATALOG: Project[] = [
       'Built in the open on an eleven-day sprint to a first release.',
     ],
     stack: [
-      ['Language', 'python'],
-      ['Shape', 'assistant regression tests'],
-      ['Example', 'behavior checks'],
-      ['Status', 'building → v0.1'],
+      { label: 'Language', value: 'python' },
+      { label: 'Shape', value: 'assistant regression tests' },
+      { label: 'Example', value: 'behavior checks' },
+      { label: 'Status', value: 'building → v0.1' },
     ],
     shots: [
-      { kind: 'code', cap: 'recorded session, step by step' },
-      { kind: 'dash', cap: 'replay run vs the saved baseline' },
-      { kind: 'list', cap: 'checks that passed or failed' },
+      { kind: 'skeleton', skeletonKind: 'code', caption: 'recorded session, step by step' },
+      { kind: 'skeleton', skeletonKind: 'dash', caption: 'replay run vs the saved baseline' },
+      { kind: 'skeleton', skeletonKind: 'list', caption: 'checks that passed or failed' },
     ],
   },
   {
     id: 'dog-log',
     title: 'dog log',
     sym: 'dg',
-    area: 'iOS',
+    area: 'Apps',
     status: ['live', 'App Store'],
     year: 2026,
     activity: 'v1.2',
@@ -339,9 +281,9 @@ export const CATALOG: Project[] = [
     seek: { from: 'v1.2', to: 'review', pct: 95 },
     links: [],
     metrics: [
-      ['189', 'commits to v1.2'],
-      ['2', 'storage modes: local + synced'],
-      ['v1.2', 'in app store review'],
+      { value: '189', label: 'commits to v1.2' },
+      { value: '2', label: 'storage modes: local + synced' },
+      { value: 'v1.2', label: 'in app store review' },
     ],
     about: [
       'A small consumer iPhone app Dylan shipped to practice product polish end to end: logging each dog’s potty routine, quick actions from a home-screen widget, and optional shared households.',
@@ -353,22 +295,22 @@ export const CATALOG: Project[] = [
       'App Store review and shared-household polish in v1.2.',
     ],
     stack: [
-      ['Language', 'swift'],
-      ['Storage', 'swiftdata · supabase'],
-      ['Surface', 'app + widget'],
-      ['Status', 'app store review'],
+      { label: 'Language', value: 'swift' },
+      { label: 'Storage', value: 'swiftdata · supabase' },
+      { label: 'Surface', value: 'app + widget' },
+      { label: 'Status', value: 'app store review' },
     ],
     shots: [
-      { img: `${SHOTS}/dog-log/profiles-quick-log.webp`, cap: 'dog profiles + quick log', phone: true },
-      { img: `${SHOTS}/dog-log/widget.webp`, cap: 'home-screen widget', phone: true },
-      { kind: 'phone', cap: 'shared household invite flow' },
+      { kind: 'image', src: `${SHOTS}/dog-log/profiles-quick-log.webp`, caption: 'dog profiles + quick log', phone: true },
+      { kind: 'image', src: `${SHOTS}/dog-log/widget.webp`, caption: 'home-screen widget', phone: true },
+      { kind: 'skeleton', skeletonKind: 'phone', caption: 'shared household invite flow' },
     ],
   },
   {
     id: 'chore-ladder',
     title: 'chore ladder',
     sym: 'cl',
-    area: 'iOS',
+    area: 'Apps',
     status: ['wip', 'TestFlight'],
     year: 2026,
     activity: 'may',
@@ -379,9 +321,9 @@ export const CATALOG: Project[] = [
     seek: { from: 'build', to: 'testflight', pct: 90 },
     links: [],
     metrics: [
-      ['184', 'commits'],
-      ['25+', 'unit test suites'],
-      ['pro', 'subscription tier built'],
+      { value: '184', label: 'commits' },
+      { value: '25+', label: 'unit test suites' },
+      { value: 'pro', label: 'subscription tier built' },
     ],
     about: [
       'A side product for practicing the business mechanics around an iOS app: household chore boards, friend invites, completion stats, notifications, and a Pro tier.',
@@ -393,22 +335,22 @@ export const CATALOG: Project[] = [
       'Heading to TestFlight.',
     ],
     stack: [
-      ['Language', 'swift'],
-      ['Backend', 'firebase'],
-      ['Monetization', 'storekit subscription'],
-      ['Status', 'testflight prep'],
+      { label: 'Language', value: 'swift' },
+      { label: 'Backend', value: 'firebase' },
+      { label: 'Monetization', value: 'storekit subscription' },
+      { label: 'Status', value: 'testflight prep' },
     ],
     shots: [
-      { img: `${SHOTS}/chore-ladder/category-board.webp`, cap: 'category board view', phone: true },
-      { img: `${SHOTS}/chore-ladder/household-stats.webp`, cap: 'household stats', phone: true },
-      { img: `${SHOTS}/chore-ladder/entitlement-tests.webp`, cap: 'entitlement test suite' },
+      { kind: 'image', src: `${SHOTS}/chore-ladder/category-board.webp`, caption: 'category board view', phone: true },
+      { kind: 'image', src: `${SHOTS}/chore-ladder/household-stats.webp`, caption: 'household stats', phone: true },
+      { kind: 'image', src: `${SHOTS}/chore-ladder/entitlement-tests.webp`, caption: 'entitlement test suite' },
     ],
   },
   {
     id: 'homeserver',
     title: 'homeserver',
     sym: 'hs',
-    area: 'Infrastructure',
+    area: 'Side Projects & Experiments',
     status: ['live', 'Online'],
     year: 2025,
     activity: '99.9%',
@@ -418,13 +360,13 @@ export const CATALOG: Project[] = [
     line: 'reproducible NixOS homelab for reliability practice',
     seek: { from: 'uptime', to: '99.9%', pct: 100 },
     links: [
-      ['nixos-dotfiles ↗', 'https://github.com/DylanMcCavitt/nixos-dotfiles'],
-      ['homelab ↗', 'https://github.com/DylanMcCavitt/homelab'],
+      { label: 'nixos-dotfiles ↗', href: 'https://github.com/DylanMcCavitt/nixos-dotfiles' },
+      { label: 'homelab ↗', href: 'https://github.com/DylanMcCavitt/homelab' },
     ],
     metrics: [
-      ['3', 'nodes on the tailscale mesh'],
-      ['99.9%', 'uptime'],
-      ['1', 'flake to rebuild everything'],
+      { value: '3', label: 'nodes on the tailscale mesh' },
+      { value: '99.9%', label: 'uptime' },
+      { value: '1', label: 'flake to rebuild everything' },
     ],
     about: [
       'Infrastructure practice in a real homelab: everything runs from a single NixOS flake, so a rebuild from bare metal is one command. A rack-mounted Ryzen node plus two mini PCs are connected over Tailscale with split DNS.',
@@ -436,23 +378,23 @@ export const CATALOG: Project[] = [
       'Log-aware alerting on every service.',
     ],
     stack: [
-      ['OS', 'nixos'],
-      ['Network', 'tailscale · caddy'],
-      ['Backup', 'restic → s3'],
-      ['Observability', 'grafana · loki'],
+      { label: 'OS', value: 'nixos' },
+      { label: 'Network', value: 'tailscale · caddy' },
+      { label: 'Backup', value: 'restic → s3' },
+      { label: 'Observability', value: 'grafana · loki' },
     ],
     shots: [
-      { img: `${SHOTS}/homelab/homepage.webp`, cap: 'service homepage' },
-      { img: `${SHOTS}/homelab/proxmox.webp`, cap: 'proxmox cluster' },
-      { img: `${SHOTS}/homelab/kuma.webp`, cap: 'uptime kuma monitors' },
-      { img: `${SHOTS}/homelab/opnsense.webp`, cap: 'opnsense at the edge' },
+      { kind: 'image', src: `${SHOTS}/homelab/homepage.webp`, caption: 'service homepage' },
+      { kind: 'image', src: `${SHOTS}/homelab/proxmox.webp`, caption: 'proxmox cluster' },
+      { kind: 'image', src: `${SHOTS}/homelab/kuma.webp`, caption: 'uptime kuma monitors' },
+      { kind: 'image', src: `${SHOTS}/homelab/opnsense.webp`, caption: 'opnsense at the edge' },
     ],
   },
   {
     id: 'slurmlet',
     title: 'slurmlet',
     sym: 'sl',
-    area: 'Infrastructure',
+    area: 'AI & Developer Tools',
     status: ['wip', 'WIP'],
     year: 2026,
     activity: 'building',
@@ -463,9 +405,9 @@ export const CATALOG: Project[] = [
     seek: { from: 'go port', to: 'python port', pct: 45 },
     links: [],
     metrics: [
-      ['2', 'parallel builds: go and python'],
-      ['all-or-nothing', 'a job only starts when every GPU it needs is free'],
-      ['simulated', 'fleet runs on fake GPUs, so no costly hardware'],
+      { value: '2', label: 'parallel builds: go and python' },
+      { value: 'all-or-nothing', label: 'a job only starts when every GPU it needs is free' },
+      { value: 'simulated', label: 'fleet runs on fake GPUs, so no costly hardware' },
     ],
     about: [
       'A systems-learning project around one scheduling problem: a big training job should start only when every GPU it asked for is free. slurmlet holds the job back until the full set is available, then reserves them together.',
@@ -477,22 +419,22 @@ export const CATALOG: Project[] = [
       'Runs on a simulated GPU fleet, so the whole workflow can be tested without real GPU costs.',
     ],
     stack: [
-      ['Languages', 'go · python'],
-      ['Platform', 'kubernetes'],
-      ['Test fleet', 'simulated gpus'],
-      ['Status', 'go port active, python next'],
+      { label: 'Languages', value: 'go · python' },
+      { label: 'Platform', value: 'kubernetes' },
+      { label: 'Test fleet', value: 'simulated gpus' },
+      { label: 'Status', value: 'go port active, python next' },
     ],
     shots: [
-      { kind: 'dash', cap: 'jobs waiting on a full set of GPUs' },
-      { kind: 'code', cap: 'all-or-nothing scheduling logic' },
-      { kind: 'list', cap: 'fleet lifecycle: schedule, drain, reschedule' },
+      { kind: 'skeleton', skeletonKind: 'dash', caption: 'jobs waiting on a full set of GPUs' },
+      { kind: 'skeleton', skeletonKind: 'code', caption: 'all-or-nothing scheduling logic' },
+      { kind: 'skeleton', skeletonKind: 'list', caption: 'fleet lifecycle: schedule, drain, reschedule' },
     ],
   },
   {
     id: 'bellas-beads',
     title: "bella's beads",
     sym: 'bb',
-    area: 'Shipped',
+    area: 'Shipped & Client Work',
     status: ['done', 'Shipped'],
     year: 2025,
     activity: '2025',
@@ -501,11 +443,11 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'client ecommerce site: browse, pay, ship, track, and hand off',
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
-    links: [['Live site ↗', 'https://bellasbeads.shop']],
+    links: [{ label: 'Live site ↗', href: 'https://bellasbeads.shop' }],
     metrics: [
-      ['400+', 'commits to handoff'],
-      ['4', 'integrations: stripe · shippo · supabase · resend'],
-      ['2', 'checkout flows: guest + account'],
+      { value: '400+', label: 'commits to handoff' },
+      { value: '4', label: 'integrations: stripe · shippo · supabase · resend' },
+      { value: '2', label: 'checkout flows: guest + account' },
     ],
     about: [
       'A shipped client ecommerce platform for a handmade-jewelry business. It covers the full lifecycle: product browsing, guest and account checkout, order history, shipment tracking, saved addresses, and admin operations for products and inventory.',
@@ -517,23 +459,23 @@ export const CATALOG: Project[] = [
       'In production at bellasbeads.shop.',
     ],
     stack: [
-      ['Frontend', 'react · typescript'],
-      ['Backend', 'node · express'],
-      ['Data', 'postgres / supabase'],
-      ['Payments', 'stripe · shippo'],
+      { label: 'Frontend', value: 'react · typescript' },
+      { label: 'Backend', value: 'node · express' },
+      { label: 'Data', value: 'postgres / supabase' },
+      { label: 'Payments', value: 'stripe · shippo' },
     ],
     shots: [
-      { img: `${SHOTS}/bella/landing.webp`, cap: 'storefront landing' },
-      { img: `${SHOTS}/bella/product-page.webp`, cap: 'product page' },
-      { img: `${SHOTS}/bella/stripe.webp`, cap: 'stripe checkout' },
-      { img: `${SHOTS}/bella/admin-dash.webp`, cap: 'admin dashboard' },
+      { kind: 'image', src: `${SHOTS}/bella/landing.webp`, caption: 'storefront landing' },
+      { kind: 'image', src: `${SHOTS}/bella/product-page.webp`, caption: 'product page' },
+      { kind: 'image', src: `${SHOTS}/bella/stripe.webp`, caption: 'stripe checkout' },
+      { kind: 'image', src: `${SHOTS}/bella/admin-dash.webp`, caption: 'admin dashboard' },
     ],
   },
   {
     id: 'nhf',
     title: 'no hard feelings',
     sym: 'nh',
-    area: 'Shipped',
+    area: 'Shipped & Client Work',
     status: ['live', 'Live'],
     year: 2025,
     activity: 'live',
@@ -542,11 +484,11 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'low-maintenance band site with Google Calendar as CMS',
     seek: { from: 'build', to: 'live', pct: 100 },
-    links: [['Live site ↗', 'https://nohardfeelings.app']],
+    links: [{ label: 'Live site ↗', href: 'https://nohardfeelings.app' }],
     metrics: [
-      ['0', 'databases to maintain'],
-      ['auto', 'show dates via google calendar'],
-      ['live', 'nohardfeelings.app'],
+      { value: '0', label: 'databases to maintain' },
+      { value: 'auto', label: 'show dates via google calendar' },
+      { value: 'live', label: 'nohardfeelings.app' },
     ],
     about: [
       'A low-maintenance site for No Hard Feelings, a classic-rock cover band in NJ/NY. Show dates, band bios, live videos, and booking are in one place.',
@@ -557,22 +499,22 @@ export const CATALOG: Project[] = [
       'CSS 3D transforms + Motion.js, tuned across devices.',
     ],
     stack: [
-      ['Framework', 'astro · react'],
-      ['Style', 'tailwind · motion.js'],
-      ['Shows', 'google calendar feed'],
-      ['Status', 'live'],
+      { label: 'Framework', value: 'astro · react' },
+      { label: 'Style', value: 'tailwind · motion.js' },
+      { label: 'Shows', value: 'google calendar feed' },
+      { label: 'Status', value: 'live' },
     ],
     shots: [
-      { img: `${SHOTS}/nohard/landing.webp`, cap: 'album-cover hero, front' },
-      { img: `${SHOTS}/nohard/backcard.webp`, cap: 'flipped to band bios' },
-      { img: `${SHOTS}/nohard/gcal-integration.webp`, cap: 'shows from google calendar' },
+      { kind: 'image', src: `${SHOTS}/nohard/landing.webp`, caption: 'album-cover hero, front' },
+      { kind: 'image', src: `${SHOTS}/nohard/backcard.webp`, caption: 'flipped to band bios' },
+      { kind: 'image', src: `${SHOTS}/nohard/gcal-integration.webp`, caption: 'shows from google calendar' },
     ],
   },
   {
     id: 'work-orders',
     title: 'work orders',
     sym: 'wo',
-    area: 'School',
+    area: 'Coursework',
     status: ['done', 'Shipped'],
     year: 2025,
     activity: 'team of 4',
@@ -581,11 +523,11 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'team coursework app for request → work order → contractor → invoice',
     seek: { from: 'request', to: 'invoice', pct: 100 },
-    links: [['View repo ↗', 'https://github.com/apolydore/Work-Order-Management-System']],
+    links: [{ label: 'View repo ↗', href: 'https://github.com/apolydore/Work-Order-Management-System' }],
     metrics: [
-      ['4', 'person team'],
-      ['4', 'invoice states: draft · issued · paid · cancelled'],
-      ['NYC', 'open-data contract seed'],
+      { value: '4', label: 'person team' },
+      { value: '4', label: 'invoice states: draft · issued · paid · cancelled' },
+      { value: 'NYC', label: 'open-data contract seed' },
     ],
     about: [
       'A four-person Web Programming project that models a full construction-maintenance workflow: external users submit requests, admins convert them to work orders, assign contractors, track progress, and issue invoices.',
@@ -597,22 +539,22 @@ export const CATALOG: Project[] = [
       'Four-person code ownership with task delegation.',
     ],
     stack: [
-      ['Backend', 'express 5 · mongodb'],
-      ['Templates', 'handlebars'],
-      ['Auth', 'sessions · bcrypt'],
-      ['Data', 'nyc open data'],
+      { label: 'Backend', value: 'express 5 · mongodb' },
+      { label: 'Templates', value: 'handlebars' },
+      { label: 'Auth', value: 'sessions · bcrypt' },
+      { label: 'Data', value: 'nyc open data' },
     ],
     shots: [
-      { img: `${SHOTS}/work-order/work-order-landing.webp`, cap: 'landing' },
-      { img: `${SHOTS}/work-order/woadmin.webp`, cap: 'admin dashboard' },
-      { img: `${SHOTS}/work-order/invoice.webp`, cap: 'invoice lifecycle' },
+      { kind: 'image', src: `${SHOTS}/work-order/work-order-landing.webp`, caption: 'landing' },
+      { kind: 'image', src: `${SHOTS}/work-order/woadmin.webp`, caption: 'admin dashboard' },
+      { kind: 'image', src: `${SHOTS}/work-order/invoice.webp`, caption: 'invoice lifecycle' },
     ],
   },
   {
     id: 'epl-ml',
     title: 'EPL match predictor',
     sym: 'ep',
-    area: 'School',
+    area: 'Coursework',
     status: ['done', 'Shipped'],
     year: 2025,
     activity: '8 models',
@@ -621,12 +563,12 @@ export const CATALOG: Project[] = [
     money: false,
     line: 'ML coursework comparing eight models on one Premier League split',
     seek: { from: 'raw data', to: 'xgboost', pct: 100 },
-    links: [['Notebook ↗', 'https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX']],
+    links: [{ label: 'Notebook ↗', href: 'https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX' }],
     metrics: [
-      ['8', 'models, one split'],
-      ['39', 'engineered features'],
-      ['~99%', 'top accuracy (xgboost)'],
-      ['20 yrs', 'of match data'],
+      { value: '8', label: 'models, one split' },
+      { value: '39', label: 'engineered features' },
+      { value: '~99%', label: 'top accuracy (xgboost)' },
+      { value: '20 yrs', label: 'of match data' },
     ],
     about: [
       'An ML-learning group project using 20+ years of English Premier League data. The team engineered 39 features for goals, streaks, differentials, and form, then trained eight models on the same train/test split.',
@@ -638,22 +580,22 @@ export const CATALOG: Project[] = [
       'Coursework context, not a claim of predictive edge.',
     ],
     stack: [
-      ['Language', 'python'],
-      ['Models', '8-way comparison'],
-      ['Result', 'xgboost top on split'],
-      ['Data', 'kaggle · 20 yrs epl'],
+      { label: 'Language', value: 'python' },
+      { label: 'Models', value: '8-way comparison' },
+      { label: 'Result', value: 'xgboost top on split' },
+      { label: 'Data', value: 'kaggle · 20 yrs epl' },
     ],
     shots: [
-      { img: `${SHOTS}/epl-ml-model/accuracy-comparison.webp`, cap: 'model accuracy comparison' },
-      { img: `${SHOTS}/epl-ml-model/correlation-heatmap.webp`, cap: 'feature correlation heatmap' },
-      { img: `${SHOTS}/epl-ml-model/xgboost.webp`, cap: 'xgboost results' },
+      { kind: 'image', src: `${SHOTS}/epl-ml-model/accuracy-comparison.webp`, caption: 'model accuracy comparison' },
+      { kind: 'image', src: `${SHOTS}/epl-ml-model/correlation-heatmap.webp`, caption: 'feature correlation heatmap' },
+      { kind: 'image', src: `${SHOTS}/epl-ml-model/xgboost.webp`, caption: 'xgboost results' },
     ],
   },
   {
     id: 'condor-study',
     title: '0DTE condor study',
     sym: '0d',
-    area: 'Research',
+    area: 'Side Projects & Experiments',
     status: ['done', 'Retired'],
     year: 2025,
     activity: '2025',
@@ -664,9 +606,9 @@ export const CATALOG: Project[] = [
     seek: { from: '2021', to: 'retired', pct: 100 },
     links: [],
     metrics: [
-      ['4 yrs', 'of walk-forward backtests'],
-      ['0', 'edge after costs'],
-      ['1', 'post-mortem published'],
+      { value: '4 yrs', label: 'of walk-forward backtests' },
+      { value: '0', label: 'edge after costs' },
+      { value: '1', label: 'post-mortem published' },
     ],
     about: [
       'A disciplined trading-research post-mortem, not a standing trading system. QuantConnect tests covered 0DTE SPY iron condors across 2021–2024, with walk-forward windows and an explicit cost model.',
@@ -678,21 +620,21 @@ export const CATALOG: Project[] = [
       'Negative result kept on the record.',
     ],
     stack: [
-      ['Platform', 'quantconnect · lean'],
-      ['Underlying', 'spy 0dte'],
-      ['Verdict', 'no edge after costs'],
-      ['Status', 'retired'],
+      { label: 'Platform', value: 'quantconnect · lean' },
+      { label: 'Underlying', value: 'spy 0dte' },
+      { label: 'Verdict', value: 'no edge after costs' },
+      { label: 'Status', value: 'retired' },
     ],
     shots: [
-      { kind: 'chart', cap: 'equity curve vs costs' },
-      { kind: 'code', cap: 'condor leg selection logic' },
+      { kind: 'skeleton', skeletonKind: 'chart', caption: 'equity curve vs costs' },
+      { kind: 'skeleton', skeletonKind: 'code', caption: 'condor leg selection logic' },
     ],
   },
   {
     id: 'harness-arena',
     title: 'harness-arena',
     sym: 'ha',
-    area: 'Research',
+    area: 'Side Projects & Experiments',
     status: ['done', 'Shelved'],
     year: 2026,
     activity: 'apr',
@@ -703,8 +645,8 @@ export const CATALOG: Project[] = [
     seek: { from: 'arena loop', to: 'shelved', pct: 55 },
     links: [],
     metrics: [
-      ['48', 'commits'],
-      ['A/B', 'preset comparison design'],
+      { value: '48', label: 'commits' },
+      { value: 'A/B', label: 'preset comparison design' },
     ],
     about: [
       'A shelved experiment in using games as repeatable test beds for agent-harness presets. The browser arena made differences between settings visible enough to compare, instead of relying on vibes.',
@@ -715,16 +657,16 @@ export const CATALOG: Project[] = [
       'Preset differences measured, not eyeballed.',
     ],
     stack: [
-      ['Language', 'typescript'],
-      ['Shape', 'agent-eval game lab'],
-      ['Status', 'shelved'],
+      { label: 'Language', value: 'typescript' },
+      { label: 'Shape', value: 'agent-eval game lab' },
+      { label: 'Status', value: 'shelved' },
     ],
     shots: [
-      { kind: 'dash', cap: 'arena run with preset A/B' },
-      { kind: 'chart', cap: 'win-rate by harness preset' },
+      { kind: 'skeleton', skeletonKind: 'dash', caption: 'arena run with preset A/B' },
+      { kind: 'skeleton', skeletonKind: 'chart', caption: 'win-rate by harness preset' },
     ],
   },
-];
+]);
 
 /**
  * Filter identifiers used by the library: the two cross-cutting filters
@@ -735,33 +677,29 @@ export type PlaylistId = 'all' | 'wip' | ProjectArea;
 
 /** Ordered list of area filters. */
 export const AREA_PLAYLISTS: ProjectArea[] = [
-  'Trading systems',
-  'Agents & MCP',
-  'iOS',
-  'Shipped',
-  'School',
-  'Infrastructure',
-  'Research',
+  'Shipped & Client Work',
+  'Apps',
+  'AI & Developer Tools',
+  'Side Projects & Experiments',
+  'Coursework',
 ];
 
 /**
  * Canonical URL slugs for the filtered library routes (#25). The filter ids
  * double as area labels, so several contain spaces, ampersands, and uppercase
- * (`Trading systems`, `Agents & MCP`, `iOS`); those are not stable, shareable
- * URL segments. This map is the single source of truth for `/library/<slug>`;
+ * characters; those are not stable, shareable URL segments. This map is the
+ * single source of truth for `/library/<slug>`;
  * routes and the sitemap read it, so the slug scheme stays aligned.
  *
  * `all` is intentionally absent: it lives at `/`, not `/library/all`.
  */
 export const PLAYLIST_SLUGS: Record<Exclude<PlaylistId, 'all'>, string> = {
   wip: 'wip',
-  'Trading systems': 'trading-systems',
-  'Agents & MCP': 'agents-mcp',
-  iOS: 'ios',
-  Shipped: 'shipped',
-  School: 'school',
-  Infrastructure: 'infrastructure',
-  Research: 'research',
+  'Shipped & Client Work': 'shipped-client-work',
+  Apps: 'apps',
+  'AI & Developer Tools': 'ai-developer-tools',
+  'Side Projects & Experiments': 'side-projects-experiments',
+  Coursework: 'coursework',
 };
 
 /** Reverse lookup: URL slug → playlist id. Built once from {@link PLAYLIST_SLUGS}. */

@@ -27,7 +27,7 @@ async function insertProject(
 ): Promise<void> {
   await db.query(
     `INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state, published_at)
-     VALUES ($1, $1, 'RAG test project', 'RAG test tagline', 'Agents & MCP', 2026, $2, $3)`,
+     VALUES ($1, $1, 'RAG test project', 'RAG test tagline', 'AI & Developer Tools', 2026, $2, $3)`,
     [id, lifecycleState, lifecycleState === 'published' ? new Date().toISOString() : null],
   );
 }

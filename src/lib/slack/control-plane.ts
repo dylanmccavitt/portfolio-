@@ -663,10 +663,14 @@ function buildHiddenDraftFields(candidate: CandidateRow, repoDescription: string
     slug: slugFromRepoName(repoName) || slugFromRepoName(candidate.id) || 'draft',
     title: titleFromRepoName(repoName),
     tagline: taglineFromDescription(repoDescription),
-    area: typeof candidate.signals.language === 'string' ? candidate.signals.language : '',
     year: yearFromSignals(candidate.signals),
     summary: repoDescription,
-    links: candidate.repo_visibility === 'public' ? [['GitHub', candidate.source_ref]] : [],
+    details: [],
+    metrics: [],
+    links: candidate.repo_visibility === 'public'
+      ? [{ label: 'GitHub', href: candidate.source_ref }]
+      : [],
+    media: [],
   };
 }
 

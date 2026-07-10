@@ -14,7 +14,7 @@ const { shots, hue } = Astro.props;
 
 const DIMS = { wide: { w: 400, h: 267 }, phone: { w: 180, h: 320 } };
 const isPhone = (shot: ProjectShot) =>
-  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.kind === 'phone';
+  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.skeletonKind === 'phone';
 ---
 
 <div class="shots" role="group" aria-label="Screenshots" tabindex="0">
@@ -26,22 +26,22 @@ const isPhone = (shot: ProjectShot) =>
         <a
           class:list={['shot', { phone }]}
           href={`#shot-${i}`}
-          aria-label={`Expand screenshot: ${shot.cap}`}
+          aria-label={`Expand screenshot: ${shot.caption}`}
         >
           <img
-            src={shot.img}
-            alt={shot.cap}
+            src={shot.src}
+            alt={shot.caption}
             width={dims.w}
             height={dims.h}
             loading="lazy"
             decoding="async"
           />
-          <span class="cap">{shot.cap}</span>
+          <span class="cap">{shot.caption}</span>
         </a>
       ) : isVideoShot(shot) ? (
         <div class:list={['shot', { phone }]}>
           <video
-            src={shot.video}
+            src={shot.src}
             width={dims.w}
             height={dims.h}
             controls
@@ -50,16 +50,16 @@ const isPhone = (shot: ProjectShot) =>
             preload="metadata"
             poster={shot.poster}
           ></video>
-          <span class="cap">{shot.cap}</span>
+          <span class="cap">{shot.caption}</span>
         </div>
       ) : (
         <div class:list={['shot', { phone }]}>
-          <div class="sk" data-kind={shot.kind} style={`--sk:${hue}66`} aria-hidden="true">
-            {(shot.kind === 'chart' || shot.kind === 'dash' || shot.kind === 'list' || shot.kind === 'phone') && (
+          <div class="sk" data-kind={shot.skeletonKind} style={`--sk:${hue}66`} aria-hidden="true">
+            {(shot.skeletonKind === 'chart' || shot.skeletonKind === 'dash' || shot.skeletonKind === 'list' || shot.skeletonKind === 'phone') && (
               <div class="bar"></div>
             )}
-            {shot.kind === 'phone' && <div class="block tall"></div>}
-            {shot.kind === 'dash' && (
+            {shot.skeletonKind === 'phone' && <div class="block tall"></div>}
+            {shot.skeletonKind === 'dash' && (
               <div class="row">
                 <div class="block accent"></div>
                 <div class="lines">
@@ -67,17 +67,17 @@ const isPhone = (shot: ProjectShot) =>
                 </div>
               </div>
             )}
-            {shot.kind === 'chart' && (
+            {shot.skeletonKind === 'chart' && (
               <div class="row">
                 <div class="block accent"></div>
               </div>
             )}
-            {shot.kind === 'list' && (
+            {shot.skeletonKind === 'list' && (
               <div class="lines grow">
                 <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
               </div>
             )}
-            {shot.kind === 'code' && (
+            {shot.skeletonKind === 'code' && (
               <div class="lines grow">
                 <i style="width:88%"></i><i style="width:64%"></i>
                 <i style="width:74%"></i><i style="width:52%"></i>
@@ -85,13 +85,13 @@ const isPhone = (shot: ProjectShot) =>
                 <i style="width:70%"></i>
               </div>
             )}
-            {shot.kind === 'phone' && (
+            {shot.skeletonKind === 'phone' && (
               <div class="lines">
                 <i></i><i></i><i></i>
               </div>
             )}
           </div>
-          <span class="cap">{shot.cap}</span>
+          <span class="cap">{shot.caption}</span>
         </div>
       );
     })
@@ -103,8 +103,8 @@ const isPhone = (shot: ProjectShot) =>
     (shot, i) =>
       isImageShot(shot) && (
         <a class="lightbox" id={`shot-${i}`} href="#!" aria-label="Close screenshot">
-          <img src={shot.img} alt={shot.cap} loading="lazy" decoding="async" />
-          <span class="lb-cap">{shot.cap}</span>
+          <img src={shot.src} alt={shot.caption} loading="lazy" decoding="async" />
+          <span class="lb-cap">{shot.caption}</span>
         </a>
       ),
   )

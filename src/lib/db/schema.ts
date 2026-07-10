@@ -1,3 +1,5 @@
+import type { ProjectArea } from '@/lib/projects/schema';
+
 export const PROJECT_LIFECYCLE_STATES = ['shadow', 'draft_only', 'published', 'archived'] as const;
 export const SCAN_RUN_LIFECYCLE_STATES = ['queued', 'running', 'completed', 'failed'] as const;
 export const CANDIDATE_LIFECYCLE_STATES = ['detected', 'qualified', 'dismissed', 'draft_requested'] as const;
@@ -47,7 +49,7 @@ export interface ProjectRecord {
   slug: string;
   title: string;
   tagline: string;
-  area: string;
+  area: ProjectArea;
   year: number;
   lifecycle_state: ProjectLifecycleState;
   activity: string;

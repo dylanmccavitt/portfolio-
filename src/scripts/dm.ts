@@ -27,6 +27,7 @@ import type { Project } from '@/data/catalog';
 import type { ResumeTrack } from '@/data/resume';
 
 type RenderProject = Project | ProjectArtifact;
+type EvidenceFact = [string, string] | { value: string; label: string };
 
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers — explicit and XSS-safe (text via textContent only).
@@ -376,16 +377,18 @@ class Turn {
     ]);
   }
 
-  private evidenceFacts(facts: [string, string][]): HTMLElement {
+  private evidenceFacts(facts: EvidenceFact[]): HTMLElement {
     return make(
       'ul',
       { class: 'dm-evidence-facts' },
-      facts.map(([value, label]) =>
-        make('li', {}, [
+      facts.map((fact) => {
+        const value = Array.isArray(fact) ? fact[0] : fact.value;
+        const label = Array.isArray(fact) ? fact[1] : fact.label;
+        return make('li', {}, [
           make('span', { class: 'dm-evidence-fact-value', text: value }),
           make('span', { class: 'dm-evidence-fact-label', text: label }),
-        ]),
-      ),
+        ]);
+      }),
     );
   }
 

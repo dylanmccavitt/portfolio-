@@ -57,7 +57,7 @@ const agentDescriptionId = `${agentDialogId}-description`;
 const defaultProjectPrompt = `Tell me about ${p.title} and what Dylan did.`;
 
 const isPhone = (shot: ProjectShot): boolean =>
-  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.kind === 'phone';
+  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.skeletonKind === 'phone';
 
 /** Explicit intrinsic dimensions so images reserve layout (zero CLS). */
 const DIMS = { wide: { w: 1200, h: 800 }, phone: { w: 360, h: 640 } } as const;
@@ -95,14 +95,14 @@ const galleryHasVideo = gallery.some(isVideoShot);
         {
           p.links.length > 0 && (
             <div class="cta">
-              {p.links.map(([label, url], i) => (
+              {p.links.map((link, i) => (
                 <a
                   class:list={['btn', i === 0 ? 'btn-fill' : 'btn-out']}
-                  href={url}
+                  href={link.href}
                   target="_blank"
                   rel="noopener"
                 >
-                  {label}
+                  {link.label}
                 </a>
               ))}
             </div>
@@ -208,10 +208,10 @@ const galleryHasVideo = gallery.some(isVideoShot);
         lead && (
           <figure class:list={['lead', { phone: isPhone(lead) }]}>
             {isImageShot(lead) ? (
-              <a class="frame" href="#shot-0" aria-label={`Expand screenshot: ${lead.cap}`}>
+              <a class="frame" href="#shot-0" aria-label={`Expand screenshot: ${lead.caption}`}>
                 <img
-                  src={lead.img}
-                  alt={lead.cap}
+                  src={lead.src}
+                  alt={lead.caption}
                   width={(isPhone(lead) ? DIMS.phone : DIMS.wide).w}
                   height={(isPhone(lead) ? DIMS.phone : DIMS.wide).h}
                   loading="lazy"
@@ -221,7 +221,7 @@ const galleryHasVideo = gallery.some(isVideoShot);
             ) : isVideoShot(lead) ? (
               <div class="frame">
                 <video
-                  src={lead.video}
+                  src={lead.src}
                   width={(isPhone(lead) ? DIMS.phone : DIMS.wide).w}
                   height={(isPhone(lead) ? DIMS.phone : DIMS.wide).h}
                   controls
@@ -234,13 +234,13 @@ const galleryHasVideo = gallery.some(isVideoShot);
             ) : (
               <div
                 class:list={['frame', 'skel', { phone: isPhone(lead) }]}
-                data-kind={lead.kind}
+                data-kind={lead.skeletonKind}
                 style={`--tint:${p.hue}`}
               >
-                <span class="skel-kind">{SKEL_LABEL[lead.kind] ?? lead.kind}</span>
+                <span class="skel-kind">{SKEL_LABEL[lead.skeletonKind] ?? lead.skeletonKind}</span>
               </div>
             )}
-            <figcaption>{lead.cap}</figcaption>
+            <figcaption>{lead.caption}</figcaption>
           </figure>
         )
       }
@@ -260,10 +260,10 @@ const galleryHasVideo = gallery.some(isVideoShot);
         {
           p.metrics.length > 0 && (
             <section class="metrics" aria-label="Metrics">
-              {p.metrics.map(([value, label]) => (
+              {p.metrics.map((metric) => (
                 <div class="metric">
-                  <b class="metric-v">{value}</b>
-                  <span class="metric-l">{label}</span>
+                  <b class="metric-v">{metric.value}</b>
+                  <span class="metric-l">{metric.label}</span>
                 </div>
               ))}
             </section>
@@ -288,10 +288,10 @@ const galleryHasVideo = gallery.some(isVideoShot);
             <section class="block">
               <h2 class="h">Details</h2>
               <dl class="details">
-                {p.stack.map(([label, value]) => (
+                {p.stack.map((entry) => (
                   <div class="detail-row">
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
+                    <dt>{entry.label}</dt>
+                    <dd>{entry.value}</dd>
                   </div>
                 ))}
               </dl>
@@ -315,11 +315,11 @@ const galleryHasVideo = gallery.some(isVideoShot);
                       <a
                         class="frame"
                         href={`#shot-${i}`}
-                        aria-label={`Expand screenshot: ${shot.cap}`}
+                        aria-label={`Expand screenshot: ${shot.caption}`}
                       >
                         <img
-                          src={shot.img}
-                          alt={shot.cap}
+                          src={shot.src}
+                          alt={shot.caption}
                           width={dims.w}
                           height={dims.h}
                           loading="lazy"
@@ -329,7 +329,7 @@ const galleryHasVideo = gallery.some(isVideoShot);
                     ) : isVideoShot(shot) ? (
                       <div class="frame">
                         <video
-                          src={shot.video}
+                          src={shot.src}
                           width={dims.w}
                           height={dims.h}
                           controls
@@ -342,13 +342,13 @@ const galleryHasVideo = gallery.some(isVideoShot);
                     ) : (
                       <div
                         class:list={['frame', 'skel', { phone }]}
-                        data-kind={shot.kind}
+                        data-kind={shot.skeletonKind}
                         style={`--tint:${p.hue}`}
                       >
-                        <span class="skel-kind">{SKEL_LABEL[shot.kind] ?? shot.kind}</span>
+                        <span class="skel-kind">{SKEL_LABEL[shot.skeletonKind] ?? shot.skeletonKind}</span>
                       </div>
                     )}
-                    <figcaption>{shot.cap}</figcaption>
+                    <figcaption>{shot.caption}</figcaption>
                   </figure>
                 );
               })}
@@ -373,9 +373,9 @@ const galleryHasVideo = gallery.some(isVideoShot);
       p.shots.map(
         (shot, i) =>
           isImageShot(shot) && (
-            <a class="lightbox" id={`shot-${i}`} href="#!" aria-label={`Close expanded screenshot: ${shot.cap}`}>
-              <img src={shot.img} alt={shot.cap} loading="lazy" decoding="async" />
-              <span class="lb-cap">{shot.cap}</span>
+            <a class="lightbox" id={`shot-${i}`} href="#!" aria-label={`Close expanded screenshot: ${shot.caption}`}>
+              <img src={shot.src} alt={shot.caption} loading="lazy" decoding="async" />
+              <span class="lb-cap">{shot.caption}</span>
             </a>
           ),
       )

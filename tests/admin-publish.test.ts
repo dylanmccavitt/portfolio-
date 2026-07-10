@@ -30,14 +30,14 @@ const VALID_FIELDS = {
   slug: 'valid-project',
   title: 'Valid Project',
   tagline: 'A tested publish pipeline',
-  area: 'Automation',
+  area: 'AI & Developer Tools',
   year: 2026,
   summary: 'Public summary for the project.',
   activity: 'Active',
   details: [{ label: 'Detail', value: 'One' }],
   metrics: [{ label: 'Metric', value: 'Two' }],
   links: [{ label: 'Repo', href: 'https://example.test/repo' }],
-  media: [{ type: 'image', src: '/example.png' }],
+  media: [{ kind: 'image', src: '/screenshots/example.png', caption: 'Example screenshot' }],
 };
 
 type JsonBody = Record<string, unknown>;
@@ -463,7 +463,12 @@ test('new draft with an existing published slug refreshes the same project recor
     fields: {
       ...VALID_FIELDS,
       title: 'Loom refresh title',
-      media: [{ video: '/demos/loom-install.mp4', cap: 'Installing Loom' }],
+      media: [{
+        kind: 'video',
+        src: '/demos/loom-install.mp4',
+        poster: '/demos/loom-install-poster.png',
+        caption: 'Installing Loom',
+      }],
     },
     provenance: { repo: 'loom' },
     lifecycle: 'hidden',
@@ -472,7 +477,12 @@ test('new draft with an existing published slug refreshes the same project recor
 
   const refreshPatch = await patchDraft(db, refreshDraftId, {
     title: 'Loom refresh title',
-    media: [{ video: '/demos/loom-install.mp4', cap: 'Installing Loom' }],
+    media: [{
+      kind: 'video',
+      src: '/demos/loom-install.mp4',
+      poster: '/demos/loom-install-poster.png',
+      caption: 'Installing Loom',
+    }],
   });
   assert.equal(refreshPatch.status, 200);
   const refreshApprove = await approveDraft(db, refreshDraftId);
@@ -490,7 +500,12 @@ test('new draft with an existing published slug refreshes the same project recor
   );
   assert.equal(Number(projectRows.rows[0].count), 1);
   assert.equal(projectRows.rows[0].title, 'Loom refresh title');
-  assert.deepEqual(projectRows.rows[0].media, [{ video: '/demos/loom-install.mp4', cap: 'Installing Loom' }]);
+  assert.deepEqual(projectRows.rows[0].media, [{
+    kind: 'video',
+    src: '/demos/loom-install.mp4',
+    poster: '/demos/loom-install-poster.png',
+    caption: 'Installing Loom',
+  }]);
 
   const refreshDraftRows = await db.query<{ proposed_project_id: string }>(
     `SELECT proposed_project_id FROM project_drafts WHERE id = $1`,
@@ -517,6 +532,11 @@ test('PATCH rejects invalid fields without changing proposed fields after each r
   assert.equal((await responseJson(yearResponse)).field, 'year');
   await assertProposedFields(db, 'draft_invalid', unchanged);
 
+  const areaResponse = await patchDraft(db, 'draft_invalid', { area: 'TypeScript' });
+  assert.equal(areaResponse.status, 422);
+  assert.equal((await responseJson(areaResponse)).field, 'area');
+  await assertProposedFields(db, 'draft_invalid', unchanged);
+
   const titleResponse = await patchDraft(db, 'draft_invalid', { title: '' });
   assert.equal((await responseJson(titleResponse)).field, 'title');
   await assertProposedFields(db, 'draft_invalid', unchanged);
@@ -527,6 +547,24 @@ test('PATCH rejects invalid fields without changing proposed fields after each r
 
   const detailsResponse = await patchDraft(db, 'draft_invalid', { details: {} });
   assert.equal((await responseJson(detailsResponse)).field, 'details');
+  await assertProposedFields(db, 'draft_invalid', unchanged);
+
+  const malformedDetailsResponse = await patchDraft(db, 'draft_invalid', {
+    details: [{ label: 'Missing value' }],
+  });
+  assert.equal((await responseJson(malformedDetailsResponse)).field, 'details');
+  await assertProposedFields(db, 'draft_invalid', unchanged);
+
+  const unsafeLinkResponse = await patchDraft(db, 'draft_invalid', {
+    links: [{ label: 'Unsafe', href: 'javascript:alert(1)' }],
+  });
+  assert.equal((await responseJson(unsafeLinkResponse)).field, 'links');
+  await assertProposedFields(db, 'draft_invalid', unchanged);
+
+  const unsafeMediaResponse = await patchDraft(db, 'draft_invalid', {
+    media: [{ kind: 'image', src: 'data:image/png;base64,bad', caption: 'Unsafe' }],
+  });
+  assert.equal((await responseJson(unsafeMediaResponse)).field, 'media');
   await assertProposedFields(db, 'draft_invalid', unchanged);
 
   const privateNotesResponse = await patchDraft(db, 'draft_invalid', { private_notes: 'leak' });

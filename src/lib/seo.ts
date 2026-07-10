@@ -72,8 +72,8 @@ export function projectMeta(p: ProjectMetaInput): PageMeta {
   const slug = p.slug ?? p.id;
   const description = clampDescription(p.about[0] ?? p.line);
   const url = `${ORIGIN}/projects/${slug}/`;
-  const repo = p.links.find(([label]) => /repo|github/i.test(label))?.[1];
-  const live = p.links.find(([label]) => /live|site/i.test(label))?.[1];
+  const repo = p.links.find((link) => /repo|github/i.test(link.label))?.href;
+  const live = p.links.find((link) => /live|site/i.test(link.label))?.href;
   const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareSourceCode',

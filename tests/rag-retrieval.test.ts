@@ -20,7 +20,7 @@ async function createTestDb(): Promise<Queryable> {
 async function insertProject(db: Queryable, id: string): Promise<void> {
   await db.query(
     `INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state, published_at)
-     VALUES ($1, $1, 'RAG retrieval project', 'Approved public source retrieval', 'Agents & MCP', 2026, 'published', $2)`,
+     VALUES ($1, $1, 'RAG retrieval project', 'Approved public source retrieval', 'AI & Developer Tools', 2026, 'published', $2)`,
     [id, new Date().toISOString()],
   );
 }

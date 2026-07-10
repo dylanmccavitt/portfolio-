@@ -4,10 +4,9 @@
  * which lives at `/library`.
  *
  * Routing (#25): the URL segment is the canonical lowercase-kebab slug from
- * `PLAYLIST_SLUGS` (e.g. `Agents & MCP` → `/library/agents-mcp`), not the raw
- * playlist id. `getStaticPaths` emits those slugs and `playlistFromSlug`
- * resolves the param back to the playlist id, so this route and the sitemap
- * share one stable slug scheme.
+ * `PLAYLIST_SLUGS`, not the raw playlist id. `getStaticPaths` emits those slugs
+ * and `playlistFromSlug` resolves the param back to the playlist id, so this
+ * route and the sitemap share one stable slug scheme.
  *
  * Static rendering, zero client JS — the filter is the route, not a click.
  */
@@ -25,8 +24,6 @@ import { libraryMeta } from '@/lib/seo';
 /** Page titles per filter; areas fall back to their own label. */
 const PAGE_TITLE: Partial<Record<PlaylistId, string>> = {
   wip: 'Now building',
-  School: 'School · Stevens',
-  Research: 'Research & retired',
 };
 
 export const getStaticPaths = (() => {
