@@ -57,6 +57,7 @@ afterEach(() => {
 
 const FOUNDATION_TABLES = [
   'projects',
+  'project_sources',
   'project_candidates',
   'project_drafts',
   'evidence_sources',
@@ -196,6 +197,7 @@ test('migrations create the DM project foundation tables', async () => {
     '0001_dm_project_foundation.sql',
     '0002_review_events_seq.sql',
     '0003_recruiter_project_areas.sql',
+    '0004_source_identity_and_refresh_drafts.sql',
   ]);
 
   const tables = await db.query<{ table_name: string }>(
@@ -237,6 +239,7 @@ test('review_events seq migration upgrades an existing database deterministicall
   assert.deepEqual(await applyMigrations(db), [
     '0002_review_events_seq.sql',
     '0003_recruiter_project_areas.sql',
+    '0004_source_identity_and_refresh_drafts.sql',
   ]);
 
   const upgraded = await db.query<{ id: string; seq: string | number | null }>(
@@ -318,7 +321,10 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
   await db.query(`DELETE FROM projects WHERE id = 'unmapped-typescript'`);
   await db.query(`DELETE FROM project_drafts WHERE id = 'draft_unmapped'`);
 
-  assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);
+  assert.deepEqual(await applyMigrations(db), [
+    '0003_recruiter_project_areas.sql',
+    '0004_source_identity_and_refresh_drafts.sql',
+  ]);
 
   const projects = await db.query<{ id: string; area: string }>(`SELECT id, area FROM projects ORDER BY id`);
   assert.deepEqual(projects.rows, [
@@ -365,7 +371,10 @@ test('project area migration preflight rejects every noncanonical project and dr
   await db.query(
     `UPDATE project_drafts SET proposed_fields = proposed_fields - 'area' WHERE id = 'unmapped-rust-draft'`,
   );
-  assert.deepEqual(await applyMigrations(db), ['0003_recruiter_project_areas.sql']);
+  assert.deepEqual(await applyMigrations(db), [
+    '0003_recruiter_project_areas.sql',
+    '0004_source_identity_and_refresh_drafts.sql',
+  ]);
 
   await assert.rejects(
     db.query(
@@ -397,7 +406,14 @@ test('planned lifecycle states are constrained in SQL and exported types', async
   assert.deepEqual(PROJECT_LIFECYCLE_STATES, ['shadow', 'draft_only', 'published', 'archived']);
   assert.deepEqual(SCAN_RUN_LIFECYCLE_STATES, ['queued', 'running', 'completed', 'failed']);
   assert.deepEqual(CANDIDATE_LIFECYCLE_STATES, ['detected', 'qualified', 'dismissed', 'draft_requested']);
-  assert.deepEqual(DRAFT_LIFECYCLE_STATES, ['hidden', 'needs_review', 'changes_requested', 'approved_for_publish']);
+  assert.deepEqual(DRAFT_LIFECYCLE_STATES, [
+    'hidden',
+    'needs_review',
+    'changes_requested',
+    'approved_for_publish',
+    'published',
+    'superseded',
+  ]);
   assert.deepEqual(RAG_SOURCE_ELIGIBILITY_STATES, ['not_eligible', 'eligible', 'indexing', 'indexed', 'failed', 'revoked']);
 
   await db.query(`
@@ -433,7 +449,7 @@ test('planned lifecycle states are constrained in SQL and exported types', async
   await assert.rejects(
     db.query(`
       INSERT INTO project_drafts (id, lifecycle_state)
-      VALUES ('bad-draft', 'published')
+      VALUES ('bad-draft', 'public')
     `),
   );
 
@@ -443,6 +459,102 @@ test('planned lifecycle states are constrained in SQL and exported types', async
       VALUES ('bad-rag', 'state-test-project', 'published')
     `),
   );
+});
+
+test('source identity migration enforces revision idempotency active drafts and publication versions', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+
+  await db.query(
+    `INSERT INTO projects (id, slug, title, tagline, area, year)
+     VALUES ('versioned-project', 'versioned-project', 'Versioned', 'Versioned', 'Apps', 2026)`,
+  );
+  const project = await db.query<{ publication_version: string | number }>(
+    `SELECT publication_version FROM projects WHERE id = 'versioned-project'`,
+  );
+  assert.equal(Number(project.rows[0]?.publication_version), 0);
+
+  await db.query(
+    `INSERT INTO project_sources (id, provider, repository_id, canonical_full_name, project_id)
+     VALUES ('source-versioned', 'github', '90001', 'DylanMcCavitt/versioned-project', 'versioned-project')`,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_sources (id, provider, repository_id, canonical_full_name)
+       VALUES ('source-duplicate', 'github', '90001', 'DylanMcCavitt/renamed-project')`,
+    ),
+    /project_sources_provider_repository_id_key/,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_sources (id, provider, repository_id, canonical_full_name)
+       VALUES ('source-nonnumeric', 'github', 'repo-name', 'DylanMcCavitt/bad-identity')`,
+    ),
+    /project_sources_repository_id_numeric_check/,
+  );
+
+  const fingerprint = 'a'.repeat(64);
+  await db.query(
+    `INSERT INTO project_candidates (
+       id, source_kind, source_ref, provider, repository_id, source_revision, content_fingerprint
+     ) VALUES ('candidate-revision', 'github_repo', 'https://github.com/example/repo', 'github', '90001', $1, $2)`,
+    ['1'.repeat(40), fingerprint],
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_candidates (
+         id, source_kind, source_ref, provider, repository_id, source_revision, content_fingerprint
+       ) VALUES ('candidate-duplicate', 'github_repo', 'https://github.com/example/renamed', 'github', '90001', $1, $2)`,
+      ['1'.repeat(40), fingerprint],
+    ),
+    /project_candidates_source_revision_uidx/,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_candidates (id, source_kind, source_ref, provider, repository_id)
+       VALUES ('candidate-partial-identity', 'github_repo', 'https://github.com/example/bad', 'github', '90002')`,
+    ),
+    /project_candidates_source_identity_check/,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_candidates (
+         id, source_kind, source_ref, provider, repository_id, source_revision, content_fingerprint
+       ) VALUES ('candidate-nonnumeric-identity', 'github_repo', 'https://github.com/example/bad', 'github', 'repo-name', $1, $2)`,
+      ['3'.repeat(40), fingerprint],
+    ),
+    /project_candidates_source_identity_check/,
+  );
+
+  await db.query(
+    `INSERT INTO project_drafts (
+       id, provider, repository_id, source_revision, content_fingerprint, base_project_version
+     ) VALUES ('draft-revision-one', 'github', '90001', $1, $2, 0)`,
+    ['1'.repeat(40), fingerprint],
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO project_drafts (
+         id, provider, repository_id, source_revision, content_fingerprint, base_project_version
+       ) VALUES ('draft-active-conflict', 'github', '90001', $1, $2, 0)`,
+      ['2'.repeat(40), 'b'.repeat(64)],
+    ),
+    /project_drafts_active_source_uidx/,
+  );
+  await db.query(`UPDATE project_drafts SET lifecycle_state = 'published' WHERE id = 'draft-revision-one'`);
+  await db.query(
+    `INSERT INTO project_drafts (
+       id, provider, repository_id, source_revision, content_fingerprint, base_project_version
+     ) VALUES ('draft-revision-two', 'github', '90001', $1, $2, 0)`,
+    ['2'.repeat(40), 'b'.repeat(64)],
+  );
+  await assert.rejects(
+    db.query(`UPDATE project_drafts SET reviewed_field_diff = '{}'::jsonb WHERE id = 'draft-revision-two'`),
+    /project_drafts_reviewed_field_diff_check/,
+  );
+
+  await db.query(`DELETE FROM schema_migrations WHERE name = '0004_source_identity_and_refresh_drafts.sql'`);
+  assert.deepEqual(await applyMigrations(db), ['0004_source_identity_and_refresh_drafts.sql']);
 });
 
 test('seed and reset path works without external credentials', async () => {
@@ -476,6 +588,7 @@ test('seed and reset path works without external credentials', async () => {
     '0001_dm_project_foundation.sql',
     '0002_review_events_seq.sql',
     '0003_recruiter_project_areas.sql',
+    '0004_source_identity_and_refresh_drafts.sql',
   ]);
   assert.deepEqual(await applySeeds(db), ['001_foundation_smoke.sql']);
 

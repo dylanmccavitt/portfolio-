@@ -205,6 +205,7 @@ function catalogProjectToShadowRecord(project: Project): CatalogShadowRecord {
     links: toJsonValue(project.links) as JsonValue[],
     media: toJsonValue(project.shots) as JsonValue[],
     source: 'legacy_catalog',
+    publication_version: '0',
     published_at: null,
     archived_at: null,
   };

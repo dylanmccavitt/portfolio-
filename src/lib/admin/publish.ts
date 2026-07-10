@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { DraftLifecycleState, JsonRecord, JsonValue, PrivacyState, ReviewEventRecord } from '@/lib/db/schema';
 import {
   ProjectAreaSchema,
@@ -7,6 +8,7 @@ import {
   ProjectMediaSchema,
   ProjectMetricSchema,
   parsePublicProjectFields,
+  type PublicProjectFields,
 } from '@/lib/projects/schema';
 
 export interface AdminPublishQueryable {
@@ -24,11 +26,12 @@ export const EDITABLE_PUBLIC_FIELDS = [
 ] as const;
 
 type RequiredPublicField = (typeof REQUIRED_PUBLIC_FIELDS)[number];
-type EditablePublicField = (typeof EDITABLE_PUBLIC_FIELDS)[number];
+export type EditablePublicField = (typeof EDITABLE_PUBLIC_FIELDS)[number];
 type PublicArrayField = 'details' | 'metrics' | 'links' | 'media';
 type AdminPublishFailure = { ok: false; status: number; code: string; message: string; [key: string]: unknown };
 type AdminPublishSuccess = { ok: true; status: number; code: string; message: string; [key: string]: unknown };
 export type AdminPublishResult = AdminPublishFailure | AdminPublishSuccess;
+export type ReviewedFieldDiffEntry = { field: EditablePublicField; before: JsonValue; after: JsonValue };
 
 type DraftRow = {
   id: string;
@@ -38,6 +41,12 @@ type DraftRow = {
   private_notes: string;
   provenance_map: JsonRecord;
   lifecycle_state: DraftLifecycleState;
+  provider: 'github' | null;
+  repository_id: string | null;
+  source_revision: string | null;
+  content_fingerprint: string | null;
+  reviewed_field_diff: JsonValue[];
+  base_project_version: string | number;
   created_at: string;
   updated_at: string;
 };
@@ -52,10 +61,17 @@ type DraftListRow = Pick<
   signals: JsonRecord | null;
 };
 
+type PublishedProjectRow = PublicProjectFields & {
+  id: string;
+  lifecycle_state: string;
+  publication_version: string | number;
+};
 type EvidencePrivacyRow = { privacy_state: PrivacyState; count: string | number };
+type EvidenceRow = { id: string; privacy_state: PrivacyState; project_id: string | null };
+type ApprovalEventRow = { action: string; source: string | null; reviewed_field_diff: unknown; reviewed_fields: unknown };
 type ReviewEventRow = ReviewEventRecord;
-type ValidationIssue = { field: string; message: string };
-type ValidationResult = { ok: true; value: JsonValue } | { ok: false; issue: ValidationIssue };
+export type ValidationIssue = { field: string; message: string };
+export type PublicFieldValidationResult = { ok: true; value: JsonValue } | { ok: false; issue: ValidationIssue };
 
 const EDITABLE_FIELDS: Record<EditablePublicField, true> = {
   slug: true,
@@ -70,6 +86,8 @@ const EDITABLE_FIELDS: Record<EditablePublicField, true> = {
   links: true,
   media: true,
 };
+const TERMINAL_DRAFT_STATES = new Set<DraftLifecycleState>(['published', 'superseded']);
+
 export async function listAdminDrafts(db: AdminPublishQueryable): Promise<AdminPublishResult> {
   const rows = normalizeRows(
     await db.query<DraftListRow>(
@@ -87,7 +105,6 @@ export async function listAdminDrafts(db: AdminPublishQueryable): Promise<AdminP
        ORDER BY updated_at DESC, created_at DESC`,
     ),
   );
-
   return { ok: true, status: 200, code: 'drafts_listed', message: 'Drafts listed.', drafts: rows };
 }
 
@@ -99,10 +116,11 @@ export async function getAdminDraft(db: AdminPublishQueryable, draftId: string):
     await db.query<EvidencePrivacyRow>(
       `SELECT privacy_state, count(*) AS count
        FROM evidence_sources
-       WHERE draft_id = $1 OR ($2::text IS NOT NULL AND candidate_id = $2)
+       WHERE (draft_id = $1 OR ($2::text IS NOT NULL AND candidate_id = $2))
+         AND ($3::text IS NULL OR claim_map->>'contentFingerprint' = $3)
        GROUP BY privacy_state
        ORDER BY privacy_state`,
-      [draft.id, draft.candidate_id],
+      [draft.id, draft.candidate_id, draft.provider ? draft.content_fingerprint : null],
     ),
   ).map((row) => ({ privacy_state: row.privacy_state, count: Number(row.count) }));
 
@@ -140,15 +158,18 @@ export async function updateAdminDraftFields(
 
   const keys: EditablePublicField[] = [];
   for (const key of Object.keys(fields)) {
-    if (!isEditableField(key)) {
+    if (!isEditablePublicField(key)) {
       return { ok: false, status: 400, code: 'invalid_field', message: `Field ${key} is not editable.`, field: key };
     }
     keys.push(key);
   }
+  if (keys.length === 0) {
+    return { ok: false, status: 400, code: 'fields_missing', message: 'At least one public field is required.' };
+  }
 
   const validated: JsonRecord = {};
   for (const key of keys) {
-    const result = validateEditableField(key, fields[key]);
+    const result = validatePublicFieldUpdate(key, fields[key]);
     if (!result.ok) {
       const status = result.issue.field === 'slug' || result.issue.field === 'year' || result.issue.field === 'area' ? 422 : 400;
       return { ok: false, status, code: 'field_invalid', message: result.issue.message, field: result.issue.field };
@@ -158,33 +179,42 @@ export async function updateAdminDraftFields(
 
   const draft = await fetchDraft(db, draftId);
   if (!draft) return draftNotFound(draftId);
+  if (TERMINAL_DRAFT_STATES.has(draft.lifecycle_state)) return terminalDraft(draft);
 
-  const beforeState = draft.lifecycle_state;
-  const afterState: DraftLifecycleState = beforeState === 'approved_for_publish' ? 'needs_review' : beforeState;
-  const proposedFields = { ...draft.proposed_fields, ...validated };
-
-  await db.query(
-    `UPDATE project_drafts
-     SET proposed_fields = $2::jsonb,
-         lifecycle_state = $3,
-         updated_at = now()
-     WHERE id = $1`,
-    [draft.id, JSON.stringify(proposedFields), afterState],
-  );
-  await db.query(
-    `INSERT INTO review_events (id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
-     VALUES ($1, $2, $3, $4, 'note', $5, $6, $7, $8::jsonb)`,
+  const updated = normalizeRows(
+    await db.query<{ id: string; proposed_fields: JsonRecord }>(
+    `WITH changed AS (
+       UPDATE project_drafts
+       SET proposed_fields = proposed_fields || $2::jsonb,
+           reviewed_field_diff = '[]'::jsonb,
+           lifecycle_state = 'needs_review',
+           updated_at = now()
+       WHERE id = $1
+         AND lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')
+       RETURNING id, proposed_fields
+     ),
+     event AS (
+       INSERT INTO review_events (id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+       SELECT $3, $1, $4, $5, 'note', $6, 'needs_review', $7, $8::jsonb
+       FROM changed
+       RETURNING id
+     )
+     SELECT id, proposed_fields FROM changed WHERE EXISTS (SELECT 1 FROM event)`,
     [
-      `review_${randomUUID()}`,
       draft.id,
+      JSON.stringify(validated),
+      `review_${randomUUID()}`,
       draft.candidate_id,
       actor,
-      beforeState,
-      afterState,
-      'Admin updated public draft fields.',
+      draft.lifecycle_state,
+      'Admin staged public draft fields; prior approval was invalidated.',
       JSON.stringify({ source: 'admin_publish', kind: 'fields_updated', keys }),
-    ],
+      ],
+    ),
   );
+  if (updated.length === 0) {
+    return { ok: false, status: 409, code: 'draft_state_changed', message: 'Draft state changed before the field update committed.', draftId };
+  }
 
   return {
     ok: true,
@@ -192,8 +222,8 @@ export async function updateAdminDraftFields(
     code: 'draft_fields_updated',
     message: 'Draft fields updated.',
     draftId: draft.id,
-    lifecycleState: afterState,
-    fields: proposedFields,
+    lifecycleState: 'needs_review',
+    fields: updated[0]?.proposed_fields,
   };
 }
 
@@ -201,35 +231,98 @@ export async function approveAdminDraftForPublish(
   db: AdminPublishQueryable,
   draftId: string,
   actor: string,
+  input: { reviewedFields?: unknown } = {},
 ): Promise<AdminPublishResult> {
   const draft = await fetchDraft(db, draftId);
   if (!draft) return draftNotFound(draftId);
+  if (TERMINAL_DRAFT_STATES.has(draft.lifecycle_state)) return terminalDraft(draft);
 
-  const issues = validateRequiredFields(draft.proposed_fields);
-  if (issues.length > 0) return fieldsIncomplete(issues);
+  const projectId = await resolveLinkedProjectId(db, draft);
+  const current = projectId ? await fetchPublishedProject(db, projectId) : null;
+  if (projectId && !current) {
+    return { ok: false, status: 409, code: 'staged_project_missing', message: 'The linked published project no longer exists.', draftId };
+  }
+  const selected = selectReviewedFields(input.reviewedFields, draft.proposed_fields, current);
+  if (!selected.ok) return selected.failure;
 
-  if (draft.lifecycle_state !== 'approved_for_publish') {
-    await db.query(
-      `UPDATE project_drafts
-       SET lifecycle_state = 'approved_for_publish', updated_at = now()
-       WHERE id = $1`,
-      [draft.id],
-    );
+  let canonical: PublicProjectFields;
+  try {
+    canonical = current
+      ? parsePublicProjectFields(applyProposedFields(current, draft.proposed_fields, selected.fields))
+      : parsePublicProjectFields(withPublicDefaults(draft.proposed_fields));
+  } catch {
+    return fieldsIncomplete(validateRequiredFields(draft.proposed_fields));
   }
 
-  await db.query(
-    `INSERT INTO review_events (id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
-     VALUES ($1, $2, $3, $4, 'approved_for_publish', $5, 'approved_for_publish', $6, $7::jsonb)`,
-    [
-      `review_${randomUUID()}`,
-      draft.id,
-      draft.candidate_id,
-      actor,
-      draft.lifecycle_state,
-      'Admin approved draft for publish.',
-      JSON.stringify({ source: 'admin_publish' }),
-    ],
+  if (!current && selected.fields.length !== EDITABLE_PUBLIC_FIELDS.length) {
+    return {
+      ok: false,
+      status: 422,
+      code: 'reviewed_fields_incomplete',
+      message: 'A first publication requires explicit review of every public field.',
+      fields: EDITABLE_PUBLIC_FIELDS.filter((field) => !selected.fields.includes(field)),
+    };
+  }
+
+  const canonicalRecord = publicFieldsRecord(canonical);
+  const reviewedDiff: ReviewedFieldDiffEntry[] = EDITABLE_PUBLIC_FIELDS
+    .filter((field) => selected.fields.includes(field))
+    .map((field) => ({
+      field,
+      before: current ? asJsonValue(current[field]) : null,
+      after: canonicalRecord[field] as JsonValue,
+    }));
+  const baseProjectVersion = Number(draft.base_project_version);
+  if (!Number.isSafeInteger(baseProjectVersion) || baseProjectVersion < 0) {
+    return { ok: false, status: 409, code: 'base_version_invalid', message: 'Draft base project version is invalid.', draftId };
+  }
+  if (current && Number(current.publication_version) !== baseProjectVersion) {
+    return staleDraft(draftId, selected.fields);
+  }
+
+  const rows = normalizeRows(
+    await db.query<{ id: string }>(
+      `WITH approved AS (
+         UPDATE project_drafts
+         SET proposed_project_id = COALESCE(proposed_project_id, $2),
+             reviewed_field_diff = $3::jsonb,
+             lifecycle_state = 'approved_for_publish',
+             updated_at = now()
+         WHERE id = $1
+           AND lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')
+           AND proposed_fields = $10::jsonb
+           AND base_project_version = $11
+           AND content_fingerprint IS NOT DISTINCT FROM $12
+           AND updated_at = $13::timestamptz
+         RETURNING id
+       )
+       INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+       SELECT $4, $2, $1, $5, $6, 'approved_for_publish', $7, 'approved_for_publish', $8, $9::jsonb
+       FROM approved
+       RETURNING id`,
+      [
+        draft.id,
+        current?.id ?? null,
+        JSON.stringify(reviewedDiff),
+        `review_${randomUUID()}`,
+        draft.candidate_id,
+        actor,
+        draft.lifecycle_state,
+        'Admin approved an immutable ordered field diff for publish.',
+        JSON.stringify({
+          source: 'admin_publish',
+          reviewedFields: reviewedDiff.map((entry) => entry.field),
+          reviewedFieldDiff: reviewedDiff,
+          baseProjectVersion,
+        }),
+        JSON.stringify(draft.proposed_fields),
+        baseProjectVersion,
+        draft.content_fingerprint,
+        draft.updated_at,
+      ],
+    ),
   );
+  if (rows.length === 0) return { ok: false, status: 409, code: 'draft_state_changed', message: 'Draft state changed before approval.', draftId };
 
   return {
     ok: true,
@@ -237,6 +330,9 @@ export async function approveAdminDraftForPublish(
     code: 'approved_for_publish',
     message: 'Draft approved for publish.',
     draftId: draft.id,
+    reviewedFields: reviewedDiff.map((entry) => entry.field),
+    reviewedFieldDiff: reviewedDiff,
+    baseProjectVersion,
   };
 }
 
@@ -248,118 +344,116 @@ export async function publishAdminDraft(
 ): Promise<AdminPublishResult> {
   const draft = await fetchDraft(db, draftId);
   if (!draft) return draftNotFound(draftId);
-
   if (draft.lifecycle_state !== 'approved_for_publish') {
     return {
       ok: false,
       status: 409,
-      code: 'draft_not_approved',
-      message: 'Admin approval required; Slack approval alone cannot publish.',
+      code: TERMINAL_DRAFT_STATES.has(draft.lifecycle_state) ? 'draft_terminal' : 'draft_not_approved',
+      message: TERMINAL_DRAFT_STATES.has(draft.lifecycle_state)
+        ? `Draft is terminal (${draft.lifecycle_state}) and cannot publish again.`
+        : 'Admin approval required; Slack staging alone cannot publish.',
       draftId,
     };
   }
 
-  const adminApprovalFresh = await hasFreshAdminPublishApproval(db, draft.id);
-  if (!adminApprovalFresh) {
+  const reviewedDiff = parseReviewedFieldDiff(draft.reviewed_field_diff);
+  if (!reviewedDiff.ok || reviewedDiff.entries.length === 0) {
+    return { ok: false, status: 409, code: 'reviewed_diff_missing', message: 'An immutable reviewed field diff is required.', draftId };
+  }
+  if (!(await hasExactFreshAdminApproval(db, draft.id, reviewedDiff.entries))) {
+    return { ok: false, status: 409, code: 'admin_approval_missing', message: 'Fresh admin approval of this exact field diff is required.', draftId };
+  }
+  if (input.confirmProvenance !== true || input.confirmPrivacy !== true) {
+    return { ok: false, status: 428, code: 'confirmation_required', message: 'Confirm provenance and privacy review before publishing.', draftId };
+  }
+
+  const evidence = await fetchLinkedEvidence(db, draft);
+  const unreviewed = evidence.filter((row) => row.privacy_state === 'unreviewed');
+  const blocked = evidence.filter((row) => row.privacy_state === 'blocked');
+  if (unreviewed.length > 0) {
+    return { ok: false, status: 422, code: 'privacy_unreviewed_evidence', message: 'All linked evidence sources must be reviewed before publishing.', draftId, count: unreviewed.length };
+  }
+  if (blocked.length > 0) {
+    return { ok: false, status: 422, code: 'privacy_blocked_evidence', message: 'Blocked linked evidence sources cannot be published.', draftId, count: blocked.length };
+  }
+  const safeEvidenceIds = evidence.filter((row) => row.privacy_state === 'safe_public').map((row) => row.id);
+  if ((draft.provider || draft.candidate_id) && safeEvidenceIds.length === 0) {
+    return {
+      ok: false,
+      status: 422,
+      code: 'public_provenance_missing',
+      message: 'Only evidence explicitly marked safe_public can support a public project.',
+      draftId,
+    };
+  }
+  if (!draft.provider && !draft.candidate_id && !hasPublicProvenance(draft.provenance_map)) {
+    return { ok: false, status: 422, code: 'provenance_missing', message: 'Draft provenance map must be non-empty before publishing.', draftId };
+  }
+
+  const projectId = await resolveLinkedProjectId(db, draft);
+  const current = projectId ? await fetchPublishedProject(db, projectId) : null;
+  if (projectId && !current) {
+    return { ok: false, status: 409, code: 'staged_project_missing', message: 'The linked published project no longer exists.', draftId };
+  }
+  const foreignEvidence = evidence.filter(
+    (row) => row.project_id !== null && row.project_id !== current?.id,
+  );
+  if (foreignEvidence.length > 0) {
     return {
       ok: false,
       status: 409,
-      code: 'admin_approval_missing',
-      message: 'Admin publish approval event is required before publishing.',
+      code: 'evidence_project_conflict',
+      message: 'Evidence already owned by another project cannot support this publication.',
       draftId,
+      count: foreignEvidence.length,
     };
   }
 
-  const issues = validateRequiredFields(draft.proposed_fields);
-  if (issues.length > 0) return fieldsIncomplete(issues);
-
-  if (input.confirmProvenance !== true || input.confirmPrivacy !== true) {
-    return {
-      ok: false,
-      status: 428,
-      code: 'confirmation_required',
-      message: 'Confirm provenance and privacy review before publishing.',
-      draftId,
-    };
+  const baseVersion = Number(draft.base_project_version);
+  if (!Number.isSafeInteger(baseVersion) || baseVersion < 0) {
+    return { ok: false, status: 409, code: 'base_version_invalid', message: 'Draft base project version is invalid.', draftId };
+  }
+  if (current && Number(current.publication_version) !== baseVersion) {
+    return staleDraft(draftId, reviewedDiff.entries.map((entry) => entry.field));
+  }
+  if (current) {
+    const staleFields = reviewedDiff.entries
+      .filter((entry) => !isDeepStrictEqual(asJsonValue(current[entry.field]), entry.before))
+      .map((entry) => entry.field);
+    if (staleFields.length > 0) return staleDraft(draftId, staleFields);
+  } else if (baseVersion !== 0 || reviewedDiff.entries.some((entry) => entry.before !== null)) {
+    return staleDraft(draftId, reviewedDiff.entries.map((entry) => entry.field));
   }
 
-  if (!hasPublicProvenance(draft.provenance_map)) {
-    return {
-      ok: false,
-      status: 422,
-      code: 'provenance_missing',
-      message: 'Draft provenance map must be a non-empty object before publishing.',
-      draftId,
-    };
+  let canonical: PublicProjectFields;
+  try {
+    canonical = current
+      ? parsePublicProjectFields(applyReviewedDiff(current, reviewedDiff.entries))
+      : parsePublicProjectFields(Object.fromEntries(reviewedDiff.entries.map((entry) => [entry.field, entry.after])));
+  } catch {
+    return { ok: false, status: 422, code: 'reviewed_diff_invalid', message: 'Reviewed field values no longer form a canonical project.', draftId };
+  }
+  if (!current && reviewedDiff.entries.length !== EDITABLE_PUBLIC_FIELDS.length) {
+    return { ok: false, status: 422, code: 'reviewed_fields_incomplete', message: 'A first publication requires review of every public field.', draftId };
   }
 
-  const privacyCounts = await countPublishBlockingEvidence(db, draft);
-  if (privacyCounts.unreviewed > 0) {
-    return {
-      ok: false,
-      status: 422,
-      code: 'privacy_unreviewed_evidence',
-      message: 'All linked evidence sources must be reviewed before publishing.',
-      draftId,
-      count: privacyCounts.unreviewed,
-    };
-  }
-
-  if (privacyCounts.blocked > 0) {
-    return {
-      ok: false,
-      status: 422,
-      code: 'privacy_blocked_evidence',
-      message: 'Blocked linked evidence sources cannot be published.',
-      draftId,
-      count: privacyCounts.blocked,
-    };
-  }
-
-  const publicFields = publicProjectFields(draft.proposed_fields);
-  const projectId = await resolvePublishProjectId(db, draft, publicFields.slug);
+  const finalProjectId = current?.id ?? projectIdFromDraftId(draft.id);
+  const eventMetadata = {
+    source: 'admin_publish',
+    confirmProvenance: true,
+    confirmPrivacy: true,
+    projectId: finalProjectId,
+    operation: current ? 'updated' : 'created',
+    reviewedFields: reviewedDiff.entries.map((entry) => entry.field),
+    reviewedFieldDiff: reviewedDiff.entries,
+    sourceRevision: draft.source_revision,
+  } satisfies JsonRecord;
 
   try {
-    await db.query(
-      `INSERT INTO projects (
-         id, slug, title, tagline, area, year, summary, activity, details, metrics, links, media,
-         lifecycle_state, published_at, source, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb,
-         'published', now(), $13, now()
-       )
-       ON CONFLICT (id) DO UPDATE SET
-         slug = EXCLUDED.slug,
-         title = EXCLUDED.title,
-         tagline = EXCLUDED.tagline,
-         area = EXCLUDED.area,
-         year = EXCLUDED.year,
-         summary = EXCLUDED.summary,
-         activity = EXCLUDED.activity,
-         details = EXCLUDED.details,
-         metrics = EXCLUDED.metrics,
-         links = EXCLUDED.links,
-         media = EXCLUDED.media,
-         lifecycle_state = 'published',
-         published_at = COALESCE(projects.published_at, now()),
-         source = EXCLUDED.source,
-         updated_at = now()`,
-      [
-        projectId,
-        publicFields.slug,
-        publicFields.title,
-        publicFields.tagline,
-        publicFields.area,
-        publicFields.year,
-        publicFields.summary,
-        publicFields.activity,
-        JSON.stringify(publicFields.details),
-        JSON.stringify(publicFields.metrics),
-        JSON.stringify(publicFields.links),
-        JSON.stringify(publicFields.media),
-        draft.candidate_id ? 'github_discovery' : 'manual',
-      ],
-    );
+    const committed = current
+      ? await commitReviewedRefresh(db, draft, current.id, baseVersion, reviewedDiff.entries, actor, eventMetadata)
+      : await commitFirstPublication(db, draft, finalProjectId, canonical, reviewedDiff.entries, actor, eventMetadata);
+    if (!committed) return staleDraft(draftId, reviewedDiff.entries.map((entry) => entry.field));
   } catch (error) {
     if (isPgErrorCode(error, '23505')) {
       return { ok: false, status: 409, code: 'slug_conflict', message: 'Project slug already exists.', draftId };
@@ -367,51 +461,343 @@ export async function publishAdminDraft(
     throw error;
   }
 
-  await db.query(`UPDATE project_drafts SET proposed_project_id = $2, updated_at = now() WHERE id = $1`, [draft.id, projectId]);
-  await db.query(
-    `UPDATE evidence_sources
-     SET project_id = $1
-     WHERE project_id IS NULL
-       AND (
-         ($2::text IS NOT NULL AND candidate_id = $2)
-         OR draft_id = $3
-       )`,
-    [projectId, draft.candidate_id, draft.id],
-  );
-  await db.query(
-    `INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
-     VALUES ($1, $2, $3, $4, $5, 'published', 'approved_for_publish', 'published', $6, $7::jsonb)`,
-    [
-      `review_${randomUUID()}`,
-      projectId,
-      draft.id,
-      draft.candidate_id,
-      actor,
-      'Admin published draft to public project record.',
-      JSON.stringify({ source: 'admin_publish', confirmProvenance: true, confirmPrivacy: true, projectId }),
-    ],
-  );
+  return {
+    ok: true,
+    status: 200,
+    code: 'published',
+    projectId: finalProjectId,
+    draftId: draft.id,
+    operation: current ? 'updated' : 'created',
+    changedFields: reviewedDiff.entries.map((entry) => entry.field),
+    publicationVersion: baseVersion + 1,
+    message: 'Draft published.',
+  };
+}
 
-  return { ok: true, status: 200, code: 'published', projectId, draftId: draft.id, message: 'Draft published.' };
+async function commitReviewedRefresh(
+  db: AdminPublishQueryable,
+  draft: DraftRow,
+  projectId: string,
+  baseVersion: number,
+  diff: ReviewedFieldDiffEntry[],
+  actor: string,
+  metadata: JsonRecord,
+): Promise<boolean> {
+  const params: unknown[] = [];
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const project = bind(projectId);
+  const draftId = bind(draft.id);
+  const version = bind(baseVersion);
+  const assignments = diff.map((entry) => {
+    const value = bind(isArrayField(entry.field) ? JSON.stringify(entry.after) : entry.after);
+    return `${entry.field} = ${value}${isArrayField(entry.field) ? '::jsonb' : ''}`;
+  });
+  const beforePredicates = diff.map((entry) => {
+    const value = bind(isArrayField(entry.field) ? JSON.stringify(entry.before) : entry.before);
+    return `${entry.field} IS NOT DISTINCT FROM ${value}${isArrayField(entry.field) ? '::jsonb' : ''}`;
+  });
+  const reviewed = bind(JSON.stringify(diff));
+  const repositoryId = bind(draft.repository_id);
+  const candidateId = bind(draft.candidate_id);
+  const evidenceFingerprint = bind(draft.provider ? draft.content_fingerprint : null);
+  const eventId = bind(`review_${randomUUID()}`);
+  const eventActor = bind(actor);
+  const eventMetadata = bind(JSON.stringify(metadata));
+
+  const rows = normalizeRows(
+    await db.query<{ id: string }>(
+      `WITH locked_evidence AS (
+         SELECT id, privacy_state, project_id
+         FROM evidence_sources
+         WHERE (draft_id = ${draftId}
+            OR (${candidateId}::text IS NOT NULL AND candidate_id = ${candidateId}))
+           AND (${evidenceFingerprint}::text IS NULL
+             OR claim_map->>'contentFingerprint' = ${evidenceFingerprint})
+         FOR UPDATE
+       ),
+       locked_source AS (
+         SELECT project_id
+         FROM project_sources
+         WHERE provider = 'github' AND repository_id = ${repositoryId}
+         FOR UPDATE
+       ),
+       locked_candidate AS (
+         SELECT lifecycle_state
+         FROM project_candidates
+         WHERE id = ${candidateId}
+         FOR UPDATE
+       ),
+       eligible_draft AS (
+         SELECT id
+         FROM project_drafts
+         WHERE id = ${draftId}
+           AND lifecycle_state = 'approved_for_publish'
+           AND base_project_version = ${version}
+           AND reviewed_field_diff = ${reviewed}::jsonb
+           AND NOT EXISTS (
+             SELECT 1 FROM locked_evidence WHERE privacy_state IN ('unreviewed', 'blocked')
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM locked_evidence WHERE project_id IS NOT NULL AND project_id <> ${project}
+           )
+           AND (
+             (${repositoryId}::text IS NULL AND ${candidateId}::text IS NULL)
+             OR EXISTS (SELECT 1 FROM locked_evidence WHERE privacy_state = 'safe_public')
+           )
+           AND (
+             ${repositoryId}::text IS NULL
+             OR EXISTS (SELECT 1 FROM locked_source WHERE project_id = ${project})
+           )
+           AND (
+             ${candidateId}::text IS NULL
+             OR EXISTS (SELECT 1 FROM locked_candidate WHERE lifecycle_state <> 'dismissed')
+           )
+         FOR UPDATE
+       ),
+       updated_project AS (
+         UPDATE projects
+         SET ${assignments.join(', ')},
+             publication_version = publication_version + 1,
+             lifecycle_state = 'published',
+             published_at = COALESCE(published_at, now()),
+             updated_at = now()
+         WHERE id = ${project}
+           AND lifecycle_state = 'published'
+           AND publication_version = ${version}
+           AND ${beforePredicates.join('\n           AND ')}
+           AND EXISTS (SELECT 1 FROM eligible_draft)
+         RETURNING id
+       ),
+       published_draft AS (
+         UPDATE project_drafts
+         SET lifecycle_state = 'published', proposed_project_id = ${project}, updated_at = now()
+         WHERE id = ${draftId}
+           AND lifecycle_state = 'approved_for_publish'
+           AND EXISTS (SELECT 1 FROM updated_project)
+         RETURNING id
+       ),
+       linked_source AS (
+         UPDATE project_sources
+         SET project_id = ${project}, updated_at = now()
+         WHERE provider = 'github'
+           AND repository_id = ${repositoryId}
+           AND EXISTS (SELECT 1 FROM published_draft)
+         RETURNING id
+       ),
+       linked_evidence AS (
+         UPDATE evidence_sources
+         SET project_id = ${project}
+         WHERE project_id IS NULL
+           AND id IN (SELECT id FROM locked_evidence WHERE privacy_state = 'safe_public')
+           AND EXISTS (SELECT 1 FROM published_draft)
+         RETURNING id
+       ),
+       published_event AS (
+         INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+         SELECT ${eventId}, ${project}, ${draftId}, ${candidateId}, ${eventActor}, 'published',
+                'approved_for_publish', 'published', 'Admin atomically published only reviewed fields.',
+                ${eventMetadata}::jsonb || jsonb_build_object(
+                  'safePublicEvidenceIds',
+                  COALESCE(
+                    (SELECT jsonb_agg(id ORDER BY id) FROM locked_evidence WHERE privacy_state = 'safe_public'),
+                    '[]'::jsonb
+                  )
+                )
+         FROM published_draft
+         RETURNING id
+       )
+       SELECT id FROM updated_project WHERE EXISTS (SELECT 1 FROM published_event)`,
+      params,
+    ),
+  );
+  return rows.length === 1;
+}
+
+async function commitFirstPublication(
+  db: AdminPublishQueryable,
+  draft: DraftRow,
+  projectId: string,
+  fields: PublicProjectFields,
+  diff: ReviewedFieldDiffEntry[],
+  actor: string,
+  metadata: JsonRecord,
+): Promise<boolean> {
+  const rows = normalizeRows(
+    await db.query<{ id: string }>(
+      `WITH locked_evidence AS (
+         SELECT id, privacy_state, project_id
+         FROM evidence_sources
+         WHERE (draft_id = $14 OR ($17::text IS NOT NULL AND candidate_id = $17))
+           AND ($21::text IS NULL OR claim_map->>'contentFingerprint' = $21)
+         FOR UPDATE
+       ),
+       locked_source AS (
+         SELECT project_id
+         FROM project_sources
+         WHERE provider = 'github' AND repository_id = $16
+         FOR UPDATE
+       ),
+       locked_candidate AS (
+         SELECT lifecycle_state
+         FROM project_candidates
+         WHERE id = $17
+         FOR UPDATE
+       ),
+       eligible_draft AS (
+         SELECT id
+         FROM project_drafts
+         WHERE id = $14
+           AND lifecycle_state = 'approved_for_publish'
+           AND base_project_version = 0
+           AND reviewed_field_diff = $15::jsonb
+           AND NOT EXISTS (
+             SELECT 1 FROM locked_evidence WHERE privacy_state IN ('unreviewed', 'blocked')
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM locked_evidence WHERE project_id IS NOT NULL
+           )
+           AND (
+             ($16::text IS NULL AND $17::text IS NULL)
+             OR EXISTS (SELECT 1 FROM locked_evidence WHERE privacy_state = 'safe_public')
+           )
+           AND (
+             $16::text IS NULL
+             OR EXISTS (SELECT 1 FROM locked_source WHERE project_id IS NULL)
+           )
+           AND (
+             $17::text IS NULL
+             OR EXISTS (SELECT 1 FROM locked_candidate WHERE lifecycle_state <> 'dismissed')
+           )
+         FOR UPDATE
+       ),
+       inserted_project AS (
+         INSERT INTO projects (
+           id, slug, title, tagline, area, year, summary, activity, details, metrics, links, media,
+           lifecycle_state, published_at, source, publication_version, updated_at
+         )
+         SELECT
+           $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb,
+           'published', now(), $13, 1, now()
+         FROM eligible_draft
+         RETURNING id
+       ),
+       published_draft AS (
+         UPDATE project_drafts
+         SET lifecycle_state = 'published', proposed_project_id = $1, updated_at = now()
+         WHERE id = $14
+           AND lifecycle_state = 'approved_for_publish'
+           AND EXISTS (SELECT 1 FROM inserted_project)
+         RETURNING id
+       ),
+       linked_source AS (
+         UPDATE project_sources
+         SET project_id = $1, updated_at = now()
+         WHERE provider = 'github'
+           AND repository_id = $16
+           AND EXISTS (SELECT 1 FROM published_draft)
+         RETURNING id
+       ),
+       linked_evidence AS (
+         UPDATE evidence_sources
+         SET project_id = $1
+         WHERE project_id IS NULL
+           AND id IN (SELECT id FROM locked_evidence WHERE privacy_state = 'safe_public')
+           AND EXISTS (SELECT 1 FROM published_draft)
+         RETURNING id
+       ),
+       published_event AS (
+         INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+         SELECT $18, $1, $14, $17, $19, 'published', 'approved_for_publish', 'published',
+                'Admin atomically published one reviewed project.',
+                $20::jsonb || jsonb_build_object(
+                  'safePublicEvidenceIds',
+                  COALESCE(
+                    (SELECT jsonb_agg(id ORDER BY id) FROM locked_evidence WHERE privacy_state = 'safe_public'),
+                    '[]'::jsonb
+                  )
+                )
+         FROM published_draft
+         RETURNING id
+       )
+       SELECT id FROM inserted_project WHERE EXISTS (SELECT 1 FROM published_event)`,
+      [
+        projectId,
+        fields.slug,
+        fields.title,
+        fields.tagline,
+        fields.area,
+        fields.year,
+        fields.summary,
+        fields.activity,
+        JSON.stringify(fields.details),
+        JSON.stringify(fields.metrics),
+        JSON.stringify(fields.links),
+        JSON.stringify(fields.media),
+        draft.candidate_id ? 'github_discovery' : 'manual',
+        draft.id,
+        JSON.stringify(diff),
+        draft.repository_id,
+        draft.candidate_id,
+        `review_${randomUUID()}`,
+        actor,
+        JSON.stringify(metadata),
+        draft.provider ? draft.content_fingerprint : null,
+      ],
+    ),
+  );
+  return rows.length === 1;
 }
 
 async function fetchDraft(db: AdminPublishQueryable, draftId: string): Promise<DraftRow | null> {
-  const rows = normalizeRows(
+  return normalizeRows(
     await db.query<DraftRow>(
       `SELECT id, candidate_id, proposed_project_id, proposed_fields, private_notes, provenance_map,
-              lifecycle_state, created_at, updated_at
+              lifecycle_state, provider, repository_id, source_revision, content_fingerprint,
+              reviewed_field_diff, base_project_version, created_at, updated_at
        FROM project_drafts
        WHERE id = $1`,
       [draftId],
     ),
-  );
-  return rows[0] ?? null;
+  )[0] ?? null;
 }
 
-async function hasFreshAdminPublishApproval(db: AdminPublishQueryable, draftId: string): Promise<boolean> {
-  const rows = normalizeRows(
-    await db.query<{ action: string; source: string | null }>(
-      `SELECT action, metadata->>'source' AS source
+async function fetchPublishedProject(db: AdminPublishQueryable, projectId: string): Promise<PublishedProjectRow | null> {
+  return normalizeRows(
+    await db.query<PublishedProjectRow>(
+      `SELECT id, slug, title, tagline, area, year, summary, activity, details, metrics, links, media,
+              lifecycle_state, publication_version
+       FROM projects
+       WHERE id = $1 AND lifecycle_state = 'published'`,
+      [projectId],
+    ),
+  )[0] ?? null;
+}
+
+async function resolveLinkedProjectId(db: AdminPublishQueryable, draft: DraftRow): Promise<string | null> {
+  if (draft.proposed_project_id) return draft.proposed_project_id;
+  if (!draft.provider || !draft.repository_id) return null;
+  return normalizeRows(
+    await db.query<{ project_id: string | null }>(
+      `SELECT project_id FROM project_sources WHERE provider = $1 AND repository_id = $2`,
+      [draft.provider, draft.repository_id],
+    ),
+  )[0]?.project_id ?? null;
+}
+
+async function hasExactFreshAdminApproval(
+  db: AdminPublishQueryable,
+  draftId: string,
+  diff: ReviewedFieldDiffEntry[],
+): Promise<boolean> {
+  const row = normalizeRows(
+    await db.query<ApprovalEventRow>(
+      `SELECT action,
+              metadata->>'source' AS source,
+              metadata->'reviewedFieldDiff' AS reviewed_field_diff,
+              metadata->'reviewedFields' AS reviewed_fields
        FROM review_events
        WHERE draft_id = $1
          AND (
@@ -422,147 +808,98 @@ async function hasFreshAdminPublishApproval(db: AdminPublishQueryable, draftId: 
        LIMIT 1`,
       [draftId],
     ),
+  )[0];
+  return Boolean(
+    row
+    && row.action === 'approved_for_publish'
+    && row.source === 'admin_publish'
+    && isDeepStrictEqual(row.reviewed_field_diff, diff)
+    && isDeepStrictEqual(row.reviewed_fields, diff.map((entry) => entry.field)),
   );
-  return rows[0]?.action === 'approved_for_publish' && rows[0].source === 'admin_publish';
 }
 
-async function countPublishBlockingEvidence(
-  db: AdminPublishQueryable,
-  draft: DraftRow,
-): Promise<{ unreviewed: number; blocked: number }> {
-  const rows = normalizeRows(
-    await db.query<{ privacy_state: 'unreviewed' | 'blocked'; count: string | number }>(
-      `SELECT privacy_state, count(*) AS count
+async function fetchLinkedEvidence(db: AdminPublishQueryable, draft: DraftRow): Promise<EvidenceRow[]> {
+  return normalizeRows(
+    await db.query<EvidenceRow>(
+      `SELECT id, privacy_state, project_id
        FROM evidence_sources
        WHERE (draft_id = $1 OR ($2::text IS NOT NULL AND candidate_id = $2))
-         AND privacy_state IN ('unreviewed', 'blocked')
-       GROUP BY privacy_state`,
-      [draft.id, draft.candidate_id],
+         AND ($3::text IS NULL OR claim_map->>'contentFingerprint' = $3)
+       ORDER BY id`,
+      [draft.id, draft.candidate_id, draft.provider ? draft.content_fingerprint : null],
     ),
   );
-  return {
-    unreviewed: Number(rows.find((row) => row.privacy_state === 'unreviewed')?.count ?? 0),
-    blocked: Number(rows.find((row) => row.privacy_state === 'blocked')?.count ?? 0),
-  };
 }
 
-function projectIdFromDraftId(draftId: string): string {
-  return draftId.startsWith('draft_') ? `proj_${draftId.slice(6)}` : `proj_${draftId}`;
-}
-
-async function resolvePublishProjectId(
-  db: AdminPublishQueryable,
-  draft: DraftRow,
-  slug: string,
-): Promise<string> {
-  const derivedId = draft.proposed_project_id ?? projectIdFromDraftId(draft.id);
-  const existing = normalizeRows(
-    await db.query<{ id: string }>(`SELECT id FROM projects WHERE slug = $1`, [slug]),
-  )[0];
-  return existing?.id ?? derivedId;
-}
-
-function validateRequiredFields(fields: JsonRecord): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  for (const field of REQUIRED_PUBLIC_FIELDS) {
-    const result = validateEditableField(field, fields[field]);
-    if (!result.ok) issues.push(result.issue);
-  }
-  for (const field of ['activity', 'details', 'metrics', 'links', 'media'] as const) {
-    if (fields[field] === undefined) continue;
-    const result = validateEditableField(field, fields[field]);
-    if (!result.ok) issues.push(result.issue);
-  }
-  return issues;
-}
-
-function validateEditableField(field: EditablePublicField, value: unknown): ValidationResult {
-  if (field === 'slug') return validateSlug(value);
-  if (field === 'year') return validateYear(value);
-  if (field === 'area') return validateProjectArea(value);
-  if (field === 'activity') return validateOptionalString(field, value);
-  if (field === 'details') return validateNestedArray(field, ProjectDetailSchema.array(), value);
-  if (field === 'metrics') return validateNestedArray(field, ProjectMetricSchema.array(), value);
-  if (field === 'links') return validateNestedArray(field, ProjectLinkSchema.array(), value);
-  if (field === 'media') return validateNestedArray(field, ProjectMediaSchema.array(), value);
-  return validateRequiredString(field, value);
-}
-
-function validateSlug(value: unknown): ValidationResult {
-  if (typeof value !== 'string') return invalid('slug', 'Slug must be a string.');
-  const slug = value.trim();
-  if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(slug)) {
-    return invalid('slug', 'Slug must be 2-64 lowercase letters, numbers, or hyphens, starting with a letter or number.');
-  }
-  return { ok: true, value: slug };
-}
-
-function validateYear(value: unknown): ValidationResult {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 2000 || value > 2100) {
-    return invalid('year', 'Year must be an integer from 2000 through 2100.');
-  }
-  return { ok: true, value };
-}
-
-function validateProjectArea(value: unknown): ValidationResult {
-  const parsed = ProjectAreaSchema.safeParse(value);
-  if (!parsed.success) {
-    return invalid('area', 'Area must be one of the five recruiter-facing project areas.');
-  }
-  return { ok: true, value: parsed.data };
-}
-
-function validateRequiredString(field: RequiredPublicField, value: unknown): ValidationResult {
-  if (typeof value !== 'string') return invalid(field, `${field} must be a string.`);
-  const trimmed = value.trim();
-  if (!trimmed) return invalid(field, `${field} is required.`);
-  return { ok: true, value: trimmed };
-}
-
-function validateOptionalString(field: 'activity', value: unknown): ValidationResult {
-  if (typeof value !== 'string') return invalid(field, 'activity must be a string.');
-  return { ok: true, value: value.trim() };
-}
-
-function validateNestedArray(
-  field: PublicArrayField,
-  schema: { safeParse(value: unknown): { success: true; data: unknown[] } | { success: false } },
+function selectReviewedFields(
   value: unknown,
-): ValidationResult {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) return invalid(field, `${field} must match the canonical project schema.`);
-  return { ok: true, value: parsed.data as JsonValue[] };
+  proposed: JsonRecord,
+  current: PublishedProjectRow | null,
+): { ok: true; fields: EditablePublicField[] } | { ok: false; failure: AdminPublishFailure } {
+  if (value !== undefined) {
+    if (!Array.isArray(value) || !value.every((field) => typeof field === 'string' && isEditablePublicField(field))) {
+      return {
+        ok: false,
+        failure: { ok: false, status: 400, code: 'reviewed_fields_invalid', message: 'reviewedFields must contain only editable public field names.' },
+      };
+    }
+    const requested = [...new Set(value as EditablePublicField[])];
+    if (requested.length === 0) {
+      return { ok: false, failure: { ok: false, status: 400, code: 'reviewed_fields_missing', message: 'Select at least one field to review.' } };
+    }
+    return { ok: true, fields: EDITABLE_PUBLIC_FIELDS.filter((field) => requested.includes(field)) };
+  }
+
+  if (!current) return { ok: true, fields: [...EDITABLE_PUBLIC_FIELDS] };
+  const changed = EDITABLE_PUBLIC_FIELDS.filter((field) => {
+    if (proposed[field] === undefined) return false;
+    const validation = validatePublicFieldUpdate(field, proposed[field]);
+    return validation.ok && !isDeepStrictEqual(asJsonValue(current[field]), validation.value);
+  });
+  if (changed.length === 0) {
+    return { ok: false, failure: { ok: false, status: 422, code: 'reviewed_fields_missing', message: 'No changed public fields are available to review.' } };
+  }
+  return { ok: true, fields: changed };
 }
 
-function invalid(field: string, message: string): ValidationResult {
-  return { ok: false, issue: { field, message } };
+function applyProposedFields(
+  current: PublishedProjectRow,
+  proposed: JsonRecord,
+  selected: EditablePublicField[],
+): JsonRecord {
+  const record = publicFieldsRecord(current);
+  for (const field of selected) {
+    const validation = validatePublicFieldUpdate(field, proposed[field]);
+    if (!validation.ok) throw new Error(validation.issue.message);
+    record[field] = validation.value;
+  }
+  return record;
 }
 
-function fieldsIncomplete(issues: ValidationIssue[]): AdminPublishFailure {
+function applyReviewedDiff(current: PublishedProjectRow, diff: ReviewedFieldDiffEntry[]): JsonRecord {
+  const record = publicFieldsRecord(current);
+  for (const entry of diff) record[entry.field] = entry.after;
+  return record;
+}
+
+function publicFieldsRecord(fields: PublicProjectFields): JsonRecord {
   return {
-    ok: false,
-    status: 422,
-    code: 'fields_incomplete',
-    message: 'Required public fields are missing or invalid.',
-    fields: issues.map((issue) => issue.field),
-    issues,
+    slug: fields.slug,
+    title: fields.title,
+    tagline: fields.tagline,
+    area: fields.area,
+    year: fields.year,
+    summary: fields.summary,
+    activity: fields.activity,
+    details: fields.details as JsonValue[],
+    metrics: fields.metrics as JsonValue[],
+    links: fields.links as JsonValue[],
+    media: fields.media as JsonValue[],
   };
 }
 
-function publicProjectFields(fields: JsonRecord): {
-  slug: string;
-  title: string;
-  tagline: string;
-  area: string;
-  year: number;
-  summary: string;
-  activity: string;
-  details: JsonValue[];
-  metrics: JsonValue[];
-  links: JsonValue[];
-  media: JsonValue[];
-} {
-  return parsePublicProjectFields({
+function withPublicDefaults(fields: JsonRecord): JsonRecord {
+  return {
     slug: fields.slug,
     title: fields.title,
     tagline: fields.tagline,
@@ -574,15 +911,129 @@ function publicProjectFields(fields: JsonRecord): {
     metrics: fields.metrics ?? [],
     links: fields.links ?? [],
     media: fields.media ?? [],
-  });
+  };
+}
+
+function validateRequiredFields(fields: JsonRecord): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const field of REQUIRED_PUBLIC_FIELDS) {
+    const result = validatePublicFieldUpdate(field, fields[field]);
+    if (!result.ok) issues.push(result.issue);
+  }
+  for (const field of ['activity', 'details', 'metrics', 'links', 'media'] as const) {
+    const result = validatePublicFieldUpdate(field, fields[field] ?? (field === 'activity' ? '' : []));
+    if (!result.ok) issues.push(result.issue);
+  }
+  return issues;
+}
+
+export function validatePublicFieldUpdate(field: EditablePublicField, value: unknown): PublicFieldValidationResult {
+  if (field === 'slug') return validateSlug(value);
+  if (field === 'year') return validateYear(value);
+  if (field === 'area') return validateProjectArea(value);
+  if (field === 'activity') return validateOptionalString(field, value);
+  if (field === 'details') return validateNestedArray(field, ProjectDetailSchema.array(), value);
+  if (field === 'metrics') return validateNestedArray(field, ProjectMetricSchema.array(), value);
+  if (field === 'links') return validateNestedArray(field, ProjectLinkSchema.array(), value);
+  if (field === 'media') return validateNestedArray(field, ProjectMediaSchema.array(), value);
+  return validateRequiredString(field, value);
+}
+
+function validateSlug(value: unknown): PublicFieldValidationResult {
+  if (typeof value !== 'string') return invalid('slug', 'Slug must be a string.');
+  const slug = value.trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(slug)) return invalid('slug', 'Slug must be 2-64 lowercase letters, numbers, or hyphens.');
+  return { ok: true, value: slug };
+}
+
+function validateYear(value: unknown): PublicFieldValidationResult {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 2000 || value > 2100) return invalid('year', 'Year must be an integer from 2000 through 2100.');
+  return { ok: true, value };
+}
+
+function validateProjectArea(value: unknown): PublicFieldValidationResult {
+  const parsed = ProjectAreaSchema.safeParse(value);
+  return parsed.success ? { ok: true, value: parsed.data } : invalid('area', 'Area must be one of the five recruiter-facing project areas.');
+}
+
+function validateRequiredString(field: RequiredPublicField, value: unknown): PublicFieldValidationResult {
+  if (typeof value !== 'string') return invalid(field, `${field} must be a string.`);
+  const trimmed = value.trim();
+  return trimmed ? { ok: true, value: trimmed } : invalid(field, `${field} is required.`);
+}
+
+function validateOptionalString(field: 'activity', value: unknown): PublicFieldValidationResult {
+  return typeof value === 'string' ? { ok: true, value: value.trim() } : invalid(field, 'activity must be a string.');
+}
+
+function validateNestedArray(
+  field: PublicArrayField,
+  schema: { safeParse(value: unknown): { success: true; data: unknown[] } | { success: false } },
+  value: unknown,
+): PublicFieldValidationResult {
+  const parsed = schema.safeParse(value);
+  return parsed.success ? { ok: true, value: parsed.data as JsonValue[] } : invalid(field, `${field} must match the canonical project schema.`);
+}
+
+function parseReviewedFieldDiff(value: JsonValue[]): { ok: true; entries: ReviewedFieldDiffEntry[] } | { ok: false } {
+  if (!Array.isArray(value)) return { ok: false };
+  const entries: ReviewedFieldDiffEntry[] = [];
+  for (const raw of value) {
+    if (
+      !isPlainRecord(raw)
+      || typeof raw.field !== 'string'
+      || !isEditablePublicField(raw.field)
+      || !isJsonValue(raw.before)
+      || !isJsonValue(raw.after)
+    ) return { ok: false };
+    if (entries.some((entry) => entry.field === raw.field)) return { ok: false };
+    entries.push({ field: raw.field, before: raw.before, after: raw.after });
+  }
+  if (!isDeepStrictEqual(entries.map((entry) => entry.field), EDITABLE_PUBLIC_FIELDS.filter((field) => entries.some((entry) => entry.field === field)))) return { ok: false };
+  return { ok: true, entries };
+}
+
+function invalid(field: string, message: string): PublicFieldValidationResult {
+  return { ok: false, issue: { field, message } };
+}
+
+function fieldsIncomplete(issues: ValidationIssue[]): AdminPublishFailure {
+  return { ok: false, status: 422, code: 'fields_incomplete', message: 'Required public fields are missing or invalid.', fields: issues.map((issue) => issue.field), issues };
+}
+
+function staleDraft(draftId: string, fields: EditablePublicField[]): AdminPublishFailure {
+  return { ok: false, status: 409, code: 'reviewed_diff_stale', message: 'The canonical project changed after this draft was staged. Restage and review the whole draft.', draftId, fields };
+}
+
+function terminalDraft(draft: DraftRow): AdminPublishFailure {
+  return { ok: false, status: 409, code: 'draft_terminal', message: `Draft is terminal (${draft.lifecycle_state}) and cannot be edited or approved.`, draftId: draft.id };
+}
+
+function projectIdFromDraftId(draftId: string): string {
+  return draftId.startsWith('draft_') ? `proj_${draftId.slice(6)}` : `proj_${draftId}`;
 }
 
 function hasPublicProvenance(value: JsonRecord): boolean {
-  return isPlainRecord(value) && Object.keys(value).length > 0;
+  return Object.keys(value).length > 0;
 }
 
-function isEditableField(field: string): field is EditablePublicField {
+export function isEditablePublicField(field: string): field is EditablePublicField {
   return field in EDITABLE_FIELDS;
+}
+
+function isArrayField(field: EditablePublicField): field is PublicArrayField {
+  return field === 'details' || field === 'metrics' || field === 'links' || field === 'media';
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isPlainRecord(value) && Object.values(value).every(isJsonValue);
+}
+
+function asJsonValue(value: unknown): JsonValue {
+  if (!isJsonValue(value)) throw new Error('Value is not JSON serializable.');
+  return value;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -590,8 +1041,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isPgErrorCode(error: unknown, code: string): boolean {
-  if (!isPlainRecord(error)) return false;
-  return error.code === code;
+  return isPlainRecord(error) && error.code === code;
 }
 
 function draftNotFound(draftId: string): AdminPublishFailure {

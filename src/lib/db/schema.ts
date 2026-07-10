@@ -3,7 +3,14 @@ import type { ProjectArea } from '@/lib/projects/schema';
 export const PROJECT_LIFECYCLE_STATES = ['shadow', 'draft_only', 'published', 'archived'] as const;
 export const SCAN_RUN_LIFECYCLE_STATES = ['queued', 'running', 'completed', 'failed'] as const;
 export const CANDIDATE_LIFECYCLE_STATES = ['detected', 'qualified', 'dismissed', 'draft_requested'] as const;
-export const DRAFT_LIFECYCLE_STATES = ['hidden', 'needs_review', 'changes_requested', 'approved_for_publish'] as const;
+export const DRAFT_LIFECYCLE_STATES = [
+  'hidden',
+  'needs_review',
+  'changes_requested',
+  'approved_for_publish',
+  'published',
+  'superseded',
+] as const;
 export const RAG_SOURCE_ELIGIBILITY_STATES = ['not_eligible', 'eligible', 'indexing', 'indexed', 'failed', 'revoked'] as const;
 
 export const PROJECT_SOURCES = ['manual', 'legacy_catalog', 'github_discovery', 'test_seed'] as const;
@@ -59,6 +66,7 @@ export interface ProjectRecord {
   links: JsonValue[];
   media: JsonValue[];
   source: ProjectSource;
+  publication_version: string;
   published_at: string | null;
   archived_at: string | null;
   created_at: string;
@@ -88,6 +96,10 @@ export interface ProjectCandidateRecord {
   confidence: string;
   evidence_packet: JsonRecord;
   lifecycle_state: CandidateLifecycleState;
+  provider: 'github' | null;
+  repository_id: string | null;
+  source_revision: string | null;
+  content_fingerprint: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +112,22 @@ export interface ProjectDraftRecord {
   private_notes: string;
   provenance_map: JsonRecord;
   lifecycle_state: DraftLifecycleState;
+  provider: 'github' | null;
+  repository_id: string | null;
+  source_revision: string | null;
+  content_fingerprint: string | null;
+  reviewed_field_diff: JsonValue[];
+  base_project_version: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectSourceRecord {
+  id: string;
+  provider: 'github';
+  repository_id: string;
+  canonical_full_name: string;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -29,15 +29,32 @@ export function createAdminDraftApprovePostHandler(deps: AdminDraftApproveHandle
       const draftId = params.id;
       if (!draftId) return adminJson(400, { ok: false, code: 'draft_id_missing', message: 'Draft id is required.' });
 
+      const body = await readJsonObject(request);
+      if (!body.ok) return adminJson(body.status, body);
+
       const dbResult = createDbResult(deps);
       if (!dbResult.ok) return adminJson(503, dbResult.body);
 
-      const result = await approveAdminDraftForPublish(dbResult.db, draftId, auth.actor);
+      const result = await approveAdminDraftForPublish(dbResult.db, draftId, auth.actor, {
+        reviewedFields: body.value.reviewedFields,
+      });
       return adminJson(result.status, result);
     } catch (error) {
       return adminJson(500, safeAdminError(error));
     }
   };
+}
+
+async function readJsonObject(
+  request: Request,
+): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; status: 400; code: string; message: string }> {
+  try {
+    const value = await request.json();
+    if (value && typeof value === 'object' && !Array.isArray(value)) return { ok: true, value };
+  } catch {
+    return { ok: false, status: 400, code: 'invalid_json', message: 'Request body must be valid JSON.' };
+  }
+  return { ok: false, status: 400, code: 'invalid_body', message: 'Request body must be a JSON object.' };
 }
 
 function authorizeAdmin(

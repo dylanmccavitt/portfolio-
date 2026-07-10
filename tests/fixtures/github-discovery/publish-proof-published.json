@@ -1,6 +1,7 @@
 {
   "actor": "age-737-proof-scan",
   "repo": {
+    "repositoryId": "91001",
     "owner": "DylanMcCavitt",
     "name": "publish-proof-published",
     "htmlUrl": "https://github.com/DylanMcCavitt/publish-proof-published",
@@ -10,8 +11,10 @@
     "topics": ["portfolio-candidate", "astro"],
     "isPrivate": false,
     "defaultBranch": "main",
+    "sourceRevision": "9999999999999999999999999999999999999999",
     "pushedAt": "2026-07-04T00:00:00.000Z",
     "stars": 2,
-    "readmeMarkdown": "# Publish proof published fixture\n\nPublic README evidence for the publish proof flow."
+    "readmeMarkdown": "# Publish proof published fixture\n\nPublic README evidence for the publish proof flow.",
+    "portfolioManifest": { "status": "missing" }
   }
 }

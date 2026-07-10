@@ -28,6 +28,10 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - DM is the sole live runtime (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`).
 - Use Neon on Vercel for the DB foundation; keep secrets out of tracked files.
 - Keep `src/data/catalog.ts` as a shadow/fallback public project source until parity plus one-publish proof; keep `src/data/resume.ts` as the v1 résumé/contact source.
+- Before issue #190 proves Loom refresh on preview, explicitly adopt Loom's
+  authenticated immutable GitHub repository id onto its reviewed published
+  project id using `docs/agents/github-refresh.md`; never infer that link from
+  a matching slug. Preview adoption still requires separate user approval.
 
 ## Next
 
@@ -40,7 +44,8 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 
 - Blog/log expansion remains optional.
 - Richer artifact types can be added after the answer-block contract proves stable.
-- Existing published project refresh follows first-publish proof and audit trails.
+- Review-gated existing-project refresh is implemented by GitHub issue #188;
+  scheduling refresh scans remains deferred to #193.
 - Resume/contact DB migration follows the project DB cutover.
 
 ## Explicitly deferred
@@ -61,10 +66,10 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   - Why deferred: Public project pages and DM artifacts should use real screenshots/demos only when available.
   - Where tracked: Future issue candidates below.
   - Constraint imposed on Now: Do not claim generated visuals as proof or public evidence.
-- Capability: Existing-project refresh.
-  - Why deferred: First-publish proof must land before update loops touch published records.
-  - Where tracked: Future issue candidates below.
-  - Constraint imposed on Now: Discovery/admin schemas must not assume only brand-new projects.
+- Capability: Scheduled GitHub refresh scans.
+  - Why deferred: Issue #188 deliberately ships a manual/Slack review-gated refresh before background scheduling.
+  - Where tracked: GitHub issue #193.
+  - Constraint imposed on Now: Source identity and revision idempotency must remain trigger-neutral.
 - Capability: OpenAI Agents SDK orchestration.
   - Why deferred: V1 public DM route defaults to Vercel AI SDK and typed services.
   - Where tracked: Future issue candidates below or a later issue that names the orchestration need.
@@ -134,10 +139,10 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   - Type: AFK
   - Depends on: Project DB cutover
   - Preserves: Unified content management without blocking v1
-- Title: Add existing-project refresh workflow
+- Title: Schedule GitHub refreshes into reviewed drafts
   - Type: AFK
-  - Depends on: One-project publish proof and admin audit trail
-  - Preserves: Safe updates to already-published records
+  - Depends on: GitHub issue #188 review-gated refresh workflow
+  - Preserves: Background discovery without automatic public promotion
 - Title: Evaluate Agents SDK orchestration
   - Type: AFK
   - Depends on: A workflow with concrete handoff/guardrail/tracing/sandbox needs

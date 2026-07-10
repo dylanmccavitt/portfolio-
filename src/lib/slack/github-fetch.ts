@@ -1,8 +1,9 @@
-import type { GithubRepositorySnapshot } from '@/lib/db/github-discovery';
+import type { GithubRepositorySnapshot, PortfolioManifestSnapshot } from '@/lib/db/github-discovery';
 
 const GITHUB_API_VERSION = '2022-11-28';
 const GITHUB_USER_AGENT = 'portfolio-dm-scan';
 const README_MARKDOWN_LIMIT = 200_000;
+export const PORTFOLIO_MANIFEST_MAX_BYTES = 64 * 1024;
 
 export type GithubSnapshotFetcher = (owner: string, name: string) => Promise<GithubRepositorySnapshot>;
 
@@ -24,40 +25,44 @@ export function createGithubSnapshotFetcher(options: {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
 
   return async (owner: string, name: string) => {
-    const repoOwner = owner.trim();
-    const repoName = name.trim();
-    const repoUrl = `https://api.github.com/repos/${encodeURIComponent(repoOwner)}/${encodeURIComponent(repoName)}`;
-
-    let repoResponse: Response;
-    try {
-      repoResponse = await fetchImpl(repoUrl, {
-        method: 'GET',
-        headers: githubHeaders('application/vnd.github+json', token),
-      });
-    } catch {
-      throw githubFetchError(repoOwner, repoName);
-    }
-
-    if (!repoResponse.ok) {
-      throw githubFetchError(repoOwner, repoName, repoResponse.status);
-    }
+    const requestedOwner = owner.trim();
+    const requestedName = name.trim();
+    const repoUrl = apiRepoUrl(requestedOwner, requestedName);
+    const repoResponse = await githubGet(fetchImpl, repoUrl, token, 'application/vnd.github+json', requestedOwner, requestedName);
 
     let payload: GithubRepoApiResponse;
     try {
       payload = asRepoApiResponse(await repoResponse.json());
     } catch {
-      throw githubFetchError(repoOwner, repoName);
+      throw githubFetchError(requestedOwner, requestedName);
     }
 
-    const fullName = stringValue(payload.full_name) || `${repoOwner}/${repoName}`;
-    const [apiOwner, apiName] = fullName.split('/');
-    const readmeMarkdown = await fetchReadmeMarkdown(fetchImpl, repoOwner, repoName, token);
+    const repositoryId = repositoryIdValue(payload.id);
+    const fullName = stringValue(payload.full_name) || `${requestedOwner}/${requestedName}`;
+    const [canonicalOwner, canonicalName] = fullName.split('/');
+    const defaultBranch = stringValue(payload.default_branch);
+    if (!repositoryId || !canonicalOwner || !canonicalName || !defaultBranch) {
+      throw githubFetchError(requestedOwner, requestedName);
+    }
+
+    const sourceRevision = await fetchDefaultBranchHead(
+      fetchImpl,
+      canonicalOwner,
+      canonicalName,
+      defaultBranch,
+      token,
+    );
+    const [readmeMarkdown, portfolioManifest] = await Promise.all([
+      fetchReadmeMarkdown(fetchImpl, canonicalOwner, canonicalName, sourceRevision, token),
+      fetchPortfolioManifest(fetchImpl, canonicalOwner, canonicalName, sourceRevision, token),
+    ]);
 
     return {
-      owner: apiOwner || repoOwner,
-      name: apiName || stringValue(payload.name) || repoName,
+      repositoryId,
+      owner: canonicalOwner,
+      name: canonicalName,
       fullName,
-      htmlUrl: stringValue(payload.html_url) || `https://github.com/${repoOwner}/${repoName}`,
+      htmlUrl: stringValue(payload.html_url) || `https://github.com/${canonicalOwner}/${canonicalName}`,
       description: nullableStringValue(payload.description),
       homepageUrl: nullableStringValue(payload.homepage),
       language: nullableStringValue(payload.language),
@@ -65,26 +70,92 @@ export function createGithubSnapshotFetcher(options: {
         ? payload.topics.filter((topic): topic is string => typeof topic === 'string')
         : [],
       isPrivate: payload.private === true,
-      defaultBranch: nullableStringValue(payload.default_branch),
+      defaultBranch,
+      sourceRevision,
       pushedAt: nullableStringValue(payload.pushed_at),
       stars: numberValue(payload.stargazers_count),
       readmeMarkdown,
+      portfolioManifest,
     };
   };
+}
+
+async function fetchDefaultBranchHead(
+  fetchImpl: typeof fetch,
+  owner: string,
+  name: string,
+  defaultBranch: string,
+  token: string | undefined,
+): Promise<string> {
+  const response = await githubGet(
+    fetchImpl,
+    `${apiRepoUrl(owner, name)}/commits/${encodeURIComponent(defaultBranch)}`,
+    token,
+    'application/vnd.github+json',
+    owner,
+    name,
+  );
+  try {
+    const value = await response.json() as { sha?: unknown };
+    const sha = stringValue(value.sha);
+    if (/^[0-9a-f]{40}$/i.test(sha)) return sha.toLowerCase();
+  } catch {
+    // The stable error below intentionally excludes response content.
+  }
+  throw githubFetchError(owner, name);
+}
+
+async function fetchPortfolioManifest(
+  fetchImpl: typeof fetch,
+  owner: string,
+  name: string,
+  sourceRevision: string,
+  token: string | undefined,
+): Promise<PortfolioManifestSnapshot> {
+  const url = `${apiRepoUrl(owner, name)}/contents/portfolio.json?ref=${encodeURIComponent(sourceRevision)}`;
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: 'GET',
+      headers: githubHeaders('application/vnd.github.raw+json', token),
+    });
+  } catch {
+    throw githubFetchError(owner, name);
+  }
+
+  if (response.status === 404) return { status: 'missing' };
+  if (!response.ok) throw githubFetchError(owner, name, response.status);
+
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > PORTFOLIO_MANIFEST_MAX_BYTES) {
+    throw invalidManifestError('portfolio.json exceeds the 64 KiB limit.');
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > PORTFOLIO_MANIFEST_MAX_BYTES) {
+    throw invalidManifestError('portfolio.json exceeds the 64 KiB limit.');
+  }
+
+  try {
+    return { status: 'present', raw: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
+  } catch {
+    throw invalidManifestError('portfolio.json must be valid UTF-8 JSON.');
+  }
 }
 
 async function fetchReadmeMarkdown(
   fetchImpl: typeof fetch,
   owner: string,
   name: string,
+  sourceRevision: string,
   token: string | undefined,
 ): Promise<string | null> {
   try {
     const response = await fetchImpl(
-      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/readme`,
+      `${apiRepoUrl(owner, name)}/readme?ref=${encodeURIComponent(sourceRevision)}`,
       {
-        method: 'GET',
-        headers: githubHeaders('application/vnd.github.raw+json', token),
+      method: 'GET',
+      headers: githubHeaders('application/vnd.github.raw+json', token),
       },
     );
     if (!response.ok) return null;
@@ -92,6 +163,28 @@ async function fetchReadmeMarkdown(
   } catch {
     return null;
   }
+}
+
+async function githubGet(
+  fetchImpl: typeof fetch,
+  url: string,
+  token: string | undefined,
+  accept: string,
+  owner: string,
+  name: string,
+): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetchImpl(url, { method: 'GET', headers: githubHeaders(accept, token) });
+  } catch {
+    throw githubFetchError(owner, name);
+  }
+  if (!response.ok) throw githubFetchError(owner, name, response.status);
+  return response;
+}
+
+function apiRepoUrl(owner: string, name: string): string {
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
 }
 
 function githubHeaders(accept: string, token: string | undefined): Headers {
@@ -111,12 +204,15 @@ function githubFetchError(owner: string, name: string, status?: number): GithubS
       `GitHub repository ${owner}/${name} was not found or is not accessible (HTTP 404).`,
     );
   }
-
   const statusText = typeof status === 'number' ? ` (HTTP ${status})` : '';
   return new GithubSnapshotFetchError(
     'github_fetch_failed',
     `GitHub metadata fetch failed for ${owner}/${name}${statusText}.`,
   );
+}
+
+function invalidManifestError(message: string): GithubSnapshotFetchError {
+  return new GithubSnapshotFetchError('invalid_manifest', message);
 }
 
 function asRepoApiResponse(value: unknown): GithubRepoApiResponse {
@@ -133,6 +229,12 @@ function nullableStringValue(value: unknown): string | null {
   return text || null;
 }
 
+function repositoryIdValue(value: unknown): string {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return value.trim();
+  return '';
+}
+
 function numberValue(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -142,6 +244,7 @@ function truncateReadme(readme: string): string {
 }
 
 type GithubRepoApiResponse = {
+  id?: unknown;
   name?: unknown;
   full_name?: unknown;
   html_url?: unknown;

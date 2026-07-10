@@ -22,6 +22,7 @@ const RESET_TABLES = [
   'project_drafts',
   'project_candidates',
   'scan_runs',
+  'project_sources',
   'projects',
   'schema_migrations',
 ] as const;

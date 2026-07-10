@@ -25,6 +25,7 @@ const CONFIG: SlackControlPlaneConfig = {
 };
 
 const LIVE_REPO: GithubRepositorySnapshot = {
+  repositoryId: '20001',
   owner: 'DylanMcCavitt',
   name: 'portfolio-candidate-app',
   fullName: 'DylanMcCavitt/portfolio-candidate-app',
@@ -35,9 +36,11 @@ const LIVE_REPO: GithubRepositorySnapshot = {
   topics: [PORTFOLIO_CANDIDATE_TOPIC, 'astro'],
   isPrivate: false,
   defaultBranch: 'main',
+  sourceRevision: '2222222222222222222222222222222222222222',
   pushedAt: '2026-06-01T00:00:00.000Z',
   stars: 2,
   readmeMarkdown: '# Live candidate\n\nFetched from GitHub.',
+  portfolioManifest: { status: 'missing' },
 };
 
 function createTestDb(): Queryable {
@@ -114,10 +117,15 @@ test('GitHub snapshot fetcher maps REST metadata and sends token-authenticated h
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = String(input);
     calls.push({ url, headers: fetchHeaders(init) });
-    if (url.endsWith('/readme')) {
+    if (url.includes('/commits/')) {
+      return jsonResponse({ sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+    }
+    if (url.includes('/readme?ref=')) {
       return new Response('# Candidate app\n\nReadme body');
     }
+    if (url.includes('/contents/portfolio.json')) return new Response('not found', { status: 404 });
     return jsonResponse({
+      id: 20001,
       description: 'Fetched description',
       homepage: 'https://example.com/fetched',
       language: 'TypeScript',
@@ -136,16 +144,18 @@ test('GitHub snapshot fetcher maps REST metadata and sends token-authenticated h
 
   assert.deepEqual(calls.map((call) => call.url), [
     'https://api.github.com/repos/DylanMcCavitt/portfolio-candidate-app',
-    'https://api.github.com/repos/DylanMcCavitt/portfolio-candidate-app/readme',
+    'https://api.github.com/repos/DylanMcCavitt/portfolio-candidate-app/commits/main',
+    'https://api.github.com/repos/DylanMcCavitt/portfolio-candidate-app/readme?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    'https://api.github.com/repos/DylanMcCavitt/portfolio-candidate-app/contents/portfolio.json?ref=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   ]);
   assert.equal(calls[0]?.headers.accept, 'application/vnd.github+json');
   assert.equal(calls[0]?.headers['x-github-api-version'], '2022-11-28');
   assert.equal(calls[0]?.headers['user-agent'], 'portfolio-dm-scan');
   assert.equal(calls[0]?.headers.authorization, 'Bearer ghs_test_token');
-  assert.equal(calls[1]?.headers.accept, 'application/vnd.github.raw+json');
-  assert.equal(calls[1]?.headers.authorization, 'Bearer ghs_test_token');
+  for (const call of calls) assert.equal(call.headers.authorization, 'Bearer ghs_test_token');
 
   assert.deepEqual(snapshot, {
+    repositoryId: '20001',
     owner: 'DylanMcCavitt',
     name: 'portfolio-candidate-app',
     fullName: 'DylanMcCavitt/portfolio-candidate-app',
@@ -156,9 +166,11 @@ test('GitHub snapshot fetcher maps REST metadata and sends token-authenticated h
     topics: [PORTFOLIO_CANDIDATE_TOPIC, 'workflow'],
     isPrivate: false,
     defaultBranch: 'main',
+    sourceRevision: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     pushedAt: '2026-06-01T00:00:00.000Z',
     stars: 7,
     readmeMarkdown: '# Candidate app\n\nReadme body',
+    portfolioManifest: { status: 'missing' },
   });
 });
 
@@ -167,8 +179,11 @@ test('GitHub snapshot fetcher omits authorization without a token and degrades r
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = String(input);
     calls.push({ url, headers: fetchHeaders(init) });
-    if (url.endsWith('/readme')) return new Response('not found', { status: 404 });
+    if (url.includes('/commits/')) return jsonResponse({ sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' });
+    if (url.includes('/readme?ref=')) return new Response('not found', { status: 404 });
+    if (url.includes('/contents/portfolio.json')) return new Response('not found', { status: 404 });
     return jsonResponse({
+      id: 20002,
       description: null,
       homepage: null,
       language: null,
@@ -185,7 +200,7 @@ test('GitHub snapshot fetcher omits authorization without a token and degrades r
   const snapshot = await createGithubSnapshotFetcher({ fetchImpl })('DylanMcCavitt', 'private-app');
 
   assert.equal(calls[0]?.headers.authorization, undefined);
-  assert.equal(calls[1]?.headers.authorization, undefined);
+  for (const call of calls) assert.equal(call.headers.authorization, undefined);
   assert.equal(snapshot.isPrivate, true);
   assert.equal(snapshot.readmeMarkdown, null);
 });
@@ -271,6 +286,35 @@ async function insertCandidate(db: Queryable, input: CandidateFixtureInput = 'ca
       repoVisibility === 'public' ? 'safe_public' : 'private_allowed_for_draft',
     ],
   );
+  const repoName = fullName.split('/').at(-1) ?? id;
+  const title = repoName
+    .replace(/[-_]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+  await db.query(
+    `INSERT INTO project_drafts (id, candidate_id, proposed_fields, provenance_map, lifecycle_state)
+     VALUES ($1, $2, $3::jsonb, $4::jsonb, 'hidden')`,
+    [
+      `draft_${id}`,
+      id,
+      JSON.stringify({
+        visibility: 'hidden',
+        slug: repoName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        title,
+        tagline: description?.split(/(?<=[.!?])\s/)[0] ?? '',
+        year: 2026,
+        summary: description ?? '',
+        details: [],
+        metrics: [],
+        links: repoVisibility === 'public' ? [{ label: 'GitHub', href: sourceRef }] : [],
+        media: [],
+        signals: { language },
+      }),
+      JSON.stringify({ publicPublish: false, generatedBy: 'test_scan_service' }),
+    ],
+  );
   return id;
 }
 
@@ -339,7 +383,8 @@ test('Slack command rejects invalid signatures before service work runs', async 
       throw new Error('service work should not run');
     },
   } satisfies Queryable;
-  const POST = createSlackControlPlanePostHandler({ config: CONFIG, db });
+  const errorConfig: SlackControlPlaneConfig = { ...CONFIG, githubFetcher: async () => LIVE_REPO };
+  const POST = createSlackControlPlanePostHandler({ config: errorConfig, db });
   const body = formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-scan', text: 'DylanMcCavitt/portfolio-candidate-app' });
   const response = await POST({
     request: new Request('https://example.test/api/slack/control-plane', {
@@ -368,7 +413,8 @@ test('Slack route returns safe 200 JSON when the request itself fails', async ()
       throw new Error('database should not be called when request.text fails');
     },
   } satisfies Queryable;
-  const POST = createSlackControlPlanePostHandler({ config: CONFIG, db });
+  const errorConfig: SlackControlPlaneConfig = { ...CONFIG, githubFetcher: async () => LIVE_REPO };
+  const POST = createSlackControlPlanePostHandler({ config: errorConfig, db });
 
   const response = await POST({
     request: {
@@ -407,7 +453,8 @@ test('server-side error logs carry only structured facts, never free error text'
       throw pgError;
     },
   } satisfies Queryable;
-  const POST = createSlackControlPlanePostHandler({ config: CONFIG, db });
+  const errorConfig: SlackControlPlaneConfig = { ...CONFIG, githubFetcher: async () => LIVE_REPO };
+  const POST = createSlackControlPlanePostHandler({ config: errorConfig, db });
 
   const body = formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-scan', text: 'DylanMcCavitt/portfolio-candidate-app' });
   const response = await POST({ request: signedSlackRequest(body) } as never);
@@ -451,7 +498,7 @@ test('server-side error logs carry only structured facts, never free error text'
       throw craftedStackError;
     },
   } satisfies Queryable;
-  const craftedStackPost = createSlackControlPlanePostHandler({ config: CONFIG, db: craftedStackDb });
+  const craftedStackPost = createSlackControlPlanePostHandler({ config: errorConfig, db: craftedStackDb });
   const craftedStackResponse = await craftedStackPost({ request: signedSlackRequest(body) } as never);
   const craftedStackJson = await responseJson(craftedStackResponse);
 
@@ -478,7 +525,7 @@ test('server-side error logs carry only structured facts, never free error text'
       throw objectNameError;
     },
   } satisfies Queryable;
-  const objectNamePost = createSlackControlPlanePostHandler({ config: CONFIG, db: objectNameDb });
+  const objectNamePost = createSlackControlPlanePostHandler({ config: errorConfig, db: objectNameDb });
   const objectNameResponse = await objectNamePost({ request: signedSlackRequest(body) } as never);
   const objectNameJson = await responseJson(objectNameResponse);
 
@@ -500,7 +547,7 @@ test('server-side error logs carry only structured facts, never free error text'
       throw `plain thrown value with ${thrownValueSecret}`;
     },
   } satisfies Queryable;
-  const nonErrorPost = createSlackControlPlanePostHandler({ config: CONFIG, db: nonErrorDb });
+  const nonErrorPost = createSlackControlPlanePostHandler({ config: errorConfig, db: nonErrorDb });
   const nonErrorResponse = await nonErrorPost({ request: signedSlackRequest(body) } as never);
   const nonErrorJson = await responseJson(nonErrorResponse);
 
@@ -519,13 +566,17 @@ test('server-side error logs carry only structured facts, never free error text'
 test('single-user Slack scan trigger routes authorized repo input to GitHub discovery', async () => {
   const db = await createMigratedDb();
   const repo = {
+    repositoryId: '20003',
     owner: 'DylanMcCavitt',
     name: 'portfolio-candidate-app',
     htmlUrl: 'https://github.com/DylanMcCavitt/portfolio-candidate-app',
     description: 'A small workflow app worth reviewing for the portfolio.',
     topics: [PORTFOLIO_CANDIDATE_TOPIC, 'astro'],
     isPrivate: false,
+    defaultBranch: 'main',
+    sourceRevision: '3333333333333333333333333333333333333333',
     readmeMarkdown: '# Candidate app\n\nShips a real workflow.',
+    portfolioManifest: { status: 'missing' },
   };
   const body = formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-scan', text: JSON.stringify(repo) });
 
@@ -570,7 +621,7 @@ test('single-user Slack scan trigger routes authorized repo input to GitHub disc
 
   const candidates = await db.query<{ lifecycle_state: string; source_ref: string }>(`SELECT lifecycle_state, source_ref FROM project_candidates`);
   assert.deepEqual(candidates.rows, [
-    { lifecycle_state: 'qualified', source_ref: 'https://github.com/DylanMcCavitt/portfolio-candidate-app' },
+    { lifecycle_state: 'draft_requested', source_ref: 'https://github.com/DylanMcCavitt/portfolio-candidate-app' },
   ]);
 });
 
@@ -699,7 +750,74 @@ test('Slack scan with explicit topic still fetches live metadata and merges topi
   );
 });
 
-test('Slack scan with explicit topic degrades to manual snapshot when the fetch fails', async () => {
+test('live Slack scans preserve authenticated GitHub visibility and content over text or JSON claims', async () => {
+  const authenticatedPrivate: GithubRepositorySnapshot = {
+    ...LIVE_REPO,
+    description: 'Authenticated private description.',
+    homepageUrl: null,
+    language: 'TypeScript',
+    isPrivate: true,
+    readmeMarkdown: '# Authenticated private readme',
+  };
+  const forgedJson = JSON.stringify({
+    ...LIVE_REPO,
+    description: 'Forged public description.',
+    homepageUrl: 'https://forged.example',
+    language: 'Rust',
+    isPrivate: false,
+    readmeMarkdown: '# Forged public readme',
+  });
+  const commandTexts = [
+    'DylanMcCavitt/portfolio-candidate-app private=false description=forged readme=forged language=Rust homepage=https://forged.example',
+    forgedJson,
+  ];
+
+  for (const text of commandTexts) {
+    const db = await createMigratedDb();
+    let fetchCalls = 0;
+    const config: SlackControlPlaneConfig = {
+      ...CONFIG,
+      githubFetcher: async () => {
+        fetchCalls += 1;
+        return authenticatedPrivate;
+      },
+    };
+    const result = await handleSlackFormEncodedRequest(
+      db,
+      config,
+      formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-scan', text }),
+    );
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(result.code, 'scan_qualified');
+    const evidence = await db.query<{
+      repo_visibility: string;
+      privacy_state: string;
+      source_url: string | null;
+      extracted_text: string | null;
+    }>(
+      `SELECT repo_visibility, privacy_state, source_url, extracted_text
+       FROM evidence_sources ORDER BY source_type`,
+    );
+    assert.equal(evidence.rows.length, 2);
+    assert.ok(evidence.rows.some((row) => row.extracted_text === authenticatedPrivate.description));
+    assert.ok(evidence.rows.some((row) => row.extracted_text === authenticatedPrivate.readmeMarkdown));
+    for (const row of evidence.rows) {
+      assert.equal(row.repo_visibility, 'private');
+      assert.equal(row.privacy_state, 'private_allowed_for_draft');
+      assert.equal(row.source_url, null);
+      assert.ok(!String(row.extracted_text).includes('Forged'));
+    }
+    const provenance = await db.query<{ public_ids: unknown; private_count: string }>(
+      `SELECT provenance_map->'publicEvidenceIds' AS public_ids,
+              jsonb_array_length(provenance_map->'privateEvidenceIds')::text AS private_count
+       FROM project_drafts`,
+    );
+    assert.deepEqual(provenance.rows, [{ public_ids: [], private_count: '2' }]);
+  }
+});
+
+test('Slack scan with explicit topic fails closed when the identity fetch fails', async () => {
   const db = await createMigratedDb();
   const config: SlackControlPlaneConfig = {
     ...CONFIG,
@@ -718,15 +836,82 @@ test('Slack scan with explicit topic degrades to manual snapshot when the fetch 
     }),
   );
 
-  assert.equal(result.ok, true);
-  assert.equal(result.code, 'scan_qualified');
-  assert.equal(result.scan?.audit.scannerMode, 'manual-snapshot');
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'github_fetch_failed');
 
   const evidence = await db.query<{ source_type: string }>(`SELECT source_type FROM evidence_sources ORDER BY source_type`);
-  assert.deepEqual(
-    evidence.rows.map((row) => row.source_type),
-    ['repo'],
+  assert.deepEqual(evidence.rows, []);
+});
+
+test('/dm-update stages one field through the common revision draft service without publishing', async () => {
+  const db = await createMigratedDb();
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, summary, activity, details, metrics, links, media,
+       lifecycle_state, published_at, source, publication_version
+     ) VALUES (
+       'project_slack_update', 'slack-update', 'Original title', 'Original tagline', 'Apps', 2026,
+       'Original summary', '', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       'published', now(), 'github_discovery', 4
+     )`,
   );
+  await db.query(
+    `INSERT INTO project_sources (id, provider, repository_id, canonical_full_name, project_id)
+     VALUES ('source_slack_update', 'github', $1, $2, 'project_slack_update')`,
+    [LIVE_REPO.repositoryId, LIVE_REPO.fullName],
+  );
+  const config: SlackControlPlaneConfig = { ...CONFIG, githubFetcher: async () => LIVE_REPO };
+
+  const result = await handleSlackFormEncodedRequest(
+    db,
+    config,
+    formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-update', text: 'slack-update title Reviewed Slack title' }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'draft_field_staged');
+  assert.match(result.draftId ?? '', /^draft_/);
+
+  const project = await db.query<{ title: string; publication_version: string | number }>(
+    `SELECT title, publication_version FROM projects WHERE id = 'project_slack_update'`,
+  );
+  assert.deepEqual(project.rows, [{ title: 'Original title', publication_version: 4 }]);
+  const draft = await db.query<{
+    proposed_project_id: string;
+    lifecycle_state: string;
+    base_project_version: string | number;
+    proposed_fields: Record<string, unknown>;
+  }>(
+    `SELECT proposed_project_id, lifecycle_state, base_project_version, proposed_fields
+     FROM project_drafts WHERE id = $1`,
+    [result.draftId],
+  );
+  assert.equal(draft.rows[0]?.proposed_project_id, 'project_slack_update');
+  assert.equal(draft.rows[0]?.lifecycle_state, 'needs_review');
+  assert.equal(Number(draft.rows[0]?.base_project_version), 4);
+  assert.equal(draft.rows[0]?.proposed_fields.title, 'Reviewed Slack title');
+  const publicEvents = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM review_events WHERE action = 'published'`,
+  );
+  assert.equal(publicEvents.rows[0]?.count, '0');
+});
+
+test('/dm-update can edit an active draft but cannot approve or publish it', async () => {
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db, 'candidate_dm_update');
+  const result = await handleSlackFormEncodedRequest(
+    db,
+    CONFIG,
+    formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-update', text: `draft_${candidateId} summary Staged summary only` }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'draft_field_staged');
+  const draft = await db.query<{ lifecycle_state: string; reviewed_field_diff: unknown; summary: string }>(
+    `SELECT lifecycle_state, reviewed_field_diff, proposed_fields->>'summary' AS summary
+     FROM project_drafts WHERE id = $1`,
+    [`draft_${candidateId}`],
+  );
+  assert.deepEqual(draft.rows, [{ lifecycle_state: 'needs_review', reviewed_field_diff: [], summary: 'Staged summary only' }]);
+  assert.equal((await db.query<{ count: string }>(`SELECT count(*)::text AS count FROM projects WHERE lifecycle_state = 'published'`)).rows[0]?.count, '0');
 });
 
 test('single-user Slack scan trigger rejects non-maintainer users without scanning', async () => {
@@ -745,7 +930,7 @@ test('single-user Slack scan trigger rejects non-maintainer users without scanni
   assert.equal(scanRuns.rows[0]?.count, '0');
 });
 
-test('Slack draft action creates a hidden draft only and never publishes a project', async () => {
+test('Slack draft action acknowledges the scan-created hidden draft and never publishes a project', async () => {
   const db = await createMigratedDb();
   const candidateId = await insertCandidate(db);
 
@@ -754,7 +939,7 @@ test('Slack draft action creates a hidden draft only and never publishes a proje
   assert.equal(response.status, 200);
   assert.equal(json.ok, true);
   assert.equal(json.code, 'hidden_draft_requested');
-  assert.match(String(json.text), /hidden draft draft_/);
+  assert.match(String(json.text), /Hidden draft draft_/);
   assert.match(String(json.text), /Admin publish remains required/);
 
   const candidates = await db.query<{ lifecycle_state: string }>(`SELECT lifecycle_state FROM project_candidates WHERE id = $1`, [
@@ -965,6 +1150,33 @@ test('Slack candidate actions dismiss and snooze candidates using compact ids', 
     { id: dismissCandidateId, lifecycle_state: 'dismissed' },
     { id: snoozeCandidateId, lifecycle_state: 'qualified' },
   ]);
+  const drafts = await db.query<{ candidate_id: string; lifecycle_state: string }>(
+    `SELECT candidate_id, lifecycle_state FROM project_drafts ORDER BY candidate_id`,
+  );
+  assert.deepEqual(drafts.rows, [
+    { candidate_id: dismissCandidateId, lifecycle_state: 'superseded' },
+    { candidate_id: snoozeCandidateId, lifecycle_state: 'hidden' },
+  ]);
+
+  const draftReplay = await handleSlackFormEncodedRequest(
+    db,
+    CONFIG,
+    interactionBody('dm_candidate_draft', dismissCandidateId),
+  );
+  const snoozeReplay = await handleSlackFormEncodedRequest(
+    db,
+    CONFIG,
+    interactionBody('dm_candidate_snooze', dismissCandidateId),
+  );
+  assert.equal(draftReplay.code, 'candidate_dismissed');
+  assert.equal(snoozeReplay.code, 'candidate_dismissed');
+  assert.equal(
+    (await db.query<{ lifecycle_state: string }>(
+      `SELECT lifecycle_state FROM project_candidates WHERE id = $1`,
+      [dismissCandidateId],
+    )).rows[0]?.lifecycle_state,
+    'dismissed',
+  );
 
   const events = await db.query<{ candidate_id: string; action: string; before_state: string; after_state: string; metadata: Record<string, unknown> }>(
     `SELECT candidate_id, action, before_state, after_state, metadata FROM review_events ORDER BY candidate_id`,
@@ -976,6 +1188,7 @@ test('Slack candidate actions dismiss and snooze candidates using compact ids', 
       before_state: event.before_state,
       after_state: event.after_state,
       decision: event.metadata.decision,
+      supersededDraftIds: event.metadata.supersededDraftIds,
     })),
     [
       {
@@ -984,6 +1197,7 @@ test('Slack candidate actions dismiss and snooze candidates using compact ids', 
         before_state: 'qualified',
         after_state: 'dismissed',
         decision: 'dismiss',
+        supersededDraftIds: [`draft_${dismissCandidateId}`],
       },
       {
         candidate_id: snoozeCandidateId,
@@ -991,8 +1205,55 @@ test('Slack candidate actions dismiss and snooze candidates using compact ids', 
         before_state: 'qualified',
         after_state: 'qualified',
         decision: 'snooze',
+        supersededDraftIds: undefined,
       },
     ],
+  );
+});
+
+test('a stale Slack Draft click cannot resurrect a concurrently dismissed candidate', async () => {
+  const db = await createMigratedDb();
+  const candidateId = await insertCandidate(db, 'candidate_draft_dismiss_race');
+  let dismissedAtCommit = false;
+  const racingDb: Queryable = {
+    async query<Row = unknown>(sql: string, params?: unknown[]) {
+      if (!dismissedAtCommit && sql.includes('WITH eligible_candidate AS')) {
+        dismissedAtCommit = true;
+        await db.query(`UPDATE project_candidates SET lifecycle_state = 'dismissed' WHERE id = $1`, [candidateId]);
+        await db.query(
+          `UPDATE project_drafts SET lifecycle_state = 'superseded'
+           WHERE candidate_id = $1
+             AND lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')`,
+          [candidateId],
+        );
+      }
+      return db.query<Row>(sql, params);
+    },
+  };
+
+  const result = await handleSlackFormEncodedRequest(
+    racingDb,
+    CONFIG,
+    interactionBody('dm_candidate_draft', candidateId),
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'candidate_state_changed');
+  assert.deepEqual(
+    (await db.query<{ candidate_state: string; draft_state: string }>(
+      `SELECT c.lifecycle_state AS candidate_state, d.lifecycle_state AS draft_state
+       FROM project_candidates c JOIN project_drafts d ON d.candidate_id = c.id
+       WHERE c.id = $1`,
+      [candidateId],
+    )).rows,
+    [{ candidate_state: 'dismissed', draft_state: 'superseded' }],
+  );
+  assert.equal(
+    (await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM review_events
+       WHERE candidate_id = $1 AND action = 'draft_requested'`,
+      [candidateId],
+    )).rows[0]?.count,
+    '0',
   );
 });
 
