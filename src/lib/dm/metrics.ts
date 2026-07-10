@@ -1,14 +1,21 @@
 import type { DMStreamEvent } from './contract';
 
-export type DMMetricsOutcome = 'completed' | 'error';
+export type DMMetricsOutcome = 'completed' | 'error' | 'timeout' | 'aborted' | 'rate_limited';
+export type DMSourceMode = 'published_db' | 'resume_static' | 'contact_static' | 'rag' | 'mixed' | 'none';
 
 export interface DMMetricsRecord {
+  traceId: string;
   sessionStart: number;
   /** Milliseconds to first visible output (text-delta or block); null when the stream failed before any token. */
   firstTokenMs: number | null;
   completionMs?: number;
   toolCount: number;
   errorCount: number;
+  sourceMode: DMSourceMode;
+  retrievalHits: number;
+  fallbackUsed: boolean;
+  inputTokens: number | null;
+  outputTokens: number | null;
   outcome?: DMMetricsOutcome;
 }
 
@@ -19,6 +26,9 @@ export interface DMMetricsRecorder {
   block(event: Extract<DMStreamEvent, { type: 'block' }>): void;
   done(event: Extract<DMStreamEvent, { type: 'done' }>): void;
   error(event: Extract<DMStreamEvent, { type: 'error' }>): void;
+  setSource(sourceMode: DMSourceMode, retrievalHits: number, fallbackUsed: boolean): void;
+  setUsage(inputTokens: number | null, outputTokens: number | null): void;
+  finish(outcome: DMMetricsOutcome): void;
   record(event: DMStreamEvent): void;
   snapshot(): DMMetricsRecord;
 }
@@ -27,6 +37,8 @@ export interface DMMetricsRecorderOptions {
   enabled?: boolean;
   now?: () => number;
   logger?: (line: string) => void;
+  traceId?: string;
+  sourceMode?: DMSourceMode;
 }
 
 const DISABLED_VALUES: Record<string, true> = { 0: true, false: true, off: true, no: true };
@@ -45,10 +57,16 @@ export function createDMMetricsRecorder(options: DMMetricsRecorderOptions = {}):
   const now = options.now ?? Date.now;
   const logger = options.logger ?? ((line: string) => console.info(line));
   const record: DMMetricsRecord = {
+    traceId: options.traceId ?? 'unknown',
     sessionStart: now(),
     firstTokenMs: null,
     toolCount: 0,
     errorCount: 0,
+    sourceMode: options.sourceMode ?? 'none',
+    retrievalHits: 0,
+    fallbackUsed: false,
+    inputTokens: null,
+    outputTokens: null,
   };
   let emitted = false;
 
@@ -65,7 +83,11 @@ export function createDMMetricsRecorder(options: DMMetricsRecorderOptions = {}):
   function emitOnce(): void {
     if (!enabled || emitted) return;
     emitted = true;
-    logger(`[dm-metrics] ${JSON.stringify(snapshot())}`);
+    try {
+      logger(`[dm-metrics] ${JSON.stringify(snapshot())}`);
+    } catch {
+      // Metrics are deliberately best-effort, including direct completion paths.
+    }
   }
 
   function snapshot(): DMMetricsRecord {
@@ -90,6 +112,16 @@ export function createDMMetricsRecorder(options: DMMetricsRecorderOptions = {}):
       record.errorCount += 1;
       finish('error');
     },
+    setSource(sourceMode, retrievalHits, fallbackUsed) {
+      record.sourceMode = sourceMode;
+      record.retrievalHits = Math.max(0, Math.trunc(retrievalHits));
+      record.fallbackUsed = fallbackUsed;
+    },
+    setUsage(inputTokens, outputTokens) {
+      record.inputTokens = safeUsage(inputTokens);
+      record.outputTokens = safeUsage(outputTokens);
+    },
+    finish,
     record(event) {
       // Metrics must never kill the stream: swallow recorder/logger failures.
       try {
@@ -105,4 +137,8 @@ export function createDMMetricsRecorder(options: DMMetricsRecorderOptions = {}):
     },
     snapshot,
   };
+}
+
+function safeUsage(value: number | null): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
 }

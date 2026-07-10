@@ -101,7 +101,7 @@ export interface PublicRagSearchOutput {
 export async function publicRagSearch(
   query: string,
   config: PublicRagSearchConfig,
-  options: { apiKey: string },
+  options: { apiKey: string; signal?: AbortSignal },
 ): Promise<PublicRagSearchOutput> {
   const openai = new OpenAI({ apiKey: options.apiKey });
   const all: Array<PublicRagCitation & { score: number }> = [];
@@ -112,7 +112,7 @@ export async function publicRagSearch(
       max_num_results: config.tool.maxNumResults,
       filters: config.tool.filters as VectorStoreSearchParams['filters'],
       ranking_options: { ranker: 'auto', score_threshold: config.scoreThreshold },
-    });
+    }, { signal: options.signal });
 
     for (const result of page.data) {
       const text = result.content.map((content) => content.text).join('\n');

@@ -15,6 +15,11 @@ import {
 import { createDMChatStream, readDMRuntimeConfig } from '@/lib/dm/runtime';
 import { type PublicRagSearchOutput } from '@/lib/rag/retrieval';
 import {
+  consumeDMRateLimit,
+  readDMRateLimitConfig,
+  resolveTrustedVercelClientAddress,
+} from '@/lib/dm/rate-limit';
+import {
   parseStreamLine,
   resolveEvidence,
   validateBlock,
@@ -41,6 +46,8 @@ test('DM route streams NDJSON text and answer blocks from the AI SDK seam', asyn
   assert.equal(response.headers.get('Content-Type'), 'application/x-ndjson; charset=utf-8');
   assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
   assert.equal(response.headers.get('X-Public-Project-Source'), 'database');
+  const traceId = response.headers.get('X-DM-Trace-Id');
+  assert.match(traceId ?? '', /^[0-9a-f-]{36}$/i);
 
   const events = await readNdjson(response.body);
   const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
@@ -55,7 +62,116 @@ test('DM route streams NDJSON text and answer blocks from the AI SDK seam', asyn
   assert.equal(projectBlock?.block?.items?.[0]?.href, '/projects/agentic-trader');
   assert.equal(typeof projectBlock?.block?.items?.[0]?.summary, 'string');
   assert.ok(events.some((event) => event.type === 'done'));
+  assert.equal(events.find((event) => event.type === 'ready')?.traceId, traceId);
 }));
+
+test('DM Postgres limiter is atomic, fixed-windowed, versioned, and returns exact retry timing', async () => {
+  const db = await publishedProjectDb();
+  const config = readDMRateLimitConfig({
+    DM_RATE_LIMIT_HMAC_SECRET: 'a'.repeat(32),
+    DM_RATE_LIMIT_KEY_VERSION: 'v2',
+    DM_RATE_LIMIT_MAX_REQUESTS: '2',
+    DM_RATE_LIMIT_WINDOW_SECONDS: '60',
+  });
+  const results = await Promise.all([
+    consumeDMRateLimit(db, config, '203.0.113.10', 121_000),
+    consumeDMRateLimit(db, config, '203.0.113.10', 121_000),
+    consumeDMRateLimit(db, config, '203.0.113.10', 121_000),
+  ]);
+  assert.equal(results.filter((result) => result.allowed).length, 2);
+  assert.equal(results.find((result) => !result.allowed)?.retryAfterSeconds, 59);
+  assert.equal((await consumeDMRateLimit(db, config, '203.0.113.10', 180_000)).allowed, true);
+
+  const rows = await db.query<{ key_version: string; client_hash: string; expires_at: string }>(
+    'SELECT key_version, client_hash, expires_at FROM dm_rate_limit_windows',
+  );
+  assert.equal(rows.rows[0]?.key_version, 'v2');
+  assert.doesNotMatch(rows.rows[0]?.client_hash ?? '', /203\.0\.113\.10|a{32}/);
+});
+
+test('DM route fails closed for limiter config or storage failures and rate limits before model work', async () => {
+  const db = await publishedProjectDb();
+  const model = streamingModel(projectDraft('agentic-trader'));
+  const env = { VERCEL: '1', DM_RATE_LIMIT_HMAC_SECRET: 'b'.repeat(32), DM_RATE_LIMIT_WINDOW_SECONDS: '60' };
+  const post = createDMPostHandler({
+    config: TEST_CONFIG,
+    env,
+    db,
+    model,
+    clientAddressResolver: () => '2001:db8::1',
+    rateLimitConfig: { ...readDMRateLimitConfig(env), limit: 1 },
+    now: () => 100_000,
+  });
+  const first = await post({ request: dmRequest('Show published projects.') } as never);
+  assert.equal(first.status, 200);
+  const second = await post({ request: dmRequest('Show published projects.') } as never);
+  assert.equal(second.status, 429);
+  assert.equal(second.headers.get('Retry-After'), '20');
+  assert.equal(model.doStreamCalls.length, 0, 'deterministic project answer does not need model work');
+
+  const missingSecret = createDMPostHandler({ config: TEST_CONFIG, env: { VERCEL: '1' }, db, model });
+  const missingSecretResponse = await missingSecret({ request: dmRequest('hello') } as never);
+  assert.equal(missingSecretResponse.status, 503);
+  assert.deepEqual(await missingSecretResponse.json(), {
+    error: { code: 'rate_limit_unavailable', message: 'DM is unavailable right now. Please try again shortly.' },
+  });
+
+  const storageFailure = createDMPostHandler({
+    config: TEST_CONFIG,
+    env,
+    db: { async query() { throw new Error('private storage failure'); } },
+    model: throwingModel(),
+    clientAddressResolver: () => '203.0.113.2',
+  });
+  assert.equal((await storageFailure({ request: dmRequest('hello') } as never)).status, 503);
+});
+
+test('DM trusts only Vercel forwarded addresses in production', () => {
+  const request = new Request('https://example.test/api/dm/chat', {
+    headers: { 'x-forwarded-for': '203.0.113.1', 'x-vercel-forwarded-for': 'unknown, 2001:db8::5' },
+  });
+  assert.equal(resolveTrustedVercelClientAddress(request, { VERCEL: '1' }), '2001:db8::5');
+  assert.equal(resolveTrustedVercelClientAddress(request, {}), null);
+});
+
+test('a pre-aborted DM stream performs no model or RAG work', async () => {
+  const db = await publishedProjectDb();
+  const controller = new AbortController();
+  controller.abort();
+  let ragCalls = 0;
+  const model = throwingModel();
+  const events = await readNdjson(createDMChatStream(
+    { message: 'Use source evidence about agentic trader.' },
+    TEST_CONFIG,
+    { db, model, signal: controller.signal, ragSearch: async () => { ragCalls += 1; return { citations: [] }; } },
+  ));
+  assert.deepEqual(events, []);
+  assert.equal(model.doStreamCalls.length, 0);
+  assert.equal(ragCalls, 0);
+});
+
+test('DM deadline aborts RAG, emits one sanitized terminal timeout, and never starts the model', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  let receivedSignal: AbortSignal | undefined;
+  const events = await readNdjson(createDMChatStream(
+    { message: 'Use source evidence about the agentic-trader trading automation project.' },
+    TEST_CONFIG,
+    {
+      db,
+      model: throwingModel(),
+      budgets: { deadlineMs: 100, maxOutputTokens: 128, maxSteps: 1 },
+      ragSearch: async (_query, _config, options) => {
+        receivedSignal = options.signal;
+        return await new Promise<PublicRagSearchOutput>((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true });
+        });
+      },
+    },
+  ));
+  assert.equal(receivedSignal?.aborted, true);
+  assert.deepEqual(events, [{ type: 'error', message: 'DM took too long to answer. Please try again.' }]);
+});
 
 test('DM data tools expose DB-gated public records and static resume/contact only', async () => withPublicProjectDbGate(async () => {
   const db = await publishedProjectDb();
@@ -866,7 +982,16 @@ type JsonEvent = {
   };
   delta?: string;
   message?: string;
+  traceId?: string;
 };
+
+function dmRequest(message: string): Request {
+  return new Request('https://example.test/api/dm/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+}
 
 async function readNdjson(stream: ReadableStream<Uint8Array> | null): Promise<JsonEvent[]> {
   assert.ok(stream, 'expected a response body stream');
