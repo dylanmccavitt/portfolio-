@@ -40,18 +40,20 @@ test('DM route streams NDJSON text and answer blocks from the AI SDK seam', asyn
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Content-Type'), 'application/x-ndjson; charset=utf-8');
   assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(response.headers.get('X-Public-Project-Source'), 'database');
 
   const events = await readNdjson(response.body);
   const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
   assert.match(answerText, /agentic-trader/i);
   assert.match(answerText, /Status:/);
-  assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'projects'));
-  assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'evidence'));
+  assert.deepEqual(
+    events.filter((event) => event.type === 'block').map((event) => event.block?.kind),
+    ['projects'],
+  );
   const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
   assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
   assert.equal(projectBlock?.block?.items?.[0]?.href, '/projects/agentic-trader');
-  const evidenceBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'evidence');
-  assert.equal(evidenceBlock?.block?.projects?.[0]?.id, 'agentic-trader');
+  assert.equal(typeof projectBlock?.block?.items?.[0]?.summary, 'string');
   assert.ok(events.some((event) => event.type === 'done'));
 }));
 
@@ -59,33 +61,36 @@ test('DM data tools expose DB-gated public records and static resume/contact onl
   const db = await publishedProjectDb();
   const tools = createPublicDMDataTools(db);
 
-  // Pre-cutover overlay: published DB rows lead, catalog projects stay public,
-  // and DB rows that are not published never surface.
+  // Published DB rows are the complete project source; rows that are not
+  // published and catalog-only ids never surface.
   const search = await tools.searchProjects({ query: 'trading automation robinhood', limit: 5 });
   assert.equal(search.projects[0]?.id, 'agentic-trader');
 
-  const fallback = await tools.searchProjects({ query: 'loom-unpublished-topic', limit: 3 });
-  assert.equal(fallback.fallbackUsed, true);
-  assert.equal(fallback.resultStatus, 'fallback');
-  assert.match(fallback.message, /fallback results/i);
-  assert.match(fallback.message, /do not substitute projects/i);
+  const noMatch = await tools.searchProjects({ query: 'loom-unpublished-topic', limit: 3 });
+  assert.equal(noMatch.fallbackUsed, false);
+  assert.equal(noMatch.resultStatus, 'empty');
+  assert.deepEqual(noMatch.projects, []);
+  assert.match(noMatch.message, /no published projects matched/i);
+  assert.match(noMatch.message, /do not name or substitute projects/i);
 
   const emptyFilter = await tools.filterProjects({ area: 'not-a-published-area' });
   assert.equal(emptyFilter.resultStatus, 'empty');
   assert.deepEqual(emptyFilter.projects, []);
   assert.match(emptyFilter.message, /do not name or substitute projects/i);
 
-  const partialRank = await tools.rankProjects({ intent: 'strongest work', limit: 1 });
-  assert.equal(partialRank.resultStatus, 'partial');
-  assert.equal(partialRank.projects.length, 1);
-  assert.match(partialRank.message, /only name or discuss projects in this returned projects array/i);
+  const completeRank = await tools.rankProjects({ intent: 'strongest work', limit: 1 });
+  assert.equal(completeRank.resultStatus, 'complete');
+  assert.equal(completeRank.projects.length, 1);
+  assert.match(completeRank.message, /only name or discuss projects in this returned projects array/i);
 
   const ranked = await tools.rankProjects({ ids: ['agentic-trader'] });
   assert.deepEqual(ranked.projects.map((project) => project.id), ['agentic-trader']);
   assert.equal(ranked.resultStatus, 'complete');
 
-  const catalogRanked = await tools.rankProjects({ ids: ['exit-manager'] });
-  assert.deepEqual(catalogRanked.projects.map((project) => project.id), ['exit-manager']);
+  await assert.rejects(
+    () => tools.rankProjects({ ids: ['exit-manager'] }),
+    (error: unknown) => error instanceof DMToolError && error.code === 'bad_project_id',
+  );
 
   await assert.rejects(
     () => tools.rankProjects({ ids: ['proj-draft-only-unlisted'] }),
@@ -94,14 +99,14 @@ test('DM data tools expose DB-gated public records and static resume/contact onl
 
   const resume = await tools.readResume({ trackIds: ['now'] });
   assert.deepEqual(resume.tracks.map((track) => track.id), ['now']);
-  assert.deepEqual(resume.tracks[0]?.era, ['evalgate', 'bellas-beads', 'slurmlet', 'agentic-trader']);
+  assert.deepEqual(resume.tracks[0]?.era, ['agentic-trader']);
 
   const contact = tools.getContact();
   assert.equal(contact.email, 'dylanmccavitt@outlook.com');
   assert.equal(contact.resume, '/resume.pdf');
 }));
 
-test('DM data tools use catalog fallback when the public project DB gate is disabled', async () => withoutPublicProjectDbGate(async () => {
+test('DM data tools use the catalog only in explicit emergency mode', async () => withCatalogEmergency(async () => {
   const db = await publishedProjectDb();
   const tools = createPublicDMDataTools(db);
 
@@ -214,6 +219,10 @@ test('DM stream resolves requested RAG evidence before project synthesis', async
   assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
   const ragEvidence = events.find((event) => event.type === 'block' && event.block?.ragSources?.length);
   assert.equal(ragEvidence?.block?.ragSources?.[0]?.ragSourceId, 'rag-public');
+  assert.equal(ragEvidence?.block?.projectIds, undefined);
+  assert.equal(ragEvidence?.block?.projects, undefined);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'projects').length, 1);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence').length, 1);
   const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
   assert.match(answerText, /agentic-trader/i);
   assert.match(answerText, /Approved public RAG source text/);
@@ -221,7 +230,7 @@ test('DM stream resolves requested RAG evidence before project synthesis', async
   assert.ok(events.some((event) => event.type === 'done'));
 });
 
-test('DM stream accepts project context ids from the catalog fallback public source', async () => withoutPublicProjectDbGate(async () => {
+test('DM stream accepts project context ids from the explicit emergency catalog source', async () => withCatalogEmergency(async () => {
   const db = await publishedProjectDb();
   const events = await readNdjson(
     createDMChatStream(
@@ -293,25 +302,26 @@ test('DM stream ends after unknown project notice even when the message asks for
   assert.equal(model.doStreamCalls.length, 0);
 }));
 
-test('DM stream uses catalog fallback when project-context validation cannot read the DB', async () => withoutPublicProjectDbGate(async () => {
+test('DM stream fails closed when project-context validation cannot read the DB', async () => withoutPublicProjectDbGate(async () => {
   const failingDb = {
     async query() {
       throw new Error('select * from private_drafts using secret-token');
     },
   } satisfies Queryable;
+  const model = streamingModel('This model output must never be emitted.');
   const events = await readNdjson(
     createDMChatStream(
       { message: 'Tell me about this.', context: { projectIds: ['exit-manager'] } },
       TEST_CONFIG,
-      { db: failingDb, model: streamingModel('The active public catalog has this project.') },
+      { db: failingDb, model },
     ),
   );
 
-  assert.ok(events.some((event) => event.type === 'ready'));
-  assert.ok(events.some((event) => event.type === 'text-delta'));
-  const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
-  assert.equal(projectBlock?.block?.items?.[0]?.id, 'exit-manager');
-  assert.ok(!events.some((event) => event.type === 'error'));
+  assert.deepEqual(events.map((event) => event.type), ['error']);
+  assert.match(String(events[0]?.message), /could not read the public portfolio data/i);
+  assert.equal(model.doStreamCalls.length, 0);
+  assert.ok(!JSON.stringify(events).includes('private_drafts'));
+  assert.ok(!JSON.stringify(events).includes('secret-token'));
 }));
 
 test('DM runtime config selects gateway when AI_GATEWAY_API_KEY is set and falls back to direct OpenAI otherwise', () => {
@@ -334,7 +344,7 @@ test('DM runtime config selects gateway when AI_GATEWAY_API_KEY is set and falls
   assert.throws(() => readDMRuntimeConfig({}), /OPENAI_API_KEY/);
 });
 
-test('DM route masks setup failures and falls back to catalog on project DB failures', async () => withoutPublicProjectDbGate(async () => {
+test('DM route masks setup failures and fails closed on project DB failures', async () => withoutPublicProjectDbGate(async () => {
   const missingConfigPost = createDMPostHandler({ env: {} });
   const missingConfigResponse = await missingConfigPost({
     request: new Request('https://example.test/api/dm/chat', {
@@ -353,16 +363,51 @@ test('DM route masks setup failures and falls back to catalog on project DB fail
       throw new Error('select * from private_drafts using secret-token');
     },
   } satisfies Queryable;
+  const model = streamingModel('This model output must never be emitted.');
   const events = await readNdjson(
     createDMChatStream({ message: 'Which projects show backend work?' }, TEST_CONFIG, {
       db: failingDb,
-      model: streamingModel('I can still answer from public catalog records.'),
+      model,
     }),
   );
 
-  assert.ok(events.some((event) => event.type === 'ready'));
-  assert.ok(events.some((event) => event.type === 'text-delta'));
-  assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'projects'));
+  assert.deepEqual(events.map((event) => event.type), ['error']);
+  assert.match(String(events[0]?.message), /could not read the public portfolio data/i);
+  assert.equal(model.doStreamCalls.length, 0);
+  assert.ok(!JSON.stringify(events).includes('private_drafts'));
+  assert.ok(!JSON.stringify(events).includes('secret-token'));
+}));
+
+test('DM route exposes explicit emergency catalog mode and does not query the injected DB', async () => withCatalogEmergency(async () => {
+  let queryCount = 0;
+  const unavailableDb = {
+    async query() {
+      queryCount += 1;
+      throw new Error('the emergency source must not query this database');
+    },
+  } satisfies Queryable;
+  const POST = createDMPostHandler({
+    config: TEST_CONFIG,
+    env: { PUBLIC_PROJECT_SOURCE: 'catalog_emergency' },
+    db: unavailableDb,
+    model: throwingModel(),
+  });
+  const response = await POST({
+    request: new Request('https://example.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Tell me about exit manager.', context: { projectIds: ['exit-manager'] } }),
+    }),
+  } as never);
+  const events = await readNdjson(response.body);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('X-Public-Project-Source'), 'catalog_emergency');
+  assert.equal(queryCount, 0);
+  assert.equal(
+    events.find((event) => event.type === 'block' && event.block?.kind === 'projects')?.block?.items?.[0]?.id,
+    'exit-manager',
+  );
   assert.ok(!events.some((event) => event.type === 'error'));
 }));
 
@@ -493,7 +538,7 @@ test('rag evidence rejects citations without non-empty text', () => {
   }
 });
 
-test('evidence resolution drops stale ids without throwing', () => {
+test('evidence resolution never hydrates project ids from the legacy catalog', () => {
   const previousWarn = console.warn;
   console.warn = () => undefined;
 
@@ -506,7 +551,7 @@ test('evidence resolution drops stale ids without throwing', () => {
 
     assert.deepEqual(
       resolved.projects.map((project) => project.id),
-      ['agentic-trader'],
+      [],
     );
     assert.deepEqual(
       resolved.tracks.map((track) => track.id),
@@ -545,7 +590,7 @@ test('streamed project artifacts satisfy active public-source ids absent from th
       projects: [artifact],
     });
 
-    assert.deepEqual(resolved.projects, []);
+    assert.deepEqual(resolved.projects, [artifact]);
     assert.deepEqual(warnings, []);
   } finally {
     console.warn = previousWarn;
@@ -603,37 +648,53 @@ test('DM route validates fit-check pasted context safely', async () => {
   assert.equal(valid.status, 200);
   assert.ok(events.some((event) => event.type === 'ready'));
   const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /published records returned/);
+  assert.match(answerText, /agentic-trader/i);
+  assert.match(answerText, /Status:/);
   assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'resume'));
   assert.ok(!events.some((event) => event.type === 'error'));
 });
 
 
-const PUBLIC_PROJECT_GATE_ENV_KEYS = ['PUBLIC_PROJECT_PAGES_FROM_DB', 'PORTFOLIO_PUBLIC_PROJECTS_FROM_DB'] as const;
+const PUBLIC_PROJECT_ENV_KEYS = [
+  'PUBLIC_PROJECT_PAGES_FROM_DB',
+  'PORTFOLIO_PUBLIC_PROJECTS_FROM_DB',
+  'PUBLIC_PROJECT_SOURCE',
+  'CI',
+  'VERCEL',
+  'VERCEL_ENV',
+  'VERCEL_REGION',
+  'DATABASE_URL',
+  'POSTGRES_URL',
+  'PORTFOLIO_DATABASE_URL',
+  'PORTFOLIO_POSTGRES_URL',
+] as const;
 
 async function withPublicProjectDbGate<T>(run: () => T | Promise<T>): Promise<T> {
-  return withPublicProjectGate('true', run);
+  return withPublicProjectEnvironment({ PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }, run);
 }
 
 async function withoutPublicProjectDbGate<T>(run: () => T | Promise<T>): Promise<T> {
-  return withPublicProjectGate(undefined, run);
+  return withPublicProjectEnvironment({}, run);
 }
 
-async function withPublicProjectGate<T>(value: string | undefined, run: () => T | Promise<T>): Promise<T> {
-  const previous = new Map(PUBLIC_PROJECT_GATE_ENV_KEYS.map((key) => [key, process.env[key]]));
+async function withCatalogEmergency<T>(run: () => T | Promise<T>): Promise<T> {
+  return withPublicProjectEnvironment({ PUBLIC_PROJECT_SOURCE: 'catalog_emergency' }, run);
+}
+
+async function withPublicProjectEnvironment<T>(
+  values: Partial<Record<(typeof PUBLIC_PROJECT_ENV_KEYS)[number], string>>,
+  run: () => T | Promise<T>,
+): Promise<T> {
+  const previous = new Map(PUBLIC_PROJECT_ENV_KEYS.map((key) => [key, process.env[key]]));
   resetPublicProjectDetailsLoadForTests();
 
-  if (value === undefined) {
-    for (const key of PUBLIC_PROJECT_GATE_ENV_KEYS) delete process.env[key];
-  } else {
-    process.env.PUBLIC_PROJECT_PAGES_FROM_DB = value;
-    delete process.env.PORTFOLIO_PUBLIC_PROJECTS_FROM_DB;
-  }
+  for (const key of PUBLIC_PROJECT_ENV_KEYS) delete process.env[key];
+  for (const [key, value] of Object.entries(values)) process.env[key] = value;
 
   try {
     return await run();
   } finally {
-    for (const key of PUBLIC_PROJECT_GATE_ENV_KEYS) {
+    for (const key of PUBLIC_PROJECT_ENV_KEYS) {
       const previousValue = previous.get(key);
       if (previousValue === undefined) delete process.env[key];
       else process.env[key] = previousValue;
@@ -791,7 +852,8 @@ type JsonEvent = {
   block?: {
     kind?: string;
     text?: string;
-    items?: Array<{ id?: string; title?: string; href?: string }>;
+    projectIds?: string[];
+    items?: Array<{ id?: string; title?: string; href?: string; summary?: string }>;
     projects?: Array<{ id?: string; title?: string; href?: string }>;
     ragSources?: Array<{ ragSourceId?: string; projectId?: string; score?: number }>;
   };

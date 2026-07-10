@@ -2,7 +2,7 @@
  * Sitemap (#25) — emitted as a static `/sitemap.xml` at build time.
  *
  * Built from canonical static routes, filter slugs, resume tracks, and the
- * gated public project source (`loadPublicProjectDetails()`).
+ * selected public project source (`loadPublicProjectDetails()`).
  *
  * Route families included:
  *   /                       — concierge landing (#60)
@@ -14,8 +14,8 @@
  *   /journey                — resume timeline
  *   /journey/<track>        — one route per resume entry
  *
- * Total URL count is gate-dependent because the public project route set comes
- * from either published DB rows or the catalog shadow fallback.
+ * Total URL count is source-dependent: deployed database mode uses published
+ * rows only; offline development and explicit emergency mode use the catalog.
  *
  * `/projects` (the index) is intentionally absent — it now 301s to `/library`.
  * Retired legacy URLs are handled by `vercel.json` 301s and never appear here.

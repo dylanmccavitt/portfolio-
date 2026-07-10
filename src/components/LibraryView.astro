@@ -3,8 +3,8 @@
  * Library view — a flat, editorial index of canonical Typographic project
  * cards. Used by `/library` and `/library/[filter]`.
  *
- * The active filter is the URL; routes provide the public project read models
- * from the DB gate or the catalog fallback.
+ * The active filter is the URL; routes provide read models from the selected
+ * public project source. Deployed database mode never falls back to catalog.
  */
 import ProjectCardGrid from './ProjectCardGrid.astro';
 import {

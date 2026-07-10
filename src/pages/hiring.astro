@@ -10,7 +10,7 @@
  *   7  the ask            — resume + contact CTAs (the one resume CTA here)
  *   8  handoff            — "Continue to the full site →" → /library
  *
- * All project/resume copy reads from the gated public project source and
+ * All project/resume copy reads from the selected public project source and
  * `resume.ts` — nothing is duplicated here. Built on the lightweight `Tour`
  * layout.
  * The stepper is progressive enhancement: with JS off, every beat is stacked
@@ -45,7 +45,7 @@ const FEATURED_IDS = [
 const { projects: publicProjects, source: publicProjectSource } = await loadPublicProjectDetails();
 
 /**
- * Resolve featured projects from the gated public source. THROW on a missing
+ * Resolve featured projects from the selected public source. THROW on a missing
  * id/slug match so a drifted featured reference fails the build loudly rather
  * than rendering a silent gap.
  */

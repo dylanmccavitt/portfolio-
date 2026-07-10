@@ -3,8 +3,8 @@
  *
  * This module is the UI's view of the public DM runtime contract. It defines
  * the **answer-block** shapes the surface renders, the **stream-event** envelope
- * the client consumes, a tolerant NDJSON parser, and id resolvers against the
- * canonical `catalog.ts` / `resume.ts` data.
+ * the client consumes, a tolerant NDJSON parser, authoritative streamed
+ * project artifacts, and static `resume.ts` id resolution.
  *
  * Boundary: the server owns the agent, tools, model/provider, and the
  * `/api/dm/chat` endpoint that emits this stream. This file owns nothing
@@ -17,7 +17,7 @@
  * response body closes.
  */
 
-import { CATALOG, type Project } from '@/data/catalog';
+import type { Project } from '@/data/catalog';
 import { RESUME, type ResumeTrack } from '@/data/resume';
 import { isProjectArea } from '@/lib/projects/schema';
 export {
@@ -106,7 +106,7 @@ export interface ProjectArtifact {
 export interface ProjectsBlock {
   kind: 'projects';
   ids: string[];
-  items?: ProjectArtifact[];
+  items: ProjectArtifact[];
 }
 export interface ResumeBlock {
   kind: 'resume';
@@ -203,7 +203,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /**
  * Validate an untrusted block payload. Returns a typed {@link AnswerBlock} or
  * `null` for unknown/malformed shapes so the renderer can skip it without
- * breaking the conversation surface.
+ * breaking the conversation surface. Project blocks must carry their complete
+ * streamed artifacts; the client never rehydrates project ids from catalog.ts.
  */
 export function validateBlock(value: unknown): AnswerBlock | null {
   if (!isObject(value) || typeof value.kind !== 'string') return null;
@@ -214,7 +215,10 @@ export function validateBlock(value: unknown): AnswerBlock | null {
     case 'projects': {
       const ids = parseRequiredStringArray(value.ids);
       const items = parseOptionalProjectArtifacts(value.items);
-      return ids && items !== null ? { kind: 'projects', ids, ...(items?.length ? { items } : {}) } : null;
+      if (!ids?.length || !items?.length) return null;
+      const idsFromItems = new Set(items.map((item) => item.id));
+      if (ids.some((id) => !idsFromItems.has(id)) || items.some((item) => !ids.includes(item.id))) return null;
+      return { kind: 'projects', ids, items };
     }
     case 'resume':
       return Array.isArray(value.trackIds) &&
@@ -306,12 +310,10 @@ export function parseStreamLine(line: string): StreamEvent | null {
 }
 
 // ---------------------------------------------------------------------------
-// Id resolution — map streamed ids onto canonical catalog/resume records.
-// Unknown ids are dropped (fail-safe), never thrown, so a stale id can't break
-// the surface.
+// Id resolution — streamed project artifacts are authoritative. Résumé ids
+// still resolve against the static public résumé source.
 // ---------------------------------------------------------------------------
 
-const PROJECTS_BY_ID = new Map(CATALOG.map((p) => [p.id, p]));
 const TRACKS_BY_ID = new Map(RESUME.tracks.map((t) => [t.id, t]));
 
 function parseRequiredStringArray(value: unknown): string[] | null {
@@ -410,17 +412,6 @@ function isProjectDetailEntryArray(value: unknown): value is Project['stack'] {
   );
 }
 
-/** Resolve project ids to catalog records, dropping (and warning on) unknowns. */
-export function resolveProjects(ids: string[]): Project[] {
-  const out: Project[] = [];
-  for (const id of ids) {
-    const project = PROJECTS_BY_ID.get(id);
-    if (project) out.push(project);
-    else console.warn(`[dm] unknown project id from stream: "${id}"`);
-  }
-  return out;
-}
-
 /** Resolve résumé track ids to records, dropping (and warning on) unknowns. */
 export function resolveTracks(trackIds: string[]): ResumeTrack[] {
   const out: ResumeTrack[] = [];
@@ -432,14 +423,13 @@ export function resolveTracks(trackIds: string[]): ResumeTrack[] {
   return out;
 }
 
-/** Resolve evidence ids to canonical site records, letting streamed artifacts satisfy active DB-source ids. */
+/** Resolve evidence from streamed project artifacts plus the static résumé source. */
 export function resolveEvidence(block: EvidenceBlock): {
-  projects: Project[];
+  projects: ProjectArtifact[];
   tracks: ResumeTrack[];
 } {
-  const streamedProjectIds = new Set(block.projects?.map((project) => project.id) ?? []);
   return {
-    projects: resolveProjects((block.projectIds ?? []).filter((id) => !streamedProjectIds.has(id))),
+    projects: block.projects ?? [],
     tracks: resolveTracks(block.resumeTrackIds ?? []),
   };
 }

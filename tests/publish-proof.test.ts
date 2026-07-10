@@ -47,6 +47,8 @@ const NOW_SECONDS = String(Math.floor(NOW.getTime() / 1000));
 const ADMIN_ACTOR = 'github:dylan-proof';
 
 const TEST_CONFIG = { provider: 'openai' as const, model: 'test-model' };
+const BASELINE_PROJECT_ID = 'proj_publish_proof_baseline';
+const BASELINE_PROJECT_SLUG = 'publish-proof-baseline';
 
 const SLACK_CONFIG: SlackControlPlaneConfig = {
   signingSecret: SLACK_SIGNING_SECRET,
@@ -90,6 +92,21 @@ async function createMigratedDb(): Promise<Queryable> {
   const db = createTestDb();
   await applyMigrations(db);
   return db;
+}
+
+async function insertPublishedBaselineProject(db: Queryable): Promise<void> {
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+       details, metrics, links, media, source, published_at
+     ) VALUES (
+       $1, $2, 'Publish Proof Baseline', 'A reviewed baseline public project',
+       'AI & Developer Tools', 2026, 'published', 'Already published before this proof',
+       'Keeps the canonical public set non-empty while the hidden draft is reviewed.',
+       '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 'manual', $3
+     )`,
+    [BASELINE_PROJECT_ID, BASELINE_PROJECT_SLUG, NOW.toISOString()],
+  );
 }
 
 async function readDiscoveryFixture(path: string): Promise<DiscoveryFixture> {
@@ -266,7 +283,7 @@ function projectIdFromDraftId(draftId: string): string {
 async function projectStaticPathSlugs(db: Queryable): Promise<string[]> {
   resetPublicProjectDetailsLoadForTests();
   const { projects } = await loadPublicProjectDetails({
-    env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' },
+    env: { PUBLIC_PROJECT_SOURCE: 'database' },
     db,
   });
   return publicProjectStaticPaths(projects).map((path) => path.params.id);
@@ -327,6 +344,7 @@ function throwingModel(): MockLanguageModelV4 {
 
 test('fixture-based publish proof gate covers scan to public DM/RAG path', async () => {
   const db = await createMigratedDb();
+  await insertPublishedBaselineProject(db);
 
   const publishedFixture = await readDiscoveryFixture(PUBLISHED_FIXTURE_PATH);
   const publishedScan = await scanGithubRepositoryCandidate(db, {
@@ -384,14 +402,15 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
   assert.equal(hiddenDraft.provenance_map.sourceRevision, publishedFixture.repo.sourceRevision);
   assert.equal(hiddenDraft.provenance_map.publicPublish, false);
 
-  assert.deepEqual(await fetchPublicProjectCards(db), []);
+  assert.deepEqual((await fetchPublicProjectCards(db)).map((project) => project.id), [BASELINE_PROJECT_ID]);
   assert.equal(await fetchPublicProjectDetail(db, String(PUBLISHED_FIELDS.slug)), null);
   resetPublicProjectDetailsLoadForTests();
   const publicBeforePublish = await loadPublicProjectDetails({
-    env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' },
+    env: { PUBLIC_PROJECT_SOURCE: 'database' },
     db,
   });
-  assert.equal(publicBeforePublish.source, 'catalog');
+  assert.equal(publicBeforePublish.source, 'db');
+  assert.deepEqual(publicBeforePublish.projects.map((project) => project.id), [BASELINE_PROJECT_ID]);
   assert.ok(
     !publicBeforePublish.projects.some((project) => project.slug === PUBLISHED_FIELDS.slug),
     'hidden draft must not be visible in public project loader',
@@ -517,7 +536,7 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
   );
 
   const publicCards = await fetchPublicProjectCards(db);
-  assert.deepEqual(publicCards.map((card) => card.id), [publishedProjectId]);
+  assert.deepEqual(new Set(publicCards.map((card) => card.id)), new Set([BASELINE_PROJECT_ID, publishedProjectId]));
   const publishedDetail = await fetchPublicProjectDetail(db, publishedProjectId);
   assert.equal(publishedDetail?.id, publishedProjectId);
   assert.equal(publishedDetail?.slug, PUBLISHED_FIELDS.slug);
@@ -525,14 +544,14 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
 
   resetPublicProjectDetailsLoadForTests();
   const publicAfterPublish = await loadPublicProjectDetails({
-    env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' },
+    env: { PUBLIC_PROJECT_SOURCE: 'database' },
     db,
   });
   assert.equal(publicAfterPublish.source, 'db');
-  assert.equal(publicAfterPublish.projects[0]?.id, publishedProjectId);
+  assert.ok(publicAfterPublish.projects.some((project) => project.id === publishedProjectId));
   assert.ok(
     !publicAfterPublish.projects.some((project) => project.id === unpublishedProjectId),
-    'draft-only project rows must stay hidden from the public overlay',
+    'draft-only project rows must stay hidden from the public DB source',
   );
 
   const staticSlugsAfterPublish = await projectStaticPathSlugs(db);
@@ -553,12 +572,8 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
     'draft-only project rows must never surface in DM search',
   );
   const unpublishedSearch = await dmTools.searchProjects({ query: 'proof-sentinel-unpublished-737', limit: 5 });
-  assert.equal(unpublishedSearch.fallbackUsed, true);
-  assert.ok(unpublishedSearch.projects.length > 0, 'zero-match search should fall back to published projects');
-  assert.ok(
-    !unpublishedSearch.projects.some((project) => project.id === unpublishedProjectId),
-    'draft-only project rows must never surface in DM zero-match fallback search',
-  );
+  assert.equal(unpublishedSearch.fallbackUsed, false);
+  assert.deepEqual(unpublishedSearch.projects, [], 'zero-match search must not substitute unrelated published projects');
 
   await assert.rejects(
     () => dmTools.assertProjectIds([unpublishedProjectId]),

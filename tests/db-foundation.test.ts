@@ -26,7 +26,9 @@ import {
 import {
   filterPublicProjectDetails,
   loadPublicProjectDetails,
+  PublicProjectDataError,
   resetPublicProjectDetailsLoadForTests,
+  resolvePublicProjectSourceMode,
   shouldUsePublicProjectDb,
 } from '@/lib/public-projects';
 import {
@@ -979,25 +981,66 @@ test('DB read layer accepts canonical Loom demo media and rejects invalid media'
   assert.throws(() => projectRecordToReadModels(canonicalRecord), /invalid legacy media/);
 });
 
-test('public project DB gate falls back to catalog until explicitly enabled and populated', async () => {
+test('public project source modes keep catalog use explicit and database reads fail closed', async () => {
   assert.equal(shouldUsePublicProjectDb({}), false);
   assert.equal(shouldUsePublicProjectDb({ PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }), true);
-  assert.equal(shouldUsePublicProjectDb({ VERCEL_ENV: 'preview', DATABASE_URL: 'postgres://preview' }), true);
-  assert.equal(shouldUsePublicProjectDb({ VERCEL_ENV: 'preview' }), false);
+  assert.equal(shouldUsePublicProjectDb({ PUBLIC_PROJECT_SOURCE: 'database' }), true);
+  assert.equal(shouldUsePublicProjectDb({ DATABASE_URL: 'postgres://local' }), true);
+  assert.equal(shouldUsePublicProjectDb({ VERCEL: '1' }), false);
+  assert.equal(shouldUsePublicProjectDb({ VERCEL: '1', CI: '1' }), true);
+  assert.equal(shouldUsePublicProjectDb({ VERCEL: '1', VERCEL_REGION: 'iad1' }), true);
+  assert.equal(
+    shouldUsePublicProjectDb({ VERCEL: '1', CI: '1', PUBLIC_PROJECT_SOURCE: 'catalog_emergency' }),
+    false,
+  );
+  assert.equal(resolvePublicProjectSourceMode({ env: {} }), 'catalog_development');
+  assert.throws(
+    () => resolvePublicProjectSourceMode({ env: { PUBLIC_PROJECT_SOURCE: 'catalog' } }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'invalid_source_mode',
+  );
 
   resetPublicProjectDetailsLoadForTests();
-  const disabled = await loadPublicProjectDetails({ env: {} });
-  assert.equal(disabled.source, 'catalog');
-  assert.equal(disabled.projects.length, CATALOG.length);
+  const development = await loadPublicProjectDetails({ env: {} });
+  assert.equal(development.source, 'catalog');
+  assert.equal(development.mode, 'catalog_development');
+  assert.equal(development.projects.length, CATALOG.length);
+  assert.match(development.reason ?? '', /development catalog source/i);
 
   resetPublicProjectDetailsLoadForTests();
-  const unavailable = await loadPublicProjectDetails({ env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' } });
-  assert.equal(unavailable.source, 'catalog');
-  assert.equal(unavailable.projects.length, CATALOG.length);
-  assert.match(unavailable.reason ?? '', /Missing database connection string/);
+  await assert.rejects(
+    () => loadPublicProjectDetails({ env: { PUBLIC_PROJECT_SOURCE: 'database' } }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'missing_config',
+  );
+  await assert.rejects(
+    () => loadPublicProjectDetails({ env: { VERCEL: '1', CI: '1', VERCEL_ENV: 'preview' } }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'missing_config',
+  );
 
   const db = createTestDb();
   await applyMigrations(db);
+
+  await assert.rejects(
+    () => loadPublicProjectDetails({ env: { PUBLIC_PROJECT_SOURCE: 'database' }, db }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'empty_published_set',
+  );
+
+  let emergencyDbQueries = 0;
+  const emergencyDb: ProjectReadQueryable = {
+    async query() {
+      emergencyDbQueries += 1;
+      throw new Error('must not query the DB in explicit emergency mode');
+    },
+  };
+  resetPublicProjectDetailsLoadForTests();
+  const emergency = await loadPublicProjectDetails({
+    env: { VERCEL: '1', CI: '1', PUBLIC_PROJECT_SOURCE: 'catalog_emergency' },
+    db: emergencyDb,
+  });
+  assert.equal(emergency.source, 'catalog');
+  assert.equal(emergency.mode, 'catalog_emergency');
+  assert.equal(emergency.projects.length, CATALOG.length);
+  assert.equal(emergencyDbQueries, 0);
+
   const [publishedRecord] = buildCatalogShadowRecords(CATALOG.slice(0, 1));
   assert.ok(publishedRecord, 'expected a catalog project record');
   const published = {
@@ -1009,20 +1052,29 @@ test('public project DB gate falls back to catalog until explicitly enabled and 
   await insertProjectRecord(db, published);
 
   resetPublicProjectDetailsLoadForTests();
-  // Pre-cutover overlay: the published DB row leads and the rest of the
-  // catalog stays public; the published id shadows its catalog twin.
-  const enabled = await loadPublicProjectDetails({ env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }, db });
+  const enabled = await loadPublicProjectDetails({ env: { PUBLIC_PROJECT_SOURCE: 'database' }, db });
   assert.equal(enabled.source, 'db');
+  assert.equal(enabled.mode, 'database');
   assert.equal(enabled.projects[0]?.id, published.id);
-  assert.equal(enabled.projects.length, CATALOG.length);
-  assert.equal(new Set(enabled.projects.map((project) => project.id)).size, CATALOG.length);
-  assert.equal(filterPublicProjectDetails(enabled.projects, 'all').length, CATALOG.length);
+  assert.equal(enabled.projects.length, 1);
+  assert.equal(filterPublicProjectDetails(enabled.projects, 'all').length, 1);
+  assert.equal(enabled.projects.some((project) => project.id === 'exit-manager'), false);
 
   resetPublicProjectDetailsLoadForTests();
   const injectedDb = await loadPublicProjectDetails({ db });
   assert.equal(injectedDb.source, 'db');
   assert.equal(injectedDb.projects[0]?.id, published.id);
-  assert.equal(injectedDb.projects.length, CATALOG.length);
+  assert.equal(injectedDb.projects.length, 1);
+
+  const malformedDb: ProjectReadQueryable = {
+    async query<Row = unknown>() {
+      return [{ ...published, title: '   ' }] as unknown as Row[];
+    },
+  };
+  await assert.rejects(
+    () => loadPublicProjectDetails({ env: { PUBLIC_PROJECT_SOURCE: 'database' }, db: malformedDb }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'read_failed',
+  );
 });
 
 test('loadPublicProjectDetails retries live DB reads after a transient failure', async () => {
@@ -1048,26 +1100,23 @@ test('loadPublicProjectDetails retries live DB reads after a transient failure',
     },
   };
 
-  const env = { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' };
-  const first = await loadPublicProjectDetails({ env, db: flakyDb });
-  assert.equal(first.source, 'catalog');
-  assert.match(first.reason ?? '', /transient db error/);
-  assert.equal(first.projects.length, CATALOG.length);
+  const env = { PUBLIC_PROJECT_SOURCE: 'database' };
+  await assert.rejects(
+    () => loadPublicProjectDetails({ env, db: flakyDb }),
+    (error: unknown) => error instanceof PublicProjectDataError && error.code === 'read_failed',
+  );
 
   shouldFail = false;
   const second = await loadPublicProjectDetails({ env, db: flakyDb });
   assert.equal(second.source, 'db');
   assert.equal(second.projects[0]?.id, published.id);
-
-  resetPublicProjectDetailsLoadForTests();
-  const gateOff = await loadPublicProjectDetails({ env: {} });
-  assert.equal(gateOff.source, 'catalog');
-  assert.equal(gateOff.reason, 'Public project DB gate is disabled.');
+  assert.equal(second.projects.length, 1);
 
   resetPublicProjectDetailsLoadForTests();
   const cachedFirst = await loadPublicProjectDetails({ env: {} });
   const cachedSecond = await loadPublicProjectDetails({ env: {} });
   assert.equal(cachedFirst.source, 'catalog');
+  assert.equal(cachedFirst.mode, 'catalog_development');
   assert.equal(cachedSecond, cachedFirst);
 });
 
@@ -1136,7 +1185,7 @@ test('public route project reference resolver matches id/slug and throws on requ
   assert.equal(projectPublicMark({ id: 'agentic-trader' }), 'agentic-trader');
 });
 
-test('public project routes use the gated public project source', async () => {
+test('public project routes use the shared public project source boundary', async () => {
   const routeFiles = [
     'src/pages/library/index.astro',
     'src/pages/library/[filter].astro',

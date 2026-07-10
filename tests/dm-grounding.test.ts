@@ -57,7 +57,7 @@ test('server-rendered project prose is emitted only after the same-turn project 
 });
 
 test('valid metric and link claims require and accept same-turn structured ids', async () => {
-  const events = await run('Which project shows trading automation?', answerPlan('agentic-trader', {
+  const events = await run('Give me a deep dive into the agentic-trader project.', answerPlan('agentic-trader', {
     metricIds: ['agentic-trader:metric:0'],
     linkIds: ['agentic-trader:link:0'],
   }));
@@ -122,6 +122,77 @@ test('broad project overviews stay concise even when the model requests every lo
   assert.ok(answer.length < 700, `overview should be concise, received ${answer.length} characters`);
 });
 
+test('ordinary named-project answers use the canonical summary and stay concise', async () => {
+  const source = await createEvalProjectSource();
+  const expansiveModel = model(JSON.stringify({
+    claims: [{
+      projectId: 'agentic-trader',
+      fields: ['summary', 'tagline', 'status', 'year', 'activity', 'area', 'about', 'notes'],
+      metricIds: ['agentic-trader:metric:0'],
+      linkIds: ['agentic-trader:link:0'],
+      citationIds: [],
+    }],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me more about agentic-trader.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: expansiveModel },
+  ));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  const answer = text(events);
+
+  assert.equal(done?.facts?.responseMode, 'single-project');
+  assert.equal(done?.facts?.projects[0]?.summary, 'A scheduled, inspectable trading workflow.');
+  assert.equal(expansiveModel.doStreamCalls.length, 0);
+  assert.match(answer, /scheduled, inspectable trading workflow/i);
+  assert.match(answer, /Status: Dry-run/);
+  assert.match(answer, /scheduled review session.*15:45 ET/i);
+  assert.doesNotMatch(answer, /Each run records its proposal/);
+  assert.ok(answer.length < 420, `specific-project answer should be concise, received ${answer.length} characters`);
+});
+
+test('explicit project deep dives keep bounded long-form detail', async () => {
+  const source = await createEvalProjectSource();
+  const deepDiveModel = model(JSON.stringify({
+    claims: [{
+      projectId: 'agentic-trader',
+      fields: ['summary', 'tagline', 'status', 'year', 'activity', 'area', 'about', 'notes'],
+      metricIds: ['agentic-trader:metric:0'],
+      linkIds: ['agentic-trader:link:0'],
+      citationIds: [],
+    }],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Give me a deep dive into agentic-trader.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: deepDiveModel },
+  ));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  const answer = text(events);
+
+  assert.equal(done?.facts?.responseMode, 'deep-dive');
+  assert.equal(deepDiveModel.doStreamCalls.length, 1);
+  assert.match(answer, /Each run records its proposal/);
+  assert.ok(answer.length < 900, `deep-dive answer exceeded its bounded detail budget at ${answer.length} characters`);
+});
+
+test('zero-match project searches return no unrelated project cards', async () => {
+  const source = await createEvalProjectSource();
+  const unusedModel = model(answerPlan('agentic-trader'));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Which project covers quantum cryptography research?' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: unusedModel },
+  ));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+
+  assert.equal(done?.facts?.status, 'empty');
+  assert.deepEqual(done?.facts?.projects, []);
+  assert.equal(unusedModel.doStreamCalls.length, 0);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+  assert.match(text(events), /did not find a matching published project/i);
+});
+
 for (const qualifiedPrompt of [
   'Show me Dylan’s projects that use TypeScript',
   'What are Dylan’s projects built with?',
@@ -139,7 +210,8 @@ for (const qualifiedPrompt of [
     const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
 
     assert.notEqual(done?.facts?.responseMode, 'representative-overview');
-    assert.equal(responseModel.doStreamCalls.length, 1);
+    const expectedModelCalls = qualifiedPrompt === 'What are Dylan’s projects built with?' ? 0 : 1;
+    assert.equal(responseModel.doStreamCalls.length, expectedModelCalls);
     if (/contact/i.test(qualifiedPrompt)) {
       assert.ok(events.some((event) => event.type === 'block' && event.block.kind === 'contact'));
     }

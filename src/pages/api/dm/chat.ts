@@ -11,6 +11,7 @@ import {
   type DMRuntimeEnv,
 } from '@/lib/dm/runtime';
 import type { DMChatContext, DMChatRequest } from '@/lib/dm/contract';
+import { resolvePublicProjectSourceMode, type PublicProjectSourceMode } from '@/lib/public-projects';
 import {
   FIT_CHECK_INPUT_LIMIT,
   FIT_CHECK_MIN_CHARS,
@@ -32,10 +33,19 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
   return async ({ request }) => {
     let config: DMRuntimeConfig;
     let db: DMRuntimeDeps['db'];
+    let projectSourceMode: PublicProjectSourceMode;
 
     try {
       config = deps.config ?? readDMRuntimeConfig(deps.env);
-      db = deps.db ?? projectReadDb((deps.createDb ?? createDbClient)(getDatabaseUrl(deps.env)));
+      projectSourceMode = resolvePublicProjectSourceMode({
+        env: deps.env,
+        ...(deps.db ? { db: deps.db } : {}),
+      });
+      db = deps.db ?? (
+        projectSourceMode === 'catalog_emergency'
+          ? unavailableEmergencyDb()
+          : projectReadDb((deps.createDb ?? createDbClient)(getDatabaseUrl(deps.env)))
+      );
     } catch (error) {
       if (error instanceof DMRuntimeConfigError) {
         console.error('[dm] missing runtime config', { missing: error.missing });
@@ -56,6 +66,7 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
           'Cache-Control': 'no-store',
           'Content-Type': 'application/x-ndjson; charset=utf-8',
           'X-Content-Type-Options': 'nosniff',
+          'X-Public-Project-Source': projectSourceMode,
         },
       });
     } catch (error) {
@@ -78,6 +89,14 @@ function projectReadDb(client: DbClient): ProjectReadQueryable {
   return {
     query<Row = unknown>(sql: string, params?: unknown[]) {
       return client.query(sql, params) as Promise<Row[]>;
+    },
+  };
+}
+
+function unavailableEmergencyDb(): ProjectReadQueryable {
+  return {
+    async query() {
+      throw new Error('Database access is disabled while catalog_emergency is active.');
     },
   };
 }

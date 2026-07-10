@@ -1,6 +1,6 @@
 ---
 /**
- * Project detail view — one static page per catalog project, rebuilt as a
+ * Project detail view — one page per selected public-source project, rebuilt as a
  * centered **Editorial** case study (#87): a minimal monogram/back bar, a large
  * recruiter-readable hero, a full-width lead screenshot, a comfortable reading
  * column (About / Metrics / Highlights / Details), a responsive screenshot
@@ -9,7 +9,8 @@
  *
  * Static-first: the gallery lightbox is pure CSS `:target`, and the only client
  * island is the deliberate contextual DM popup. Routes and SEO are preserved —
- * one prerendered page per `CATALOG` entry, meta via `projectMeta(p)`. Tokens,
+ * one prerendered page per offline/emergency catalog entry or a live DB-backed
+ * page in database mode, with meta via `projectMeta(p)`. Tokens,
  * the two web fonts, and the global `.badge.<kind>` classes come from
  * `player.css` (imported by the Editorial layout).
  */
