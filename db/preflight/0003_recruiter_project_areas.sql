@@ -38,7 +38,8 @@ project_overrides(override_order, project_ref, new_area) AS (
     (14, 'harness-arena', 'Side Projects & Experiments'),
     (15, 'homeserver', 'Side Projects & Experiments'),
     (16, 'work-orders', 'Coursework'),
-    (17, 'epl-ml', 'Coursework')
+    (17, 'epl-ml', 'Coursework'),
+    (18, 'omp-studio', 'AI & Developer Tools')
 ),
 prospective_projects AS (
   SELECT
