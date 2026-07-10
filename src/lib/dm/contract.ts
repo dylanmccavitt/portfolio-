@@ -5,7 +5,7 @@ export const AGENT_NAME = 'DM';
 
 export type AnswerBlock =
   | { kind: 'text'; text: string }
-  | { kind: 'projects'; ids: string[]; items?: ProjectSummary[] }
+  | { kind: 'projects'; ids: string[]; items: ProjectSummary[] }
   | { kind: 'resume'; trackIds: string[] }
   | { kind: 'evidence'; projectIds?: string[]; projects?: ProjectSummary[]; resumeTrackIds?: string[]; ragSources?: PublicRagCitation[] }
   | { kind: 'contact'; email?: string; github?: string; resume?: string; location?: string; status?: string }
@@ -46,6 +46,7 @@ export interface ProjectFact {
   year: number;
   activity: string;
   tagline: string;
+  summary: string;
   about: string[];
   notes: string[];
   metrics: ProjectFactMetric[];
@@ -56,7 +57,7 @@ export interface ProjectFact {
 export interface ProjectFactPacket {
   operation: 'none' | 'searchProjects' | 'filterProjects' | 'rankProjects';
   status: ProjectFactPacketStatus;
-  responseMode?: 'representative-overview';
+  responseMode?: 'representative-overview' | 'single-project' | 'deep-dive';
   query: string;
   fallbackUsed: boolean;
   projects: ProjectFact[];
@@ -106,6 +107,7 @@ export interface ProjectSummary {
   year: number;
   activity: string;
   line: string;
+  summary?: string;
   href: string;
   wip: boolean;
   money: boolean;

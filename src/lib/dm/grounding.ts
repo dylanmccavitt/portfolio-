@@ -2,10 +2,11 @@ import { z } from 'zod';
 import type { AnswerBlock, DMChatRequest, ProjectFact, ProjectFactPacket, ProjectSummary, PublicRagCitation } from './contract';
 import type { ProjectToolResultStatus, PublicDMDataTools } from './data-tools';
 
-const ProjectFactFieldSchema = z.enum(['tagline', 'status', 'year', 'activity', 'area', 'about', 'notes']);
+const ProjectFactFieldSchema = z.enum(['summary', 'tagline', 'status', 'year', 'activity', 'area', 'about', 'notes']);
+type ProjectFactField = z.infer<typeof ProjectFactFieldSchema>;
 const ProjectClaimSchema = z.strictObject({
   projectId: z.string().min(1),
-  fields: z.array(ProjectFactFieldSchema).min(1).max(7),
+  fields: z.array(ProjectFactFieldSchema).min(1).max(8),
   metricIds: z.array(z.string()).max(8).default([]),
   linkIds: z.array(z.string()).max(8).default([]),
   citationIds: z.array(z.string()).max(8).default([]),
@@ -15,6 +16,10 @@ const ProjectDraftSchema = z.strictObject({
 });
 
 export type ProjectDraft = z.infer<typeof ProjectDraftSchema>;
+
+export function isProjectDeepDiveRequest(message: string): boolean {
+  return /\b(?:deep[ -]dive|details?|technical|implementation|architecture|sources?|evidence|citations?)\b|\bhow\s+(?:it|this|the project)\s+works\b/i.test(message);
+}
 
 export function requestNeedsProjectFacts(request: DMChatRequest): boolean {
   if (request.context?.projectIds?.length || request.context?.fitCheck) return true;
@@ -45,6 +50,7 @@ export async function retrieveProjectFactPacket(
   const query = contextualProjectQuery(request);
   const allProjects = await tools.allPublishedProjects();
   const namedProjectIds = resolveNamedProjectIds(request, allProjects);
+  const namedProjectRequest = Boolean(request.context?.projectIds?.length || namedProjectIds.length);
   let operation: ProjectFactPacket['operation'];
   let responseMode: ProjectFactPacket['responseMode'];
   let result: { projects: ProjectSummary[]; resultStatus: ProjectToolResultStatus; fallbackUsed?: boolean };
@@ -76,6 +82,11 @@ export async function retrieveProjectFactPacket(
     }
   }
 
+  if (!responseMode) {
+    if (isProjectDeepDiveRequest(request.message)) responseMode = 'deep-dive';
+    else if (namedProjectRequest && result.projects.length === 1) responseMode = 'single-project';
+  }
+
   return {
     operation,
     status: result.resultStatus,
@@ -100,6 +111,17 @@ export function deterministicProjectOverview(packet: ProjectFactPacket): string 
   ].join('\n\n');
 }
 
+export function deterministicSingleProjectAnswer(packet: ProjectFactPacket): string | null {
+  if (packet.responseMode !== 'single-project' || packet.projects.length !== 1) return null;
+  const project = packet.projects[0];
+  const metric = project.metrics[0];
+  return [
+    `${project.title}: ${compactSentence(project.summary)}`,
+    `Status: ${project.status[1] || project.status[0]}.`,
+    metric ? `Proof point: ${metric.label} — ${metric.value}.` : '',
+  ].filter(Boolean).join('\n\n');
+}
+
 export function withPacketCitations(packet: ProjectFactPacket, citations: PublicRagCitation[]): ProjectFactPacket {
   const allowed = new Set(packet.projects.map((project) => project.id));
   return { ...packet, citations: citations.filter((citation) => allowed.has(citation.projectId)) };
@@ -109,12 +131,9 @@ export function projectPacketBlocks(packet: ProjectFactPacket): AnswerBlock[] {
   if (packet.projects.length === 0) return [];
   const items = packet.projects.map(factSummary);
   const ids = items.map((project) => project.id);
-  const blocks: AnswerBlock[] = [
-    { kind: 'projects', ids, items },
-    { kind: 'evidence', projectIds: ids, projects: items },
-  ];
+  const blocks: AnswerBlock[] = [{ kind: 'projects', ids, items }];
   if (packet.citations.length > 0) {
-    blocks.push({ kind: 'evidence', projectIds: ids, ragSources: packet.citations });
+    blocks.push({ kind: 'evidence', ragSources: packet.citations });
   }
   return blocks;
 }
@@ -122,8 +141,11 @@ export function projectPacketBlocks(packet: ProjectFactPacket): AnswerBlock[] {
 export function projectPacketPrompt(packet: ProjectFactPacket): string {
   return [
     'For project questions, return exactly one JSON answer plan and no markdown or prose fields.',
-    'Shape: {"claims":[{"projectId":"...","fields":["tagline","status"],"metricIds":[],"linkIds":[],"citationIds":[]}]}.',
-    'Allowed fields: tagline, status, year, activity, area, about, notes.',
+    'Shape: {"claims":[{"projectId":"...","fields":["summary","status"],"metricIds":[],"linkIds":[],"citationIds":[]}]}.',
+    'Allowed fields: summary, tagline, status, year, activity, area, about, notes.',
+    'Ordinary answers: select at most three projects, three short fields per project, and one metric. Prefer summary and status.',
+    'Deep dives: select at most two projects, four fields, two metrics, one link, and two citations per project.',
+    'Use about or notes only for an explicit deep-dive, details, implementation, architecture, source, evidence, or citation request.',
     'Select only ids and fields from PROJECT_FACT_PACKET. Every metric, link, and citation id must belong to that claim project.',
     'The server will render all prose from the selected facts. Do not add text, explanations, names, numbers, URLs, or facts outside this shape.',
     `PROJECT_FACT_PACKET=${JSON.stringify(packet)}`,
@@ -161,7 +183,36 @@ export function validateProjectDraft(
       return { ok: false, reason: 'citation reference escaped claim project' };
     }
   }
-  return { ok: true, draft };
+  return { ok: true, draft: budgetProjectDraft(draft, packet) };
+}
+
+function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {
+  const deepDive = packet.responseMode === 'deep-dive';
+  const projects = new Map(packet.projects.map((project) => [project.id, project]));
+  return {
+    claims: draft.claims.slice(0, deepDive ? 2 : 3).map((claim) => {
+      const project = projects.get(claim.projectId);
+      const selected = uniqueProjectFields(claim.fields);
+      const shortFields = selected.filter((field) => field !== 'about' && field !== 'notes');
+      const fields = uniqueProjectFields(deepDive
+        ? ['summary', ...selected.filter((field) => field === 'about' || field === 'notes'), ...shortFields]
+        : ['summary', ...shortFields]
+      ).slice(0, deepDive ? 4 : 3);
+      return {
+        projectId: claim.projectId,
+        fields,
+        metricIds: claim.metricIds.filter((id) => project?.metrics.some((metric) => metric.id === id)).slice(0, deepDive ? 2 : 1),
+        linkIds: deepDive
+          ? claim.linkIds.filter((id) => project?.links.some((link) => link.id === id)).slice(0, 1)
+          : [],
+        citationIds: deepDive ? claim.citationIds.slice(0, 2) : [],
+      };
+    }),
+  };
+}
+
+function uniqueProjectFields(fields: ProjectFactField[]): ProjectFactField[] {
+  return [...new Set(fields)];
 }
 
 export function renderProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): string {
@@ -183,7 +234,7 @@ export function renderProjectDraft(draft: ProjectDraft, packet: ProjectFactPacke
     }
     for (const id of claim.citationIds) {
       const citation = citations.get(id);
-      if (citation) facts.push(`Approved source${citation.filename ? ` ${citation.filename}` : ''}: ${sentence(citation.text)}`);
+      if (citation) facts.push(`Approved source${citation.filename ? ` ${citation.filename}` : ''}: ${compactSentence(citation.text, 320)}`);
     }
     return [`${project.title}: ${facts.join(' ')}`];
   });
@@ -195,10 +246,12 @@ export function renderProjectDraft(draft: ProjectDraft, packet: ProjectFactPacke
   return [disclosure, ...paragraphs].filter(Boolean).join('\n\n');
 }
 
-function renderProjectField(project: ProjectFact, field: z.infer<typeof ProjectFactFieldSchema>): string[] {
+function renderProjectField(project: ProjectFact, field: ProjectFactField): string[] {
   switch (field) {
+    case 'summary':
+      return [compactSentence(project.summary)];
     case 'tagline':
-      return [sentence(project.tagline)];
+      return [compactSentence(project.tagline)];
     case 'status':
       return [`Status: ${project.status[1] || project.status[0]}.`];
     case 'year':
@@ -208,15 +261,23 @@ function renderProjectField(project: ProjectFact, field: z.infer<typeof ProjectF
     case 'area':
       return [`Area: ${project.area}.`];
     case 'about':
-      return project.about.map(sentence);
+      return project.about.slice(0, 2).map((value) => compactSentence(value));
     case 'notes':
-      return project.notes.map(sentence);
+      return project.notes.slice(0, 1).map((value) => compactSentence(value, 220));
   }
 }
 
 function sentence(value: string): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
+}
+
+function compactSentence(value: string, maxLength = 280): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return sentence(normalized);
+  const clipped = normalized.slice(0, maxLength - 1);
+  const boundary = clipped.lastIndexOf(' ');
+  return `${clipped.slice(0, boundary > maxLength / 2 ? boundary : clipped.length).trimEnd()}…`;
 }
 
 export function deterministicProjectFallback(packet: ProjectFactPacket): string {
@@ -293,6 +354,7 @@ function projectFact(project: ProjectSummary): ProjectFact {
     year: project.year,
     activity: project.activity,
     tagline: project.line,
+    summary: project.summary ?? project.line,
     about: project.about,
     notes: project.notes,
     metrics: project.metrics.map((metric, index) => {
@@ -320,6 +382,7 @@ function factSummary(project: ProjectFact): ProjectSummary {
     year: project.year,
     activity: project.activity,
     line: project.tagline,
+    summary: project.summary,
     href: project.href,
     wip: project.status[0] === 'wip',
     money: false,

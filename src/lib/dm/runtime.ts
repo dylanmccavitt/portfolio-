@@ -3,6 +3,7 @@ import { openai } from '@ai-sdk/openai';
 import { isStepCount, streamText, tool, type LanguageModel, type ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ProjectReadQueryable } from '@/lib/db/project-reads';
+import { loadPublicProjectDetails, type PublicProjectEnv } from '@/lib/public-projects';
 import {
   createPublicRagSearchConfig,
   publicRagSearch,
@@ -11,10 +12,12 @@ import {
 } from '@/lib/rag/retrieval';
 import { createPublicDMDataTools, DMToolError, type PublishedProjectLoader, type PublicDMDataTools } from './data-tools';
 import { createDMMetricsRecorder, shouldRecordDMMetrics } from './metrics';
-import { AGENT_NAME, type AnswerBlock, type DMChatRequest, type DMStreamEvent, type ProjectFactPacket, type ProjectSummary, type PublicRagCitation, type ToolTraceItem, type ToolTraceMetadata } from './contract';
+import { AGENT_NAME, type AnswerBlock, type DMChatRequest, type DMStreamEvent, type ProjectFactPacket, type PublicRagCitation, type ToolTraceItem, type ToolTraceMetadata } from './contract';
 import {
   deterministicProjectOverview,
   deterministicProjectFallback,
+  deterministicSingleProjectAnswer,
+  isProjectDeepDiveRequest,
   projectPacketBlocks,
   projectPacketPrompt,
   renderProjectDraft,
@@ -28,13 +31,11 @@ export interface DMRuntimeConfig {
   model: string;
 }
 
-export interface DMRuntimeEnv {
+export type DMRuntimeEnv = PublicProjectEnv & {
   DM_MODEL?: string;
   OPENAI_API_KEY?: string;
   AI_GATEWAY_API_KEY?: string;
-  DATABASE_URL?: string;
-  POSTGRES_URL?: string;
-}
+};
 
 export interface DMRuntimeDeps {
   db: ProjectReadQueryable;
@@ -96,7 +97,9 @@ export function createDMChatStream(
   deps: DMRuntimeDeps,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
-  const tools = createPublicDMDataTools(deps.db, { loadProjects: deps.projectLoader });
+  const projectLoader = deps.projectLoader ?? (() =>
+    loadPublicProjectDetails({ db: deps.db, env: deps.env }).then(({ projects }) => projects));
+  const tools = createPublicDMDataTools(deps.db, { loadProjects: projectLoader });
   const model = deps.model ?? createDMModel(config);
   const metrics = createDMMetricsRecorder({ enabled: shouldRecordDMMetrics() });
 
@@ -122,12 +125,8 @@ export function createDMChatStream(
           return;
         }
 
-        const ragConfig = await createPublicRagSearchConfig(deps.db).catch((error: unknown) => {
-          console.error('[dm] rag setup failure', safeLogError(error));
-          return null;
-        });
         let factPacket = await retrieveProjectFactPacket(normalizedRequest, tools);
-        factPacket = await addRequestedRagCitations(factPacket, normalizedRequest, ragConfig, deps);
+        factPacket = await addRequestedRagCitations(factPacket, normalizedRequest, deps);
 
         const system = await buildSystemPrompt(tools, factPacket).catch((error: unknown) => {
           console.warn('[dm] system prompt digest failed, using minimal prompt', safeLogError(error));
@@ -200,6 +199,20 @@ export function createDMChatStream(
           return;
         }
 
+        const singleProjectAnswer = deterministicSingleProjectAnswer(factPacket);
+        if (singleProjectAnswer) {
+          emit({ type: 'text-delta', delta: singleProjectAnswer });
+          answer.unshift({ kind: 'text', text: singleProjectAnswer });
+          const supplementalBlocks = await deterministicBlocks(normalizedRequest, tools, answer);
+          for (const block of supplementalBlocks) {
+            answer.push(block);
+            emit({ type: 'block', index: blockIndex, block });
+            blockIndex += 1;
+          }
+          emit({ type: 'done', answer, trace: trace(traceItems), facts: factPacket });
+          return;
+        }
+
         const result = streamText({
           model,
           system,
@@ -219,7 +232,7 @@ export function createDMChatStream(
             traceItems.push(item);
             emit({ type: 'tool', name: item.tool, summary: item.label });
           } else if (part.type === 'tool-result') {
-            const blocks = blocksFromToolResult(part.output, part.toolName);
+            const blocks = blocksFromToolResult(part.output);
             for (const block of blocks) {
               answer.push(block);
               emit({ type: 'block', index: blockIndex, block });
@@ -303,13 +316,17 @@ function aiTools(tools: PublicDMDataTools): ToolSet {
 async function addRequestedRagCitations(
   packet: ProjectFactPacket,
   request: DMChatRequest,
-  ragConfig: PublicRagSearchConfig | null,
   deps: DMRuntimeDeps,
 ): Promise<ProjectFactPacket> {
-  if (packet.operation === 'none' || packet.projects.length === 0 || !ragConfig) return packet;
-  if (!/\b(source|sources|evidence|citation|citations|deep dive|details)\b/i.test(request.message)) return packet;
+  if (packet.operation === 'none' || packet.projects.length === 0) return packet;
+  if (!isProjectDeepDiveRequest(request.message)) return packet;
   const apiKey = deps.env?.OPENAI_API_KEY?.trim() ?? process.env.OPENAI_API_KEY?.trim();
   if (!deps.ragSearch && !apiKey) return packet;
+  const ragConfig = await createPublicRagSearchConfig(deps.db).catch((error: unknown) => {
+    console.warn('[dm] rag setup failure', safeLogError(error));
+    return null;
+  });
+  if (!ragConfig) return packet;
   const searchRag = deps.ragSearch ?? publicRagSearch;
   try {
     const { citations } = await searchRag(
@@ -383,7 +400,6 @@ async function deterministicBlocks(
   if (!hasResume && (request.context?.resumeTrackIds?.length || matchesAny(normalized, ['resume', 'experience', 'background', 'education', 'career']))) {
     const trackIds = request.context?.resumeTrackIds ?? ['now', 'kroll', 'stevens', 'bella-era'];
     blocks.push({ kind: 'resume', trackIds });
-    blocks.push({ kind: 'evidence', resumeTrackIds: trackIds });
   }
 
   if (!hasContact && matchesAny(normalized, ['contact', 'email', 'reach', 'hire', 'available', 'opportunities'])) {
@@ -489,39 +505,16 @@ const PRIVATE_DATA_REQUEST_PATTERNS = [
   /\bsecret\s+(?:projects?|plans?|roadmaps?|notes?|records?|drafts?)\b/,
 ];
 
-function blocksFromToolResult(output: unknown, toolName?: string): AnswerBlock[] {
+function blocksFromToolResult(output: unknown): AnswerBlock[] {
   if (!isRecord(output)) return [];
   if (output.ok === false) return [];
   const blocks: AnswerBlock[] = [];
-  const projectItems = Array.isArray(output.projects) ? output.projects.filter(isProjectSummary) : [];
-  const projects = projectItems.map((project) => project.id);
-  if (projects.length > 0) {
-    blocks.push({ kind: 'projects', ids: projects, items: projectItems });
-    blocks.push({ kind: 'evidence', projectIds: projects, projects: projectItems });
-  }
   if (Array.isArray(output.tracks)) {
     const trackIds = output.tracks.filter(isTrackLike).map((track) => track.id);
-    if (trackIds.length > 0) blocks.push({ kind: 'resume', trackIds }, { kind: 'evidence', resumeTrackIds: trackIds });
+    if (trackIds.length > 0) blocks.push({ kind: 'resume', trackIds });
   }
   if (output.kind === 'contact') blocks.push(toAnswerContact(output));
-  if (toolName === 'searchSources' && Array.isArray(output.citations)) {
-    const citations = output.citations.filter(isRagCitation);
-    if (citations.length > 0) {
-      const projectIds = [...new Set(citations.map((citation) => citation.projectId))];
-      blocks.push({ kind: 'evidence', projectIds, ragSources: citations });
-    }
-  }
   return blocks;
-}
-
-function isRagCitation(value: unknown): value is { ragSourceId: string; projectId: string; fileId: string; text: string } {
-  return (
-    isRecord(value) &&
-    typeof value.ragSourceId === 'string' &&
-    typeof value.projectId === 'string' &&
-    typeof value.fileId === 'string' &&
-    typeof value.text === 'string'
-  );
 }
 
 function toAnswerContact(value: unknown): AnswerBlock {
@@ -574,18 +567,10 @@ function traceItem(toolName: string, label: string): ToolTraceItem {
 
 function toolSummary(toolName: string): string {
   switch (toolName) {
-    case 'searchProjects':
-      return 'Searched published project records.';
-    case 'filterProjects':
-      return 'Filtered published project records.';
-    case 'rankProjects':
-      return 'Ranked published project records.';
     case 'readResume':
       return 'Read static resume data.';
     case 'getContact':
       return 'Read public contact data.';
-    case 'searchSources':
-      return 'Searched approved public RAG sources.';
     default:
       return 'Used a public DM data tool.';
   }
@@ -595,16 +580,6 @@ function textDelta(part: { text?: unknown; delta?: unknown }): string {
   if (typeof part.text === 'string') return part.text;
   if (typeof part.delta === 'string') return part.delta;
   return '';
-}
-
-function isProjectSummary(value: unknown): value is ProjectSummary {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.title === 'string' &&
-    typeof value.href === 'string' &&
-    Array.isArray(value.status)
-  );
 }
 
 function isTrackLike(value: unknown): value is { id: string } {

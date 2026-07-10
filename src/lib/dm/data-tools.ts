@@ -1,6 +1,6 @@
 import { RESUME, getResumeTrackById, type ResumeTrack } from '@/data/resume';
 import type { ProjectDetailReadModel, ProjectReadQueryable } from '@/lib/db/project-reads';
-import { loadPublicProjectDetails } from '@/lib/public-projects';
+import { loadPublicProjectDetails, PublicProjectDataError } from '@/lib/public-projects';
 import type { ContactBlock, ProjectSummary, ResumeTrackSummary } from './contract';
 
 export class DMToolError extends Error {
@@ -89,6 +89,7 @@ export function createPublicDMDataTools(
       projectsPromise = null;
       throw new DMToolError('public_data_unavailable', 'Failed to read active public project records.', {
         cause: error instanceof Error ? error.name : typeof error,
+        ...(error instanceof PublicProjectDataError ? { sourceCode: error.code } : {}),
       });
     });
     return projectsPromise;
@@ -135,16 +136,14 @@ export function createPublicDMDataTools(
         .map((project) => ({ project, score: scoreProject(project, tokenSets) }))
         .sort((a, b) => b.score - a.score || a.project.id.localeCompare(b.project.id));
       const matched = scored.filter((item) => item.score > 0);
-      const fallbackUsed = matched.length === 0;
-      const source = fallbackUsed ? scored : matched;
-      const ranked = source
+      const ranked = matched
         .slice(0, clampLimit(input.limit, 4))
         .map(({ project }) => summarizeProject(project));
-      const resultStatus = projectResultStatus(ranked.length, source.length, fallbackUsed);
+      const resultStatus = projectResultStatus(ranked.length, matched.length);
       return {
         query,
         projects: ranked,
-        fallbackUsed,
+        fallbackUsed: false,
         resultStatus,
         message: projectResultMessage('searchProjects', resultStatus, query),
       };
@@ -253,6 +252,7 @@ function summarizeProject(project: ProjectDetailReadModel): ProjectSummary {
     year: project.year,
     activity: project.activity,
     line: project.line,
+    summary: project.summary,
     href: project.dmArtifact.href,
     wip: project.wip,
     money: project.money,

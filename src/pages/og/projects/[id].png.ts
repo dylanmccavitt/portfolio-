@@ -1,6 +1,6 @@
 /**
  * Per-project OG image endpoint (#29). Static output follows the public project
- * source selected by the DB gate.
+ * source selected by the public-project source boundary.
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
 import { loadPublicProjectDetails } from '@/lib/public-projects';

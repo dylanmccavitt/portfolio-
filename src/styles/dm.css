@@ -576,6 +576,7 @@
   line-height: 1.62;
   color: var(--pl-dim);
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 .dm-canvas {
   display: flex;

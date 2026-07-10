@@ -14,7 +14,6 @@ import {
   parseStreamLine,
   resolveContact,
   resolveEvidence,
-  resolveProjects,
   resolveTracks,
   sanitizeJobDescriptionForFitCheck,
   type AnswerBlock,
@@ -26,7 +25,7 @@ import {
 import type { Project } from '@/data/catalog';
 import type { ResumeTrack } from '@/data/resume';
 
-type RenderProject = Project | ProjectArtifact;
+type RenderProject = ProjectArtifact;
 type EvidenceFact = [string, string] | { value: string; label: string };
 
 // ---------------------------------------------------------------------------
@@ -204,11 +203,7 @@ class Turn {
         break;
       }
       case 'projects': {
-        const streamedProjectIds = new Set(block.items?.map((item) => item.id) ?? []);
-        const projects = mergeProjectArtifacts(
-          block.items,
-          resolveProjects(block.ids.filter((id) => !streamedProjectIds.has(id))),
-        );
+        const projects = block.items;
         if (!projects.length) break;
         const wrap = make('div', { class: 'dm-projs' });
         for (const p of projects) {
@@ -256,7 +251,7 @@ class Turn {
       }
       case 'evidence': {
         const resolved = resolveEvidence(block);
-        const projects = mergeProjectArtifacts(block.projects, resolved.projects);
+        const projects = resolved.projects;
         const tracks = resolved.tracks;
         const ragSources = (block.ragSources ?? []).filter((source) => typeof source.text === 'string' && source.text.trim().length);
         if (!projects.length && !tracks.length && !ragSources.length) break;
@@ -358,22 +353,15 @@ class Turn {
   }
 
   private ragSourceEvidence(source: RagSourceEvidence): HTMLElement {
-    const facts: [string, string][] = [
-      [source.ragSourceId, 'source id'],
-      [source.projectId, 'project id'],
-    ];
-    if (source.score !== undefined) facts.push([source.score.toFixed(2), 'score']);
-
     const text = source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
     return make('article', { class: 'dm-evidence-item' }, [
       make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
       make('span', { class: 'dm-evidence-top' }, [
-        make('span', { class: 'dm-evidence-type', text: 'approved source' }),
-        make('span', { class: 'badge done', text: 'RAG' }),
+        make('span', { class: 'dm-evidence-type', text: 'public source' }),
+        make('span', { class: 'badge done', text: 'Cited' }),
       ]),
-      make('h3', { class: 'dm-evidence-title', text: source.filename ?? source.ragSourceId }),
+      make('h3', { class: 'dm-evidence-title', text: source.filename ?? 'Published project source' }),
       make('p', { class: 'dm-evidence-line', text }),
-      this.evidenceFacts(facts),
     ]);
   }
 
@@ -684,16 +672,8 @@ function initRoot(root: HTMLElement): void {
   });
 }
 
-function mergeProjectArtifacts(items: ProjectArtifact[] | undefined, fallback: Project[]): RenderProject[] {
-  if (!items?.length) return fallback;
-  const byId = new Map<string, RenderProject>();
-  for (const project of fallback) byId.set(project.id, project);
-  for (const item of items) byId.set(item.id, item);
-  return [...byId.values()];
-}
-
 function projectHref(project: RenderProject): string {
-  return 'href' in project ? project.href : `/projects/${project.id}`;
+  return project.href;
 }
 
 function projectHue(project: RenderProject): string {

@@ -83,6 +83,7 @@ test('CLI judge prompt carries the rubric and the payload', () => {
         year: 2026,
         activity: 'Published from the database',
         tagline: 'A durable agent workflow runtime.',
+        summary: 'Coordinates tracked delivery work through a reviewed public workflow.',
         about: ['Coordinates tracked delivery work.'],
         notes: [],
         metrics: [{ id: 'loom:metric:0', projectId: 'loom', value: '8', label: 'workflow stages' }],

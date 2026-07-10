@@ -125,14 +125,15 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
     },
   },
   {
-    name: 'grounding: unmatched topic discloses fact-packet fallback records',
+    name: 'grounding: unmatched topic returns no unrelated project records',
     prompt: 'Which project covers quantum cryptography research?',
     modelText: 'unused by the structured project answer plan',
     expect(events) {
       const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
-      if (done?.facts?.status !== 'fallback') return `expected fallback fact packet, got ${done?.facts?.status ?? 'none'}`;
+      if (done?.facts?.status !== 'empty') return `expected empty fact packet, got ${done?.facts?.status ?? 'none'}`;
+      if (done.facts.projects.length !== 0) return 'unmatched topic unexpectedly returned project records';
       const text = answerText(events);
-      if (!text.includes('did not find an exact published match')) return 'fallback disclosure was missing';
+      if (!text.includes('did not find a matching published project')) return 'no-match disclosure was missing';
       return expectProjectNamesBackedByBlocks(events);
     },
   },

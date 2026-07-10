@@ -1,11 +1,12 @@
 /**
- * Project catalog — the single source of truth for portfolio project content.
+ * Legacy project catalog — migration/parity data plus the offline-development
+ * and explicit operator-emergency project source.
  *
  * Decision log: lingoloop is removed from the portfolio entirely (2026-06-10),
  * so this catalog ships 13 projects.
  *
- * Copy (about, notes, metrics, captions, hues, and progress metadata) is kept
- * here so static pages and DM tools read the same facts.
+ * Deployed database mode never overlays or falls back to this file. Public DB
+ * rows are authoritative there and fail closed when unavailable.
  *
  * Link integrity (#30, 2026-06-10): every link points at a live destination.
  * Seven projects originally linked the bare GitHub profile as a placeholder.

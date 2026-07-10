@@ -1,24 +1,32 @@
 import { CATALOG, type PlaylistId } from '@/data/catalog';
 import { buildCatalogShadowRecords } from './db/catalog-shadow';
-import { createDbClient, getDatabaseUrl, type DatabaseEnv, type DbClient } from './db/client';
+import { createDbClient, getDatabaseUrl, type DbClient } from './db/client';
 import {
   fetchPublicProjectDetails,
   projectRecordToReadModels,
   type ProjectDetailReadModel,
   type ProjectReadQueryable,
 } from './db/project-reads';
+import {
+  hasPublicProjectDatabaseUrl,
+  PublicProjectDataError,
+  resolvePublicProjectSourceModeFromEnv,
+  type PublicProjectEnv,
+  type PublicProjectSourceMode,
+} from './public-project-source-mode';
 
-const PUBLIC_PROJECT_DB_FLAGS = ['PUBLIC_PROJECT_PAGES_FROM_DB', 'PORTFOLIO_PUBLIC_PROJECTS_FROM_DB'] as const;
-const DATABASE_ENV_KEYS = ['DATABASE_URL', 'POSTGRES_URL', 'PORTFOLIO_DATABASE_URL', 'PORTFOLIO_POSTGRES_URL'] as const;
-const TRUTHY_ENV_VALUES: Record<string, true> = { '1': true, true: true, yes: true, on: true };
-
-type PublicProjectFlag = (typeof PUBLIC_PROJECT_DB_FLAGS)[number];
-export type PublicProjectEnv = DatabaseEnv & Partial<Record<PublicProjectFlag, string>> & { VERCEL_ENV?: string };
+export { PublicProjectDataError } from './public-project-source-mode';
+export type {
+  PublicProjectDataErrorCode,
+  PublicProjectEnv,
+  PublicProjectSourceMode,
+} from './public-project-source-mode';
 
 export type PublicProjectSource = 'catalog' | 'db';
 
 export interface PublicProjectLoadResult {
   source: PublicProjectSource;
+  mode: PublicProjectSourceMode;
   projects: ProjectDetailReadModel[];
   reason?: string;
 }
@@ -29,44 +37,16 @@ export interface PublicProjectLoadOptions {
 }
 
 export function shouldUsePublicProjectDb(env: PublicProjectEnv = process.env): boolean {
-  if (PUBLIC_PROJECT_DB_FLAGS.some((key) => Object.hasOwn(TRUTHY_ENV_VALUES, env[key]?.trim().toLowerCase() ?? ''))) {
-    return true;
-  }
-
-  // Preview deploys share the Neon preview branch; read published rows when DB is configured.
-  if (env.VERCEL_ENV === 'preview' && hasDatabaseUrl(env)) return true;
-
-  return false;
+  return resolvePublicProjectSourceMode({ env }) === 'database';
 }
 
-function hasDatabaseUrl(env: DatabaseEnv): boolean {
-  return DATABASE_ENV_KEYS.some((key) => Boolean(env[key]?.trim()));
-}
-
-function isPublicProjectDbSourceEnabled(options: PublicProjectLoadOptions = {}): boolean {
+export function resolvePublicProjectSourceMode(options: PublicProjectLoadOptions = {}): PublicProjectSourceMode {
   const env = options.env ?? process.env;
-  return shouldUsePublicProjectDb(env) || options.db !== undefined;
+  return resolvePublicProjectSourceModeFromEnv(env, { hasInjectedDb: Boolean(options.db) });
 }
 
 function catalogProjectDetails(): ProjectDetailReadModel[] {
   return buildCatalogShadowRecords(CATALOG).map((record) => projectRecordToReadModels(record).detail);
-}
-
-/**
- * Pre-cutover overlay (until Linear AGE-738 retires the catalog): published DB
- * rows come first, then catalog projects that no DB row shadows by id or slug.
- * A single publish must add to the public site, not collapse it to one entry.
- */
-function overlayCatalogProjects(dbProjects: ProjectDetailReadModel[]): ProjectDetailReadModel[] {
-  const shadowed = new Set<string>();
-  for (const project of dbProjects) {
-    shadowed.add(project.id);
-    shadowed.add(project.slug);
-  }
-  const catalog = catalogProjectDetails().filter(
-    (project) => !shadowed.has(project.id) && !shadowed.has(project.slug),
-  );
-  return [...dbProjects, ...catalog];
 }
 
 function projectReadDb(client: DbClient): ProjectReadQueryable {
@@ -77,46 +57,75 @@ function projectReadDb(client: DbClient): ProjectReadQueryable {
   };
 }
 
-let publicProjectLoadPromise: Promise<PublicProjectLoadResult> | null = null;
+let publicProjectLoadCache: {
+  mode: Exclude<PublicProjectSourceMode, 'database'>;
+  promise: Promise<PublicProjectLoadResult>;
+} | null = null;
+let emergencySourceWarningEmitted = false;
 
 async function resolvePublicProjectDetails(options: PublicProjectLoadOptions): Promise<PublicProjectLoadResult> {
   const env = options.env ?? process.env;
-  const gateEnabled = isPublicProjectDbSourceEnabled(options);
-  const catalogFallback = (reason?: string): PublicProjectLoadResult => {
-    if (gateEnabled && reason) {
-      console.warn(`[public-projects] Using catalog fallback: ${reason}`);
+  const mode = resolvePublicProjectSourceMode(options);
+
+  if (mode !== 'database') {
+    if (mode === 'catalog_emergency' && !emergencySourceWarningEmitted) {
+      console.warn(
+        '[public-projects] SOURCE MODE catalog_emergency: serving the legacy catalog by explicit operator override.',
+      );
+      emergencySourceWarningEmitted = true;
     }
     return {
       source: 'catalog',
+      mode,
       projects: catalogProjectDetails(),
-      ...(reason ? { reason } : {}),
+      reason:
+        mode === 'catalog_emergency'
+          ? 'Explicit operator emergency source selected.'
+          : 'Offline development catalog source selected.',
     };
-  };
+  }
 
-  if (!gateEnabled) return catalogFallback('Public project DB gate is disabled.');
+  if (!options.db && !hasPublicProjectDatabaseUrl(env)) {
+    throw new PublicProjectDataError(
+      'missing_config',
+      'Database public-project source is active, but no database connection string is configured.',
+    );
+  }
 
+  let projects: ProjectDetailReadModel[];
   try {
     const db = options.db ?? projectReadDb(createDbClient(getDatabaseUrl(env)));
-    const projects = await fetchPublicProjectDetails(db);
-    if (!projects.length) return catalogFallback('No published DB project rows were found.');
-    return { source: 'db', projects: overlayCatalogProjects(projects) };
-  } catch (error) {
-    return catalogFallback(error instanceof Error ? error.message : String(error));
+    projects = await fetchPublicProjectDetails(db);
+  } catch {
+    throw new PublicProjectDataError('read_failed', 'Failed to read published project records.');
   }
+
+  if (!projects.length) {
+    throw new PublicProjectDataError(
+      'empty_published_set',
+      'Database public-project source returned an unexpected empty published set.',
+    );
+  }
+
+  return { source: 'db', mode, projects };
 }
 
 export async function loadPublicProjectDetails(options: PublicProjectLoadOptions = {}): Promise<PublicProjectLoadResult> {
-  if (isPublicProjectDbSourceEnabled(options)) {
+  const mode = resolvePublicProjectSourceMode(options);
+  if (mode === 'database') {
     return resolvePublicProjectDetails(options);
   }
 
-  publicProjectLoadPromise ??= resolvePublicProjectDetails(options);
-  return publicProjectLoadPromise;
+  if (publicProjectLoadCache?.mode !== mode) {
+    publicProjectLoadCache = { mode, promise: resolvePublicProjectDetails(options) };
+  }
+  return publicProjectLoadCache.promise;
 }
 
 /** Clears the per-process public project load cache. For tests only. */
 export function resetPublicProjectDetailsLoadForTests(): void {
-  publicProjectLoadPromise = null;
+  publicProjectLoadCache = null;
+  emergencySourceWarningEmitted = false;
 }
 
 export function filterPublicProjectDetails(

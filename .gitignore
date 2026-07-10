@@ -43,5 +43,4 @@ docs/handoffs/*.md
 
 # local DM eval reports (comparison artifacts, never committed)
 .dm-evals/
-.vercel
 .env*.local
