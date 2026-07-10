@@ -456,6 +456,9 @@ export async function publishAdminDraft(
     if (!committed) return staleDraft(draftId, reviewedDiff.entries.map((entry) => entry.field));
   } catch (error) {
     if (isPgErrorCode(error, '23505')) {
+      if (errorField(error, 'constraint') === 'publish_outbox_identity_uidx' || errorField(error, 'constraint') === 'publish_outbox_pkey') {
+        return { ok: false, status: 409, code: 'outbox_enqueue_conflict', message: 'Publication work was already queued; the project was not changed.', draftId };
+      }
       return { ok: false, status: 409, code: 'slug_conflict', message: 'Project slug already exists.', draftId };
     }
     throw error;
@@ -509,14 +512,19 @@ async function commitReviewedRefresh(
 
   const rows = normalizeRows(
     await db.query<{ id: string }>(
-      `WITH locked_evidence AS (
-         SELECT id, privacy_state, project_id
+       `WITH locked_evidence AS (
+         SELECT id, privacy_state, project_id, evidence_version
          FROM evidence_sources
          WHERE (draft_id = ${draftId}
             OR (${candidateId}::text IS NOT NULL AND candidate_id = ${candidateId}))
            AND (${evidenceFingerprint}::text IS NULL
              OR claim_map->>'contentFingerprint' = ${evidenceFingerprint})
          FOR UPDATE
+       ),
+       safe_evidence AS (
+         SELECT id, evidence_version
+         FROM locked_evidence
+         WHERE privacy_state = 'safe_public'
        ),
        locked_source AS (
          SELECT project_id
@@ -569,7 +577,7 @@ async function commitReviewedRefresh(
            AND publication_version = ${version}
            AND ${beforePredicates.join('\n           AND ')}
            AND EXISTS (SELECT 1 FROM eligible_draft)
-         RETURNING id
+         RETURNING id, publication_version
        ),
        published_draft AS (
          UPDATE project_drafts
@@ -593,7 +601,37 @@ async function commitReviewedRefresh(
          WHERE project_id IS NULL
            AND id IN (SELECT id FROM locked_evidence WHERE privacy_state = 'safe_public')
            AND EXISTS (SELECT 1 FROM published_draft)
-         RETURNING id
+         RETURNING id, evidence_version
+       ),
+       revoked_sources AS (
+         UPDATE rag_sources AS rag
+         SET eligibility_state = 'revoked',
+             revoked_at = COALESCE(revoked_at, now()),
+             failure_message = NULL,
+             updated_at = now()
+         WHERE rag.project_id = ${project}
+           AND rag.evidence_source_id IS NOT NULL
+           AND rag.eligibility_state <> 'revoked'
+           AND ${repositoryId}::text IS NOT NULL
+           AND EXISTS (
+             SELECT 1
+             FROM evidence_sources AS prior_evidence
+             LEFT JOIN project_candidates AS prior_candidate ON prior_candidate.id = prior_evidence.candidate_id
+             LEFT JOIN project_drafts AS prior_draft ON prior_draft.id = prior_evidence.draft_id
+             WHERE prior_evidence.id = rag.evidence_source_id
+               AND (
+                 prior_candidate.repository_id = ${repositoryId}
+                 OR prior_draft.repository_id = ${repositoryId}
+               )
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM safe_evidence AS safe
+             WHERE safe.id = rag.evidence_source_id
+               AND safe.evidence_version = rag.evidence_version
+           )
+           AND EXISTS (SELECT 1 FROM published_draft)
+         RETURNING rag.project_id, rag.evidence_source_id, rag.evidence_version
        ),
        published_event AS (
          INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
@@ -608,8 +646,46 @@ async function commitReviewedRefresh(
                 )
          FROM published_draft
          RETURNING id
+       ),
+       site_refresh_job AS (
+         INSERT INTO publish_outbox (
+           id, job_type, project_id, publication_version, evidence_source_id, evidence_version
+         )
+         SELECT portfolio_outbox_id('site_refresh', ${project}, publication_version, NULL, NULL),
+                'site_refresh', ${project}, publication_version, NULL, NULL
+         FROM updated_project
+         WHERE EXISTS (SELECT 1 FROM published_event)
+         RETURNING id
+       ),
+       rag_index_jobs AS (
+         INSERT INTO publish_outbox (
+           id, job_type, project_id, publication_version, evidence_source_id, evidence_version
+         )
+         SELECT portfolio_outbox_id('rag_index', ${project}, updated.publication_version,
+                                    safe.id, safe.evidence_version),
+                'rag_index', ${project}, updated.publication_version, safe.id, safe.evidence_version
+         FROM updated_project AS updated
+         CROSS JOIN safe_evidence AS safe
+         WHERE EXISTS (SELECT 1 FROM published_event)
+         RETURNING id
+       ),
+       rag_revoke_jobs AS (
+         INSERT INTO publish_outbox (
+           id, job_type, project_id, publication_version, evidence_source_id, evidence_version
+         )
+         SELECT portfolio_outbox_id('rag_revoke', revoked.project_id, updated.publication_version,
+                                    revoked.evidence_source_id, revoked.evidence_version),
+                'rag_revoke', revoked.project_id, updated.publication_version,
+                revoked.evidence_source_id, revoked.evidence_version
+         FROM revoked_sources AS revoked
+         CROSS JOIN updated_project AS updated
+         WHERE EXISTS (SELECT 1 FROM published_event)
+         RETURNING id
        )
-       SELECT id FROM updated_project WHERE EXISTS (SELECT 1 FROM published_event)`,
+       SELECT id
+       FROM updated_project
+       WHERE EXISTS (SELECT 1 FROM published_event)
+         AND EXISTS (SELECT 1 FROM site_refresh_job)`,
       params,
     ),
   );
@@ -628,11 +704,16 @@ async function commitFirstPublication(
   const rows = normalizeRows(
     await db.query<{ id: string }>(
       `WITH locked_evidence AS (
-         SELECT id, privacy_state, project_id
+         SELECT id, privacy_state, project_id, evidence_version
          FROM evidence_sources
          WHERE (draft_id = $14 OR ($17::text IS NOT NULL AND candidate_id = $17))
            AND ($21::text IS NULL OR claim_map->>'contentFingerprint' = $21)
          FOR UPDATE
+       ),
+       safe_evidence AS (
+         SELECT id, evidence_version
+         FROM locked_evidence
+         WHERE privacy_state = 'safe_public'
        ),
        locked_source AS (
          SELECT project_id
@@ -682,7 +763,7 @@ async function commitFirstPublication(
            $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb,
            'published', now(), $13, 1, now()
          FROM eligible_draft
-         RETURNING id
+         RETURNING id, publication_version
        ),
        published_draft AS (
          UPDATE project_drafts
@@ -706,7 +787,7 @@ async function commitFirstPublication(
          WHERE project_id IS NULL
            AND id IN (SELECT id FROM locked_evidence WHERE privacy_state = 'safe_public')
            AND EXISTS (SELECT 1 FROM published_draft)
-         RETURNING id
+         RETURNING id, evidence_version
        ),
        published_event AS (
          INSERT INTO review_events (id, project_id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
@@ -721,8 +802,33 @@ async function commitFirstPublication(
                 )
          FROM published_draft
          RETURNING id
+       ),
+       site_refresh_job AS (
+         INSERT INTO publish_outbox (
+           id, job_type, project_id, publication_version, evidence_source_id, evidence_version
+         )
+         SELECT portfolio_outbox_id('site_refresh', $1, publication_version, NULL, NULL),
+                'site_refresh', $1, publication_version, NULL, NULL
+         FROM inserted_project
+         WHERE EXISTS (SELECT 1 FROM published_event)
+         RETURNING id
+       ),
+       rag_index_jobs AS (
+         INSERT INTO publish_outbox (
+           id, job_type, project_id, publication_version, evidence_source_id, evidence_version
+         )
+         SELECT portfolio_outbox_id('rag_index', $1, inserted.publication_version,
+                                    safe.id, safe.evidence_version),
+                'rag_index', $1, inserted.publication_version, safe.id, safe.evidence_version
+         FROM inserted_project AS inserted
+         CROSS JOIN safe_evidence AS safe
+         WHERE EXISTS (SELECT 1 FROM published_event)
+         RETURNING id
        )
-       SELECT id FROM inserted_project WHERE EXISTS (SELECT 1 FROM published_event)`,
+       SELECT id
+       FROM inserted_project
+       WHERE EXISTS (SELECT 1 FROM published_event)
+         AND EXISTS (SELECT 1 FROM site_refresh_job)`,
       [
         projectId,
         fields.slug,
@@ -1042,6 +1148,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 function isPgErrorCode(error: unknown, code: string): boolean {
   return isPlainRecord(error) && error.code === code;
+}
+
+function errorField(error: unknown, key: string): unknown {
+  return isPlainRecord(error) ? error[key] : undefined;
 }
 
 function draftNotFound(draftId: string): AdminPublishFailure {

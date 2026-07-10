@@ -16,6 +16,7 @@ const MIGRATIONS_DIR = join(ROOT, 'db', 'migrations');
 const SEEDS_DIR = join(ROOT, 'db', 'seeds');
 
 const RESET_TABLES = [
+  'publish_outbox',
   'rag_sources',
   'review_events',
   'evidence_sources',
@@ -28,10 +29,103 @@ const RESET_TABLES = [
 ] as const;
 
 export function splitSqlStatements(sql: string): string[] {
-  return sql
-    .split(/;\s*(?:\r?\n|$)/)
-    .map((statement) => statement.trim())
-    .filter(Boolean);
+  const statements: string[] = [];
+  let start = 0;
+  let index = 0;
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  let lineComment = false;
+  let blockCommentDepth = 0;
+  let dollarTag: string | null = null;
+
+  while (index < sql.length) {
+    const current = sql[index]!;
+    const next = sql[index + 1];
+
+    if (lineComment) {
+      if (current === '\n') lineComment = false;
+      index += 1;
+      continue;
+    }
+    if (blockCommentDepth > 0) {
+      if (current === '/' && next === '*') {
+        blockCommentDepth += 1;
+        index += 2;
+      } else if (current === '*' && next === '/') {
+        blockCommentDepth -= 1;
+        index += 2;
+      } else {
+        index += 1;
+      }
+      continue;
+    }
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, index)) {
+        index += dollarTag.length;
+        dollarTag = null;
+      } else {
+        index += 1;
+      }
+      continue;
+    }
+    if (singleQuoted) {
+      if (current === "'" && next === "'") {
+        index += 2;
+      } else {
+        if (current === "'") singleQuoted = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (doubleQuoted) {
+      if (current === '"' && next === '"') {
+        index += 2;
+      } else {
+        if (current === '"') doubleQuoted = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (current === '-' && next === '-') {
+      lineComment = true;
+      index += 2;
+      continue;
+    }
+    if (current === '/' && next === '*') {
+      blockCommentDepth = 1;
+      index += 2;
+      continue;
+    }
+    if (current === "'") {
+      singleQuoted = true;
+      index += 1;
+      continue;
+    }
+    if (current === '"') {
+      doubleQuoted = true;
+      index += 1;
+      continue;
+    }
+    if (current === '$') {
+      const match = sql.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/);
+      if (match) {
+        dollarTag = match[0];
+        index += dollarTag.length;
+        continue;
+      }
+    }
+    if (current === ';') {
+      const statement = sql.slice(start, index).trim();
+      if (statement) statements.push(statement);
+      start = index + 1;
+    }
+    index += 1;
+  }
+
+  const tail = sql.slice(start).trim();
+  if (tail) statements.push(tail);
+  return statements;
 }
 
 async function sqlFiles(dir: string): Promise<string[]> {

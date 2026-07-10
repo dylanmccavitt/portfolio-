@@ -467,13 +467,18 @@ test('ingest action indexes through the injected RAG client without network or s
   assert.equal(json.code, 'rag_source_indexed');
   assert.equal(json.ragSourceId, ragSourceId);
   assert.equal(sleepCalls, 1);
-  assert.deepEqual(calls.uploadFile, [{ filename: `${ragSourceId}.md`, content: 'Public readme evidence text.' }]);
+  assert.deepEqual(calls.uploadFile, [{
+    filename: `${ragSourceId}.md`,
+    content: 'Public readme evidence text.',
+    idempotencyKey: `${ragSourceId}:1:upload`,
+  }]);
   assert.deepEqual(calls.createVectorStore, []);
   assert.deepEqual(calls.attachFile, [
     {
       vectorStoreId: 'vs_route',
       fileId: 'file_1',
       attributes: { rag_source_id: ragSourceId, project_id: 'proj-rag', visibility: 'public' },
+      idempotencyKey: `${ragSourceId}:1:attach`,
     },
   ]);
   assert.equal(calls.getFileIndexingStatus.length, 2);
@@ -488,7 +493,7 @@ test('ingest action indexes through the injected RAG client without network or s
   assert.equal(noteEvents.at(-1)?.after_state, 'indexed');
 });
 
-test('revoke returns DB-first cleanup failures as a successful revocation response', async () => {
+test('revoke is DB-first and queues remote cleanup without calling OpenAI inline', async () => {
   const db = await createMigratedDb();
   await insertProject(db, 'proj-rag');
   await insertEvidence(db, 'ev-public', { projectId: 'proj-rag' });
@@ -504,21 +509,24 @@ test('revoke returns DB-first cleanup failures as a successful revocation respon
   const response = await postRag(db, { action: 'revoke', ragSourceId, actor: 'body-spoof' }, { ragClient: failingClient });
   const json = await responseJson(response);
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 202);
   assert.equal(json.ok, true);
-  assert.equal(json.code, 'rag_source_revoked');
-  assert.equal(json.cleanup, 'failed');
-  assert.match(String(json.cleanupError), /detach rejected/);
+  assert.equal(json.code, 'rag_revocation_queued');
+  assert.equal(typeof json.outboxJobId, 'string');
 
-  assert.deepEqual(calls.detachFile, [{ vectorStoreId: 'vs_route', fileId: 'file_1' }]);
-  assert.deepEqual(calls.deleteFile, []);
+  noClientCalls(calls);
 
   const row = await fetchRagRow(db, ragSourceId);
   assert.equal(row?.eligibility_state, 'revoked');
   assert.ok(row?.revoked_at);
   assert.equal(row?.openai_file_id, 'file_1');
   assert.equal(row?.vector_store_id, 'vs_route');
-  assert.match(row?.failure_message ?? '', /Revocation cleanup failed: detach rejected/);
+  assert.equal(row?.failure_message, null);
+  const queued = await db.query<{ state: string; job_type: string }>(
+    `SELECT state, job_type FROM publish_outbox WHERE id = $1`,
+    [json.outboxJobId],
+  );
+  assert.deepEqual(rows(queued), [{ state: 'queued', job_type: 'rag_revoke' }]);
 
   const revokedEvents = await fetchReviewEvents(db, 'rag_revoked');
   assert.equal(revokedEvents.length, 1);

@@ -12,6 +12,9 @@ export const DRAFT_LIFECYCLE_STATES = [
   'superseded',
 ] as const;
 export const RAG_SOURCE_ELIGIBILITY_STATES = ['not_eligible', 'eligible', 'indexing', 'indexed', 'failed', 'revoked'] as const;
+export const RAG_REMOTE_STEPS = ['pending', 'uploaded', 'attached', 'indexed', 'detached', 'revoked'] as const;
+export const PUBLISH_OUTBOX_JOB_TYPES = ['rag_index', 'rag_revoke', 'site_refresh'] as const;
+export const PUBLISH_OUTBOX_STATES = ['queued', 'processing', 'succeeded', 'dead'] as const;
 
 export const PROJECT_SOURCES = ['manual', 'legacy_catalog', 'github_discovery', 'test_seed'] as const;
 export const SCAN_TRIGGERS = ['manual', 'slack', 'scheduled', 'test'] as const;
@@ -38,6 +41,9 @@ export type ScanRunLifecycleState = (typeof SCAN_RUN_LIFECYCLE_STATES)[number];
 export type CandidateLifecycleState = (typeof CANDIDATE_LIFECYCLE_STATES)[number];
 export type DraftLifecycleState = (typeof DRAFT_LIFECYCLE_STATES)[number];
 export type RagSourceEligibilityState = (typeof RAG_SOURCE_ELIGIBILITY_STATES)[number];
+export type RagRemoteStep = (typeof RAG_REMOTE_STEPS)[number];
+export type PublishOutboxJobType = (typeof PUBLISH_OUTBOX_JOB_TYPES)[number];
+export type PublishOutboxState = (typeof PUBLISH_OUTBOX_STATES)[number];
 
 export type ProjectSource = (typeof PROJECT_SOURCES)[number];
 export type ScanTrigger = (typeof SCAN_TRIGGERS)[number];
@@ -145,6 +151,7 @@ export interface EvidenceSourceRecord {
   extracted_text_sha256: string | null;
   privacy_state: PrivacyState;
   claim_map: JsonRecord;
+  evidence_version: string;
   created_at: string;
 }
 
@@ -169,10 +176,32 @@ export interface RagSourceRecord {
   eligibility_state: RagSourceEligibilityState;
   openai_file_id: string | null;
   vector_store_id: string | null;
+  evidence_version: string;
+  publication_version: string;
+  remote_step: RagRemoteStep;
   metadata: JsonRecord;
   last_synced_at: string | null;
   revoked_at: string | null;
   failure_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublishOutboxRecord {
+  id: string;
+  job_type: PublishOutboxJobType;
+  project_id: string;
+  publication_version: string;
+  evidence_source_id: string | null;
+  evidence_version: string | null;
+  state: PublishOutboxState;
+  attempts: number;
+  next_attempt_at: string;
+  lease_expires_at: string | null;
+  claim_token: string | null;
+  worker_id: string | null;
+  last_error: string | null;
+  remote_operation_id: string | null;
   created_at: string;
   updated_at: string;
 }

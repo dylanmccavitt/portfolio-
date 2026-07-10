@@ -41,14 +41,16 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Before #190 proves Loom refresh, explicitly adopt Loom's authenticated,
   immutable GitHub repository id onto the reviewed published project id using
   `docs/agents/github-refresh.md`; never infer identity from a slug.
+- Process publication side effects through the durable versioned outbox from
+  GitHub issue #189; publishing never waits for OpenAI or a deploy hook.
 
 ## Next
 
 - Apply and verify preview migrations `0003` and `0004`, then select one reviewed
   Loom draft, publish it through `/admin`, and prove `/library`, `/projects/loom`,
   and DM all read the same public row.
-- Add the durable publish outbox in #189, then complete Loom proof and canonical
-  DB cutover in #190.
+- With the #189 outbox implemented, complete Loom proof and canonical DB
+  cutover in #190.
 - Finish safeguards and release gates in #191–#192 before promoting the redesign
   to production.
 
@@ -94,6 +96,12 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   - Why deferred: AGE-803 split removes the topology blocker: production deploys target the Neon production branch, and preview deploys target the static `preview` branch. Auto-migration remains deferred because it is unbuilt and needs its own issue.
   - Where tracked: Future issue candidates below.
   - Constraint imposed on Now: Every new file under `db/migrations/` requires two manual applies before deployed code depends on it: once with the production connection string, once with the `preview` branch connection string, using the same idempotent Neon-HTTP-safe runner (see `docs/agents/db-foundation.md`). Migrations must stay statement-idempotent (`IF NOT EXISTS` et al.) because the Neon HTTP driver runs them without transactions.
+- Capability: Scheduled outbox execution.
+  - Why deferred: Issue #189 implements the authenticated bounded worker but
+    does not authorize Vercel cron, deploy-hook, preview, or production config.
+  - Where tracked: GitHub issue #189 manual gates and the final launch gate #192.
+  - Constraint imposed on Now: Jobs remain durable and safely retryable until
+    a maintainer applies migration/configuration and schedules the worker.
 
 ## Do not preclude
 

@@ -6,19 +6,22 @@ export interface RagQueryable {
 }
 
 export interface RagIndexClient {
-  uploadFile(input: { filename: string; content: string }): Promise<{ fileId: string }>;
-  createVectorStore(input: { name: string }): Promise<{ vectorStoreId: string }>;
+  uploadFile(input: { filename: string; content: string; idempotencyKey?: string; signal?: AbortSignal }): Promise<{ fileId: string }>;
+  createVectorStore(input: { name: string; idempotencyKey?: string; signal?: AbortSignal }): Promise<{ vectorStoreId: string }>;
   attachFile(input: {
     vectorStoreId: string;
     fileId: string;
     attributes: Record<string, string>;
+    idempotencyKey?: string;
+    signal?: AbortSignal;
   }): Promise<void>;
   getFileIndexingStatus(input: {
     vectorStoreId: string;
     fileId: string;
+    signal?: AbortSignal;
   }): Promise<{ status: 'in_progress' | 'completed' | 'cancelled' | 'failed'; errorMessage?: string | null }>;
-  detachFile(input: { vectorStoreId: string; fileId: string }): Promise<void>;
-  deleteFile(input: { fileId: string }): Promise<void>;
+  detachFile(input: { vectorStoreId: string; fileId: string; signal?: AbortSignal }): Promise<void>;
+  deleteFile(input: { fileId: string; signal?: AbortSignal }): Promise<void>;
 }
 
 type RagFailure = { ok: false; status: number; code: string; message: string; [key: string]: unknown };
@@ -27,13 +30,14 @@ export type RagResult = RagFailure | RagSuccess;
 
 export const PUBLIC_RAG_VECTOR_STORE_NAME = 'portfolio-public-rag';
 
-type ProjectGateRow = { id: string; lifecycle_state: ProjectLifecycleState };
+type ProjectGateRow = { id: string; lifecycle_state: ProjectLifecycleState; publication_version: string | number };
 type EvidenceGateRow = {
   id: string;
   project_id: string | null;
   privacy_state: PrivacyState;
   extracted_text: string | null;
   claim_map: JsonRecord;
+  evidence_version: string | number;
 };
 type RagSourceRow = {
   id: string;
@@ -42,6 +46,9 @@ type RagSourceRow = {
   eligibility_state: RagSourceEligibilityState;
   openai_file_id: string | null;
   vector_store_id: string | null;
+  evidence_version: string | number;
+  publication_version: string | number;
+  remote_step: string;
 };
 
 export interface IngestOptions {
@@ -61,10 +68,12 @@ export async function markRagSourceEligible(
 
   const existing = normalizeRows(
     await db.query<RagSourceRow>(
-      `SELECT id, project_id, evidence_source_id, eligibility_state, openai_file_id, vector_store_id
+      `SELECT id, project_id, evidence_source_id, eligibility_state, openai_file_id, vector_store_id,
+              evidence_version, publication_version, remote_step
        FROM rag_sources
-       WHERE project_id = $1 AND evidence_source_id = $2`,
-      [input.projectId, input.evidenceSourceId],
+       WHERE project_id = $1 AND evidence_source_id = $2 AND evidence_version = $3
+       ORDER BY created_at DESC LIMIT 1`,
+      [input.projectId, input.evidenceSourceId, gate.evidenceVersion],
     ),
   )[0];
 
@@ -100,16 +109,21 @@ export async function markRagSourceEligible(
            revoked_at = NULL,
            openai_file_id = NULL,
            vector_store_id = NULL,
+           evidence_version = $2,
+           publication_version = $3,
+           remote_step = 'pending',
            updated_at = now()
        WHERE id = $1`,
-      [ragSourceId],
+      [ragSourceId, gate.evidenceVersion, gate.publicationVersion],
     );
   } else {
     ragSourceId = `rag_${randomUUID()}`;
     await db.query(
-      `INSERT INTO rag_sources (id, project_id, evidence_source_id, eligibility_state)
-       VALUES ($1, $2, $3, 'eligible')`,
-      [ragSourceId, input.projectId, input.evidenceSourceId],
+      `INSERT INTO rag_sources (
+         id, project_id, evidence_source_id, evidence_version, publication_version,
+         eligibility_state, remote_step
+       ) VALUES ($1, $2, $3, $4, $5, 'eligible', 'pending')`,
+      [ragSourceId, input.projectId, input.evidenceSourceId, gate.evidenceVersion, gate.publicationVersion],
     );
   }
 
@@ -142,12 +156,12 @@ export async function ingestRagSource(
   const source = await fetchRagSource(db, ragSourceId);
   if (!source) return ragSourceNotFound(ragSourceId);
 
-  if (source.eligibility_state !== 'eligible') {
+  if (!['eligible', 'indexing', 'failed'].includes(source.eligibility_state)) {
     return {
       ok: false,
       status: 409,
       code: 'rag_source_not_eligible',
-      message: `RAG source ${ragSourceId} is ${source.eligibility_state}; only eligible sources can be ingested.`,
+      message: `RAG source ${ragSourceId} is ${source.eligibility_state}; it cannot be ingested.`,
       ragSourceId,
       eligibilityState: source.eligibility_state,
     };
@@ -171,6 +185,16 @@ export async function ingestRagSource(
     await setState(db, ragSourceId, 'not_eligible');
     return { ...gate, code: 'rag_eligibility_revalidation_failed', ragSourceId, cause: gate.code };
   }
+  if (gate.evidenceVersion !== Number(source.evidence_version)) {
+    await setState(db, ragSourceId, 'not_eligible');
+    return {
+      ok: false,
+      status: 409,
+      code: 'rag_evidence_version_stale',
+      message: 'RAG source evidence version is stale.',
+      ragSourceId,
+    };
+  }
 
   await setState(db, ragSourceId, 'indexing');
 
@@ -178,39 +202,62 @@ export async function ingestRagSource(
   const maxAttempts = options.poll?.maxAttempts ?? 30;
   const sleep = options.poll?.sleep ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 1000)));
 
-  let fileId: string | null = null;
-  let vectorStoreId: string | null = null;
+  let fileId: string | null = source.openai_file_id;
+  let vectorStoreId: string | null = source.vector_store_id;
+  let remoteStep = source.remote_step;
   try {
-    fileId = (await client.uploadFile({ filename: `${ragSourceId}.md`, content })).fileId;
-    vectorStoreId =
-      options.vectorStoreId ??
-      (await findExistingVectorStoreId(db)) ??
-      (await client.createVectorStore({ name: PUBLIC_RAG_VECTOR_STORE_NAME })).vectorStoreId;
-    await client.attachFile({
-      vectorStoreId,
-      fileId,
-      attributes: publicRagAttributes(ragSourceId, source.project_id),
-    });
+    if (!fileId) {
+      fileId = (await client.uploadFile({
+        filename: `${ragSourceId}.md`,
+        content,
+        idempotencyKey: `${ragSourceId}:${gate.evidenceVersion}:upload`,
+      })).fileId;
+      await db.query(
+        `UPDATE rag_sources SET openai_file_id = $2, remote_step = 'uploaded', updated_at = now() WHERE id = $1`,
+        [ragSourceId, fileId],
+      );
+      remoteStep = 'uploaded';
+    }
+    if (!vectorStoreId) {
+      vectorStoreId =
+        options.vectorStoreId ??
+        (await findExistingVectorStoreId(db)) ??
+        (await client.createVectorStore({
+          name: PUBLIC_RAG_VECTOR_STORE_NAME,
+          idempotencyKey: `${ragSourceId}:${gate.evidenceVersion}:vector-store`,
+        })).vectorStoreId;
+      await db.query(
+        `UPDATE rag_sources SET vector_store_id = $2, updated_at = now() WHERE id = $1`,
+        [ragSourceId, vectorStoreId],
+      );
+    }
+    if (remoteStep === 'pending' || remoteStep === 'uploaded') {
+      await client.attachFile({
+        vectorStoreId,
+        fileId,
+        attributes: publicRagAttributes(ragSourceId, source.project_id),
+        idempotencyKey: `${ragSourceId}:${gate.evidenceVersion}:attach`,
+      });
+      await db.query(`UPDATE rag_sources SET remote_step = 'attached', updated_at = now() WHERE id = $1`, [ragSourceId]);
+      remoteStep = 'attached';
+    }
 
     let indexed = false;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const { status, errorMessage } = await client.getFileIndexingStatus({ vectorStoreId, fileId });
+      const { status } = await client.getFileIndexingStatus({ vectorStoreId, fileId });
       if (status === 'completed') {
         indexed = true;
         break;
       }
       if (status === 'failed' || status === 'cancelled') {
-        throw new Error(errorMessage || `Vector store indexing ${status}.`);
+        throw new Error(`rag_index_remote_${status}`);
       }
       await sleep();
     }
     if (!indexed) throw new Error(`Vector store indexing did not complete after ${maxAttempts} polls.`);
   } catch (error) {
-    const failureMessage = error instanceof Error ? error.message : String(error);
+    const failureMessage = sanitizeRagFailure(error);
     await markIngestionFailed(db, ragSourceId, source.project_id, actor, failureMessage);
-    if (fileId) {
-      await bestEffortCleanup(client, vectorStoreId, fileId);
-    }
     return {
       ok: false,
       status: 502,
@@ -225,6 +272,7 @@ export async function ingestRagSource(
      SET eligibility_state = 'indexed',
          openai_file_id = $2,
          vector_store_id = $3,
+         remote_step = 'indexed',
          failure_message = NULL,
          last_synced_at = now(),
          updated_at = now()
@@ -296,20 +344,23 @@ export async function revokeRagSource(
 
   let cleanupError: string | null = null;
   try {
-    if (source.vector_store_id && source.openai_file_id) {
+    if (source.remote_step !== 'detached' && source.remote_step !== 'revoked'
+        && source.vector_store_id && source.openai_file_id) {
       await client.detachFile({ vectorStoreId: source.vector_store_id, fileId: source.openai_file_id });
+      await db.query(`UPDATE rag_sources SET remote_step = 'detached', updated_at = now() WHERE id = $1`, [ragSourceId]);
     }
     if (source.openai_file_id) {
       await client.deleteFile({ fileId: source.openai_file_id });
     }
     await db.query(
       `UPDATE rag_sources
-       SET openai_file_id = NULL, vector_store_id = NULL, failure_message = NULL, updated_at = now()
+       SET openai_file_id = NULL, vector_store_id = NULL, remote_step = 'revoked',
+           failure_message = NULL, updated_at = now()
        WHERE id = $1`,
       [ragSourceId],
     );
   } catch (error) {
-    cleanupError = error instanceof Error ? error.message : String(error);
+    cleanupError = sanitizeRagFailure(error);
     await db.query(`UPDATE rag_sources SET failure_message = $2, updated_at = now() WHERE id = $1`, [
       ragSourceId,
       `Revocation cleanup failed: ${cleanupError}`,
@@ -348,6 +399,7 @@ export async function listSearchableRagSources(db: RagQueryable): Promise<Search
          AND r.openai_file_id IS NOT NULL
          AND p.lifecycle_state = 'published'
          AND e.privacy_state = 'safe_public'
+         AND e.evidence_version = r.evidence_version
          AND length(trim(e.extracted_text)) > 0
          AND COALESCE(e.claim_map->>'generated', 'false') <> 'true'
        ORDER BY r.id`,
@@ -393,7 +445,7 @@ export function publicRagAttributes(ragSourceId: string, projectId: string): Rec
   return { rag_source_id: ragSourceId, project_id: projectId, visibility: 'public' };
 }
 
-type GateSuccess = { ok: true; extractedText: string };
+type GateSuccess = { ok: true; extractedText: string; evidenceVersion: number; publicationVersion: number };
 
 async function checkEligibilityGates(
   db: RagQueryable,
@@ -401,7 +453,7 @@ async function checkEligibilityGates(
   evidenceSourceId: string,
 ): Promise<RagFailure | GateSuccess> {
   const project = normalizeRows(
-    await db.query<ProjectGateRow>(`SELECT id, lifecycle_state FROM projects WHERE id = $1`, [projectId]),
+    await db.query<ProjectGateRow>(`SELECT id, lifecycle_state, publication_version FROM projects WHERE id = $1`, [projectId]),
   )[0];
   if (!project) {
     return { ok: false, status: 404, code: 'project_not_found', message: `Project ${projectId} was not found.`, projectId };
@@ -419,7 +471,7 @@ async function checkEligibilityGates(
 
   const evidence = normalizeRows(
     await db.query<EvidenceGateRow>(
-      `SELECT id, project_id, privacy_state, extracted_text, claim_map
+      `SELECT id, project_id, privacy_state, extracted_text, claim_map, evidence_version
        FROM evidence_sources
        WHERE id = $1`,
       [evidenceSourceId],
@@ -473,7 +525,12 @@ async function checkEligibilityGates(
     };
   }
 
-  return { ok: true, extractedText };
+  return {
+    ok: true,
+    extractedText,
+    evidenceVersion: Number(evidence.evidence_version),
+    publicationVersion: Number(project.publication_version),
+  };
 }
 
 async function markIngestionFailed(
@@ -487,8 +544,6 @@ async function markIngestionFailed(
     `UPDATE rag_sources
      SET eligibility_state = 'failed',
          failure_message = $2,
-         openai_file_id = NULL,
-         vector_store_id = NULL,
          updated_at = now()
      WHERE id = $1`,
     [ragSourceId, failureMessage],
@@ -502,16 +557,6 @@ async function markIngestionFailed(
     notes: 'RAG ingestion failed; public search stays disabled for this source.',
     metadata: { source: 'rag_ingestion', kind: 'rag_indexing_failed', ragSourceId, failureMessage },
   });
-}
-
-async function bestEffortCleanup(client: RagIndexClient, vectorStoreId: string | null, fileId: string): Promise<void> {
-  try {
-    if (vectorStoreId) await client.detachFile({ vectorStoreId, fileId });
-    await client.deleteFile({ fileId });
-  } catch {
-    // Cleanup failures are recorded via failure_message on the row; the file
-    // is never searchable because it only enters filters once state=indexed.
-  }
 }
 
 async function findExistingVectorStoreId(db: RagQueryable): Promise<string | null> {
@@ -530,13 +575,20 @@ async function findExistingVectorStoreId(db: RagQueryable): Promise<string | nul
 async function fetchRagSource(db: RagQueryable, ragSourceId: string): Promise<RagSourceRow | null> {
   const rows = normalizeRows(
     await db.query<RagSourceRow>(
-      `SELECT id, project_id, evidence_source_id, eligibility_state, openai_file_id, vector_store_id
+      `SELECT id, project_id, evidence_source_id, eligibility_state, openai_file_id, vector_store_id,
+              evidence_version, publication_version, remote_step
        FROM rag_sources
        WHERE id = $1`,
       [ragSourceId],
     ),
   );
   return rows[0] ?? null;
+}
+
+function sanitizeRagFailure(error: unknown): string {
+  if (error instanceof Error && /did not complete after \d+ polls/.test(error.message)) return 'rag_index_timeout';
+  if (error instanceof Error && /rag_index_remote_(failed|cancelled)/.test(error.message)) return 'rag_index_remote_failed';
+  return error instanceof Error ? `rag_${error.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}` : 'rag_unknown_error';
 }
 
 async function setState(db: RagQueryable, ragSourceId: string, state: RagSourceEligibilityState): Promise<void> {

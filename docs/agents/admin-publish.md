@@ -58,9 +58,11 @@ should appear on a deployment only when the response header explicitly reports
   `before` value. Any mismatch rejects the whole request with HTTP 409 and
   writes nothing.
 - The project write, one version increment, terminal draft transition, safe
-  evidence linkage, source linkage, and audit event run in one SQL statement.
-  Publish returns after the database commit and has no OpenAI, deploy, or
-  callback hook.
+  evidence linkage, source linkage, audit event, one `site_refresh` job, and
+  one `rag_index` job per linked `safe_public` evidence version run in one SQL
+  statement. Any enqueue conflict/failure rolls the publication back.
+  Publish returns after the database commit and performs no synchronous
+  OpenAI, deploy, or callback work.
 - Evidence marked `private_allowed_for_draft` may be summarized in the private
   admin UI, but it is never linked to the public project, included in public
   audit provenance, cited, or offered to RAG. Only `safe_public` evidence may
@@ -72,8 +74,9 @@ The canonical optional fields are `activity`, `details`, `metrics`, `links`, and
 
 ## Endpoints
 
-All admin endpoints are dynamic, return `Cache-Control: no-store`, and require
-JSON for mutations.
+All admin endpoints are dynamic and return `Cache-Control: no-store`. Human
+admin mutations require JSON; the machine worker route uses its dedicated
+bearer token and an empty POST.
 
 | Route | Method | Purpose |
 | --- | --- | --- |
@@ -84,6 +87,7 @@ JSON for mutations.
 | `/api/admin/drafts/[id]` | GET / PATCH | Review evidence privacy and stage canonical fields |
 | `/api/admin/drafts/[id]/approve` | POST | Store the exact reviewed field set and ordered diff |
 | `/api/admin/drafts/[id]/publish` | POST | Run privacy/staleness gates and commit atomically |
+| `/api/admin/outbox/run` | POST | Claim and process a bounded durable downstream batch |
 
 Approval accepts optional `reviewedFields`. Omitting it reviews every changed
 field for an existing project and every public field for a first publication.
@@ -97,15 +101,20 @@ field for an existing project and every public field for a first publication.
 - Preview overrides with `_PREVIEW` where already supported
 - The database connection names documented in `src/lib/db/client.ts`
 - `GITHUB_DISCOVERY_TOKEN` (preferred) or `GITHUB_TOKEN` for authenticated Slack snapshot fetches
+- `OUTBOX_WORKER_TOKEN` (at least 32 bytes)
+- `SITE_REFRESH_DEPLOY_HOOK_URL`
+- `OPENAI_API_KEY` and optional `RAG_VECTOR_STORE_ID` for RAG jobs
 
 Never commit or log their values.
 
 ## Migration and proof
 
-`db/migrations/0004_source_identity_and_refresh_drafts.sql` must be applied
+`db/migrations/0004_source_identity_and_refresh_drafts.sql` and
+`db/migrations/0005_publish_outbox.sql` must be applied in order
 manually to the persistent preview and production Neon branches before code
-that depends on it is promoted. Do not apply either migration as part of an
-agent PR.
+that depends on them is promoted. Do not apply either migration as part of an
+agent PR. Vercel cron/deploy-hook configuration is also a separate maintainer
+approval gate; see `docs/agents/publish-outbox.md`.
 
 Targeted proof:
 
@@ -113,6 +122,7 @@ Targeted proof:
 - `npm run test:discovery`
 - `npm run test:slack`
 - `npm run test:admin`
+- `npm run test:outbox`
 - `npm run test:proof`
 
 The tests cover concurrent duplicate scans, repository rename, manifest failure

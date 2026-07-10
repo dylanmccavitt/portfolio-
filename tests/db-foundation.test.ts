@@ -39,7 +39,10 @@ import {
 import {
   CANDIDATE_LIFECYCLE_STATES,
   DRAFT_LIFECYCLE_STATES,
+  PUBLISH_OUTBOX_JOB_TYPES,
+  PUBLISH_OUTBOX_STATES,
   PROJECT_LIFECYCLE_STATES,
+  RAG_REMOTE_STEPS,
   RAG_SOURCE_ELIGIBILITY_STATES,
   SCAN_RUN_LIFECYCLE_STATES,
 } from '@/lib/db/schema';
@@ -66,6 +69,7 @@ const FOUNDATION_TABLES = [
   'scan_runs',
   'review_events',
   'rag_sources',
+  'publish_outbox',
 ] as const;
 
 test('canonical project schema has five areas and validates nested public fields', () => {
@@ -200,6 +204,7 @@ test('migrations create the DM project foundation tables', async () => {
     '0002_review_events_seq.sql',
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
+    '0005_publish_outbox.sql',
   ]);
 
   const tables = await db.query<{ table_name: string }>(
@@ -242,6 +247,7 @@ test('review_events seq migration upgrades an existing database deterministicall
     '0002_review_events_seq.sql',
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
+    '0005_publish_outbox.sql',
   ]);
 
   const upgraded = await db.query<{ id: string; seq: string | number | null }>(
@@ -326,6 +332,7 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
   assert.deepEqual(await applyMigrations(db), [
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
+    '0005_publish_outbox.sql',
   ]);
 
   const projects = await db.query<{ id: string; area: string }>(`SELECT id, area FROM projects ORDER BY id`);
@@ -376,6 +383,7 @@ test('project area migration preflight rejects every noncanonical project and dr
   assert.deepEqual(await applyMigrations(db), [
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
+    '0005_publish_outbox.sql',
   ]);
 
   await assert.rejects(
@@ -417,6 +425,9 @@ test('planned lifecycle states are constrained in SQL and exported types', async
     'superseded',
   ]);
   assert.deepEqual(RAG_SOURCE_ELIGIBILITY_STATES, ['not_eligible', 'eligible', 'indexing', 'indexed', 'failed', 'revoked']);
+  assert.deepEqual(RAG_REMOTE_STEPS, ['pending', 'uploaded', 'attached', 'indexed', 'detached', 'revoked']);
+  assert.deepEqual(PUBLISH_OUTBOX_JOB_TYPES, ['rag_index', 'rag_revoke', 'site_refresh']);
+  assert.deepEqual(PUBLISH_OUTBOX_STATES, ['queued', 'processing', 'succeeded', 'dead']);
 
   await db.query(`
     INSERT INTO projects (id, slug, title, tagline, area, year, lifecycle_state)
@@ -460,6 +471,84 @@ test('planned lifecycle states are constrained in SQL and exported types', async
       INSERT INTO rag_sources (id, project_id, eligibility_state)
       VALUES ('bad-rag', 'state-test-project', 'published')
     `),
+  );
+});
+
+test('evidence versions revoke stale RAG DB-first and enqueue immutable cleanup jobs', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+  await db.query(
+    `INSERT INTO projects (
+       id, slug, title, tagline, area, year, lifecycle_state, published_at, publication_version
+     ) VALUES ('outbox-versioned', 'outbox-versioned', 'Versioned', 'Versioned',
+               'AI & Developer Tools', 2026, 'published', now(), 1)`,
+  );
+  await db.query(
+    `INSERT INTO evidence_sources (
+       id, project_id, source_type, source_ref, privacy_state, extracted_text,
+       extracted_text_sha256, claim_map
+     ) VALUES ('ev-versioned', 'outbox-versioned', 'readme', 'test:versioned',
+               'safe_public', 'Public evidence', repeat('a', 64), '{}'::jsonb)`,
+  );
+  await db.query(
+    `INSERT INTO rag_sources (
+       id, project_id, evidence_source_id, evidence_version, publication_version,
+       eligibility_state, openai_file_id, vector_store_id, remote_step
+     ) VALUES ('rag-version-one', 'outbox-versioned', 'ev-versioned', 1, 1,
+               'indexed', 'file-version-one', 'vs-versioned', 'indexed')`,
+  );
+  await assert.rejects(
+    db.query(
+      `INSERT INTO rag_sources (
+         id, project_id, evidence_source_id, evidence_version, publication_version, eligibility_state
+       ) VALUES ('rag-version-one-duplicate', 'outbox-versioned', 'ev-versioned', 1, 1, 'eligible')`,
+    ),
+    /rag_sources_active_evidence_version_uidx/,
+  );
+
+  await db.query(`UPDATE evidence_sources SET claim_map = '{"reviewed":true}'::jsonb WHERE id = 'ev-versioned'`);
+  const evidence = await db.query<{ evidence_version: string | number }>(
+    `SELECT evidence_version FROM evidence_sources WHERE id = 'ev-versioned'`,
+  );
+  assert.equal(Number(evidence.rows[0]?.evidence_version), 2);
+  const rag = await db.query<{ eligibility_state: string; openai_file_id: string }>(
+    `SELECT eligibility_state, openai_file_id FROM rag_sources WHERE id = 'rag-version-one'`,
+  );
+  assert.deepEqual(rag.rows, [{ eligibility_state: 'revoked', openai_file_id: 'file-version-one' }]);
+  const jobs = await db.query<{
+    job_type: string;
+    project_id: string;
+    publication_version: string | number;
+    evidence_source_id: string | null;
+    evidence_version: string | number | null;
+    state: string;
+  }>(
+    `SELECT job_type, project_id, publication_version, evidence_source_id, evidence_version, state
+     FROM publish_outbox`,
+  );
+  assert.deepEqual(jobs.rows.map((row) => ({ ...row, publication_version: Number(row.publication_version), evidence_version: Number(row.evidence_version) })), [
+    {
+      job_type: 'rag_revoke',
+      project_id: 'outbox-versioned',
+      publication_version: 1,
+      evidence_source_id: 'ev-versioned',
+      evidence_version: 1,
+      state: 'queued',
+    },
+  ]);
+  await db.query(`UPDATE evidence_sources SET extracted_text_sha256 = repeat('b', 64) WHERE id = 'ev-versioned'`);
+  assert.equal(Number((await db.query<{ evidence_version: string | number }>(
+    `SELECT evidence_version FROM evidence_sources WHERE id = 'ev-versioned'`,
+  )).rows[0]?.evidence_version), 3);
+
+  await assert.rejects(
+    db.query(
+      `INSERT INTO publish_outbox (
+         id, job_type, project_id, publication_version, evidence_source_id, evidence_version
+       ) VALUES ('duplicate-null-site', 'site_refresh', 'outbox-versioned', 1, NULL, NULL),
+                ('duplicate-null-site-2', 'site_refresh', 'outbox-versioned', 1, NULL, NULL)`,
+    ),
+    /publish_outbox_identity_uidx/,
   );
 });
 
@@ -591,6 +680,7 @@ test('seed and reset path works without external credentials', async () => {
     '0002_review_events_seq.sql',
     '0003_recruiter_project_areas.sql',
     '0004_source_identity_and_refresh_drafts.sql',
+    '0005_publish_outbox.sql',
   ]);
   assert.deepEqual(await applySeeds(db), ['001_foundation_smoke.sql']);
 

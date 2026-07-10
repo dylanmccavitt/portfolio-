@@ -224,10 +224,10 @@ test('eligibility is re-checked at upload time and revoked approvals never reach
   const { client, calls } = createFakeClient();
   const result = await ingestRagSource(db, client, ragSourceId, ACTOR);
   assert.equal(result.ok, false);
-  assert.equal(result.code, 'rag_eligibility_revalidation_failed');
-  assert.equal(result.cause, 'evidence_not_public');
+  assert.equal(result.code, 'rag_source_not_eligible');
+  assert.equal(result.eligibilityState, 'revoked');
   assert.equal(calls.uploadFile.length, 0);
-  assert.equal((await fetchRagRow(db, ragSourceId))?.eligibility_state, 'not_eligible');
+  assert.equal((await fetchRagRow(db, ragSourceId))?.eligibility_state, 'revoked');
 
   const retry = await ingestRagSource(db, client, ragSourceId, ACTOR);
   assert.equal(retry.ok, false);
@@ -307,10 +307,15 @@ test('indexed sources stop being searchable when public approval drifts after in
   await db.query(`UPDATE evidence_sources SET claim_map = '{"generated": true}'::jsonb WHERE id = 'ev-generated'`);
   await db.query(`UPDATE evidence_sources SET extracted_text = '   ' WHERE id = 'ev-empty'`);
 
-  assert.deepEqual(
-    (await listSearchableRagSources(db)).map((source) => source.id).sort(),
-    [markedIds[0], markedIds[4]].sort(),
+  assert.deepEqual(await listSearchableRagSources(db), []);
+  const revocations = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM publish_outbox WHERE project_id = 'proj-drift' AND job_type = 'rag_revoke'`,
   );
+  assert.equal((Array.isArray(revocations) ? revocations : revocations.rows)[0]?.count, '5');
+  const refresh = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM publish_outbox WHERE project_id = 'proj-drift' AND job_type = 'site_refresh'`,
+  );
+  assert.equal((Array.isArray(refresh) ? refresh : refresh.rows)[0]?.count, '1');
 });
 
 test('indexing failure disables RAG without rolling back the published project', async () => {
@@ -330,14 +335,14 @@ test('indexing failure disables RAG without rolling back the published project',
   });
   assert.equal(result.ok, false);
   assert.equal(result.code, 'rag_indexing_failed');
-  assert.match(result.message as string, /chunking exploded/);
+  assert.match(result.message as string, /rag_index_remote_failed/);
 
   const row = await fetchRagRow(db, ragSourceId);
   assert.equal(row?.eligibility_state, 'failed');
-  assert.match(row?.failure_message ?? '', /chunking exploded/);
-  assert.equal(row?.openai_file_id, null);
-  assert.equal(row?.vector_store_id, null);
-  assert.equal(calls.deleteFile.length, 1);
+  assert.equal(row?.failure_message, 'rag_index_remote_failed');
+  assert.equal(row?.openai_file_id, 'file_1');
+  assert.equal(row?.vector_store_id, 'vs_test');
+  assert.equal(calls.deleteFile.length, 0);
 
   const project = await db.query<{ lifecycle_state: string; published_at: string | null }>(
     `SELECT lifecycle_state, published_at FROM projects WHERE id = 'proj-rag'`,

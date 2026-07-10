@@ -9,12 +9,12 @@ import {
 import {
   ingestRagSource,
   markRagSourceEligible,
-  revokeRagSource,
   type IngestOptions,
   type RagIndexClient,
   type RagQueryable,
 } from '@/lib/rag/ingestion';
 import { createOpenAiRagIndexClient, readRagVectorStoreId } from '@/lib/rag/openai';
+import { enqueueRagSourceRevocation } from '@/lib/outbox/queue';
 
 export const prerender = false;
 
@@ -40,6 +40,7 @@ type RagSourceListRow = {
   privacy_state: string;
   extracted_text_sha256: string | null;
   extracted_text_chars: number;
+  evidence_version: string | number;
   generated: boolean;
   ragSourceId: string | null;
   eligibility_state: string | null;
@@ -48,6 +49,9 @@ type RagSourceListRow = {
   last_synced_at: string | null;
   revoked_at: string | null;
   failure_message: string | null;
+  rag_evidence_version: string | number | null;
+  publication_version: string | number | null;
+  remote_step: string | null;
 };
 
 const LIST_RAG_SOURCES_SQL = `SELECT e.id AS "evidenceSourceId",
@@ -62,6 +66,7 @@ const LIST_RAG_SOURCES_SQL = `SELECT e.id AS "evidenceSourceId",
        e.privacy_state,
        e.extracted_text_sha256,
        length(trim(coalesce(e.extracted_text, ''))) AS extracted_text_chars,
+       e.evidence_version,
        COALESCE(e.claim_map->>'generated', 'false') = 'true' AS generated,
        r.id AS "ragSourceId",
        r.eligibility_state,
@@ -69,7 +74,10 @@ const LIST_RAG_SOURCES_SQL = `SELECT e.id AS "evidenceSourceId",
        r.vector_store_id IS NOT NULL AS has_vector_store,
        r.last_synced_at,
        r.revoked_at,
-       r.failure_message
+       r.failure_message,
+       r.evidence_version AS rag_evidence_version,
+       r.publication_version,
+       r.remote_step
 FROM evidence_sources e
 JOIN projects p ON p.id = e.project_id
 LEFT JOIN rag_sources r ON r.project_id = e.project_id AND r.evidence_source_id = e.id
@@ -130,9 +138,8 @@ export function createAdminRagSourcesPostHandler(deps: AdminRagSourcesHandlerDep
         return adminJson(result.status, result);
       }
 
-      const client = deps.ragClient ?? createOpenAiRagIndexClient();
-
       if (action.action === 'ingest') {
+        const client = deps.ragClient ?? createOpenAiRagIndexClient();
         const result = await ingestRagSource(
           dbResult.db,
           client,
@@ -143,7 +150,7 @@ export function createAdminRagSourcesPostHandler(deps: AdminRagSourcesHandlerDep
         return adminJson(result.status, result);
       }
 
-      const result = await revokeRagSource(dbResult.db, client, action.ragSourceId, auth.actor);
+      const result = await enqueueRagSourceRevocation(dbResult.db, action.ragSourceId, auth.actor);
       return adminJson(result.status, result);
     } catch (error) {
       return adminJson(500, safeAdminError(error));

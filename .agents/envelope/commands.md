@@ -18,6 +18,7 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Test Slack control plane | `npm run test:slack` | `node --import tsx --test tests/slack-control-plane.test.ts` |
 | Admin publish test | `npm run test:admin` | `node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts && node --import tsx --test tests/admin-rag-sources.test.ts` |
 | RAG tests | `npm run test:rag` | `node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts` |
+| Publish outbox tests | `npm run test:outbox` | `node --import tsx --test tests/outbox-worker.test.ts` |
 | DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts tests/dm-grounding.test.ts` |
 | DM metrics test | `npm run test:metrics` | `node --import tsx --test tests/dm-metrics.test.ts` |
 | DM benchmark test | `npm run test:benchmark` | `node --import tsx --test tests/dm-benchmark.test.ts` |

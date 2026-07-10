@@ -476,6 +476,21 @@ test('happy path publishes public project fields only and republish updates the 
   );
   assert.equal(eventRows.rows[0].actor, ACTOR);
   assert.equal(eventRows.rows[0].project_id, projectId);
+  const queued = await db.query<{
+    job_type: string; publication_version: string | number; evidence_source_id: string | null; evidence_version: string | number | null;
+  }>(
+    `SELECT job_type, publication_version, evidence_source_id, evidence_version
+     FROM publish_outbox WHERE project_id = $1 ORDER BY job_type`,
+    [projectId],
+  );
+  assert.deepEqual(queued.rows.map((row) => ({
+    ...row,
+    publication_version: Number(row.publication_version),
+    evidence_version: row.evidence_version === null ? null : Number(row.evidence_version),
+  })), [
+    { job_type: 'rag_index', publication_version: 1, evidence_source_id: 'evidence_happy', evidence_version: 1 },
+    { job_type: 'site_refresh', publication_version: 1, evidence_source_id: null, evidence_version: null },
+  ]);
 
   const updateResponse = await patchDraft(db, 'draft_happy', { title: 'Updated Project Title' });
   assert.equal(updateResponse.status, 409);
@@ -623,6 +638,121 @@ test('partial-field approval applies only reviewed values and keeps private evid
   );
   assert.deepEqual(event.rows[0]?.metadata.safePublicEvidenceIds, ['evidence_partial_safe']);
   assert.ok(!JSON.stringify(event.rows[0]?.metadata).includes('evidence_partial_private'));
+  const jobs = await db.query<{ job_type: string; evidence_source_id: string | null }>(
+    `SELECT job_type, evidence_source_id FROM publish_outbox WHERE project_id = $1 ORDER BY job_type`,
+    [projectId],
+  );
+  assert.deepEqual(jobs.rows, [
+    { job_type: 'rag_index', evidence_source_id: 'evidence_partial_safe' },
+    { job_type: 'site_refresh', evidence_source_id: null },
+  ]);
+});
+
+test('outbox enqueue conflict rolls the entire reviewed refresh back', async () => {
+  const db = await createMigratedDb();
+  const projectId = 'project_outbox_conflict';
+  await insertPublishedProject(db, { id: projectId, slug: 'outbox-conflict', publicationVersion: 3 });
+  await insertDraft(db, {
+    id: 'draft_outbox_conflict',
+    projectId,
+    fields: { ...VALID_FIELDS, slug: 'outbox-conflict', title: 'Must roll back' },
+    provenance: { manual: true },
+    lifecycle: 'needs_review',
+    baseProjectVersion: 3,
+  });
+  await insertEvidence(db, { id: 'evidence_outbox_conflict', draftId: 'draft_outbox_conflict', privacy: 'safe_public' });
+  assert.equal((await approveDraft(db, 'draft_outbox_conflict', ['title'])).status, 200);
+  await db.query(
+    `INSERT INTO publish_outbox (id, job_type, project_id, publication_version)
+     VALUES ('preexisting-refresh', 'site_refresh', $1, 4)`,
+    [projectId],
+  );
+
+  const response = await publishDraft(db, 'draft_outbox_conflict', { confirmProvenance: true, confirmPrivacy: true });
+  const json = await responseJson(response);
+  assert.equal(response.status, 409);
+  assert.equal(json.code, 'outbox_enqueue_conflict');
+  assert.deepEqual((await db.query<{ title: string; publication_version: string | number }>(
+    `SELECT title, publication_version FROM projects WHERE id = $1`, [projectId],
+  )).rows.map((row) => ({ ...row, publication_version: Number(row.publication_version) })), [
+    { title: VALID_FIELDS.title, publication_version: 3 },
+  ]);
+  assert.equal((await db.query<{ lifecycle_state: string }>(
+    `SELECT lifecycle_state FROM project_drafts WHERE id = 'draft_outbox_conflict'`,
+  )).rows[0]?.lifecycle_state, 'approved_for_publish');
+  assert.equal((await db.query<{ project_id: string | null }>(
+    `SELECT project_id FROM evidence_sources WHERE id = 'evidence_outbox_conflict'`,
+  )).rows[0]?.project_id, null);
+});
+
+test('reviewed source refresh revokes only removed evidence from the same immutable repository', async () => {
+  const db = await createMigratedDb();
+  const projectId = 'project_source_scoped_revoke';
+  const repositoryId = '81007';
+  await insertPublishedProject(db, { id: projectId, slug: 'source-scoped-revoke', publicationVersion: 3 });
+  await db.query(
+    `INSERT INTO project_sources (id, provider, repository_id, canonical_full_name, project_id)
+     VALUES ('source_scoped_revoke', 'github', $1, 'DylanMcCavitt/source-scoped-revoke', $2)`,
+    [repositoryId, projectId],
+  );
+  const priorCandidate = await insertCandidate(db, 'candidate_prior_source');
+  await db.query(
+    `UPDATE project_candidates
+     SET provider = 'github', repository_id = $2, source_revision = $3, content_fingerprint = $4
+     WHERE id = $1`,
+    [priorCandidate, repositoryId, '1'.repeat(40), 'a'.repeat(64)],
+  );
+  await insertEvidence(db, {
+    id: 'evidence_prior_source', candidateId: priorCandidate, projectId, privacy: 'safe_public', contentFingerprint: 'a'.repeat(64),
+  });
+  await insertEvidence(db, { id: 'evidence_manual_independent', projectId, privacy: 'safe_public' });
+  await db.query(
+    `INSERT INTO rag_sources (
+       id, project_id, evidence_source_id, evidence_version, publication_version,
+       eligibility_state, openai_file_id, vector_store_id, remote_step
+     ) VALUES
+       ('rag_prior_source', $1, 'evidence_prior_source', 1, 3, 'indexed', 'file-prior', 'vs-shared', 'indexed'),
+       ('rag_manual_independent', $1, 'evidence_manual_independent', 1, 3, 'indexed', 'file-manual', 'vs-shared', 'indexed')`,
+    [projectId],
+  );
+
+  const nextCandidate = await insertCandidate(db, 'candidate_next_source');
+  await db.query(
+    `UPDATE project_candidates
+     SET provider = 'github', repository_id = $2, source_revision = $3, content_fingerprint = $4
+     WHERE id = $1`,
+    [nextCandidate, repositoryId, '2'.repeat(40), 'b'.repeat(64)],
+  );
+  await insertDraft(db, {
+    id: 'draft_source_scoped_revoke', candidateId: nextCandidate, projectId,
+    fields: { ...VALID_FIELDS, slug: 'source-scoped-revoke', title: 'Source-scoped refresh' },
+    provenance: { publicEvidenceIds: ['evidence_next_source'] }, lifecycle: 'needs_review',
+    provider: 'github', repositoryId, sourceRevision: '2'.repeat(40),
+    contentFingerprint: 'b'.repeat(64), baseProjectVersion: 3,
+  });
+  await insertEvidence(db, {
+    id: 'evidence_next_source', candidateId: nextCandidate, draftId: 'draft_source_scoped_revoke',
+    privacy: 'safe_public', contentFingerprint: 'b'.repeat(64),
+  });
+  assert.equal((await approveDraft(db, 'draft_source_scoped_revoke', ['title'])).status, 200);
+  assert.equal((await publishDraft(db, 'draft_source_scoped_revoke', {
+    confirmProvenance: true, confirmPrivacy: true,
+  })).status, 200);
+
+  assert.deepEqual((await db.query<{ id: string; eligibility_state: string }>(
+    `SELECT id, eligibility_state FROM rag_sources WHERE project_id = $1 ORDER BY id`, [projectId],
+  )).rows, [
+    { id: 'rag_manual_independent', eligibility_state: 'indexed' },
+    { id: 'rag_prior_source', eligibility_state: 'revoked' },
+  ]);
+  assert.deepEqual((await db.query<{ job_type: string; evidence_source_id: string | null }>(
+    `SELECT job_type, evidence_source_id FROM publish_outbox WHERE project_id = $1 ORDER BY job_type, evidence_source_id`,
+    [projectId],
+  )).rows, [
+    { job_type: 'rag_index', evidence_source_id: 'evidence_next_source' },
+    { job_type: 'rag_revoke', evidence_source_id: 'evidence_prior_source' },
+    { job_type: 'site_refresh', evidence_source_id: null },
+  ]);
 });
 
 test('stale base version rejects the whole reviewed publish without partial writes', async () => {
