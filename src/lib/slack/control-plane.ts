@@ -265,7 +265,7 @@ function candidateActionBlocks(candidateId: string, repoLabel: string, confidenc
           style: 'primary',
           action_id: 'dm_candidate_draft',
           value: candidateId,
-          text: { type: 'plain_text', text: 'Draft' },
+          text: { type: 'plain_text', text: 'Send to admin review' },
         },
         {
           type: 'button',
@@ -368,10 +368,6 @@ function trustedSlackResponseUrl(responseUrl: string | undefined): URL | null {
   } catch (_error) {
     return null;
   }
-}
-
-export function parseSlackRepoSnapshot(text: string): GithubRepositorySnapshot {
-  return parseSlackRepoSnapshotInput(text).repo;
 }
 
 function parseSlackRepoSnapshotInput(text: string): ParsedSlackRepoSnapshotInput {
@@ -712,7 +708,7 @@ async function requestHiddenDraft(
     status: 200,
     code: 'hidden_draft_requested',
     responseType: 'ephemeral',
-    message: `Hidden draft ${draftId} is ready for admin review. Admin publish remains required.`,
+    message: `Hidden draft ${draftId} is ready for admin review at /admin. It is not public until an admin publishes it.`,
     candidateId,
     draftId,
   };

@@ -600,13 +600,21 @@ test('single-user Slack scan trigger routes authorized repo input to GitHub disc
   assert.ok(Array.isArray(elements), 'actions block must carry button elements');
   const buttons = elements.map((element) =>
     element && typeof element === 'object' && 'action_id' in element && 'value' in element
-      ? { actionId: element.action_id, value: element.value }
-      : { actionId: undefined, value: undefined },
+      ? {
+          actionId: element.action_id,
+          value: element.value,
+          label:
+            'text' in element && element.text && typeof element.text === 'object' && 'text' in element.text
+              ? element.text.text
+              : undefined,
+        }
+      : { actionId: undefined, value: undefined, label: undefined },
   );
   assert.deepEqual(
     buttons.map((button) => button.actionId),
     ['dm_candidate_draft', 'dm_candidate_snooze', 'dm_candidate_dismiss'],
   );
+  assert.equal(buttons[0]?.label, 'Send to admin review');
   for (const button of buttons) {
     assert.match(String(button.value), /^candidate_/, 'button value must reference the candidate id');
   }
@@ -940,7 +948,8 @@ test('Slack draft action acknowledges the scan-created hidden draft and never pu
   assert.equal(json.ok, true);
   assert.equal(json.code, 'hidden_draft_requested');
   assert.match(String(json.text), /Hidden draft draft_/);
-  assert.match(String(json.text), /Admin publish remains required/);
+  assert.match(String(json.text), /admin review at \/admin/);
+  assert.match(String(json.text), /not public until an admin publishes it/);
 
   const candidates = await db.query<{ lifecycle_state: string }>(`SELECT lifecycle_state FROM project_candidates WHERE id = $1`, [
     candidateId,

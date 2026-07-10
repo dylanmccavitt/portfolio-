@@ -57,7 +57,14 @@ export function createSlackControlPlanePostHandler(deps: SlackControlPlanePostHa
 
       const db = dbResult.db;
       const result = await handleSlackFormEncodedRequest(db, config, body);
-      return slackJson(slackHttpStatus(result.status), result.ok, result.code, result.message, result.responseType, result.blocks);
+      return slackJson(
+        slackHttpStatus(result.status),
+        result.ok,
+        result.code,
+        result.message,
+        result.responseType,
+        result.blocks,
+      );
     } catch (error) {
       // Last-resort guard: without it, anything thrown outside
       // handleSlackFormEncodedRequest becomes an Astro 500 and Slack shows
