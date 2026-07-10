@@ -1,5 +1,5 @@
 {
-  "name": "visible-visual",
+  "name": "dylan-portfolio",
   "type": "module",
   "version": "0.0.1",
   "engines": {
@@ -39,7 +39,6 @@
     "@astrojs/check": "^0.9.9",
     "@astrojs/vercel": "^11.0.0",
     "@neondatabase/serverless": "^1.1.0",
-    "@vercel/oidc": "^3.6.1",
     "ai": "^7.0.2",
     "astro": "^7.0.3",
     "openai": "^6.45.0",

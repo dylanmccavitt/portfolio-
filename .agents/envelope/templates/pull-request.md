@@ -19,11 +19,7 @@ What changed and why, in one short paragraph.
 ## Base branch
 
 Target this issue's immediate stack parent / Desired base branch. New DM
-implementation currently roots at `preview/agent-first-redesign`; the legacy Eve
-stack order remains historical context:
-`preview/agent-first-redesign` → `codex/issue-84-eve-runtime` →
-`claude/issue-85-typographic-card` → `claude/issue-86-eve-landing` →
-`claude/issue-87-editorial-detail` → `codex/issue-88-retire-shell`. Never target
+implementation currently roots at `preview/agent-first-redesign`. Never target
 `main` for this stack unless a maintainer changes the plan.
 
 ## Changes

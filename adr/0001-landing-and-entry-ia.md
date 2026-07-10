@@ -1,6 +1,6 @@
 # ADR 0001 — Landing Page Concept & Entry IA
 
-**Status:** Accepted — 2026-06-14
+**Status:** Superseded by the agent-first Split-canvas landing — retained as 2026-06-14 architecture history
 **Implements:** Issue #59
 **Unblocks:** Issue #60 (nav/code wiring), Issue #62 (hiring tour)
 

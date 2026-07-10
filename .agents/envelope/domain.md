@@ -28,15 +28,16 @@ Use these exact words; avoid synonyms.
 - **answer block** — DM's structured response unit.
 - **tool trace** — the visible record of DM's tool calls.
 - **artifact card** — a rendered project/résumé/contact artifact in an answer.
-- **player shell** — the retired Spotify-style app shell (sidebar + bottom player bar); being replaced, not extended.
+- **player shell** — the retired Spotify-style app shell (sidebar + bottom player bar); removed from the redesign branch and never reintroduced.
 - **`preview/agent-first-redesign`** — the redesign stack root branch.
 
 ## Bounded contexts
 
-- **Content (migration):** published DB project records become the canonical
-  public project source after shadow parity plus one-publish proof.
-  `src/data/catalog.ts` remains a fallback during shadow only; `src/data/resume.ts`
-  remains the v1 résumé/contact source.
+- **Content (migration):** deployed public project reads use published DB rows
+  exclusively and fail closed. `src/data/catalog.ts` remains a parity/migration
+  input, an offline development source, and an explicit operator emergency
+  source until the Loom proof and operational cutover complete in #190;
+  `src/data/resume.ts` remains the v1 résumé/contact source.
 - **Public DM sources:** DM public answers may use only published DB project
   records, approved public RAG sources, and static résumé/contact data. Never use
   hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor
@@ -50,7 +51,8 @@ Use these exact words; avoid synonyms.
 
 - `docs/agents/scope-ledger.md` — agent-first redesign continuity (north star, deferred scope, do-not-preclude, open questions).
 - `adr/0001-landing-and-entry-ia.md` — landing / entry information-architecture history.
-- `src/data/catalog.ts`, `src/data/resume.ts` — canonical project, résumé, and contact content.
+- `src/data/catalog.ts` — legacy migration/parity plus local/emergency project content.
+- `src/data/resume.ts` — canonical v1 résumé and contact content.
 
 ## Style rules
 

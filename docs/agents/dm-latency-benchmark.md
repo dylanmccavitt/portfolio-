@@ -37,7 +37,9 @@ DM_BENCH_MODELS="openai/gpt-4.1,anthropic/claude-sonnet-4.5" \
 npm run dm:bench -- --iterations 5 --json-path ./.tmp/dm-benchmark-live.json
 ```
 
-`OPENAI_API_KEY` is still required even with the gateway because the public `searchSources` RAG tool calls the OpenAI Vector Store Search API directly.
+`OPENAI_API_KEY` is still required even with the gateway when an explicit
+source/evidence/deep-dive request invokes approved-source vector search through
+the OpenAI Vector Store Search API.
 
 Then run the deterministic fixture checker:
 

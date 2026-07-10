@@ -16,29 +16,41 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 
 - Source DM PRD: Linear document `Integrated DM content backend and agent workflow PRD`.
 - Planning buildout: Linear document `DM implementation planning buildout`.
-- Legacy prototype plan: `/var/folders/kk/k4gwllpx1cb8yl9n5t1stn8h0000gn/T/handoff-portfolio-agent-redesign.md`.
 - Acceptance criterion: Issues preserve DM naming, preview-branch base, one issue / one worktree / one PR, and Claude/GLM-vs-Codex ownership.
 - Expected evidence: PRD issue plus child issue packets link this ledger and name continuity constraints.
-- Actual evidence: Filled during issue closeout.
+- Actual evidence: the preview branch contains the live DM runtime, Split-canvas
+  landing, Typographic project cards, Editorial details, DB/admin/Slack seams,
+  and the production-readiness program in GitHub issues #184–#196.
 
 ## Now
 
-- Superseded Eve with DM in repo planning/domain docs (Eve runtime retired in AGE-818).
-- Build the DM implementation graph on preview branch `preview/agent-first-redesign`.
-- DM is the sole live runtime (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`).
-- Use Neon on Vercel for the DB foundation; keep secrets out of tracked files.
-- Keep `src/data/catalog.ts` as a shadow/fallback public project source until parity plus one-publish proof; keep `src/data/resume.ts` as the v1 résumé/contact source.
-- Before issue #190 proves Loom refresh on preview, explicitly adopt Loom's
-  authenticated immutable GitHub repository id onto its reviewed published
-  project id using `docs/agents/github-refresh.md`; never infer that link from
-  a matching slug. Preview adoption still requires separate user approval.
+- DM is the sole live runtime on `preview/agent-first-redesign`
+  (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`).
+- GitHub discovery, Slack staging, authenticated admin review, and atomic publish
+  are implemented. Slack creates or edits review drafts; it never publishes.
+- Preview migrations must be applied before code that depends on them is
+  deployed. `0003_recruiter_project_areas.sql` and
+  `0004_source_identity_and_refresh_drafts.sql` are required for the current
+  public-read and admin-detail contracts.
+- Deployed database mode now returns published DB rows only and fails closed on
+  missing configuration, read/validation failure, or an unexpected empty set.
+  `src/data/catalog.ts` remains only for parity/migration, offline development,
+  and the explicit operator `catalog_emergency` rollback. This source-boundary
+  hardening does not complete #190's migration, Loom proof, or deploy gates.
+- Keep `src/data/resume.ts` as the v1 résumé/contact source.
+- Before #190 proves Loom refresh, explicitly adopt Loom's authenticated,
+  immutable GitHub repository id onto the reviewed published project id using
+  `docs/agents/github-refresh.md`; never infer identity from a slug.
 
 ## Next
 
-- Implement DB foundation, catalog shadow import, and DB-backed read layer before public project cutover.
-- Add the public DM service seam on Vercel AI SDK after DB read-layer prerequisites are ready.
-- Add approved-source RAG ingestion/search with official OpenAI JS SDK vector/file lifecycle only after admin publish gates exist.
-- Keep Slack install/auth/setup as human-in-the-loop for the Slack control-plane issue.
+- Apply and verify preview migrations `0003` and `0004`, then select one reviewed
+  Loom draft, publish it through `/admin`, and prove `/library`, `/projects/loom`,
+  and DM all read the same public row.
+- Add the durable publish outbox in #189, then complete Loom proof and canonical
+  DB cutover in #190.
+- Finish safeguards and release gates in #191–#192 before promoting the redesign
+  to production.
 
 ## Later
 
@@ -100,9 +112,10 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Constraint: Do not resurrect Eve-specific runtime paths retired in AGE-818.
   - Deferred capability protected: DM remains the sole live agent runtime seam.
   - Verification evidence: Live stack uses `src/lib/dm/` and `/api/dm/chat`; Eve paths removed in AGE-818; root `agent/` removal is recorded in AGE-739.
-- Constraint: Retire the player shell only after replacement UI slices cover production routes.
-  - Deferred capability protected: No broken route while migrating.
-  - Verification evidence: Build plus route smoke checks.
+- Constraint: Do not reintroduce the retired player shell while the redesign is
+  release-gated for production promotion.
+  - Deferred capability protected: Safe promotion without reviving duplicate navigation.
+  - Verification evidence: Preview build and route smoke checks cover every replacement route.
 
 ## Naming anchors
 
@@ -139,10 +152,6 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   - Type: AFK
   - Depends on: Project DB cutover
   - Preserves: Unified content management without blocking v1
-- Title: Schedule GitHub refreshes into reviewed drafts
-  - Type: AFK
-  - Depends on: GitHub issue #188 review-gated refresh workflow
-  - Preserves: Background discovery without automatic public promotion
 - Title: Evaluate Agents SDK orchestration
   - Type: AFK
   - Depends on: A workflow with concrete handoff/guardrail/tracing/sandbox needs

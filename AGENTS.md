@@ -8,7 +8,7 @@ Clean, recruiter-friendly portfolio site on the **agent-first redesign** preview
 - **@astrojs/vercel** — Vercel adapter for server/API routes and deployment
 - **Global CSS** — design tokens in `src/styles/player.css` (`--pl-*`); Split-canvas landing styles in `src/styles/dm.css`
 - **Vanilla TypeScript client island** — `src/scripts/dm.ts` streams against `/api/dm/chat` on the DM landing and fit-check routes
-- **TypeScript data modules** — `src/data/catalog.ts` (project shadow/fallback) and `src/data/resume.ts` (résumé/contact v1 source); no Markdown/MDX content collections
+- **TypeScript data modules** — `src/data/catalog.ts` (migration shadow plus local/emergency source) and `src/data/resume.ts` (résumé/contact v1 source); no Markdown/MDX content collections
 - **Neon Postgres** — DM project records, admin publish flow, RAG; see `docs/agents/db-foundation.md`
 - **Deployed** to Vercel
 
@@ -27,13 +27,17 @@ Current preview-branch UI:
 - **Hiring tour** (`/hiring`) — stepped recruiter path with optional `tour.ts` progressive enhancement
 - **Fit check** (`/fit-check`) — job-description paste surface using the same DM chat island
 
-Dark-only tokens (`--pl-*` in `player.css`). Public project pages read through the gated DB load layer when enabled (see `docs/agents/db-foundation.md`); until catalog cutover (Linear **AGE-738**), `src/data/catalog.ts` remains the shadow/fallback public project source.
+Dark-only tokens (`--pl-*` in `player.css`). Deployed public project reads are
+published-DB only and fail closed; they never overlay or fall back to
+`src/data/catalog.ts`. The catalog remains a migration/parity input, an offline
+development source, and the explicit `catalog_emergency` rollback source until
+the full Loom proof and operational cutover in GitHub **#190**.
 
 ## Content
 
 - Landing: Split-canvas DM (`/`)
 - Library: project index (`/library`) + area/status filters (`/library/[filter]`)
-- Projects: editorial detail pages (`/projects/[id]`) from the gated public-project loader
+- Projects: editorial detail pages (`/projects/[id]`) from the public-project source loader
 - Journey: résumé timeline (`/journey`, `/journey/[track]`) from `src/data/resume.ts`
 - Hiring: guided tour (`/hiring`)
 - Fit check: JD paste + DM read (`/fit-check`)
@@ -65,7 +69,7 @@ binding point — read it before planning or building:
 - `.agents/envelope/commands.md` — build/test/lint/run + default branch and the redesign stack.
 - `.agents/envelope/templates/` — PR / issue / project-doc templates.
 
-Repo-specific skills and agents live in `.agents/skills/` and `.agents/agents/`.
+Repo-specific skills live in `.agents/skills/`.
 Continuity for the agent-first redesign is tracked in `docs/agents/scope-ledger.md`.
 
 ## Cursor Cloud specific instructions
@@ -83,8 +87,11 @@ non-obvious cloud caveats.
   (or prepend `$HOME/.nvm/versions/node/v24.18.0/bin` to `PATH`).
 - **Tests need no external services or secrets.** The `test:*` scripts use an
   in-memory Postgres via `@electric-sql/pglite`; the CI test set is
-  `test:db test:discovery test:slack test:admin test:dm test:metrics test:rag`.
+  `test:db test:discovery test:slack test:admin test:dm test:metrics test:rag
+  test:benchmark test:eval-report test:proof`.
 - **DM chat is disabled without config.** `/api/dm/chat` returns HTTP 503
-  `missing_config` unless `OPENAI_API_KEY` is set; the site shell, browsing, and
-  all tests work without it. The chat UI degrades to a "DM is unavailable right
-  now" notice. Set that env var (never commit it) to exercise live chat.
+  `missing_config` unless a database URL and either `AI_GATEWAY_API_KEY` or
+  `OPENAI_API_KEY` are set; the site shell, browsing, and all tests work without
+  them. Approved-source vector search additionally needs `OPENAI_API_KEY`. The
+  chat UI degrades to a "DM is unavailable right now" notice. Never commit these
+  values.
