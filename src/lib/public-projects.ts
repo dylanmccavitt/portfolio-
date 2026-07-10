@@ -42,7 +42,7 @@ export function shouldUsePublicProjectDb(env: PublicProjectEnv = process.env): b
 
 export function resolvePublicProjectSourceMode(options: PublicProjectLoadOptions = {}): PublicProjectSourceMode {
   const env = options.env ?? process.env;
-  return resolvePublicProjectSourceModeFromEnv(env, { hasInjectedDb: options.db !== undefined });
+  return resolvePublicProjectSourceModeFromEnv(env, { hasInjectedDb: Boolean(options.db) });
 }
 
 function catalogProjectDetails(): ProjectDetailReadModel[] {
