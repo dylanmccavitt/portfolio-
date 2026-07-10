@@ -1,10 +1,17 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
+  EDITABLE_PUBLIC_FIELDS,
+  isEditablePublicField,
+  updateAdminDraftFields,
+  validatePublicFieldUpdate,
+  type EditablePublicField,
+} from '@/lib/admin/publish';
+import {
   scanGithubRepositoryCandidate,
   type GithubDiscoveryScanResult,
   type GithubRepositorySnapshot,
 } from '@/lib/db/github-discovery';
-import type { JsonRecord, RepoVisibility } from '@/lib/db/schema';
+import type { JsonRecord, JsonValue, RepoVisibility } from '@/lib/db/schema';
 import { GithubSnapshotFetchError, type GithubSnapshotFetcher } from './github-fetch';
 
 export const SLACK_SIGNATURE_VERSION = 'v0';
@@ -79,8 +86,16 @@ interface DraftRow {
   id: string;
 }
 
-interface RepoEvidenceRow {
-  extracted_text: string | null;
+interface PublishedProjectSourceRow {
+  id: string;
+  slug: string;
+  canonical_full_name: string;
+}
+
+interface SlackFieldUpdateInput {
+  target: string;
+  field: EditablePublicField;
+  value: JsonValue;
 }
 
 interface ParsedSlackRepoSnapshotInput {
@@ -173,6 +188,9 @@ export async function handleSlackCommand(
   const auth = authorizeSlackUser(config, payload.userId);
   if (!auth.ok) return auth;
 
+  const update = parseSlackFieldUpdate(payload);
+  if (update) return stageSlackFieldUpdate(db, config, update, `slack:${payload.userId}`);
+
   const parsed = parseSlackRepoSnapshotInput(payload.text);
   const { repo, scannerMode } = await resolveSlackRepoSnapshot(config, parsed);
   const actor = `slack:${payload.userId}`;
@@ -189,6 +207,7 @@ export async function handleSlackCommand(
       blocks: candidateActionBlocks(scan.candidateId, repoLabel, scan.confidence),
       scan,
       candidateId: scan.candidateId,
+      draftId: scan.draftId,
     };
   }
 
@@ -394,6 +413,7 @@ function parseSlackRepoSnapshotInput(text: string): ParsedSlackRepoSnapshotInput
 
   return {
     repo: {
+      repositoryId: options.repositoryId ?? '',
       owner,
       name,
       fullName: `${owner}/${name}`,
@@ -403,8 +423,10 @@ function parseSlackRepoSnapshotInput(text: string): ParsedSlackRepoSnapshotInput
       language: options.language,
       topics,
       isPrivate: options.private === 'true',
-      defaultBranch: options.branch,
+      defaultBranch: options.branch ?? '',
+      sourceRevision: options.revision ?? '',
       readmeMarkdown: options.readme,
+      portfolioManifest: { status: 'missing' },
     },
     isJson: false,
     options,
@@ -416,19 +438,17 @@ async function resolveSlackRepoSnapshot(
   config: SlackControlPlaneConfig,
   parsed: ParsedSlackRepoSnapshotInput,
 ): Promise<{ repo: GithubRepositorySnapshot; scannerMode: 'manual-snapshot' | 'live-github' }> {
-  if (parsed.isJson || !config.githubFetcher) {
-    return { repo: parsed.repo, scannerMode: 'manual-snapshot' };
+  if (!config.githubFetcher) {
+    // Tests and explicit offline callers may supply a complete snapshot. The
+    // deployed Slack route always configures the authenticated fetcher below.
+    if (parsed.isJson) return { repo: parsed.repo, scannerMode: 'manual-snapshot' };
+    throw userFacingError('github_fetch_unconfigured', 'GitHub snapshot fetching is required for owner/repo scans.');
   }
 
   let fetched: GithubRepositorySnapshot;
   try {
     fetched = await config.githubFetcher(parsed.repo.owner, parsed.repo.name);
   } catch (error) {
-    // With an explicit topic= the scan can still qualify from the manual
-    // snapshot alone, so fetch enrichment failures degrade instead of aborting.
-    if (parsed.hasExplicitTopics) {
-      return { repo: parsed.repo, scannerMode: 'manual-snapshot' };
-    }
     if (error instanceof GithubSnapshotFetchError) {
       throw userFacingError(error.code, error.message);
     }
@@ -439,36 +459,176 @@ async function resolveSlackRepoSnapshot(
   }
 
   return {
-    repo: applySlackTextOverrides(fetched, parsed.repo, parsed.options),
+    repo: parsed.isJson ? fetched : applySlackQualificationOptions(fetched, parsed.options),
     scannerMode: 'live-github',
   };
 }
 
-function applySlackTextOverrides(
+function applySlackQualificationOptions(
   fetched: GithubRepositorySnapshot,
-  parsed: GithubRepositorySnapshot,
   options: Record<string, string>,
 ): GithubRepositorySnapshot {
   const hasExplicitTopics = hasOwnOption(options, 'topic') || hasOwnOption(options, 'topics');
+  const explicitTopics = (options.topic ?? options.topics ?? '')
+    .split(',')
+    .map((topic) => topic.trim())
+    .filter(Boolean);
   return {
     ...fetched,
-    owner: fetched.owner || parsed.owner,
-    name: fetched.name || parsed.name,
-    fullName: fetched.fullName || parsed.fullName,
-    htmlUrl: fetched.htmlUrl || parsed.htmlUrl,
-    description: hasOwnOption(options, 'description') ? parsed.description : fetched.description,
-    homepageUrl: hasOwnOption(options, 'homepage') ? parsed.homepageUrl : fetched.homepageUrl,
-    language: hasOwnOption(options, 'language') ? parsed.language : fetched.language,
-    isPrivate: hasOwnOption(options, 'private') ? parsed.isPrivate : fetched.isPrivate,
-    defaultBranch: hasOwnOption(options, 'branch') ? parsed.defaultBranch : fetched.defaultBranch,
-    readmeMarkdown: hasOwnOption(options, 'readme') ? parsed.readmeMarkdown : fetched.readmeMarkdown,
-    topics: hasExplicitTopics ? mergeTopics(fetched.topics, parsed.topics) : fetched.topics,
+    // Source identity, visibility, and content are authenticated GitHub facts.
+    // Slack text can qualify a scan, but must never masquerade as repository
+    // evidence or downgrade a private repository to public evidence.
+    topics: hasExplicitTopics ? mergeTopics(fetched.topics, explicitTopics) : fetched.topics,
   };
 }
 
 /** Explicit topic= options add to (never replace) fetched topics, so a manual allowlist tag qualifies untagged repos. */
 function mergeTopics(fetched: string[], explicit: string[]): string[] {
   return [...new Set([...fetched, ...explicit])];
+}
+
+function parseSlackFieldUpdate(payload: SlackCommandPayload): SlackFieldUpdateInput | null {
+  const command = payload.command.trim().toLowerCase();
+  const updateCommand = command === '/dm-update';
+  const text = updateCommand ? payload.text.trim() : payload.text.trim().replace(/^update\s+/i, '');
+  if (!updateCommand && text === payload.text.trim()) return null;
+
+  const match = text.match(/^(\S+)\s+(\S+)\s+([\s\S]+)$/);
+  if (!match) {
+    throw userFacingError('update_input_invalid', 'Use `/dm-update <project-or-draft> <field> <value>`.');
+  }
+  const [, target, rawField, rawValue] = match;
+  if (!target || !rawField || rawValue === undefined || !isEditablePublicField(rawField)) {
+    throw userFacingError('update_field_invalid', `Update field must be one of: ${EDITABLE_PUBLIC_FIELDS.join(', ')}.`);
+  }
+  const value = parseSlackFieldValue(rawField, rawValue);
+  const validation = validatePublicFieldUpdate(rawField, value);
+  if (!validation.ok) throw userFacingError('update_value_invalid', validation.issue.message);
+  return { target, field: rawField, value: validation.value };
+}
+
+function parseSlackFieldValue(field: EditablePublicField, rawValue: string): unknown {
+  const trimmed = rawValue.trim();
+  if (field === 'year') {
+    const year = Number(trimmed);
+    return Number.isInteger(year) ? year : trimmed;
+  }
+  if (field === 'details' || field === 'metrics' || field === 'links' || field === 'media') {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      throw userFacingError('update_value_invalid', `${field} must be a valid JSON array.`);
+    }
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (typeof parsed === 'string') return parsed;
+    } catch {
+      // Treat it as ordinary text and let canonical validation decide.
+    }
+  }
+  return trimmed;
+}
+
+async function stageSlackFieldUpdate(
+  db: SlackControlPlaneQueryable,
+  config: SlackControlPlaneConfig,
+  input: SlackFieldUpdateInput,
+  actor: string,
+): Promise<SlackControlPlaneResult> {
+  if (input.target.startsWith('draft_')) {
+    return mapAdminFieldStageResult(
+      await updateAdminDraftFields(db, input.target, actor, { [input.field]: input.value }),
+      input.target,
+      input.field,
+    );
+  }
+
+  if (!config.githubFetcher) {
+    return {
+      ok: false,
+      status: 503,
+      code: 'github_fetch_unconfigured',
+      responseType: 'ephemeral',
+      message: 'GitHub snapshot fetching is required to stage a published-project refresh.',
+    };
+  }
+
+  const project = await fetchPublishedProjectSource(db, input.target);
+  if (!project) {
+    return {
+      ok: false,
+      status: 404,
+      code: 'published_project_source_not_found',
+      responseType: 'ephemeral',
+      message: `Published GitHub project ${input.target} was not found.`,
+    };
+  }
+  const [owner, name] = project.canonical_full_name.split('/');
+  if (!owner || !name) throw userFacingError('source_identity_invalid', 'The linked GitHub source identity is invalid.');
+
+  const repo = await config.githubFetcher(owner, name);
+  const scan = await scanGithubRepositoryCandidate(db, { actor, trigger: 'slack', repo, scannerMode: 'live-github' });
+  if (scan.status !== 'qualified') {
+    return {
+      ok: false,
+      status: 409,
+      code: scan.code,
+      responseType: 'ephemeral',
+      message: `Refresh scan did not create an editable draft: ${scan.reason}.`,
+      scan,
+    };
+  }
+  return mapAdminFieldStageResult(
+    await updateAdminDraftFields(db, scan.draftId, actor, { [input.field]: input.value }),
+    scan.draftId,
+    input.field,
+    scan,
+  );
+}
+
+async function fetchPublishedProjectSource(
+  db: SlackControlPlaneQueryable,
+  target: string,
+): Promise<PublishedProjectSourceRow | null> {
+  const result = await db.query<PublishedProjectSourceRow>(
+    `SELECT p.id, p.slug, source.canonical_full_name
+     FROM projects p
+     JOIN project_sources source ON source.project_id = p.id AND source.provider = 'github'
+     WHERE p.lifecycle_state = 'published' AND (p.id = $1 OR p.slug = $1)
+     LIMIT 1`,
+    [target],
+  );
+  return normalizeRows(result)[0] ?? null;
+}
+
+function mapAdminFieldStageResult(
+  result: Awaited<ReturnType<typeof updateAdminDraftFields>>,
+  draftId: string,
+  field: EditablePublicField,
+  scan?: GithubDiscoveryScanResult,
+): SlackControlPlaneResult {
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: result.status,
+      code: result.code,
+      responseType: 'ephemeral',
+      message: result.message,
+      draftId,
+      scan,
+    };
+  }
+  return {
+    ok: true,
+    status: 200,
+    code: 'draft_field_staged',
+    responseType: 'ephemeral',
+    message: `Staged ${field} in draft ${draftId}. Admin review and publish remain required.`,
+    draftId,
+    scan,
+  };
 }
 
 async function requestHiddenDraft(
@@ -478,54 +638,81 @@ async function requestHiddenDraft(
 ): Promise<SlackControlPlaneResult> {
   const candidate = await fetchCandidate(db, candidateId);
   if (!candidate) return candidateNotFound(candidateId);
+  if (candidate.lifecycle_state === 'dismissed') return candidateDismissed(candidateId);
 
   const existingDraft = await fetchDraftForCandidate(db, candidateId);
-  const beforeState = candidate.lifecycle_state;
-  const draftId = existingDraft?.id ?? `draft_${randomUUID()}`;
-
-  await db.query(
-    `UPDATE project_candidates
-     SET lifecycle_state = 'draft_requested', updated_at = now()
-     WHERE id = $1`,
-    [candidateId],
-  );
-
   if (!existingDraft) {
-    const repoDescription = await fetchCandidateRepoDescription(db, candidateId);
-    await db.query(
-      `INSERT INTO project_drafts (
-         id, candidate_id, proposed_fields, private_notes, provenance_map, lifecycle_state
-       ) VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, 'hidden')`,
-      [
-        draftId,
-        candidateId,
-        JSON.stringify(buildHiddenDraftFields(candidate, repoDescription)),
-        'Created from Slack draft action. Hidden until admin review and publish.',
-        JSON.stringify(buildHiddenDraftProvenance(candidate)),
-      ],
-    );
-  }
-
-  await db.query(
-    `INSERT INTO review_events (id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
-     VALUES ($1, $2, $3, $4, 'draft_requested', $5, 'draft_requested', $6, $7::jsonb)`,
-    [
-      `review_${randomUUID()}`,
-      draftId,
+    return {
+      ok: false,
+      status: 409,
+      code: 'refresh_draft_missing',
+      responseType: 'ephemeral',
+      message: 'The scan did not leave an active revision draft. Run the GitHub scan again.',
       candidateId,
+    };
+  }
+  const beforeState = candidate.lifecycle_state;
+  const draftId = existingDraft.id;
+
+  const transitioned = normalizeRows(
+    await db.query<{ id: string }>(
+    `WITH eligible_candidate AS (
+       SELECT id
+       FROM project_candidates
+       WHERE id = $1 AND lifecycle_state <> 'dismissed'
+       FOR UPDATE
+     ),
+     active_draft AS (
+       SELECT id
+       FROM project_drafts
+       WHERE id = $2
+         AND candidate_id = $1
+         AND lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')
+       FOR UPDATE
+     ),
+     changed AS (
+       UPDATE project_candidates
+       SET lifecycle_state = 'draft_requested', updated_at = now()
+       WHERE id IN (SELECT id FROM eligible_candidate)
+         AND EXISTS (SELECT 1 FROM active_draft)
+       RETURNING id
+     ),
+     event AS (
+       INSERT INTO review_events (id, draft_id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+       SELECT $3, $2, $1, $4, 'draft_requested', $5, 'draft_requested', $6, $7::jsonb
+       FROM changed
+       RETURNING id
+     )
+     SELECT id FROM changed WHERE EXISTS (SELECT 1 FROM event)`,
+    [
+      candidateId,
+      draftId,
+      `review_${randomUUID()}`,
       actor,
       beforeState,
-      'Slack draft action created a hidden project draft only; no public project row was published.',
+      'Slack acknowledged the scan-created hidden project draft; no public project row was changed.',
       JSON.stringify({ source: 'slack_control_plane', decision: 'draft', draftId }),
     ],
+    ),
   );
+  if (transitioned.length === 0) {
+    return {
+      ok: false,
+      status: 409,
+      code: 'candidate_state_changed',
+      responseType: 'ephemeral',
+      message: 'The candidate or revision draft changed before the Slack action committed.',
+      candidateId,
+      draftId,
+    };
+  }
 
   return {
     ok: true,
     status: 200,
     code: 'hidden_draft_requested',
     responseType: 'ephemeral',
-    message: `Created hidden draft ${draftId} for candidate ${candidateId}. Admin publish remains required.`,
+    message: `Hidden draft ${draftId} is ready for admin review. Admin publish remains required.`,
     candidateId,
     draftId,
   };
@@ -547,26 +734,43 @@ async function transitionCandidate(
   const candidate = await fetchCandidate(db, candidateId);
   if (!candidate) return candidateNotFound(candidateId);
 
-  await db.query(
-    `UPDATE project_candidates
-     SET lifecycle_state = $2, updated_at = now()
-     WHERE id = $1`,
-    [candidateId, input.afterState],
-  );
-  await db.query(
-    `INSERT INTO review_events (id, candidate_id, actor, action, before_state, after_state, notes, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+  const rows = normalizeRows(
+    await db.query<{ id: string }>(
+    `WITH dismissed AS (
+       UPDATE project_candidates
+       SET lifecycle_state = $2, updated_at = now()
+       WHERE id = $1
+       RETURNING id
+     ),
+     superseded AS (
+       UPDATE project_drafts
+       SET lifecycle_state = 'superseded', updated_at = now()
+       WHERE candidate_id = $1
+         AND lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')
+         AND EXISTS (SELECT 1 FROM dismissed)
+       RETURNING id
+     )
+     INSERT INTO review_events (id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+     SELECT $3, $1, $4, $5, $6, $2, $7,
+            $8::jsonb || jsonb_build_object(
+              'supersededDraftIds',
+              COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM superseded), '[]'::jsonb)
+            )
+     FROM dismissed
+     RETURNING id`,
     [
-      `review_${randomUUID()}`,
       candidateId,
+      input.afterState,
+      `review_${randomUUID()}`,
       actor,
       input.action,
       candidate.lifecycle_state,
-      input.afterState,
       input.notes,
       JSON.stringify(input.metadata),
     ],
+    ),
   );
+  if (rows.length === 0) return candidateNotFound(candidateId);
 
   return {
     ok: true,
@@ -585,20 +789,33 @@ async function snoozeCandidate(
 ): Promise<SlackControlPlaneResult> {
   const candidate = await fetchCandidate(db, candidateId);
   if (!candidate) return candidateNotFound(candidateId);
+  if (candidate.lifecycle_state === 'dismissed') return candidateDismissed(candidateId);
 
-  await db.query(`UPDATE project_candidates SET updated_at = now() WHERE id = $1`, [candidateId]);
-  await db.query(
-    `INSERT INTO review_events (id, candidate_id, actor, action, before_state, after_state, notes, metadata)
-     VALUES ($1, $2, $3, 'note', $4, $4, $5, $6::jsonb)`,
+  const rows = normalizeRows(
+    await db.query<{ id: string }>(
+    `WITH changed AS (
+       UPDATE project_candidates
+       SET updated_at = now()
+       WHERE id = $1 AND lifecycle_state <> 'dismissed'
+       RETURNING id, lifecycle_state
+     ),
+     event AS (
+       INSERT INTO review_events (id, candidate_id, actor, action, before_state, after_state, notes, metadata)
+       SELECT $2, $1, $3, 'note', lifecycle_state, lifecycle_state, $4, $5::jsonb
+       FROM changed
+       RETURNING id
+     )
+     SELECT id FROM changed WHERE EXISTS (SELECT 1 FROM event)`,
     [
-      `review_${randomUUID()}`,
       candidateId,
+      `review_${randomUUID()}`,
       actor,
-      candidate.lifecycle_state,
       'Snoozed from Slack control plane; candidate remains hidden from public surfaces.',
       JSON.stringify({ source: 'slack_control_plane', decision: 'snooze' }),
     ],
+    ),
   );
+  if (rows.length === 0) return candidateDismissed(candidateId);
 
   return {
     ok: true,
@@ -623,117 +840,20 @@ async function fetchCandidate(
   return normalizeRows(result)[0] ?? null;
 }
 
-async function fetchCandidateRepoDescription(
-  db: SlackControlPlaneQueryable,
-  candidateId: string,
-): Promise<string> {
-  const result = await db.query<RepoEvidenceRow>(
-    `SELECT extracted_text
-     FROM evidence_sources
-     WHERE candidate_id = $1
-       AND source_type = 'repo'
-       AND extracted_text IS NOT NULL
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [candidateId],
-  );
-  return normalizeRows(result)[0]?.extracted_text?.trim() ?? '';
-}
-
 async function fetchDraftForCandidate(
   db: SlackControlPlaneQueryable,
   candidateId: string,
 ): Promise<DraftRow | null> {
-  const result = await db.query<DraftRow>(`SELECT id FROM project_drafts WHERE candidate_id = $1 ORDER BY created_at LIMIT 1`, [
-    candidateId,
-  ]);
+  const result = await db.query<DraftRow>(
+    `SELECT id
+     FROM project_drafts
+     WHERE candidate_id = $1
+       AND lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [candidateId],
+  );
   return normalizeRows(result)[0] ?? null;
-}
-
-function buildHiddenDraftFields(candidate: CandidateRow, repoDescription: string): JsonRecord {
-  const repoName = repoNameFromCandidate(candidate);
-  return {
-    source: 'github_discovery',
-    candidateId: candidate.id,
-    sourceRef: candidate.source_ref,
-    confidence: Number(candidate.confidence),
-    signals: candidate.signals,
-    evidencePacket: candidate.evidence_packet,
-    visibility: 'hidden',
-    slug: slugFromRepoName(repoName) || slugFromRepoName(candidate.id) || 'draft',
-    title: titleFromRepoName(repoName),
-    tagline: taglineFromDescription(repoDescription),
-    year: yearFromSignals(candidate.signals),
-    summary: repoDescription,
-    details: [],
-    metrics: [],
-    links: candidate.repo_visibility === 'public'
-      ? [{ label: 'GitHub', href: candidate.source_ref }]
-      : [],
-    media: [],
-  };
-}
-
-function repoNameFromCandidate(candidate: CandidateRow): string {
-  const repo = candidate.signals.repo;
-  if (typeof repo === 'string') {
-    const name = repo.split('/').filter(Boolean).at(-1);
-    if (name) return name;
-  }
-
-  try {
-    const url = new URL(candidate.source_ref);
-    const name = url.pathname.split('/').filter(Boolean).at(-1)?.replace(/\.git$/i, '');
-    if (name) return name;
-  } catch (_error) {
-    const name = candidate.source_ref.split('/').filter(Boolean).at(-1)?.replace(/\.git$/i, '');
-    if (name) return name;
-  }
-
-  return candidate.id;
-}
-
-function slugFromRepoName(repoName: string): string {
-  return repoName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function titleFromRepoName(repoName: string): string {
-  const words = repoName
-    .replace(/[-_]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
-}
-
-function taglineFromDescription(description: string): string {
-  const trimmed = description.trim();
-  if (!trimmed) return '';
-  const sentence = trimmed.match(/^(.+?[.!?])(?:\s|$)/s)?.[1]?.trim();
-  return (sentence || trimmed).slice(0, 140).trim();
-}
-
-function yearFromSignals(signals: JsonRecord): number {
-  const pushedAt = signals.pushedAt;
-  if (typeof pushedAt === 'string') {
-    const date = new Date(pushedAt);
-    if (!Number.isNaN(date.getTime())) return date.getFullYear();
-  }
-  return new Date().getFullYear();
-}
-
-function buildHiddenDraftProvenance(candidate: CandidateRow): JsonRecord {
-  return {
-    candidateId: candidate.id,
-    scanRunId: candidate.scan_run_id,
-    sourceRef: candidate.source_ref,
-    evidencePacket: candidate.evidence_packet,
-    generatedBy: 'slack_control_plane',
-    publicPublish: false,
-  };
 }
 
 function authorizeSlackUser(config: SlackControlPlaneConfig, userId: string): SlackControlPlaneResult {
@@ -760,6 +880,7 @@ function parseJsonRepoSnapshot(value: JsonRecord): GithubRepositorySnapshot {
   }
 
   return {
+    repositoryId: stringValue(value, 'repositoryId'),
     owner,
     name,
     fullName: stringValue(value, 'fullName', true) || `${owner}/${name}`,
@@ -769,11 +890,21 @@ function parseJsonRepoSnapshot(value: JsonRecord): GithubRepositorySnapshot {
     language: stringValue(value, 'language', true) || null,
     topics,
     isPrivate: booleanValue(value, 'isPrivate'),
-    defaultBranch: stringValue(value, 'defaultBranch', true) || null,
+    defaultBranch: stringValue(value, 'defaultBranch'),
+    sourceRevision: stringValue(value, 'sourceRevision'),
     pushedAt: stringValue(value, 'pushedAt', true) || null,
     stars: numberValue(value, 'stars'),
     readmeMarkdown: stringValue(value, 'readmeMarkdown', true) || null,
+    portfolioManifest: parsePortfolioManifestSnapshot(value.portfolioManifest),
   };
+}
+
+function parsePortfolioManifestSnapshot(value: JsonValue | undefined): GithubRepositorySnapshot['portfolioManifest'] {
+  const record = asRecord(value, 'Repo field portfolioManifest must be an object.');
+  const status = stringValue(record, 'status');
+  if (status === 'missing') return { status };
+  if (status === 'present') return { status, raw: stringValue(record, 'raw') };
+  throw userFacingError('invalid_payload', 'Repo field portfolioManifest.status must be missing or present.');
 }
 
 function parseSlackOptions(tokens: string[]): Record<string, string> {
@@ -862,6 +993,17 @@ function candidateNotFound(candidateId: string): SlackControlPlaneResult {
     code: 'candidate_not_found',
     responseType: 'ephemeral',
     message: `Candidate ${candidateId} was not found or is no longer available.`,
+    candidateId,
+  };
+}
+
+function candidateDismissed(candidateId: string): SlackControlPlaneResult {
+  return {
+    ok: false,
+    status: 409,
+    code: 'candidate_dismissed',
+    responseType: 'ephemeral',
+    message: `Candidate ${candidateId} is dismissed and cannot be reopened from Slack.`,
     candidateId,
   };
 }

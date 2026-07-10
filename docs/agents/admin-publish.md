@@ -1,83 +1,103 @@
-# Admin review and publish foundation (AGE-731)
+# Review-gated project refresh and publish
 
-Minimal authenticated admin lane that turns a hidden `project_drafts` row into a
-published `projects` row with an auditable `review_events` trail. API-only JSON
-endpoints; polished admin UI is deferred (Claude-routed later).
+The authenticated admin lane turns a hidden `project_drafts` row into one
+atomic first publication or reviewed refresh. GitHub issue #188 adds immutable
+source identity, revision-idempotent proposals, ordered field review, and
+terminal drafts on top of the original AGE-731 foundation.
 
-## Boundary rules
+## Source and draft contract
 
-- Slack approval alone can never publish. The Slack control plane only creates
-  `hidden` drafts; publishing requires a GitHub-OAuth-authenticated admin to
-  approve (`approved_for_publish` review event with `metadata.source =
-  'admin_publish'`) and then publish with explicit provenance + privacy
-  confirmations in the same deliberate request.
-- Only validated public fields from `proposed_fields` reach the `projects` row.
-  `private_notes`, `provenance_map` contents, evidence text, and Slack payloads
-  never do.
-- Publish gates, in order: draft exists → lifecycle `approved_for_publish` →
-  fresh admin approval event (field edits demote and invalidate stale approvals)
-  → required public fields validate → `confirmProvenance` + `confirmPrivacy`
-  both `true` → non-empty `provenance_map` → no linked evidence with
-  `privacy_state` `unreviewed` or `blocked` (`private_allowed_for_draft` is
-  allowed: it authorizes draft usage; the evidence itself stays private).
+- GitHub repositories are keyed by `provider = github` plus GitHub's immutable
+  numeric repository id. Owner/name and URLs are mutable metadata; slugs never
+  resolve source identity.
+- `source_revision` is the fetched default-branch HEAD commit SHA. `pushed_at`
+  remains metadata only.
+- A scan fetches repository metadata, default-branch HEAD, root
+  `portfolio.json`, and README under the same authenticated snapshot operation.
+- Root `portfolio.json` v1 is
+  `{ "schemaVersion": 1, "project": <canonical project payload> }` and is
+  limited to 64 KiB. A missing manifest may use a repository-evidence proposal.
+  Present invalid JSON, unknown versions, oversize content, or canonical schema
+  failures stop with `invalid_manifest`; they never fall back.
+- `project_sources` links the immutable source to at most one public project.
+  Database indexes enforce one candidate and one draft per source revision plus
+  one active draft per source. A newer revision supersedes the prior active
+  draft; `published` and `superseded` are terminal.
+- Scans create hidden drafts only. `/dm-update` stages one validated field via
+  the same scan/draft and admin-field service; it cannot approve or publish.
+
+## Review and publish contract
+
+- Slack actions never publish. A GitHub-OAuth-authenticated admin chooses the
+  reviewed fields and creates an `approved_for_publish` event.
+- Approval persists an ordered immutable `reviewed_field_diff` array of
+  `{ field, before, after }`, the exact reviewed field names, and the draft's
+  `base_project_version`. Editing a draft clears the diff and invalidates the
+  approval.
+- First publication requires all canonical public fields. A refresh can approve
+  a subset; publish applies only reviewed `after` values and leaves every
+  unreviewed field untouched.
+- Publish compares the current `publication_version` and every reviewed
+  `before` value. Any mismatch rejects the whole request with HTTP 409 and
+  writes nothing.
+- The project write, one version increment, terminal draft transition, safe
+  evidence linkage, source linkage, and audit event run in one SQL statement.
+  Publish returns after the database commit and has no OpenAI, deploy, or
+  callback hook.
+- Evidence marked `private_allowed_for_draft` may be summarized in the private
+  admin UI, but it is never linked to the public project, included in public
+  audit provenance, cited, or offered to RAG. Only `safe_public` evidence may
+  support publication.
+
+Required public fields: `slug`, `title`, `tagline`, `area`, `year`, `summary`.
+The canonical optional fields are `activity`, `details`, `metrics`, `links`, and
+`media`.
 
 ## Endpoints
 
-All under `/api/admin/`, `prerender = false`, `Cache-Control: no-store`, JSON.
-Mutating routes require `Content-Type: application/json` (CSRF defense-in-depth
-alongside `SameSite=Lax` cookies, since Astro's `checkOrigin` is globally off
-for Slack webhooks).
+All admin endpoints are dynamic, return `Cache-Control: no-store`, and require
+JSON for mutations.
 
 | Route | Method | Purpose |
 | --- | --- | --- |
-| `/api/admin/auth/login` | GET | Redirect to GitHub OAuth authorize with signed state cookie |
-| `/api/admin/auth/callback` | GET | Verify state, exchange code, allow only `ADMIN_GITHUB_ALLOWED_LOGIN`, mint signed session cookie |
-| `/api/admin/auth/logout` | POST | Clear session cookie |
-| `/api/admin/drafts` | GET | List drafts for review |
-| `/api/admin/drafts/[id]` | GET / PATCH | Draft detail with evidence privacy summary / edit validated public fields |
-| `/api/admin/drafts/[id]/approve` | POST | Mark `approved_for_publish` (requires valid required fields) |
-| `/api/admin/drafts/[id]/publish` | POST | Run publish gates, upsert `projects`, write `published` review event |
+| `/api/admin/auth/login` | GET | Start GitHub OAuth with signed state |
+| `/api/admin/auth/callback` | GET | Verify state/login and mint the admin session |
+| `/api/admin/auth/logout` | POST | Clear the admin session |
+| `/api/admin/drafts` | GET | List active and terminal drafts |
+| `/api/admin/drafts/[id]` | GET / PATCH | Review evidence privacy and stage canonical fields |
+| `/api/admin/drafts/[id]/approve` | POST | Store the exact reviewed field set and ordered diff |
+| `/api/admin/drafts/[id]/publish` | POST | Run privacy/staleness gates and commit atomically |
 
-Required public fields: `slug`, `title`, `tagline`, `area`, `year`, `summary`.
-Optional: `activity`, `details`, `metrics`, `links`, `media` (JSON arrays).
+Approval accepts optional `reviewedFields`. Omitting it reviews every changed
+field for an existing project and every public field for a first publication.
 
-## Required environment (names only — never commit or log values)
+## Required environment names
 
-| Env var | Purpose |
-| --- | --- |
-| `ADMIN_GITHUB_CLIENT_ID` | GitHub OAuth app client id |
-| `ADMIN_GITHUB_CLIENT_SECRET` | GitHub OAuth app client secret |
-| `ADMIN_GITHUB_ALLOWED_LOGIN` | The single GitHub login allowed to act as admin (case-insensitive) |
-| `ADMIN_SESSION_SECRET` | HMAC key for signed state/session cookies |
-| `ADMIN_GITHUB_CLIENT_ID_PREVIEW` | Preview-only override for the GitHub OAuth app client id when `VERCEL_ENV=preview` |
-| `ADMIN_GITHUB_CLIENT_SECRET_PREVIEW` | Preview-only override for the GitHub OAuth app client secret when `VERCEL_ENV=preview` |
-| `ADMIN_SESSION_SECRET_PREVIEW` | Preview-only override for signed state/session cookies when `VERCEL_ENV=preview` |
+- `ADMIN_GITHUB_CLIENT_ID`
+- `ADMIN_GITHUB_CLIENT_SECRET`
+- `ADMIN_GITHUB_ALLOWED_LOGIN`
+- `ADMIN_SESSION_SECRET`
+- Preview overrides with `_PREVIEW` where already supported
+- The database connection names documented in `src/lib/db/client.ts`
+- `GITHUB_DISCOVERY_TOKEN` (preferred) or `GITHUB_TOKEN` for authenticated Slack snapshot fetches
 
-Plus the existing database connection env (see `src/lib/db/client.ts`).
+Never commit or log their values.
 
-HITL setup (maintainer): create a GitHub OAuth app with callback URL
-`<origin>/api/admin/auth/callback` for each deployed origin (production and the
-preview alias if admin access from previews is wanted), then set the production
-env vars in Vercel for production and either the base names or the `_PREVIEW`
-override names for preview. `ADMIN_GITHUB_ALLOWED_LOGIN` is shared by both.
-Routes return 503 `admin_auth_unconfigured` until env is present, so deploys
-stay safe before setup. Post-AGE-803, preview deploys write to the Neon
-`preview` branch; production publish proof requires the production deployment.
+## Migration and proof
 
-## Actor and audit conventions
+`db/migrations/0004_source_identity_and_refresh_drafts.sql` must be applied
+manually to the persistent preview and production Neon branches before code
+that depends on it is promoted. Do not apply either migration as part of an
+agent PR.
 
-- Actor string everywhere: `github:<lowercased-login>`.
-- Every admin mutation writes a `review_events` row with
-  `metadata.source = 'admin_publish'`.
-- Published project id is deterministic from the draft id
-  (`draft_<uuid>` → `proj_<uuid>`) so a retried publish after a partial
-  failure (Neon HTTP runs without transactions) converges on the same row
-  instead of dead-ending in a slug conflict.
+Targeted proof:
 
-## Tests
+- `npm run test:db`
+- `npm run test:discovery`
+- `npm run test:slack`
+- `npm run test:admin`
+- `npm run test:proof`
 
-`npm run test:admin` — `tests/admin-auth.test.ts` (OAuth boundary, cookie
-signing/tampering/expiry, wrong-login refusal) and `tests/admin-publish.test.ts`
-(PGlite + real migrations; every publish gate, Slack-only drafts cannot
-publish, stale-approval regression, full publish projection, republish update
-path).
+The tests cover concurrent duplicate scans, repository rename, manifest failure
+policy, active-draft uniqueness, exact/partial review, stale whole-publish
+rejection, version increments, terminal drafts, and private-evidence exclusion.

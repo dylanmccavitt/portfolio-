@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, type Queryable } from '../scripts/db';
+import { approveAdminDraftForPublish, publishAdminDraft } from '@/lib/admin/publish';
 import {
   PORTFOLIO_CANDIDATE_TOPIC,
   scanGithubRepositoryCandidate,
   type GithubDiscoveryQueryable,
   type GithubRepositorySnapshot,
 } from '@/lib/db/github-discovery';
+import { handleSlackInteraction } from '@/lib/slack/control-plane';
 
 function createTestDb(): Queryable {
   return new PGlite() as Queryable;
@@ -20,6 +22,7 @@ async function createMigratedDb(): Promise<Queryable> {
 }
 
 const PUBLIC_REPO: GithubRepositorySnapshot = {
+  repositoryId: '10001',
   owner: 'DylanMcCavitt',
   name: 'portfolio-candidate-app',
   htmlUrl: 'https://github.com/DylanMcCavitt/portfolio-candidate-app',
@@ -29,9 +32,11 @@ const PUBLIC_REPO: GithubRepositorySnapshot = {
   topics: [PORTFOLIO_CANDIDATE_TOPIC, 'astro'],
   isPrivate: false,
   defaultBranch: 'main',
+  sourceRevision: '1111111111111111111111111111111111111111',
   pushedAt: '2026-06-01T00:00:00.000Z',
   stars: 1,
   readmeMarkdown: '# Candidate app\n\nShips a real workflow.',
+  portfolioManifest: { status: 'missing' },
 };
 
 test('allowlisted GitHub repo creates scan run candidate evidence and audit records', async () => {
@@ -58,6 +63,7 @@ test('allowlisted GitHub repo creates scan run candidate evidence and audit reco
       result_counts: {
         scanned: 1,
         candidates: 1,
+        drafts: 1,
         evidence: 2,
         rejected: 0,
         privateEvidence: 0,
@@ -80,7 +86,7 @@ test('allowlisted GitHub repo creates scan run candidate evidence and audit reco
   assert.equal(candidates.rows[0]?.source_kind, 'github_repo');
   assert.equal(candidates.rows[0]?.source_ref, PUBLIC_REPO.htmlUrl);
   assert.equal(candidates.rows[0]?.repo_visibility, 'public');
-  assert.equal(candidates.rows[0]?.lifecycle_state, 'qualified');
+  assert.equal(candidates.rows[0]?.lifecycle_state, 'draft_requested');
   assert.equal(Number(candidates.rows[0]?.confidence), result.confidence);
   assert.equal(candidates.rows[0]?.evidence_packet.audit.allowlisted, true);
 
@@ -110,13 +116,10 @@ test('allowlisted GitHub repo creates scan run candidate evidence and audit reco
     `SELECT action, after_state, metadata FROM review_events WHERE candidate_id = $1`,
     [result.candidateId],
   );
-  assert.deepEqual(reviewEvents.rows, [
-    {
-      action: 'candidate_qualified',
-      after_state: 'qualified',
-      metadata: { audit: result.audit, confidence: result.confidence, scanRunId: result.scanRunId },
-    },
-  ]);
+  assert.equal(reviewEvents.rows.length, 1);
+  assert.equal(reviewEvents.rows[0]?.action, 'draft_requested');
+  assert.equal(reviewEvents.rows[0]?.after_state, 'hidden');
+  assert.equal(reviewEvents.rows[0]?.metadata.sourceRevision, PUBLIC_REPO.sourceRevision);
 
   const ragSources = await db.query<{ count: string }>(`SELECT count(*)::text AS count FROM rag_sources`);
   assert.equal(ragSources.rows[0]?.count, '0');
@@ -141,11 +144,15 @@ test('scan failure rethrows the original error when scan_runs bookkeeping also f
         actor: 'test',
         trigger: 'test',
         repo: {
+          repositoryId: '10001',
           owner: 'DylanMcCavitt',
           name: 'portfolio-candidate-app',
           htmlUrl: 'https://github.com/DylanMcCavitt/portfolio-candidate-app',
           topics: [PORTFOLIO_CANDIDATE_TOPIC],
           isPrivate: false,
+          defaultBranch: 'main',
+          sourceRevision: '1111111111111111111111111111111111111111',
+          portfolioManifest: { status: 'missing' },
         },
       }),
     (error) => {
@@ -183,6 +190,7 @@ test('non-allowlisted GitHub repos are rejected with audit reason and no candida
   assert.deepEqual(scanRuns.rows[0]?.result_counts, {
     scanned: 1,
     candidates: 0,
+    drafts: 0,
     evidence: 0,
     rejected: 1,
     reason: result.reason,
@@ -257,4 +265,548 @@ test('scanner treats repository snapshots as read-only input', async () => {
   });
 
   assert.deepEqual(repo, before);
+});
+
+test('same repository revision is idempotent across concurrent scans and rename-stable identity', async () => {
+  const db = await createMigratedDb();
+  const [manual, slack] = await Promise.all([
+    scanGithubRepositoryCandidate(db, { actor: 'manual:test', trigger: 'test', repo: PUBLIC_REPO }),
+    scanGithubRepositoryCandidate(db, { actor: 'slack:test', trigger: 'slack', repo: PUBLIC_REPO }),
+  ]);
+  assert.equal(manual.status, 'qualified');
+  assert.equal(slack.status, 'qualified');
+  assert.equal(manual.candidateId, slack.candidateId);
+  assert.equal(manual.draftId, slack.draftId);
+
+  const renamed = await scanGithubRepositoryCandidate(db, {
+    actor: 'manual:rename',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      owner: 'RenamedOwner',
+      name: 'renamed-project',
+      fullName: 'RenamedOwner/renamed-project',
+      htmlUrl: 'https://github.com/RenamedOwner/renamed-project',
+    },
+  });
+  assert.equal(renamed.status, 'qualified');
+  assert.equal(renamed.candidateId, manual.candidateId);
+  assert.equal(renamed.draftId, manual.draftId);
+
+  const counts = await db.query<{ candidates: string; drafts: string; sources: string; evidence: string }>(
+    `SELECT
+       (SELECT count(*)::text FROM project_candidates) AS candidates,
+       (SELECT count(*)::text FROM project_drafts) AS drafts,
+       (SELECT count(*)::text FROM project_sources) AS sources,
+       (SELECT count(*)::text FROM evidence_sources) AS evidence`,
+  );
+  assert.deepEqual(counts.rows, [{ candidates: '1', drafts: '1', sources: '1', evidence: '4' }]);
+  const source = await db.query<{ canonical_full_name: string; project_id: string | null }>(
+    `SELECT canonical_full_name, project_id FROM project_sources WHERE repository_id = $1`,
+    [PUBLIC_REPO.repositoryId],
+  );
+  assert.deepEqual(source.rows, [{ canonical_full_name: 'RenamedOwner/renamed-project', project_id: null }]);
+  const restaged = await db.query<{
+    lifecycle_state: string;
+    proposed_fields: Record<string, unknown>;
+    provenance_map: Record<string, unknown>;
+  }>(
+    `SELECT lifecycle_state, proposed_fields, provenance_map FROM project_drafts WHERE id = $1`,
+    [renamed.draftId],
+  );
+  assert.equal(restaged.rows[0]?.lifecycle_state, 'needs_review');
+  assert.deepEqual(restaged.rows[0]?.proposed_fields.links, [
+    { label: 'GitHub', href: 'https://github.com/RenamedOwner/renamed-project' },
+  ]);
+  assert.equal(restaged.rows[0]?.provenance_map.canonicalFullName, 'RenamedOwner/renamed-project');
+  const evidenceLinks = await db.query<{ draft_id: string | null; count: string }>(
+    `SELECT draft_id, count(*)::text AS count FROM evidence_sources GROUP BY draft_id ORDER BY draft_id NULLS FIRST`,
+  );
+  assert.deepEqual(evidenceLinks.rows, [
+    { draft_id: null, count: '2' },
+    { draft_id: renamed.draftId, count: '2' },
+  ]);
+});
+
+test('a new source revision supersedes the prior active draft and leaves exactly one active draft', async () => {
+  const db = await createMigratedDb();
+  const first = await scanGithubRepositoryCandidate(db, { actor: 'test:first', trigger: 'test', repo: PUBLIC_REPO });
+  const second = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:second',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      sourceRevision: '2222222222222222222222222222222222222222',
+      description: 'A new source revision proposal.',
+    },
+  });
+  assert.equal(first.status, 'qualified');
+  assert.equal(second.status, 'qualified');
+  assert.notEqual(first.draftId, second.draftId);
+
+  const drafts = await db.query<{ source_revision: string; lifecycle_state: string }>(
+    `SELECT source_revision, lifecycle_state FROM project_drafts ORDER BY source_revision`,
+  );
+  assert.deepEqual(drafts.rows, [
+    { source_revision: PUBLIC_REPO.sourceRevision, lifecycle_state: 'superseded' },
+    { source_revision: '2222222222222222222222222222222222222222', lifecycle_state: 'hidden' },
+  ]);
+});
+
+test('terminal revision replays are no-ops and cannot supersede the newer active revision', async () => {
+  const db = await createMigratedDb();
+  const first = await scanGithubRepositoryCandidate(db, { actor: 'test:first', trigger: 'test', repo: PUBLIC_REPO });
+  assert.equal(first.status, 'qualified');
+  const nextRepo = {
+    ...PUBLIC_REPO,
+    sourceRevision: '2222222222222222222222222222222222222222',
+    description: 'Newer active revision.',
+  };
+  const second = await scanGithubRepositoryCandidate(db, { actor: 'test:second', trigger: 'test', repo: nextRepo });
+  assert.equal(second.status, 'qualified');
+  const supersededBeforeReplay = await db.query<Record<string, unknown>>(
+    `SELECT * FROM project_drafts WHERE id = $1`,
+    [first.draftId],
+  );
+
+  const replay = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:old-replay',
+    trigger: 'test',
+    repo: { ...PUBLIC_REPO, fullName: 'RenamedOwner/old-revision', owner: 'RenamedOwner', name: 'old-revision' },
+  });
+  assert.equal(replay.status, 'rejected');
+  assert.equal(replay.code, 'revision_already_processed');
+  assert.deepEqual(
+    (await db.query<Record<string, unknown>>(`SELECT * FROM project_drafts WHERE id = $1`, [first.draftId])).rows,
+    supersededBeforeReplay.rows,
+  );
+
+  const drafts = await db.query<{ source_revision: string; lifecycle_state: string }>(
+    `SELECT source_revision, lifecycle_state FROM project_drafts ORDER BY source_revision`,
+  );
+  assert.deepEqual(drafts.rows, [
+    { source_revision: PUBLIC_REPO.sourceRevision, lifecycle_state: 'superseded' },
+    { source_revision: nextRepo.sourceRevision, lifecycle_state: 'hidden' },
+  ]);
+  const counts = await db.query<{ evidence: string; events: string }>(
+    `SELECT (SELECT count(*)::text FROM evidence_sources) AS evidence,
+            (SELECT count(*)::text FROM review_events WHERE action = 'draft_requested') AS events`,
+  );
+  assert.deepEqual(counts.rows, [{ evidence: '4', events: '2' }]);
+
+  await db.query(`UPDATE project_drafts SET lifecycle_state = 'published' WHERE id = $1`, [second.draftId]);
+  const publishedBeforeReplay = await db.query<Record<string, unknown>>(
+    `SELECT * FROM project_drafts WHERE id = $1`,
+    [second.draftId],
+  );
+  const publishedReplay = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:published-replay',
+    trigger: 'test',
+    repo: nextRepo,
+  });
+  assert.equal(publishedReplay.status, 'rejected');
+  assert.equal(publishedReplay.code, 'revision_already_processed');
+  assert.deepEqual(
+    (await db.query<Record<string, unknown>>(`SELECT * FROM project_drafts WHERE id = $1`, [second.draftId])).rows,
+    publishedBeforeReplay.rows,
+  );
+  assert.deepEqual(
+    (await db.query<{ evidence: string; events: string }>(
+      `SELECT (SELECT count(*)::text FROM evidence_sources) AS evidence,
+              (SELECT count(*)::text FROM review_events WHERE action = 'draft_requested') AS events`,
+    )).rows,
+    [{ evidence: '4', events: '2' }],
+  );
+});
+
+test('a lost concurrent different-revision insert rejects without cross-linking evidence', async () => {
+  const db = await createMigratedDb();
+  const active = await scanGithubRepositoryCandidate(db, { actor: 'test:active', trigger: 'test', repo: PUBLIC_REPO });
+  assert.equal(active.status, 'qualified');
+  let injectedConflict = false;
+  const racingDb: GithubDiscoveryQueryable = {
+    async query<Row = unknown>(sql: string, params?: unknown[]) {
+      if (!injectedConflict && sql.includes('existing_revision AS') && sql.includes('INSERT INTO project_drafts')) {
+        injectedConflict = true;
+        throw { code: '23505', constraint: 'project_drafts_active_source_uidx' };
+      }
+      return db.query<Row>(sql, params);
+    },
+  };
+  const losingRevision = '9999999999999999999999999999999999999999';
+  const result = await scanGithubRepositoryCandidate(racingDb, {
+    actor: 'test:losing-concurrent-revision',
+    trigger: 'test',
+    repo: { ...PUBLIC_REPO, sourceRevision: losingRevision, description: 'Losing concurrent revision.' },
+  });
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.code, 'active_revision_conflict');
+
+  const losingCandidate = await db.query<{ id: string }>(
+    `SELECT id FROM project_candidates WHERE source_revision = $1`,
+    [losingRevision],
+  );
+  assert.equal(losingCandidate.rows.length, 1);
+  assert.equal(
+    (await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM evidence_sources WHERE candidate_id = $1`,
+      [losingCandidate.rows[0]?.id],
+    )).rows[0]?.count,
+    '0',
+  );
+  assert.deepEqual(
+    (await db.query<{ source_revision: string; lifecycle_state: string }>(
+      `SELECT source_revision, lifecycle_state FROM project_drafts`,
+    )).rows,
+    [{ source_revision: PUBLIC_REPO.sourceRevision, lifecycle_state: 'hidden' }],
+  );
+});
+
+test('a stale same-revision fingerprint cannot attach evidence after a newer restage owns the draft', async () => {
+  const db = await createMigratedDb();
+  const staleRepo = {
+    ...PUBLIC_REPO,
+    description: 'Stale repository description.',
+    readmeMarkdown: '# Stale repository evidence',
+  };
+  const winningRepo = {
+    ...PUBLIC_REPO,
+    description: 'Winning repository description.',
+    readmeMarkdown: '# Winning repository evidence',
+  };
+  let interleaved = false;
+  let winningDraftId: string | null = null;
+  const racingDb: GithubDiscoveryQueryable = {
+    async query<Row = unknown>(sql: string, params?: unknown[]) {
+      if (!interleaved && sql.includes('UPDATE evidence_sources') && sql.includes('SET draft_id = CASE')) {
+        interleaved = true;
+        const winner = await scanGithubRepositoryCandidate(db, {
+          actor: 'test:newer-fingerprint',
+          trigger: 'test',
+          repo: winningRepo,
+        });
+        assert.equal(winner.status, 'qualified');
+        if (winner.status === 'qualified') winningDraftId = winner.draftId;
+      }
+      return db.query<Row>(sql, params);
+    },
+  };
+
+  const stale = await scanGithubRepositoryCandidate(racingDb, {
+    actor: 'test:stale-fingerprint',
+    trigger: 'test',
+    repo: staleRepo,
+  });
+  assert.equal(interleaved, true);
+  assert.equal(stale.status, 'rejected');
+  if (stale.status !== 'rejected') return;
+  assert.equal(stale.code, 'active_revision_conflict');
+  assert.ok(winningDraftId);
+
+  const ownership = await db.query<{
+    candidate_fingerprint: string;
+    draft_fingerprint: string;
+    lifecycle_state: string;
+    proposed_fields: Record<string, unknown>;
+  }>(
+    `SELECT c.content_fingerprint AS candidate_fingerprint,
+            d.content_fingerprint AS draft_fingerprint,
+            d.lifecycle_state,
+            d.proposed_fields
+     FROM project_candidates c
+     JOIN project_drafts d ON d.candidate_id = c.id
+     WHERE d.id = $1`,
+    [winningDraftId],
+  );
+  assert.equal(ownership.rows[0]?.candidate_fingerprint, ownership.rows[0]?.draft_fingerprint);
+  assert.equal(ownership.rows[0]?.lifecycle_state, 'needs_review');
+  assert.equal(ownership.rows[0]?.proposed_fields.summary, winningRepo.description);
+
+  const evidence = await db.query<{
+    draft_id: string | null;
+    extracted_text: string | null;
+    claim_map: { contentFingerprint?: string };
+  }>(`SELECT draft_id, extracted_text, claim_map FROM evidence_sources ORDER BY extracted_text`);
+  assert.equal(evidence.rows.length, 4);
+  const attached = evidence.rows.filter((row) => row.draft_id === winningDraftId);
+  const detached = evidence.rows.filter((row) => row.draft_id === null);
+  assert.equal(attached.length, 2);
+  assert.equal(detached.length, 2);
+  assert.deepEqual(
+    attached.map((row) => row.extracted_text).sort(),
+    [winningRepo.readmeMarkdown, winningRepo.description].sort(),
+  );
+  assert.deepEqual(
+    detached.map((row) => row.extracted_text).sort(),
+    [staleRepo.readmeMarkdown, staleRepo.description].sort(),
+  );
+  assert.ok(attached.every((row) => row.claim_map.contentFingerprint === ownership.rows[0]?.draft_fingerprint));
+  assert.equal(
+    (await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM review_events WHERE action = 'draft_requested'`,
+    )).rows[0]?.count,
+    '1',
+  );
+});
+
+test('a Slack dismissal after candidate upsert prevents a paused scan from creating a draft', async () => {
+  const db = await createMigratedDb();
+  let dismissed = false;
+  let dismissedCandidateId: string | null = null;
+  const racingDb: GithubDiscoveryQueryable = {
+    async query<Row = unknown>(sql: string, params?: unknown[]) {
+      if (!dismissed && sql.includes('INSERT INTO project_drafts') && sql.includes('content_fingerprint')) {
+        dismissed = true;
+        dismissedCandidateId = String(params?.[1]);
+        const result = await handleSlackInteraction(
+          db,
+          { signingSecret: 'test-signing-secret', allowedUserId: 'U_DYLAN' },
+          { userId: 'U_DYLAN', action: 'dismiss', candidateId: dismissedCandidateId },
+        );
+        assert.equal(result.ok, true);
+        assert.equal(result.code, 'candidate_dismissed');
+      }
+      return db.query<Row>(sql, params);
+    },
+  };
+
+  const result = await scanGithubRepositoryCandidate(racingDb, {
+    actor: 'test:paused-before-draft',
+    trigger: 'test',
+    repo: PUBLIC_REPO,
+  });
+  assert.equal(dismissed, true);
+  assert.ok(dismissedCandidateId);
+  assert.equal(result.status, 'rejected');
+  if (result.status !== 'rejected') return;
+  assert.equal(result.code, 'candidate_dismissed');
+  assert.deepEqual(
+    (await db.query<{ lifecycle_state: string }>(
+      `SELECT lifecycle_state FROM project_candidates WHERE id = $1`,
+      [dismissedCandidateId],
+    )).rows,
+    [{ lifecycle_state: 'dismissed' }],
+  );
+  assert.deepEqual(
+    (await db.query<{ drafts: string; evidence: string; draft_events: string; dismiss_events: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM project_drafts
+          WHERE lifecycle_state IN ('hidden', 'needs_review', 'changes_requested', 'approved_for_publish')) AS drafts,
+         (SELECT count(*)::text FROM evidence_sources) AS evidence,
+         (SELECT count(*)::text FROM review_events WHERE action = 'draft_requested') AS draft_events,
+         (SELECT count(*)::text FROM review_events WHERE action = 'candidate_dismissed') AS dismiss_events`,
+    )).rows,
+    [{ drafts: '0', evidence: '0', draft_events: '0', dismiss_events: '1' }],
+  );
+});
+
+test('portfolio.json v1 supplies the canonical proposal and invalid present manifests fail closed', async () => {
+  const canonicalProject = {
+    slug: 'manifest-project',
+    title: 'Manifest Project',
+    tagline: 'A canonical manifest proposal.',
+    area: 'Apps',
+    year: 2026,
+    summary: 'A complete canonical project supplied by portfolio.json.',
+    activity: 'Active',
+    details: [{ label: 'Stage', value: 'Review' }],
+    metrics: [{ value: '1', label: 'source revision' }],
+    links: [{ label: 'Repo', href: PUBLIC_REPO.htmlUrl }],
+    media: [],
+  };
+  const db = await createMigratedDb();
+  const valid = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:manifest',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      portfolioManifest: { status: 'present', raw: JSON.stringify({ schemaVersion: 1, project: canonicalProject }) },
+    },
+  });
+  assert.equal(valid.status, 'qualified');
+  assert.equal(valid.proposalSource, 'manifest');
+  const draft = await db.query<{ proposed_fields: Record<string, unknown> }>(
+    `SELECT proposed_fields FROM project_drafts WHERE id = $1`,
+    [valid.draftId],
+  );
+  assert.deepEqual(draft.rows[0]?.proposed_fields, canonicalProject);
+
+  const invalidCases = [
+    { revision: '3333333333333333333333333333333333333333', raw: '{bad json' },
+    { revision: '4444444444444444444444444444444444444444', raw: JSON.stringify({ schemaVersion: 2, project: canonicalProject }) },
+    { revision: '5555555555555555555555555555555555555555', raw: JSON.stringify({ schemaVersion: 1, project: { ...canonicalProject, area: 'TypeScript' } }) },
+    { revision: '6666666666666666666666666666666666666666', raw: ' '.repeat(64 * 1024 + 1) },
+  ];
+  for (const item of invalidCases) {
+    const result = await scanGithubRepositoryCandidate(db, {
+      actor: 'test:invalid-manifest',
+      trigger: 'test',
+      repo: { ...PUBLIC_REPO, repositoryId: item.revision.slice(0, 8).replace(/^0+/, '') || '1', sourceRevision: item.revision, portfolioManifest: { status: 'present', raw: item.raw } },
+    });
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.code, 'invalid_manifest');
+    const run = await db.query<{ lifecycle_state: string; error_message: string }>(
+      `SELECT lifecycle_state, error_message FROM scan_runs WHERE id = $1`,
+      [result.scanRunId],
+    );
+    assert.deepEqual(run.rows, [{ lifecycle_state: 'failed', error_message: 'invalid_manifest' }]);
+  }
+});
+
+test('missing manifest evidence proposal never derives area from GitHub language or topics', async () => {
+  const db = await createMigratedDb();
+  const result = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:no-area-derivation',
+    trigger: 'test',
+    repo: { ...PUBLIC_REPO, language: 'TypeScript', topics: [PORTFOLIO_CANDIDATE_TOPIC, 'rust'] },
+  });
+  assert.equal(result.status, 'qualified');
+  const row = await db.query<{ proposed_fields: Record<string, unknown> }>(
+    `SELECT proposed_fields FROM project_drafts WHERE id = $1`,
+    [result.draftId],
+  );
+  assert.equal(Object.hasOwn(row.rows[0]?.proposed_fields ?? {}, 'area'), false);
+  assert.ok(!JSON.stringify(row.rows[0]?.proposed_fields).includes('TypeScript'));
+});
+
+test('private evidence remains draft-only and is excluded from public provenance ids', async () => {
+  const db = await createMigratedDb();
+  const result = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:private-provenance',
+    trigger: 'test',
+    repo: { ...PUBLIC_REPO, isPrivate: true },
+  });
+  assert.equal(result.status, 'qualified');
+  const row = await db.query<{ provenance_map: { publicEvidenceIds: string[]; privateEvidenceIds: string[] } }>(
+    `SELECT provenance_map FROM project_drafts WHERE id = $1`,
+    [result.draftId],
+  );
+  assert.deepEqual(row.rows[0]?.provenance_map.publicEvidenceIds, []);
+  assert.equal(row.rows[0]?.provenance_map.privateEvidenceIds.length, 2);
+});
+
+test('same-HEAD visibility or content changes fully restage the active draft and isolate prior evidence', async () => {
+  const db = await createMigratedDb();
+  const initial = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:private-first',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      isPrivate: true,
+      description: 'Private-only proposal text.',
+      readmeMarkdown: '# Private-only evidence',
+    },
+  });
+  assert.equal(initial.status, 'qualified');
+  await db.query(
+    `UPDATE project_drafts
+     SET lifecycle_state = 'approved_for_publish',
+         reviewed_field_diff = '[{"field":"title","before":null,"after":"Private title"}]'::jsonb
+     WHERE id = $1`,
+    [initial.draftId],
+  );
+
+  const refreshed = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:public-restage',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      isPrivate: false,
+      description: 'Public proposal text.',
+      readmeMarkdown: '# Public evidence',
+    },
+  });
+  assert.equal(refreshed.status, 'qualified');
+  assert.equal(refreshed.draftId, initial.draftId);
+
+  const draft = await db.query<{
+    lifecycle_state: string;
+    reviewed_field_diff: unknown[];
+    proposed_fields: Record<string, unknown>;
+    provenance_map: { publicEvidenceIds: string[]; privateEvidenceIds: string[] };
+  }>(
+    `SELECT lifecycle_state, reviewed_field_diff, proposed_fields, provenance_map
+     FROM project_drafts WHERE id = $1`,
+    [initial.draftId],
+  );
+  assert.equal(draft.rows[0]?.lifecycle_state, 'needs_review');
+  assert.deepEqual(draft.rows[0]?.reviewed_field_diff, []);
+  assert.equal(draft.rows[0]?.proposed_fields.summary, 'Public proposal text.');
+  assert.equal(draft.rows[0]?.provenance_map.publicEvidenceIds.length, 2);
+  assert.deepEqual(draft.rows[0]?.provenance_map.privateEvidenceIds, []);
+
+  const evidence = await db.query<{ privacy_state: string; draft_id: string | null; extracted_text: string | null }>(
+    `SELECT privacy_state, draft_id, extracted_text FROM evidence_sources ORDER BY privacy_state, extracted_text`,
+  );
+  assert.equal(evidence.rows.length, 4);
+  const prior = evidence.rows.filter((row) => row.privacy_state === 'private_allowed_for_draft');
+  const current = evidence.rows.filter((row) => row.privacy_state === 'safe_public');
+  assert.equal(prior.length, 2);
+  assert.equal(current.length, 2);
+  assert.ok(prior.every((row) => row.draft_id === null));
+  assert.ok(current.every((row) => row.draft_id === initial.draftId));
+  assert.ok(current.some((row) => row.extracted_text === 'Public proposal text.'));
+  assert.ok(current.some((row) => row.extracted_text === '# Public evidence'));
+});
+
+test('public-to-private same-HEAD restage cannot publish using stale public evidence', async () => {
+  const db = await createMigratedDb();
+  const publicProject = {
+    slug: 'visibility-restage',
+    title: 'Visibility Restage',
+    tagline: 'Public proposal.',
+    area: 'Apps',
+    year: 2026,
+    summary: 'Public source text.',
+    activity: '',
+    details: [],
+    metrics: [],
+    links: [{ label: 'Repo', href: PUBLIC_REPO.htmlUrl }],
+    media: [],
+  };
+  const first = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:public-first',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      portfolioManifest: { status: 'present', raw: JSON.stringify({ schemaVersion: 1, project: publicProject }) },
+    },
+  });
+  assert.equal(first.status, 'qualified');
+
+  const privateProject = {
+    ...publicProject,
+    tagline: 'Private proposal.',
+    summary: 'Private source text must not publish.',
+    links: [],
+  };
+  const second = await scanGithubRepositoryCandidate(db, {
+    actor: 'test:private-restage',
+    trigger: 'test',
+    repo: {
+      ...PUBLIC_REPO,
+      isPrivate: true,
+      portfolioManifest: { status: 'present', raw: JSON.stringify({ schemaVersion: 1, project: privateProject }) },
+    },
+  });
+  assert.equal(second.status, 'qualified');
+  assert.equal(second.draftId, first.draftId);
+  const approval = await approveAdminDraftForPublish(db, second.draftId, 'github:dylan');
+  assert.equal(approval.ok, true);
+  const publish = await publishAdminDraft(db, second.draftId, 'github:dylan', {
+    confirmProvenance: true,
+    confirmPrivacy: true,
+  });
+  assert.equal(publish.ok, false);
+  assert.equal(publish.status, 422);
+  assert.equal(publish.code, 'public_provenance_missing');
+  assert.equal(
+    (await db.query<{ count: string }>(`SELECT count(*)::text AS count FROM projects WHERE lifecycle_state = 'published'`)).rows[0]?.count,
+    '0',
+  );
+  const stalePublic = await db.query<{ project_id: string | null; draft_id: string | null }>(
+    `SELECT project_id, draft_id FROM evidence_sources WHERE privacy_state = 'safe_public'`,
+  );
+  assert.ok(stalePublic.rows.length > 0);
+  assert.ok(stalePublic.rows.every((row) => row.project_id === null && row.draft_id === null));
 });

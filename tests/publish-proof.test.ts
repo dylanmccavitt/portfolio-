@@ -354,7 +354,7 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
     `SELECT id, lifecycle_state FROM project_candidates WHERE id = $1`,
     [publishedScan.candidateId],
   );
-  assert.deepEqual(scanCandidateRows.rows, [{ id: publishedScan.candidateId, lifecycle_state: 'qualified' }]);
+  assert.deepEqual(scanCandidateRows.rows, [{ id: publishedScan.candidateId, lifecycle_state: 'draft_requested' }]);
 
   const scanEvidenceRows = await db.query<{ id: string }>(
     `SELECT id FROM evidence_sources WHERE candidate_id = $1 ORDER BY id`,
@@ -380,7 +380,8 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
   const hiddenDraft = hiddenDraftRows.rows[0];
   assert.ok(hiddenDraft, 'expected hidden draft');
   assert.equal(hiddenDraft.lifecycle_state, 'hidden');
-  assert.equal(hiddenDraft.proposed_fields.visibility, 'hidden');
+  assert.equal(hiddenDraft.provenance_map.workflow, 'github_refresh');
+  assert.equal(hiddenDraft.provenance_map.sourceRevision, publishedFixture.repo.sourceRevision);
   assert.equal(hiddenDraft.provenance_map.publicPublish, false);
 
   assert.deepEqual(await fetchPublicProjectCards(db), []);

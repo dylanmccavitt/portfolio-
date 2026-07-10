@@ -1,6 +1,7 @@
 {
   "actor": "age-737-proof-scan",
   "repo": {
+    "repositoryId": "91002",
     "owner": "DylanMcCavitt",
     "name": "publish-proof-unpublished",
     "htmlUrl": "https://github.com/DylanMcCavitt/publish-proof-unpublished",
@@ -10,8 +11,10 @@
     "topics": ["portfolio-candidate", "automation"],
     "isPrivate": false,
     "defaultBranch": "main",
+    "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "pushedAt": "2026-07-04T00:00:00.000Z",
     "stars": 1,
-    "readmeMarkdown": "# Publish proof unpublished fixture\n\nThis candidate remains draft-only."
+    "readmeMarkdown": "# Publish proof unpublished fixture\n\nThis candidate remains draft-only.",
+    "portfolioManifest": { "status": "missing" }
   }
 }
