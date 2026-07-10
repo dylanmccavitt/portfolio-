@@ -5,14 +5,12 @@ description: Always-load-first context skill. Reads current project state and or
 
 # Context
 
-Load this skill first for every task. Orients the session with current state.
+Compatibility pointer for Claude skill discovery. The canonical context skill is
+`.agents/skills/context/SKILL.md`; read it completely and follow it instead of
+duplicating project workflow here.
 
 ## Scope Guard
 
 - Apply only in the `portfolio` project.
 
-## Read This First
-
-1. `.claude/CLAUDE.md` — project goals and constraints
-2. `git status` / `git log --oneline -5` — recent changes
-3. Root directory structure — what exists so far
+Also read root `AGENTS.md`; it is the canonical project instruction file.

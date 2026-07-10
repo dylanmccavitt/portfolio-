@@ -2,8 +2,7 @@
 
 <!-- New work is tracked in Linear (team dmcc / AGE, project Portfolio). Prefer
 `.agents/envelope/templates/linear-issue.md`. This GitHub template remains for the
-legacy redesign stack (#84-#88) and the bounded production-readiness program
-(#184-#196). For #184-#196, GitHub is authoritative: use branch
+bounded production-readiness program (#184-#196). For #184-#196, GitHub is authoritative: use branch
 `codex/gh-<issue>-<slug>` and close from the PR with `Fixes #<issue>`. Linear/AGE
 remains the default outside that issue range. See `.agents/envelope/linear-map.md`. -->
 

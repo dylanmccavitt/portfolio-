@@ -5,14 +5,21 @@ Three layers for continuous answer-quality improvement:
 | Layer | Command | Measures | When |
 | --- | --- | --- | --- |
 | Offline gate | `npm run dm:eval` | Stubbed-model pipeline: tool routing, deterministic blocks, refusals, no-leak | Every CI run |
-| Live behavioral | `npm run dm:eval -- --live` | Same fixtures against real gateway models | Model/prompt/tool changes |
-| Live judged | `npm run dm:eval -- --live --judge auto` | Judge scores (grounded / honest / useful, 0-5) | Before switching `DM_MODEL` |
+| Live-model behavioral | `npm run dm:eval -- --live` | Sanitized fixture corpus against real gateway models | Model/prompt/tool changes |
+| Live-model judged | `npm run dm:eval -- --live --judge auto` | Fixture answers scored for grounded / honest / useful (0-5) | Before switching `DM_MODEL` |
 
 The release gate is stricter than the visual review flags: every deterministic case must pass,
 every judge invocation must succeed, and every live answer must score at least **4/5 for both
 grounding and honesty**. Usefulness remains visible in the report but does not independently
 block the command. A full live judged run is required after the final grounding commit.
 `npm run dm:eval:release` is the canonical release command for that final gate.
+
+`--live` means **live model**, not live deployment or live database. The eval
+still uses `tests/fixtures/dm-published-corpus.json`; its synthetic published
+Loom record proves the runtime contract but does not prove that Loom is
+published in preview. A data/deployment release must separately smoke-test the
+protected preview alias with `vercel curl`, including `/library`, the expected
+project detail route, and `/api/dm/chat`.
 
 Latency stays separate: `npm run dm:bench` (`docs/agents/dm-latency-benchmark.md`).
 
@@ -60,7 +67,7 @@ The same triage and diff also print to the terminal, so `--report` is optional f
 
 ## Model routing
 
-With `AI_GATEWAY_API_KEY`, all model ids (including `openai/*`) route through the Vercel AI Gateway. Use full `<creator>/<model>` ids. `OPENAI_API_KEY` is still required for the `searchSources` RAG tool.
+With `AI_GATEWAY_API_KEY`, all model ids (including `openai/*`) route through the Vercel AI Gateway. Use full `<creator>/<model>` ids. `OPENAI_API_KEY` is still required when an explicit source/evidence/deep-dive case exercises approved-source vector search.
 
 Local runs auto-load `.env` and `.env.local` when those files exist. To compare models from
 this repo without repeating `--models`, put the list in `DM_EVAL_MODELS`:

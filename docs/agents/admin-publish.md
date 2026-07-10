@@ -5,6 +5,23 @@ atomic first publication or reviewed refresh. GitHub issue #188 adds immutable
 source identity, revision-idempotent proposals, ordered field review, and
 terminal drafts on top of the original AGE-731 foundation.
 
+## Operator entry point
+
+- Preview admin: `https://preview.dylanmccavitt.xyz/admin`
+- Local admin: `/admin` on the active dev origin
+- The route is intentionally absent from recruiter-facing navigation and is
+  protected by GitHub OAuth plus the allowed-login gate.
+- A Slack **Send to admin review** action creates or acknowledges a hidden
+  draft. `approved_for_publish` still is not public: an authenticated admin must
+  press Publish successfully before the project can appear in the library or DM.
+
+If the draft list works but a draft detail reports a missing `provider` column,
+the deployed code is ahead of migration `0004`. If project pages or DM report
+public data unavailable, verify migration `0003`, the database connection, and
+the typed public-project failure before changing content or RAG. Catalog content
+should appear on a deployment only when the response header explicitly reports
+`catalog_emergency`.
+
 ## Source and draft contract
 
 - GitHub repositories are keyed by `provider = github` plus GitHub's immutable

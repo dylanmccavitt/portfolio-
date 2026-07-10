@@ -46,8 +46,7 @@ Blocked, In Review, Human Review, Needs Fixes, Merging, Done, Canceled, Duplicat
 ## GitHub bridge
 
 - **Repo:** `DylanMcCavitt/portfolio-`.
-- **Default tracker:** new work is tracked in Linear/AGE. GitHub issues
-  `#84`–`#88` remain legacy redesign-stack context.
+- **Default tracker:** new work is tracked in Linear/AGE.
 - **Bounded production-readiness exception:** GitHub issues `#184`–`#196` are
   authoritative for that program. Their implementation branches use
   `codex/gh-<issue>-<slug>`, and their PRs use `Fixes #<issue>`. Linear/AGE

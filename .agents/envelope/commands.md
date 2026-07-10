@@ -18,13 +18,14 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Test Slack control plane | `npm run test:slack` | `node --import tsx --test tests/slack-control-plane.test.ts` |
 | Admin publish test | `npm run test:admin` | `node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts && node --import tsx --test tests/admin-rag-sources.test.ts` |
 | RAG tests | `npm run test:rag` | `node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts` |
-| DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts` |
+| DM runtime test | `npm run test:dm` | `node --import tsx --test tests/dm-runtime.test.ts tests/dm-grounding.test.ts` |
 | DM metrics test | `npm run test:metrics` | `node --import tsx --test tests/dm-metrics.test.ts` |
 | DM benchmark test | `npm run test:benchmark` | `node --import tsx --test tests/dm-benchmark.test.ts` |
-| DM eval report test | `npm run test:eval-report` | `node --import tsx --test tests/dm-eval-report.test.ts` |
+| DM eval report test | `npm run test:eval-report` | `node --import tsx --test tests/dm-eval-report.test.ts tests/dm-judge.test.ts` |
 | Publish proof gate | `npm run test:proof` | `node --import tsx --test tests/publish-proof.test.ts` |
 | DM eval | `npm run dm:eval` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-eval.ts` |
 | DM eval + HTML report | `npm run dm:eval:report` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-eval.ts --report` (writes `.dm-evals/latest.html`) |
+| DM live-model release eval | `npm run dm:eval:release` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-eval.ts --live --judge auto --report` (fixture corpus; not a deployed-data smoke test) |
 | DM latency benchmark | `npm run dm:bench` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-benchmark.ts` |
 | DB migrate | `npm run db:migrate` | `tsx scripts/db.ts migrate` |
 | DB seed | `npm run db:seed` | `tsx scripts/db.ts seed` |

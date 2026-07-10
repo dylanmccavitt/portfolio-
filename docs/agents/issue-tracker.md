@@ -13,9 +13,6 @@ The bounded production-readiness program is the exception: GitHub issues
 `codex/gh-<issue>-<slug>` for each implementation branch and `Fixes #<issue>` in
 its PR. Linear/AGE remains the default for all work outside that issue range.
 
-> Legacy: GitHub issues `DylanMcCavitt/portfolio-` #84–#88 remain for the in-flight
-> agent-first redesign stack.
-
 ## Working with issues and PRs
 
 - Issues: create/triage/update in Linear by default (see `.agents/envelope/linear-map.md` for states/labels). Stamp Linear issues from `.agents/envelope/templates/linear-issue.md`. Create and maintain issues `#184`–`#196` in GitHub for the bounded program.
@@ -25,12 +22,14 @@ its PR. Linear/AGE remains the default for all work outside that issue range.
 
 - New DM implementation roots at preview branch `preview/agent-first-redesign` unless an issue names a different stack parent.
 - Do not target `main` for redesign implementation PRs unless a maintainer explicitly changes the plan.
-- Legacy Eve stack order remains historical context: `preview/agent-first-redesign` -> `codex/issue-84-eve-runtime` -> `claude/issue-85-typographic-card` -> `claude/issue-86-eve-landing` -> `claude/issue-87-editorial-detail` -> `codex/issue-88-retire-shell`.
 - Each implementation issue must name an Owner engine: `Claude` or `GLM` (labels `claude`/`glm`) for UI work, `Codex` (label `codex`) for DM runtime/data/plumbing/test/cleanup work.
 - Each implementation issue should be executed as one issue / one worktree / one branch / one PR.
 - Default Linear branch shape: `<engine>/age-<n>-<slug>` (e.g. `codex/age-726-supersede-eve-with-dm`).
 - GitHub production-readiness program (`#184`–`#196`) branch shape:
   `codex/gh-<issue>-<slug>`; use `Fixes #<issue>` in the matching PR.
+- GitHub closing keywords do not close an issue when its PR merges only into the
+  non-default preview branch. Reconcile preview-landed program issues manually;
+  do not interpret an open issue as proof that its implementation is absent.
 
 ## Issue packet fields
 
