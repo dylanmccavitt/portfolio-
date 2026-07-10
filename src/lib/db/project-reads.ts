@@ -177,6 +177,35 @@ export async function fetchPublicProjectDetail(
   return record ? projectRecordToReadModels(record).detail : null;
 }
 
+/**
+ * Public route lookup: only the externally visible slug is accepted. Keeping
+ * this query separate from the admin/internal id-or-slug helper prevents a
+ * live project route from materializing the whole public project set.
+ */
+export async function fetchPublicProjectDetailBySlug(
+  db: ProjectReadQueryable,
+  slug: string,
+): Promise<ProjectDetailReadModel | null> {
+  const result = await db.query<ProjectReadRecord>(
+    `SELECT ${PROJECT_COLUMNS}
+     FROM projects
+     WHERE lifecycle_state = 'published' AND slug = $1
+     LIMIT 1`,
+    [slug],
+  );
+  const rows = Array.isArray(result) ? result : result.rows;
+  const record = rows[0];
+  return record ? projectRecordToReadModels(record).detail : null;
+}
+
+export async function hasPublishedPublicProjects(db: ProjectReadQueryable): Promise<boolean> {
+  const result = await db.query<{ id: string }>(
+    `SELECT id FROM projects WHERE lifecycle_state = 'published' LIMIT 1`,
+  );
+  const rows = Array.isArray(result) ? result : result.rows;
+  return rows.length > 0;
+}
+
 export function projectRecordToReadModels(record: ProjectReadRecord | CatalogShadowRecord): ProjectReadModels {
   const readDetails = projectReadDetails(record);
   const status = readDetails.legacy

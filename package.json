@@ -33,6 +33,7 @@
     "db:reset": "tsx scripts/db.ts reset",
     "db:catalog:shadow": "tsx scripts/catalog-shadow.ts import-and-report",
     "db:catalog:parity": "tsx scripts/catalog-shadow.ts report",
+    "db:catalog:cutover": "tsx scripts/catalog-shadow.ts cutover",
     "db:github:scan": "tsx scripts/github-discovery.ts"
   },
   "dependencies": {

@@ -79,6 +79,8 @@ export interface CatalogParityReport {
   importedIds: string[];
   missingRecordIds: string[];
   extraRecordIds: string[];
+  disallowedExtraRecordIds: string[];
+  conflictingRecordIds: string[];
   sections: CatalogParitySection[];
   projects: CatalogParityProjectEntry[];
 }
@@ -249,7 +251,9 @@ export async function importCatalogShadowRecords(
          source = EXCLUDED.source,
          published_at = EXCLUDED.published_at,
          archived_at = EXCLUDED.archived_at,
-         updated_at = now()`,
+         updated_at = now()
+       WHERE projects.source = 'legacy_catalog'
+         AND projects.lifecycle_state = 'shadow'`,
       [
         record.id,
         record.slug,
@@ -313,16 +317,83 @@ export async function fetchCatalogShadowRecords(
   return Array.isArray(result) ? result : result.rows;
 }
 
+/**
+ * The one-way parity gate includes legacy records before and after promotion
+ * plus DB-only rows, which it classifies as allowed only when they are already
+ * reviewed and published.
+ */
+export async function fetchCatalogParityRecords(
+  db: CatalogShadowQueryable,
+): Promise<CatalogShadowRecord[]> {
+  const result = await db.query<CatalogShadowRecord>(
+    `SELECT id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
+            details, metrics, links, media, source, published_at, archived_at
+     FROM projects
+     WHERE lifecycle_state IN ('shadow', 'published')
+     ORDER BY id`,
+  );
+
+  return Array.isArray(result) ? result : result.rows;
+}
+
+export interface CatalogCutoverResult {
+  report: CatalogParityReport;
+  applied: boolean;
+  promoted: number;
+}
+
+export class CatalogCutoverParityError extends Error {
+  readonly report: CatalogParityReport;
+
+  constructor(report: CatalogParityReport) {
+    super('Catalog cutover refused because one-way parity failed.');
+    this.name = 'CatalogCutoverParityError';
+    this.report = report;
+  }
+}
+
+/**
+ * Run the parity-first portion of the operator command. The default is a
+ * read-only report; callers must opt into applying the installed 0006
+ * function after the separate migration and maintainer approval gates.
+ */
+export async function runCatalogCutover(
+  db: CatalogShadowQueryable,
+  options: { apply?: boolean } = {},
+): Promise<CatalogCutoverResult> {
+  const report = generateCatalogParityReport(await fetchCatalogParityRecords(db));
+  if (report.status !== 'pass') throw new CatalogCutoverParityError(report);
+  if (!options.apply) return { report, applied: false, promoted: 0 };
+
+  const result = await db.query<{ promoted: string | number }>(
+    `SELECT catalog_cutover_publish_legacy_shadow() AS promoted`,
+  );
+  const rows = Array.isArray(result) ? result : result.rows;
+  return { report, applied: true, promoted: Number(rows[0]?.promoted ?? 0) };
+}
+
 export function generateCatalogParityReport(
   records: CatalogShadowRecord[],
   projects: Project[] = CATALOG,
 ): CatalogParityReport {
   const expected = new Map(projects.map((project) => [project.id, normalizeProject(project)]));
-  const actual = new Map(records.map((record) => [record.id, normalizeRecord(record)]));
+  const conflictingRecordIds = records
+    .filter((record) => expected.has(record.id) && record.source !== 'legacy_catalog')
+    .map((record) => record.id)
+    .sort();
+  const actual = new Map(
+    records
+      .filter((record) => !expected.has(record.id) || record.source === 'legacy_catalog')
+      .map((record) => [record.id, normalizeRecord(record)]),
+  );
   const expectedIds = [...expected.keys()].sort();
   const actualIds = [...actual.keys()].sort();
   const missingRecordIds = expectedIds.filter((id) => !actual.has(id));
   const extraRecordIds = actualIds.filter((id) => !expected.has(id));
+  const disallowedExtraRecordIds = records
+    .filter((record) => !expected.has(record.id) && !isReviewedPublishedDbOnlyRecord(record))
+    .map((record) => record.id)
+    .sort();
 
   const projectEntries = expectedIds.map((id): CatalogParityProjectEntry => {
     const expectedProject = expected.get(id)!;
@@ -367,7 +438,8 @@ export function generateCatalogParityReport(
 
   const status =
     missingRecordIds.length ||
-    extraRecordIds.length ||
+    disallowedExtraRecordIds.length ||
+    conflictingRecordIds.length ||
     projectEntries.some((entry) => entry.status === 'fail') ||
     sections.some((section) => section.status === 'fail')
       ? 'fail'
@@ -382,9 +454,15 @@ export function generateCatalogParityReport(
     importedIds: actualIds,
     missingRecordIds,
     extraRecordIds,
+    disallowedExtraRecordIds,
+    conflictingRecordIds,
     sections,
     projects: projectEntries,
   };
+}
+
+function isReviewedPublishedDbOnlyRecord(record: CatalogShadowRecord): boolean {
+  return record.lifecycle_state === 'published' && record.source !== 'legacy_catalog';
 }
 
 function normalizeRecord(record: CatalogShadowRecord): Partial<NormalizedProject> {

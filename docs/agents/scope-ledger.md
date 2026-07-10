@@ -36,7 +36,11 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   missing configuration, read/validation failure, or an unexpected empty set.
   `src/data/catalog.ts` remains only for parity/migration, offline development,
   and the explicit operator `catalog_emergency` rollback. This source-boundary
-  hardening does not complete #190's migration, Loom proof, or deploy gates.
+  hardening does not itself complete #190's Loom proof or deploy gates.
+- #190 provides the review-gated 0006 cutover function and direct public-slug
+  route reads. The function is invoked only by the explicitly applied,
+  parity-first operator command; it preserves DB-only Loom and queues one
+  durable static-artifact refresh.
 - Keep `src/data/resume.ts` as the v1 résumé/contact source.
 - Before #190 proves Loom refresh, explicitly adopt Loom's authenticated,
   immutable GitHub repository id onto the reviewed published project id using
@@ -46,11 +50,12 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 
 ## Next
 
-- Apply and verify preview migrations `0003` and `0004`, then select one reviewed
-  Loom draft, publish it through `/admin`, and prove `/library`, `/projects/loom`,
-  and DM all read the same public row.
-- With the #189 outbox implemented, complete Loom proof and canonical DB
-  cutover in #190.
+- Obtain each #190 preview approval in order: 0006 migration, environment/cron/
+  deploy-hook configuration, Loom repository-id adoption and real scan, then
+  admin publish. Do not mutate production.
+- Complete the parity-first 0006 cutover and approved Loom publish, then prove
+  `/library`, `/projects/loom`, DM, RAG, sitemap, and OG against the reviewed
+  deployment SHA while recording the synthetic-draft exclusion evidence.
 - Finish safeguards and release gates in #191–#192 before promoting the redesign
   to production.
 
