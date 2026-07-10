@@ -118,6 +118,8 @@ test('canonical project schema has five areas and validates nested public fields
   for (const src of [
     '/screenshots/../private.txt',
     '/screenshots/%2e%2e/private.txt',
+    '/screenshots/%5c..%5cprivate.txt',
+    '/screenshots/%252e%252e%252fprivate.txt',
     '/assets/not-approved.png',
     '/demos/image-not-approved.png',
     'javascript:alert(1)',
@@ -810,6 +812,19 @@ test('markerless pre-canonical published rows normalize only supported legacy ne
     }),
     /invalid legacy media/,
   );
+
+  for (const invalidFields of [
+    { slug: 'Invalid Slug' },
+    { title: '   ' },
+    { tagline: '   ' },
+    { year: 1999 },
+    { summary: '   ' },
+  ]) {
+    assert.throws(
+      () => projectRecordToReadModels({ ...record, ...invalidFields }),
+      `expected persisted field override ${JSON.stringify(invalidFields)} to be rejected`,
+    );
+  }
 });
 
 test('DB read layer accepts canonical Loom demo media and rejects invalid media', async () => {

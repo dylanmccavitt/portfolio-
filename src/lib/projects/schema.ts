@@ -22,7 +22,12 @@ function hasAllowedProtocol(value: string, protocols: readonly string[]): boolea
 }
 
 function isApprovedRootRelativePath(value: string, prefixes: readonly string[]): boolean {
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return false;
+  if (
+    !value.startsWith('/')
+    || value.startsWith('//')
+    || value.includes('\\')
+    || value.includes('%')
+  ) return false;
 
   let decoded: string;
   try {

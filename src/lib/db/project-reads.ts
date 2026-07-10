@@ -10,11 +10,11 @@ import {
   adaptLegacyProjectStatus,
 } from '@/lib/projects/legacy-adapter';
 import {
-  ProjectAreaSchema,
   ProjectDetailSchema,
   ProjectLinkSchema,
   ProjectMediaSchema,
   ProjectMetricSchema,
+  parsePublicProjectFields,
   type ProjectArea,
 } from '@/lib/projects/schema';
 import { fetchCatalogShadowRecords, type CatalogShadowQueryable, type CatalogShadowRecord } from './catalog-shadow';
@@ -182,64 +182,77 @@ export function projectRecordToReadModels(record: ProjectReadRecord | CatalogSha
   const status = readDetails.legacy
     ? adaptLegacyProjectStatus(readDetails.status, record.id)
     : (['done', 'Published'] satisfies ProjectStatus);
-  const links = parseCanonicalOrLegacyArray(
+  const adaptedLinks = parseCanonicalOrLegacyArray(
     ProjectLinkSchema,
     record.links,
     record.id,
     adaptLegacyProjectLinks,
   );
-  const metrics = parseCanonicalOrLegacyArray(
+  const adaptedMetrics = parseCanonicalOrLegacyArray(
     ProjectMetricSchema,
     record.metrics,
     record.id,
     adaptLegacyProjectMetrics,
   );
-  const canonicalDetails = readDetails.legacy
-    ? null
+  const adaptedDetails = readDetails.legacy
+    ? [
+        ...strings(readDetails.about, 'about', record.id),
+        ...adaptLegacyProjectDetailEntries(readDetails.stack, record.id),
+      ]
     : parseCanonicalOrLegacyArray(ProjectDetailSchema, record.details, record.id, adaptLegacyProjectDetails);
-  const about = canonicalDetails
-    ? canonicalDetails.filter((detail): detail is string => typeof detail === 'string')
-    : strings(readDetails.about, 'about', record.id);
   const notes = strings(readDetails.notes, 'notes', record.id);
-  const stack = canonicalDetails
-    ? canonicalDetails.filter((detail): detail is ProjectStackEntry => typeof detail !== 'string')
-    : adaptLegacyProjectDetailEntries(readDetails.stack, record.id);
   const seek = readDetails.legacy
     ? adaptLegacyProjectSeek(readDetails.seek, record.id)
     : ({ from: 'Draft', to: 'Published', pct: 100 } satisfies ProjectSeek);
-  const shots = parseCanonicalOrLegacyArray(
+  const adaptedMedia = parseCanonicalOrLegacyArray(
     ProjectMediaSchema,
     record.media,
     record.id,
     adaptLegacyProjectMedia,
   );
-  const area = ProjectAreaSchema.parse(record.area);
-  const href = `/projects/${record.slug}`;
+  const publicFields = parsePublicProjectFields({
+    slug: record.slug,
+    title: record.title,
+    tagline: record.tagline,
+    area: record.area,
+    year: record.year,
+    summary: record.summary,
+    activity: record.activity,
+    details: adaptedDetails,
+    metrics: adaptedMetrics,
+    links: adaptedLinks,
+    media: adaptedMedia,
+  });
+  const about = publicFields.details.filter((detail): detail is string => typeof detail === 'string');
+  const stack = publicFields.details.filter(
+    (detail): detail is ProjectStackEntry => typeof detail !== 'string',
+  );
+  const href = `/projects/${publicFields.slug}`;
   const card: ProjectCardReadModel = {
     id: record.id,
-    slug: record.slug,
+    slug: publicFields.slug,
     href,
-    title: record.title,
-    area,
+    title: publicFields.title,
+    area: publicFields.area,
     status,
-    year: record.year,
-    activity: record.activity,
+    year: publicFields.year,
+    activity: publicFields.activity,
     hue: readDetails.hue,
-    line: record.tagline,
+    line: publicFields.tagline,
   };
   const dmArtifact: DmProjectArtifactReadModel = {
     kind: 'project',
     id: record.id,
-    title: record.title,
-    area,
+    title: publicFields.title,
+    area: publicFields.area,
     status,
-    year: record.year,
-    activity: record.activity,
-    line: record.tagline,
+    year: publicFields.year,
+    activity: publicFields.activity,
+    line: publicFields.tagline,
     wip: readDetails.wip,
     money: readDetails.money,
-    links,
-    metrics,
+    links: publicFields.links,
+    metrics: publicFields.metrics,
     about,
     notes,
     stack,
@@ -251,22 +264,22 @@ export function projectRecordToReadModels(record: ProjectReadRecord | CatalogSha
     card,
     detail: {
       ...card,
-      summary: record.summary,
+      summary: publicFields.summary,
       seek,
-      links,
-      metrics,
+      links: publicFields.links,
+      metrics: publicFields.metrics,
       about,
       notes,
       stack,
-      shots,
+      shots: publicFields.media,
       wip: readDetails.wip,
       money: readDetails.money,
       source: record.source,
       seo: {
-        title: `${record.title} · Dylan McCavitt`,
-        description: record.summary,
-        ogImage: `/og/projects/${record.slug}.png`,
-        sitemapPath: `/projects/${record.slug}/`,
+        title: `${publicFields.title} · Dylan McCavitt`,
+        description: publicFields.summary,
+        ogImage: `/og/projects/${publicFields.slug}.png`,
+        sitemapPath: `/projects/${publicFields.slug}/`,
       },
       dmArtifact,
     },
