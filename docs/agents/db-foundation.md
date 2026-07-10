@@ -8,7 +8,9 @@ GitHub **#190**.
 
 ## Public project source boundary
 
-- Entry point: `loadPublicProjectDetails()` in `src/lib/public-projects.ts`.
+- Source resolver: `src/lib/public-project-source-mode.ts`; both Astro route
+  setup and runtime loads use it so build/runtime mode selection cannot drift.
+- Read entry point: `loadPublicProjectDetails()` in `src/lib/public-projects.ts`.
 - Normal operator mode: `PUBLIC_PROJECT_SOURCE=database`.
 - Database mode is also selected by an injected DB client, a real Vercel build
   (`VERCEL=1` plus `CI=1`), a Vercel function (`VERCEL=1` plus
