@@ -67,6 +67,21 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
     },
   },
   {
+    name: 'quality: broad project overview stays concise and representative',
+    prompt: 'tell me about dylans projects',
+    expect(events) {
+      const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+      if (done?.facts?.operation !== 'rankProjects') return `expected ranked overview, got ${done?.facts?.operation ?? 'none'}`;
+      if (done.facts.status !== 'complete') return `expected complete overview, got ${done.facts.status}`;
+      if (done.facts.projects.length !== 3) return `expected three representative projects, got ${done.facts.projects.length}`;
+      const text = answerText(events);
+      if (!text.includes('three representative projects')) return 'missing concise overview introduction';
+      if (text.includes('returned fallback records')) return 'broad overview used fallback disclosure';
+      if (text.length >= 700) return `overview was too long at ${text.length} characters`;
+      return expectProjectNamesBackedByBlocks(events);
+    },
+  },
+  {
     name: 'quality: most impressive project resolves through impact ranking, not bad ids',
     prompt: "Tell me about Dylan's most impressive project.",
     modelText: 'Dylan’s most impressive public project stands on real outcomes.',

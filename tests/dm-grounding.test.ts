@@ -92,6 +92,35 @@ test('conversation follow-ups retrieve a new same-turn packet from recent public
   assert.match(text(events), /slurmlet/i);
 });
 
+test('broad project overviews stay concise even when the model requests every long-form field', async () => {
+  const source = await createEvalProjectSource();
+  const expansiveModel = model(JSON.stringify({
+    claims: ['agentic-trader', 'exit-manager', 'loom', 'slurmlet'].map((projectId) => ({
+      projectId,
+      fields: ['tagline', 'status', 'year', 'activity', 'area', 'about', 'notes'],
+      metricIds: [],
+      linkIds: [],
+      citationIds: [],
+    })),
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'tell me about dylans projects' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: expansiveModel },
+  ));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  const answer = text(events);
+
+  assert.equal(done?.facts?.operation, 'rankProjects');
+  assert.equal(done?.facts?.status, 'complete');
+  assert.equal(done?.facts?.projects.length, 3);
+  assert.equal(expansiveModel.doStreamCalls.length, 0);
+  assert.match(answer, /three representative projects/i);
+  assert.match(answer, /ask me to go deeper/i);
+  assert.doesNotMatch(answer, /did not find an exact published match|returned fallback records/i);
+  assert.ok(answer.length < 700, `overview should be concise, received ${answer.length} characters`);
+});
+
 for (const exactCase of [
   { prompt: 'Is Slurmlet live?', id: 'slurmlet' },
   { prompt: 'What is tastytrade-exit-manager?', id: 'exit-manager' },

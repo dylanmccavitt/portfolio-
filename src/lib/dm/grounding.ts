@@ -57,6 +57,16 @@ export async function retrieveProjectFactPacket(
   } else if (/\b(most impressive|best|strongest|top|favorite)\b/.test(normalized)) {
     operation = 'rankProjects';
     result = await tools.rankProjects({ intent: query, limit: 3 });
+  } else if (isBroadProjectOverviewQuery(normalized)) {
+    operation = 'rankProjects';
+    const overview = await tools.rankProjects({
+      intent: 'representative shipped live client product AI automation work',
+      limit: 3,
+    });
+    result = {
+      ...overview,
+      resultStatus: overview.projects.length > 0 ? 'complete' : 'empty',
+    };
   } else {
     const status = statusIntent(normalized);
     if (status && isStatusListIntent(normalized)) {
@@ -76,6 +86,19 @@ export async function retrieveProjectFactPacket(
     projects: result.projects.map(projectFact),
     citations: [],
   };
+}
+
+export function deterministicProjectOverview(packet: ProjectFactPacket): string | null {
+  if (!isBroadProjectOverviewQuery(packet.query) || packet.projects.length === 0) return null;
+  const projects = packet.projects.slice(0, 3);
+  const introduction = projects.length === 3
+    ? 'Here are three representative projects from Dylan’s published work.'
+    : 'Here are representative projects from Dylan’s published work.';
+  return [
+    introduction,
+    ...projects.map((project) => `${project.title} — ${sentence(project.tagline)}`),
+    'Ask me to go deeper on any one of them.',
+  ].join('\n\n');
 }
 
 export function withPacketCitations(packet: ProjectFactPacket, citations: PublicRagCitation[]): ProjectFactPacket {
@@ -247,6 +270,16 @@ function identityMatches(text: string, projects: ProjectSummary[]): string[] {
 
 function normalizeIdentityText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function isBroadProjectOverviewQuery(value: string): boolean {
+  const normalized = normalizeIdentityText(value);
+  if (!/\b(projects|portfolio|work)\b/.test(normalized)) return false;
+  if (/\b(most impressive|best|strongest|top|favorite|live|shipped|client|backend|automation|technical|architecture|specific)\b/.test(normalized)) {
+    return false;
+  }
+  return /\b(?:tell me about|overview|show me|what (?:has|did|are)|give me (?:an )?overview)\b/.test(normalized)
+    || /\bdylan(?:s| s)? projects\b/.test(normalized);
 }
 
 function isStatusListIntent(value: string): boolean {
