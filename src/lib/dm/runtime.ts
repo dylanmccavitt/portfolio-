@@ -317,7 +317,11 @@ export function createDMChatStream(
         emit({ type: 'error', message });
       } finally {
         abort.dispose();
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // A consumer can close the stream before an aborted start() reaches cleanup.
+        }
       }
     },
     cancel() {

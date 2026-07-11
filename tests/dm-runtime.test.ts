@@ -474,6 +474,19 @@ test('DM route masks setup failures and fails closed on project DB failures', as
     error: { code: 'missing_config', message: 'DM is not configured for chat yet.' },
   });
 
+  const db = await publishedProjectDb();
+  const invalidBudgetPost = createDMPostHandler({
+    config: TEST_CONFIG,
+    db,
+    env: { DM_MAX_STEPS: '100' },
+    model: throwingModel(),
+  });
+  const invalidBudgetResponse = await invalidBudgetPost({ request: dmRequest('hello') } as never);
+  assert.equal(invalidBudgetResponse.status, 503);
+  assert.deepEqual(await invalidBudgetResponse.json(), {
+    error: { code: 'missing_config', message: 'DM is not configured for chat yet.' },
+  });
+
   const failingDb = {
     async query() {
       throw new Error('select * from private_drafts using secret-token');

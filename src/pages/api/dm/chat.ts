@@ -120,6 +120,11 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
         return jsonError(503, 'rate_limit_unavailable', 'DM is unavailable right now. Please try again shortly.', traceId);
       }
 
+      if (error instanceof DMRuntimeConfigError) {
+        console.error('[dm] budget config failure', { missing: error.missing });
+        return jsonError(503, 'missing_config', 'DM is not configured for chat yet.', traceId);
+      }
+
       console.error('[dm] chat endpoint failure', { name: error instanceof Error ? error.name : typeof error });
       return jsonError(500, 'chat_failed', 'DM could not answer that safely. Try a portfolio or resume question.', traceId);
     }
