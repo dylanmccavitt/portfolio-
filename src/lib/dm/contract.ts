@@ -139,7 +139,7 @@ export interface ContactBlock {
 }
 
 export type DMStreamEvent =
-  | { type: 'ready'; agent: typeof AGENT_NAME; provider: string; trace: ToolTraceMetadata }
+  | { type: 'ready'; agent: typeof AGENT_NAME; provider: string; traceId?: string; trace: ToolTraceMetadata }
   | { type: 'tool'; name: string; summary?: string }
   | { type: 'text-delta'; delta: string }
   | { type: 'block'; index?: number; block: AnswerBlock }

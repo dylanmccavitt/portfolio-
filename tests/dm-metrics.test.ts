@@ -15,11 +15,17 @@ test('DM metrics records first-token timing once and completion outcome', () => 
   metrics.record({ type: 'done', answer: [], trace: emptyTrace() });
 
   assert.deepEqual(metrics.snapshot(), {
+    traceId: 'unknown',
     sessionStart: 1_000,
     firstTokenMs: 12,
     completionMs: 50,
     toolCount: 0,
     errorCount: 0,
+    sourceMode: 'none',
+    retrievalHits: 0,
+    fallbackUsed: false,
+    inputTokens: null,
+    outputTokens: null,
     outcome: 'completed',
   });
   assert.equal(lines.length, 1);
@@ -37,11 +43,17 @@ test('DM metrics counts tools and stream errors', () => {
   metrics.record({ type: 'error', message: 'DM is unavailable right now.' });
 
   assert.deepEqual(metrics.snapshot(), {
+    traceId: 'unknown',
     sessionStart: 2_000,
     firstTokenMs: null,
     completionMs: 25,
     toolCount: 2,
     errorCount: 1,
+    sourceMode: 'none',
+    retrievalHits: 0,
+    fallbackUsed: false,
+    inputTokens: null,
+    outputTokens: null,
     outcome: 'error',
   });
   assert.deepEqual(parseMetricsLine(lines[0]), metrics.snapshot());
@@ -61,11 +73,41 @@ test('DM metrics log line never includes stream content', () => {
   assert.deepEqual(Object.keys(parseMetricsLine(lines[0])).sort(), [
     'completionMs',
     'errorCount',
+    'fallbackUsed',
     'firstTokenMs',
+    'inputTokens',
     'outcome',
+    'outputTokens',
+    'retrievalHits',
     'sessionStart',
+    'sourceMode',
     'toolCount',
+    'traceId',
   ]);
+});
+
+test('DM metrics keep one content-free record when a sink throws', () => {
+  const metrics = createDMMetricsRecorder({
+    traceId: 'trace-safe',
+    logger: () => { throw new Error('sink unavailable'); },
+  });
+  metrics.setSource('published_db', 3, true);
+  metrics.setUsage(12, 34);
+  metrics.finish('timeout');
+  assert.deepEqual(metrics.snapshot(), {
+    traceId: 'trace-safe',
+    sessionStart: metrics.snapshot().sessionStart,
+    firstTokenMs: null,
+    completionMs: 0,
+    toolCount: 0,
+    errorCount: 0,
+    sourceMode: 'published_db',
+    retrievalHits: 3,
+    fallbackUsed: true,
+    inputTokens: 12,
+    outputTokens: 34,
+    outcome: 'timeout',
+  });
 });
 
 function emptyTrace() {

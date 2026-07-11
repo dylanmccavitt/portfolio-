@@ -260,22 +260,33 @@ test('wrong status, numeric substrings, private names, and relative links cannot
 });
 
 test('malformed project prose falls back without emitting the malformed draft', async () => {
-  const events = await run('List the live projects.', 'not-json tastytrade-exit-manager 9999');
+  const metrics: string[] = [];
+  const events = await runRequest(
+    { message: 'List the live projects.' },
+    'not-json tastytrade-exit-manager 9999',
+    (line) => metrics.push(line),
+  );
   assert.ok(!text(events).includes('not-json'));
   assert.ok(!text(events).includes('9999'));
   assert.match(text(events), /tastytrade-exit-manager/);
+  assert.equal(metrics.length, 1);
+  assert.equal(JSON.parse(metrics[0].slice('[dm-metrics] '.length)).fallbackUsed, true);
 });
 
 async function run(prompt: string, modelText: string): Promise<DMStreamEvent[]> {
   return runRequest({ message: prompt }, modelText);
 }
 
-async function runRequest(request: DMChatRequest, modelText: string): Promise<DMStreamEvent[]> {
+async function runRequest(
+  request: DMChatRequest,
+  modelText: string,
+  metricsLogger?: (line: string) => void,
+): Promise<DMStreamEvent[]> {
   const source = await createEvalProjectSource();
   return readNdjsonEvents(createDMChatStream(
     request,
     CONFIG,
-    { db: source.db, projectLoader: source.projectLoader, model: model(modelText) },
+    { db: source.db, projectLoader: source.projectLoader, model: model(modelText), metricsLogger },
   ));
 }
 

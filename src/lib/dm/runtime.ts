@@ -35,7 +35,16 @@ export type DMRuntimeEnv = PublicProjectEnv & {
   DM_MODEL?: string;
   OPENAI_API_KEY?: string;
   AI_GATEWAY_API_KEY?: string;
+  DM_REQUEST_DEADLINE_MS?: string;
+  DM_MAX_OUTPUT_TOKENS?: string;
+  DM_MAX_STEPS?: string;
 };
+
+export interface DMBudgetConfig {
+  deadlineMs: number;
+  maxOutputTokens: number;
+  maxSteps: number;
+}
 
 export interface DMRuntimeDeps {
   db: ProjectReadQueryable;
@@ -45,8 +54,12 @@ export interface DMRuntimeDeps {
   ragSearch?: (
     query: string,
     config: PublicRagSearchConfig,
-    options: { apiKey: string },
+    options: { apiKey: string; signal?: AbortSignal },
   ) => Promise<PublicRagSearchOutput>;
+  signal?: AbortSignal;
+  traceId?: string;
+  budgets?: DMBudgetConfig;
+  metricsLogger?: (line: string) => void;
 }
 
 export class DMRuntimeConfigError extends Error {
@@ -84,6 +97,14 @@ export function readDMRuntimeConfig(env: DMRuntimeEnv = process.env): DMRuntimeC
   return { provider, model };
 }
 
+export function readDMBudgetConfig(env: DMRuntimeEnv = process.env): DMBudgetConfig {
+  return {
+    deadlineMs: readBoundedInteger(env.DM_REQUEST_DEADLINE_MS, 45_000, 5_000, 120_000),
+    maxOutputTokens: readBoundedInteger(env.DM_MAX_OUTPUT_TOKENS, 1_200, 128, 4_096),
+    maxSteps: readBoundedInteger(env.DM_MAX_STEPS, 6, 1, 8),
+  };
+}
+
 export function createDMModel(config: DMRuntimeConfig): LanguageModel {
   if (config.provider === 'gateway') {
     return gateway(config.model);
@@ -101,7 +122,13 @@ export function createDMChatStream(
     loadPublicProjectDetails({ db: deps.db, env: deps.env }).then(({ projects }) => projects));
   const tools = createPublicDMDataTools(deps.db, { loadProjects: projectLoader });
   const model = deps.model ?? createDMModel(config);
-  const metrics = createDMMetricsRecorder({ enabled: shouldRecordDMMetrics() });
+  const budgets = deps.budgets ?? readDMBudgetConfig(deps.env);
+  const abort = composeAbortSignal(deps.signal, budgets.deadlineMs);
+  const metrics = createDMMetricsRecorder({
+    enabled: shouldRecordDMMetrics(),
+    traceId: deps.traceId,
+    logger: deps.metricsLogger,
+  });
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -110,13 +137,16 @@ export function createDMChatStream(
       let blockIndex = 0;
       let finalText = '';
 
-      const emit = (event: DMStreamEvent): void => {
+      const emit = (event: DMStreamEvent, force = false): void => {
+        if (abort.signal.aborted && !force) return;
         metrics.record(event);
         enqueueJson(controller, encoder, event);
       };
 
       try {
+        throwIfAborted(abort.signal);
         const { request: normalizedRequest, leadingBlocks, endTurnAfterNotice } = await validateContext(request, tools);
+        throwIfAborted(abort.signal);
         const refusal = privateDataRefusal(normalizedRequest.message);
         if (refusal) {
           emit({ type: 'block', index: blockIndex, block: refusal });
@@ -126,7 +156,10 @@ export function createDMChatStream(
         }
 
         let factPacket = await retrieveProjectFactPacket(normalizedRequest, tools);
-        factPacket = await addRequestedRagCitations(factPacket, normalizedRequest, deps);
+        throwIfAborted(abort.signal);
+        factPacket = await addRequestedRagCitations(factPacket, normalizedRequest, deps, abort.signal);
+        throwIfAborted(abort.signal);
+        metrics.setSource(sourceModeFromPacket(factPacket, normalizedRequest), factPacket.projects.length + factPacket.citations.length, factPacket.fallbackUsed);
 
         const system = await buildSystemPrompt(tools, factPacket).catch((error: unknown) => {
           console.warn('[dm] system prompt digest failed, using minimal prompt', safeLogError(error));
@@ -137,6 +170,7 @@ export function createDMChatStream(
           type: 'ready',
           agent: AGENT_NAME,
           provider: config.provider,
+          traceId: deps.traceId ?? 'unknown',
           trace: trace(traceItems),
         });
 
@@ -218,10 +252,13 @@ export function createDMChatStream(
           system,
           messages: modelMessages(normalizedRequest),
           tools: aiTools(tools),
-          stopWhen: isStepCount(8),
+          stopWhen: isStepCount(budgets.maxSteps),
+          maxOutputTokens: budgets.maxOutputTokens,
+          abortSignal: abort.signal,
         });
 
         for await (const part of result.stream) {
+          throwIfAborted(abort.signal);
           if (part.type === 'text-delta') {
             const delta = textDelta(part);
             if (delta) {
@@ -245,7 +282,20 @@ export function createDMChatStream(
           }
         }
 
+        let usage: Awaited<typeof result.usage> | null = null;
+        try {
+          usage = await result.usage;
+        } catch {
+          // Provider usage is optional instrumentation, never a stream failure.
+        }
+        metrics.setUsage(usage?.inputTokens ?? null, usage?.outputTokens ?? null);
+
         const validated = validateProjectDraft(finalText.trim(), factPacket);
+        metrics.setSource(
+          sourceModeFromPacket(factPacket, normalizedRequest),
+          factPacket.projects.length + factPacket.citations.length,
+          factPacket.fallbackUsed || !validated.ok,
+        );
         const emittedText = validated.ok
           ? renderProjectDraft(validated.draft, factPacket)
           : deterministicProjectFallback(factPacket);
@@ -263,12 +313,29 @@ export function createDMChatStream(
 
         emit({ type: 'done', answer, trace: trace(traceItems), facts: factPacket });
       } catch (error) {
+        if (abort.signal.aborted) {
+          if (abort.timedOut()) {
+            metrics.finish('timeout');
+            enqueueJson(controller, encoder, { type: 'error', message: 'DM took too long to answer. Please try again.' });
+          } else {
+            metrics.finish('aborted');
+          }
+          return;
+        }
         const message = safeErrorMessage(error);
         console.error('[dm] chat stream failure', safeLogError(error));
         emit({ type: 'error', message });
       } finally {
-        controller.close();
+        abort.dispose();
+        try {
+          controller.close();
+        } catch {
+          // A consumer can close the stream before an aborted start() reaches cleanup.
+        }
       }
+    },
+    cancel() {
+      abort.cancel();
     },
   });
 }
@@ -317,22 +384,25 @@ async function addRequestedRagCitations(
   packet: ProjectFactPacket,
   request: DMChatRequest,
   deps: DMRuntimeDeps,
+  signal?: AbortSignal,
 ): Promise<ProjectFactPacket> {
   if (packet.operation === 'none' || packet.projects.length === 0) return packet;
   if (!isProjectDeepDiveRequest(request.message)) return packet;
   const apiKey = deps.env?.OPENAI_API_KEY?.trim() ?? process.env.OPENAI_API_KEY?.trim();
   if (!deps.ragSearch && !apiKey) return packet;
+  throwIfAborted(signal);
   const ragConfig = await createPublicRagSearchConfig(deps.db).catch((error: unknown) => {
     console.warn('[dm] rag setup failure', safeLogError(error));
     return null;
   });
+  throwIfAborted(signal);
   if (!ragConfig) return packet;
   const searchRag = deps.ragSearch ?? publicRagSearch;
   try {
     const { citations } = await searchRag(
       request.message,
       ragConfig,
-      { apiKey: apiKey ?? 'test-key' },
+      { apiKey: apiKey ?? 'test-key', signal },
     );
     return withPacketCitations(packet, citations as PublicRagCitation[]);
   } catch (error) {
@@ -539,9 +609,62 @@ function safeErrorMessage(error: unknown): string {
 function safeLogError(error: unknown): Record<string, unknown> {
   if (error instanceof DMAgentError) return { name: error.name, code: error.code };
   if (error instanceof DMRuntimeConfigError) return { name: error.name, missing: error.missing };
-  if (isDMToolError(error)) return { name: error.name, code: error.code, details: error.details };
+  if (isDMToolError(error)) return { name: error.name, code: error.code };
   if (error instanceof Error) return { name: error.name };
   return { name: typeof error };
+}
+
+function readBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
+  if (value === undefined || !value.trim()) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new DMRuntimeConfigError(['DM runtime safeguards']);
+  }
+  return parsed;
+}
+
+function composeAbortSignal(requestSignal: AbortSignal | undefined, deadlineMs: number): {
+  signal: AbortSignal;
+  timedOut: () => boolean;
+  dispose: () => void;
+  cancel: () => void;
+} {
+  const controller = new AbortController();
+  let deadlineReached = false;
+  const abortFromRequest = () => controller.abort(requestSignal?.reason);
+  if (requestSignal?.aborted) abortFromRequest();
+  else requestSignal?.addEventListener('abort', abortFromRequest, { once: true });
+  const timeout = setTimeout(() => {
+    deadlineReached = true;
+    controller.abort(new DOMException('DM request deadline exceeded.', 'TimeoutError'));
+  }, deadlineMs);
+  return {
+    signal: controller.signal,
+    timedOut: () => deadlineReached,
+    cancel: () => controller.abort(new DOMException('DM stream cancelled.', 'AbortError')),
+    dispose: () => {
+      clearTimeout(timeout);
+      requestSignal?.removeEventListener('abort', abortFromRequest);
+    },
+  };
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw signal.reason ?? new DOMException('DM request aborted.', 'AbortError');
+}
+
+function sourceModeFromPacket(packet: ProjectFactPacket, request: DMChatRequest): import('./metrics').DMSourceMode {
+  const message = request.message.toLowerCase();
+  const resume = Boolean(request.context?.resumeTrackIds?.length) || /resume|résumé|cv|experience|background|education|career/.test(message);
+  const contact = /contact|email|reach|phone|location|hire|available|opportunities/.test(message);
+  const sources = new Set<import('./metrics').DMSourceMode>();
+  if (packet.projects.length) sources.add('published_db');
+  if (packet.citations.length) sources.add('rag');
+  if (resume) sources.add('resume_static');
+  if (contact) sources.add('contact_static');
+  if (sources.size === 0) return 'none';
+  if (sources.size > 1) return 'mixed';
+  return sources.values().next().value ?? 'none';
 }
 
 function safeToolError(error: unknown): string {

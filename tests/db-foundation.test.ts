@@ -75,6 +75,7 @@ const FOUNDATION_TABLES = [
   'review_events',
   'rag_sources',
   'publish_outbox',
+  'dm_rate_limit_windows',
 ] as const;
 
 test('canonical project schema has five areas and validates nested public fields', () => {
@@ -211,6 +212,7 @@ test('migrations create the DM project foundation tables', async () => {
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
     '0006_catalog_cutover.sql',
+    '0007_dm_rate_limits.sql',
   ]);
 
   const tables = await db.query<{ table_name: string }>(
@@ -255,6 +257,7 @@ test('review_events seq migration upgrades an existing database deterministicall
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
     '0006_catalog_cutover.sql',
+    '0007_dm_rate_limits.sql',
   ]);
 
   const upgraded = await db.query<{ id: string; seq: string | number | null }>(
@@ -341,6 +344,7 @@ test('project area migration maps legacy, explicit, DB-only, Loom, and draft val
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
     '0006_catalog_cutover.sql',
+    '0007_dm_rate_limits.sql',
   ]);
 
   const projects = await db.query<{ id: string; area: string }>(`SELECT id, area FROM projects ORDER BY id`);
@@ -393,6 +397,7 @@ test('project area migration preflight rejects every noncanonical project and dr
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
     '0006_catalog_cutover.sql',
+    '0007_dm_rate_limits.sql',
   ]);
 
   await assert.rejects(
@@ -691,6 +696,7 @@ test('seed and reset path works without external credentials', async () => {
     '0004_source_identity_and_refresh_drafts.sql',
     '0005_publish_outbox.sql',
     '0006_catalog_cutover.sql',
+    '0007_dm_rate_limits.sql',
   ]);
   assert.deepEqual(await applySeeds(db), ['001_foundation_smoke.sql']);
 
