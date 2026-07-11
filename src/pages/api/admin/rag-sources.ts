@@ -3,6 +3,7 @@ import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
 import {
   readAdminAuthConfig,
   requireAdminSession,
+  requireSameOrigin,
   type AdminAuthConfig,
   type AdminSessionResult,
 } from '@/lib/admin/auth';
@@ -114,6 +115,9 @@ export function createAdminRagSourcesGetHandler(deps: AdminRagSourcesHandlerDeps
 export function createAdminRagSourcesPostHandler(deps: AdminRagSourcesHandlerDeps = {}): APIRoute {
   return async ({ request }) => {
     try {
+      const origin = requireSameOrigin(request);
+      if (!origin.ok) return adminJson(origin.status, origin);
+
       const csrf = requireJsonContentType(request);
       if (!csrf.ok) return adminJson(csrf.status, csrf);
 

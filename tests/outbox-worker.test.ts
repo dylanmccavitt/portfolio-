@@ -460,7 +460,8 @@ test('bounded retries dead-letter sanitized failures and worker route enforces a
   assert.equal(unauthorized.status, 401);
   const authorized = await handler({
     request: new Request('https://example.test/api/admin/outbox/run', {
-      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Origin: 'https://forged.example' },
     }),
   } as never);
   assert.equal(authorized.status, 200);

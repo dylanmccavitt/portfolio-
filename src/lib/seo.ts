@@ -22,6 +22,19 @@ const ORIGIN = 'https://dylanmccavitt.xyz';
 /** Fallback OG image for home, library, resume, and hiring routes. */
 export const OG_FALLBACK = '/og/default.png';
 
+/**
+ * Serialize JSON-LD for an inline script element without allowing data to
+ * terminate that element. This remains valid JSON after escaping.
+ */
+export function serializeJsonLd(value: unknown): string {
+  const serialized = JSON.stringify(value) ?? 'null';
+  return serialized
+    .replace(/<\/script/gi, (match) => `<\\/${match.slice(2)}`)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 /** The resolved meta a page hands to the layout head. */
 export interface PageMeta {
   title: string;

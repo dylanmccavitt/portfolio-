@@ -13,7 +13,7 @@
  * off the page degrades to every beat stacked and scrollable (progressive
  * enhancement) — see the page's scoped `<style>` and `tour.ts`.
  */
-import { OG_FALLBACK, type PageMeta } from '@/lib/seo';
+import { OG_FALLBACK, serializeJsonLd, type PageMeta } from '@/lib/seo';
 import '@/styles/player.css';
 
 export interface Props {
@@ -69,7 +69,7 @@ const jsonLd = meta?.jsonLd;
         <script
           is:inline
           type="application/ld+json"
-          set:html={JSON.stringify(jsonLd)}
+          set:html={serializeJsonLd(jsonLd)}
         />
       )
     }

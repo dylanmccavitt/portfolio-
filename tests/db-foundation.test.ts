@@ -36,6 +36,7 @@ import {
   resolvePublicProjectSourceMode,
   shouldUsePublicProjectDb,
 } from '@/lib/public-projects';
+import { findInvalidPublishedMedia } from '@/lib/db/published-media-preflight';
 import {
   projectPublicMark,
   resolvePublicProjectByReference,
@@ -135,6 +136,7 @@ test('canonical project schema has five areas and validates nested public fields
     '/screenshots/%252e%252e%252fprivate.txt',
     '/assets/not-approved.png',
     '/demos/image-not-approved.png',
+    'https://cdn.example.test/remote-image.png',
     'javascript:alert(1)',
     'data:image/png;base64,bad',
   ]) {
@@ -1248,6 +1250,100 @@ test('markerless pre-canonical published rows normalize only supported legacy ne
       `expected persisted field override ${JSON.stringify(invalidFields)} to be rejected`,
     );
   }
+});
+
+test('public DB reads fail closed when persisted links or media use executable URL schemes', async () => {
+  const [base] = buildCatalogShadowRecords(CATALOG.slice(0, 1));
+  assert.ok(base, 'expected a catalog record');
+
+  const cases = [
+    {
+      field: 'links' as const,
+      value: [['Unsafe link', 'JaVaScRiPt:alert(1)']],
+      pattern: /invalid legacy links/,
+    },
+    {
+      field: 'links' as const,
+      value: [['Unsafe link', 'data:text/html,not-public']],
+      pattern: /invalid legacy links/,
+    },
+    {
+      field: 'media' as const,
+      value: [{ kind: 'image', src: 'jAvAsCrIpT:alert(1)', caption: 'Unsafe media' }],
+      pattern: /invalid legacy media/,
+    },
+    {
+      field: 'media' as const,
+      value: [{ kind: 'image', src: 'DATA:image/svg+xml,bad', caption: 'Unsafe media' }],
+      pattern: /invalid legacy media/,
+    },
+    {
+      field: 'media' as const,
+      value: [{ kind: 'image', src: 'https://cdn.example.test/remote.png', caption: 'Remote media' }],
+      pattern: /invalid legacy media/,
+    },
+  ] as const;
+
+  for (const [index, entry] of cases.entries()) {
+    const db = createTestDb();
+    await applyMigrations(db);
+    const record: CatalogShadowRecord = {
+      ...base,
+      id: `unsafe-read-${index}`,
+      slug: `unsafe-read-${index}`,
+      lifecycle_state: 'published',
+      source: 'manual',
+      published_at: '2026-07-10T00:00:00.000Z',
+      [entry.field]: entry.value,
+    };
+    await insertProjectRecord(db, record);
+
+    await assert.rejects(() => fetchPublicProjectDetails(db), entry.pattern);
+    await assert.rejects(
+      () => loadPublicProjectDetails({ env: { PUBLIC_PROJECT_SOURCE: 'database' }, db }),
+      (error: unknown) => error instanceof PublicProjectDataError && error.code === 'read_failed',
+    );
+  }
+});
+
+test('published-media preflight matches strict public rendering validation without revealing media', () => {
+  const findings = findInvalidPublishedMedia([
+    {
+      id: 'approved-media-paths',
+      slug: 'approved-media-paths',
+      media: [
+        { kind: 'image', src: '/screenshots/approved.webp', caption: 'Approved image' },
+        { kind: 'video', src: '/demos/approved.mp4', poster: '/screenshots/approved-poster.webp', caption: 'Approved demo' },
+      ],
+    },
+    {
+      id: 'invalid-external',
+      slug: 'invalid-external',
+      media: [{ kind: 'image', src: 'https://cdn.example.test/external.webp', caption: 'External image' }],
+    },
+    {
+      id: 'invalid-null-source',
+      slug: 'invalid-null-source',
+      media: [{ kind: 'image', src: null, caption: 'Null source' }],
+    },
+    {
+      id: 'invalid-strict-shape',
+      slug: 'invalid-strict-shape',
+      media: [{ kind: 'image', src: '/screenshots/extra.webp', caption: 'Extra field', unreviewed: true }],
+    },
+    {
+      id: 'invalid-missing-caption',
+      slug: 'invalid-missing-caption',
+      media: [{ kind: 'image', src: '/screenshots/missing-caption.webp' }],
+    },
+  ]);
+
+  assert.deepEqual(findings, [
+    { id: 'invalid-external', slug: 'invalid-external', code: 'invalid_media' },
+    { id: 'invalid-null-source', slug: 'invalid-null-source', code: 'invalid_media' },
+    { id: 'invalid-strict-shape', slug: 'invalid-strict-shape', code: 'invalid_media' },
+    { id: 'invalid-missing-caption', slug: 'invalid-missing-caption', code: 'invalid_media' },
+  ]);
 });
 
 test('DB read layer accepts canonical Loom demo media and rejects invalid media', async () => {

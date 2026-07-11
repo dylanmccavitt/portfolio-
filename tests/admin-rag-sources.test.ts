@@ -101,13 +101,17 @@ async function createMigratedDb(): Promise<Queryable> {
 function jsonRequest(url: string, body: JsonBody = {}, method = 'POST'): Request {
   return new Request(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: new URL(url).origin },
     body: JSON.stringify(body),
   });
 }
 
 function rawJsonRequest(url: string, body: string): Request {
-  return new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  return new Request(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: new URL(url).origin },
+    body,
+  });
 }
 
 function getRequest(url: string): Request {
@@ -292,7 +296,10 @@ test('RAG admin routes enforce request gates before database or client work', as
   const csrfResponse = await csrfPost({
     request: new Request('https://example.test/api/admin/rag-sources', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: 'https://example.test',
+      },
       body: new URLSearchParams({ action: 'mark_eligible' }),
     }),
   } as never);
@@ -359,6 +366,38 @@ test('RAG admin routes enforce request gates before database or client work', as
     assert.equal(createClientCalls, 0, invalid.name);
     noClientCalls(calls);
   }
+});
+
+test('RAG admin mutation rejects missing and forged Origins before session or database work', async () => {
+  let sessionCalls = 0;
+  let dbCalls = 0;
+  const POST = createAdminRagSourcesPostHandler({
+    session: () => {
+      sessionCalls += 1;
+      return AUTHORIZED_SESSION();
+    },
+    createClient: () => {
+      dbCalls += 1;
+      throw new Error('database must not be created for rejected origins');
+    },
+  });
+
+  for (const origin of [undefined, 'https://forged.example']) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (origin) headers.Origin = origin;
+    const response = await POST({
+      request: new Request('https://example.test/api/admin/rag-sources', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'revoke', ragSourceId: 'rag_origin' }),
+      }),
+    } as never);
+    assert.equal(response.status, 403);
+    assert.equal((await responseJson(response)).code, 'admin_origin_invalid');
+  }
+
+  assert.equal(sessionCalls, 0);
+  assert.equal(dbCalls, 0);
 });
 
 test('GET lists project-linked sources without serializing raw evidence or private review fields', async () => {

@@ -4,6 +4,7 @@ import { approveAdminDraftForPublish, type AdminPublishQueryable } from '@/lib/a
 import {
   readAdminAuthConfig,
   requireAdminSession,
+  requireSameOrigin,
   type AdminAuthConfig,
   type AdminSessionResult,
 } from '@/lib/admin/auth';
@@ -20,6 +21,9 @@ export interface AdminDraftApproveHandlerDeps {
 export function createAdminDraftApprovePostHandler(deps: AdminDraftApproveHandlerDeps = {}): APIRoute {
   return async ({ request, params }) => {
     try {
+      const origin = requireSameOrigin(request);
+      if (!origin.ok) return adminJson(origin.status, origin);
+
       const csrf = requireJsonContentType(request);
       if (!csrf.ok) return adminJson(csrf.status, csrf);
 

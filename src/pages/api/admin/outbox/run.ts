@@ -1,5 +1,6 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { APIRoute } from 'astro';
+import { hasMinimumSecretBytes, hasValidBearerToken } from '@/lib/admin/auth';
 import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
 import { runOutboxBatch, type OutboxWorkerOptions } from '@/lib/outbox/worker';
 import type { OutboxQueryable } from '@/lib/outbox/queue';
@@ -24,10 +25,10 @@ export function createOutboxRunPostHandler(deps: OutboxRunHandlerDeps = {}): API
   return async ({ request }) => {
     const env = deps.env ?? process.env;
     const configuredToken = env.OUTBOX_WORKER_TOKEN ?? '';
-    if (Buffer.byteLength(configuredToken, 'utf8') < 32) {
+    if (!hasMinimumSecretBytes(configuredToken)) {
       return workerJson(503, { ok: false, code: 'outbox_worker_unconfigured', message: 'Outbox worker authentication is not configured.' });
     }
-    if (!validBearerToken(request.headers.get('authorization'), configuredToken)) {
+    if (!hasValidBearerToken(request.headers.get('authorization'), configuredToken)) {
       return workerJson(401, { ok: false, code: 'outbox_worker_unauthorized', message: 'A valid worker bearer token is required.' });
     }
 
@@ -63,13 +64,6 @@ export function createOutboxRunPostHandler(deps: OutboxRunHandlerDeps = {}): API
       });
     }
   };
-}
-
-function validBearerToken(header: string | null, expected: string): boolean {
-  const supplied = header?.startsWith('Bearer ') ? header.slice(7) : '';
-  const suppliedDigest = createHash('sha256').update(supplied, 'utf8').digest();
-  const expectedDigest = createHash('sha256').update(expected, 'utf8').digest();
-  return timingSafeEqual(suppliedDigest, expectedDigest);
 }
 
 function dbFromClient(client: DbClient): OutboxQueryable {

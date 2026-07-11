@@ -145,7 +145,7 @@ function signedSlackRequest(body: string, config = SLACK_CONFIG): Request {
 function jsonRequest(url: string, body: JsonObject = {}, method = 'POST'): Request {
   return new Request(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: new URL(url).origin },
     body: JSON.stringify(body),
   });
 }

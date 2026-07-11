@@ -60,7 +60,10 @@ async function createMigratedDb(): Promise<Queryable> {
 }
 
 function jsonRequest(url: string, body: JsonBody = {}, method = 'POST', cookie?: string): Request {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Origin: new URL(url).origin,
+  };
   if (cookie) headers.cookie = cookie;
   return new Request(url, { method, headers, body: JSON.stringify(body) });
 }
@@ -255,6 +258,64 @@ test('admin publish routes reject unauthenticated requests before database work'
     assert.equal(json.code, 'admin_unauthenticated');
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
   }
+});
+
+test('cookie-authenticated admin mutations reject missing and forged Origins before sessions or database work', async () => {
+  let sessionCalls = 0;
+  let dbCalls = 0;
+  const session = (): AdminSessionResult => {
+    sessionCalls += 1;
+    return AUTHORIZED_SESSION();
+  };
+  const db = {
+    async query() {
+      dbCalls += 1;
+      throw new Error('database must not be reached for rejected origins');
+    },
+  } satisfies AdminPublishQueryable;
+
+  const cases = [
+    {
+      name: 'draft patch',
+      invoke: (request: Request) => createAdminDraftDetailPatchHandler({ db, session })({
+        request,
+        params: { id: 'draft_origin' },
+      } as never),
+      url: 'https://example.test/api/admin/drafts/draft_origin',
+      method: 'PATCH',
+    },
+    {
+      name: 'draft approval',
+      invoke: (request: Request) => createAdminDraftApprovePostHandler({ db, session })({
+        request,
+        params: { id: 'draft_origin' },
+      } as never),
+      url: 'https://example.test/api/admin/drafts/draft_origin/approve',
+      method: 'POST',
+    },
+    {
+      name: 'draft publication',
+      invoke: (request: Request) => createAdminDraftPublishPostHandler({ db, session })({
+        request,
+        params: { id: 'draft_origin' },
+      } as never),
+      url: 'https://example.test/api/admin/drafts/draft_origin/publish',
+      method: 'POST',
+    },
+  ];
+
+  for (const origin of [undefined, 'https://forged.example']) {
+    for (const entry of cases) {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (origin) headers.Origin = origin;
+      const response = await entry.invoke(new Request(entry.url, { method: entry.method, headers, body: '{}' }));
+      assert.equal(response.status, 403, `${entry.name}: ${origin ?? 'missing origin'}`);
+      assert.equal((await responseJson(response)).code, 'admin_origin_invalid', entry.name);
+    }
+  }
+
+  assert.equal(sessionCalls, 0);
+  assert.equal(dbCalls, 0);
 });
 
 test('real admin session cookie authorizes the default route session path', async () => {
@@ -1182,7 +1243,10 @@ test('mutating route rejects form content type for CSRF defense', async () => {
   const response = await PATCH({
     request: new Request('https://example.test/api/admin/drafts/draft_csrf', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: 'https://example.test',
+      },
       body: new URLSearchParams({ slug: 'bad' }),
     }),
     params: { id: 'draft_csrf' },

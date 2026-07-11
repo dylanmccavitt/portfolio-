@@ -9,7 +9,7 @@
  * classes still come from `player.css` (the `--pl-*` set), so these pages stay
  * visually consistent with the rest of the redesign.
  */
-import { OG_FALLBACK, type PageMeta } from '@/lib/seo';
+import { OG_FALLBACK, serializeJsonLd, type PageMeta } from '@/lib/seo';
 import '@/styles/player.css';
 
 export interface Props {
@@ -65,7 +65,7 @@ const jsonLd = meta?.jsonLd;
         <script
           is:inline
           type="application/ld+json"
-          set:html={JSON.stringify(jsonLd)}
+          set:html={serializeJsonLd(jsonLd)}
         />
       )
     }

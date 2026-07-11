@@ -42,7 +42,7 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npm run test:db && npm run test:discovery && npm run test:slack && npm run test:admin && npm run test:dm && npm run test:metrics && npm run test:rag && npm run test:outbox && npm run test:benchmark && npm run test:eval-report && npm run test:proof
+        run: npm run test:db && npm run test:discovery && npm run test:slack && npm run test:admin && npm run test:dm && npm run test:metrics && npm run test:rag && npm run test:outbox && npm run test:benchmark && npm run test:eval-report && npm run test:proof && npm run test:release
 
       - name: DM offline eval gate
         run: npm run dm:eval

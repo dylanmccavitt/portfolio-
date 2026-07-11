@@ -53,14 +53,17 @@ async function createMigratedDb(): Promise<Queryable> {
   return db;
 }
 
-function signedSlackRequest(body: string, config = CONFIG): Request {
+function signedSlackRequest(body: string, config = CONFIG, origin?: string): Request {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'x-slack-request-timestamp': NOW_SECONDS,
+    'x-slack-signature': signSlackBody(config.signingSecret, NOW_SECONDS, body),
+  };
+  if (origin) headers.Origin = origin;
+
   return new Request('https://example.test/api/slack/control-plane', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'x-slack-request-timestamp': NOW_SECONDS,
-      'x-slack-signature': signSlackBody(config.signingSecret, NOW_SECONDS, body),
-    },
+    headers,
     body,
   });
 }
@@ -69,9 +72,9 @@ function formBody(values: Record<string, string>): string {
   return new URLSearchParams(values).toString();
 }
 
-async function callRoute(body: string, db: Queryable, config = CONFIG): Promise<Response> {
+async function callRoute(body: string, db: Queryable, config = CONFIG, origin?: string): Promise<Response> {
   const POST = createSlackControlPlanePostHandler({ config, db });
-  return POST({ request: signedSlackRequest(body, config) } as never);
+  return POST({ request: signedSlackRequest(body, config, origin) } as never);
 }
 
 async function responseJson(response: Response): Promise<Record<string, unknown>> {
@@ -563,7 +566,7 @@ test('server-side error logs carry only structured facts, never free error text'
   assert.ok(!logged.join('\n').includes(thrownValueSecret), 'non-Error thrown value text must not reach logs');
 });
 
-test('single-user Slack scan trigger routes authorized repo input to GitHub discovery', async () => {
+test('single-user Slack scan trigger remains Origin-independent after signature verification', async () => {
   const db = await createMigratedDb();
   const repo = {
     repositoryId: '20003',
@@ -580,7 +583,7 @@ test('single-user Slack scan trigger routes authorized repo input to GitHub disc
   };
   const body = formBody({ user_id: DYLAN_SLACK_USER, command: '/dm-scan', text: JSON.stringify(repo) });
 
-  const response = await callRoute(body, db);
+  const response = await callRoute(body, db, CONFIG, 'https://forged.example.test');
   const json = await responseJson(response);
   assert.equal(response.status, 200);
   assert.equal(json.ok, true);

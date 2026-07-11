@@ -88,6 +88,7 @@ bearer token and an empty POST.
 | `/api/admin/drafts/[id]/approve` | POST | Store the exact reviewed field set and ordered diff |
 | `/api/admin/drafts/[id]/publish` | POST | Run privacy/staleness gates and commit atomically |
 | `/api/admin/outbox/run` | POST | Claim and process a bounded durable downstream batch |
+| `/api/admin/readiness` | GET | Bearer-authenticated redacted release readiness check |
 
 Approval accepts optional `reviewedFields`. Omitting it reviews every changed
 field for an existing project and every public field for a first publication.
@@ -102,6 +103,7 @@ field for an existing project and every public field for a first publication.
 - The database connection names documented in `src/lib/db/client.ts`
 - `GITHUB_DISCOVERY_TOKEN` (preferred) or `GITHUB_TOKEN` for authenticated Slack snapshot fetches
 - `OUTBOX_WORKER_TOKEN` (at least 32 bytes)
+- `DM_READINESS_TOKEN` (at least 32 bytes; distinct from the worker token)
 - `SITE_REFRESH_DEPLOY_HOOK_URL`
 - `OPENAI_API_KEY` and optional `RAG_VECTOR_STORE_ID` for RAG jobs
 

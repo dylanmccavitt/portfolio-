@@ -259,7 +259,11 @@ test('requireAdminSession accepts valid cookies and rejects missing tampered exp
 test('logout clears the admin session cookie with no JSON content-type gate', async () => {
   const POST = createAdminAuthLogoutHandler();
   const response = await POST({
-    request: new Request('https://portfolio.test/api/admin/auth/logout', { method: 'POST', body: 'not-json' }),
+    request: new Request('https://portfolio.test/api/admin/auth/logout', {
+      method: 'POST',
+      headers: { Origin: 'https://portfolio.test' },
+      body: 'not-json',
+    }),
   } as never);
   assert.equal(response.status, 200);
   assert.match(setCookieHeader(response), /admin_session=;.*Max-Age=0/);
@@ -268,6 +272,23 @@ test('logout clears the admin session cookie with no JSON content-type gate', as
     code: 'admin_logged_out',
     message: 'Admin session cleared.',
   });
+});
+
+test('logout rejects missing and forged Origins', async () => {
+  const POST = createAdminAuthLogoutHandler();
+  for (const origin of [undefined, 'https://forged.example']) {
+    const headers: Record<string, string> = {};
+    if (origin) headers.Origin = origin;
+    const response = await POST({
+      request: new Request('https://portfolio.test/api/admin/auth/logout', { method: 'POST', headers }),
+    } as never);
+    assert.equal(response.status, 403);
+    assert.deepEqual(await json(response), {
+      ok: false,
+      code: 'admin_origin_invalid',
+      message: 'Admin mutation requests require a matching Origin header.',
+    });
+  }
 });
 
 test('missing route config returns 503 JSON instead of throwing', async () => {

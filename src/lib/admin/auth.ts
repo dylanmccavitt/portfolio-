@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface AdminAuthConfig {
   clientId: string;
@@ -12,6 +12,10 @@ export interface AdminAuthConfig {
 export type AdminSessionResult =
   | { ok: true; actor: string }
   | { ok: false; status: 401 | 403; code: string; message: string };
+
+export type AdminOriginResult =
+  | { ok: true }
+  | { ok: false; status: 403; code: 'admin_origin_invalid'; message: string };
 
 export interface AdminOAuthState {
   state: string;
@@ -83,6 +87,33 @@ export function requireAdminSession(request: Request, config: AdminAuthConfig): 
   }
 
   return { ok: true, actor: `github:${login}` };
+}
+
+/** Require an explicit browser Origin matching the URL Astro received. */
+export function requireSameOrigin(request: Request): AdminOriginResult {
+  const origin = request.headers.get('origin');
+  try {
+    if (origin && origin === new URL(request.url).origin) return { ok: true };
+  } catch {
+    // Treat an unparseable request URL as invalid without exposing its details.
+  }
+  return {
+    ok: false,
+    status: 403,
+    code: 'admin_origin_invalid',
+    message: 'Admin mutation requests require a matching Origin header.',
+  };
+}
+
+export function hasMinimumSecretBytes(value: string, minimumBytes = 32): boolean {
+  return Buffer.byteLength(value, 'utf8') >= minimumBytes;
+}
+
+export function hasValidBearerToken(header: string | null, expected: string): boolean {
+  const supplied = header?.startsWith('Bearer ') ? header.slice(7) : '';
+  const suppliedDigest = createHash('sha256').update(supplied, 'utf8').digest();
+  const expectedDigest = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(suppliedDigest, expectedDigest);
 }
 
 export function createAdminSessionCookie(login: string, config: AdminAuthConfig): string {

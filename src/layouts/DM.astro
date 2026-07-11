@@ -9,7 +9,7 @@
  * comes from `dm.css`. The chat client (`scripts/dm.ts`) is the one earned
  * client-JS island on the landing.
  */
-import { OG_FALLBACK, type PageMeta } from '@/lib/seo';
+import { OG_FALLBACK, serializeJsonLd, type PageMeta } from '@/lib/seo';
 import '@/styles/player.css';
 import '@/styles/dm.css';
 
@@ -52,7 +52,7 @@ const jsonLd = meta.jsonLd;
         <script
           is:inline
           type="application/ld+json"
-          set:html={JSON.stringify(jsonLd)}
+          set:html={serializeJsonLd(jsonLd)}
         />
       )
     }

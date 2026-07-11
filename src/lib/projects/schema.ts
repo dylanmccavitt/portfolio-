@@ -42,7 +42,7 @@ function isApprovedRootRelativePath(value: string, prefixes: readonly string[]):
 }
 
 function isMediaSource(value: string, prefixes: readonly string[]): boolean {
-  return hasAllowedProtocol(value, ['https:']) || isApprovedRootRelativePath(value, prefixes);
+  return isApprovedRootRelativePath(value, prefixes);
 }
 
 export const ProjectLinkSchema = z.strictObject({
@@ -73,11 +73,11 @@ export type ProjectSkeletonKind = z.infer<typeof ProjectSkeletonKindSchema>;
 
 const ImageSourceSchema = NormalizedStringSchema.refine(
   (value) => isMediaSource(value, ['/screenshots/']),
-  { message: 'Project images must use https or an approved /screenshots/ path.' },
+  { message: 'Project images must use an approved /screenshots/ path.' },
 );
 const VideoSourceSchema = NormalizedStringSchema.refine(
   (value) => isMediaSource(value, ['/screenshots/', '/demos/']),
-  { message: 'Project videos and posters must use https or an approved /screenshots/ or /demos/ path.' },
+  { message: 'Project videos and posters must use approved /screenshots/ or /demos/ paths.' },
 );
 
 export const ProjectImageMediaSchema = z.strictObject({

@@ -1,10 +1,14 @@
 import type { APIRoute } from 'astro';
-import { clearAdminSessionCookie } from '@/lib/admin/auth';
+import { clearAdminSessionCookie, requireSameOrigin } from '@/lib/admin/auth';
 
 export const prerender = false;
 
 export function createAdminAuthLogoutHandler(): APIRoute {
-  return () => adminJson(200, true, 'admin_logged_out', 'Admin session cleared.', [clearAdminSessionCookie()]);
+  return ({ request }) => {
+    const origin = requireSameOrigin(request);
+    if (!origin.ok) return adminJson(origin.status, false, origin.code, origin.message);
+    return adminJson(200, true, 'admin_logged_out', 'Admin session cleared.', [clearAdminSessionCookie()]);
+  };
 }
 
 function adminJson(status: number, ok: boolean, code: string, message: string, cookies: string[] = []): Response {

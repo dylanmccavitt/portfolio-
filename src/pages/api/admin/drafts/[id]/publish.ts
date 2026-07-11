@@ -4,6 +4,7 @@ import { publishAdminDraft, type AdminPublishQueryable } from '@/lib/admin/publi
 import {
   readAdminAuthConfig,
   requireAdminSession,
+  requireSameOrigin,
   type AdminAuthConfig,
   type AdminSessionResult,
 } from '@/lib/admin/auth';
@@ -20,6 +21,9 @@ export interface AdminDraftPublishHandlerDeps {
 export function createAdminDraftPublishPostHandler(deps: AdminDraftPublishHandlerDeps = {}): APIRoute {
   return async ({ request, params }) => {
     try {
+      const origin = requireSameOrigin(request);
+      if (!origin.ok) return adminJson(origin.status, origin);
+
       const csrf = requireJsonContentType(request);
       if (!csrf.ok) return adminJson(csrf.status, csrf);
 
