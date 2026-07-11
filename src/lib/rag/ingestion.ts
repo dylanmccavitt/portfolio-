@@ -118,13 +118,25 @@ export async function markRagSourceEligible(
     );
   } else {
     ragSourceId = `rag_${randomUUID()}`;
-    await db.query(
-      `INSERT INTO rag_sources (
-         id, project_id, evidence_source_id, evidence_version, publication_version,
-         eligibility_state, remote_step
-       ) VALUES ($1, $2, $3, $4, $5, 'eligible', 'pending')`,
-      [ragSourceId, input.projectId, input.evidenceSourceId, gate.evidenceVersion, gate.publicationVersion],
-    );
+    try {
+      await db.query(
+        `INSERT INTO rag_sources (
+           id, project_id, evidence_source_id, evidence_version, publication_version,
+           eligibility_state, remote_step
+         ) VALUES ($1, $2, $3, $4, $5, 'eligible', 'pending')`,
+        [ragSourceId, input.projectId, input.evidenceSourceId, gate.evidenceVersion, gate.publicationVersion],
+      );
+    } catch (error) {
+      if (isPgConstraintError(error, '23505', 'rag_sources_active_evidence_version_uidx')) {
+        return {
+          ok: false,
+          status: 409,
+          code: 'rag_source_already_active',
+          message: 'This evidence version already has an active RAG source.',
+        };
+      }
+      throw error;
+    }
   }
 
   await insertReviewEvent(db, {
@@ -267,18 +279,32 @@ export async function ingestRagSource(
     };
   }
 
-  await db.query(
-    `UPDATE rag_sources
-     SET eligibility_state = 'indexed',
-         openai_file_id = $2,
-         vector_store_id = $3,
-         remote_step = 'indexed',
-         failure_message = NULL,
-         last_synced_at = now(),
-         updated_at = now()
-     WHERE id = $1`,
-    [ragSourceId, fileId, vectorStoreId],
+  const finalized = normalizeRows(
+    await db.query<{ id: string }>(
+      `UPDATE rag_sources
+       SET eligibility_state = 'indexed',
+           openai_file_id = $2,
+           vector_store_id = $3,
+           remote_step = 'indexed',
+           failure_message = NULL,
+           last_synced_at = now(),
+           updated_at = now()
+       WHERE id = $1 AND eligibility_state = 'indexing'
+       RETURNING id`,
+      [ragSourceId, fileId, vectorStoreId],
+    ),
   );
+  if (finalized.length === 0) {
+    const current = await fetchRagSource(db, ragSourceId);
+    return {
+      ok: false,
+      status: 409,
+      code: 'rag_source_state_changed',
+      message: `RAG source ${ragSourceId} changed state during indexing and was not made searchable.`,
+      ragSourceId,
+      eligibilityState: current?.eligibility_state ?? null,
+    };
+  }
   await insertReviewEvent(db, {
     projectId: source.project_id,
     actor,
@@ -589,6 +615,12 @@ function sanitizeRagFailure(error: unknown): string {
   if (error instanceof Error && /did not complete after \d+ polls/.test(error.message)) return 'rag_index_timeout';
   if (error instanceof Error && /rag_index_remote_(failed|cancelled)/.test(error.message)) return 'rag_index_remote_failed';
   return error instanceof Error ? `rag_${error.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}` : 'rag_unknown_error';
+}
+
+function isPgConstraintError(error: unknown, code: string, constraint: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const record = error as Record<string, unknown>;
+  return record.code === code && record.constraint === constraint;
 }
 
 async function setState(db: RagQueryable, ragSourceId: string, state: RagSourceEligibilityState): Promise<void> {

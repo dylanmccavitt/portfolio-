@@ -207,6 +207,38 @@ test('non-public sources cannot be marked eligible or uploaded', async () => {
   assert.equal((Array.isArray(countResult) ? countResult : countResult.rows)[0]?.count, '0');
 });
 
+test('concurrent eligibility creation returns a conflict instead of leaking a unique violation', async () => {
+  const db = await createTestDb();
+  await insertProject(db, 'proj-race');
+  await insertEvidence(db, 'ev-race', { projectId: 'proj-race' });
+
+  const racingDb = {
+    async query<Row = unknown>(sql: string, params?: unknown[]) {
+      if (sql.includes('INSERT INTO rag_sources')) {
+        throw Object.assign(new Error('duplicate active RAG source'), {
+          code: '23505',
+          constraint: 'rag_sources_active_evidence_version_uidx',
+        });
+      }
+      return db.query<Row>(sql, params);
+    },
+  };
+
+  const result = await markRagSourceEligible(racingDb, {
+    projectId: 'proj-race',
+    evidenceSourceId: 'ev-race',
+    actor: ACTOR,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 409);
+  assert.equal(result.code, 'rag_source_already_active');
+  const events = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM review_events WHERE project_id = 'proj-race'`,
+  );
+  assert.equal((Array.isArray(events) ? events : events.rows)[0]?.count, '0');
+});
+
 test('eligibility is re-checked at upload time and revoked approvals never reach OpenAI', async () => {
   const db = await createTestDb();
   await insertProject(db, 'proj-rag');
@@ -232,6 +264,45 @@ test('eligibility is re-checked at upload time and revoked approvals never reach
   const retry = await ingestRagSource(db, client, ragSourceId, ACTOR);
   assert.equal(retry.ok, false);
   assert.equal(retry.code, 'rag_source_not_eligible');
+});
+
+test('concurrent evidence revocation cannot be overwritten after remote indexing completes', async () => {
+  const db = await createTestDb();
+  await insertProject(db, 'proj-index-race');
+  await insertEvidence(db, 'ev-index-race', { projectId: 'proj-index-race' });
+
+  const marked = await markRagSourceEligible(db, {
+    projectId: 'proj-index-race',
+    evidenceSourceId: 'ev-index-race',
+    actor: ACTOR,
+  });
+  const ragSourceId = marked.ragSourceId as string;
+  const { client: baseClient } = createFakeClient();
+  const racingClient: RagIndexClient = {
+    ...baseClient,
+    async getFileIndexingStatus() {
+      await db.query(`UPDATE evidence_sources SET privacy_state = 'blocked' WHERE id = 'ev-index-race'`);
+      return { status: 'completed' };
+    },
+  };
+
+  const result = await ingestRagSource(db, racingClient, ragSourceId, ACTOR);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 409);
+  assert.equal(result.code, 'rag_source_state_changed');
+  assert.equal(result.eligibilityState, 'revoked');
+  const row = await fetchRagRow(db, ragSourceId);
+  assert.equal(row?.eligibility_state, 'revoked');
+  assert.equal(row?.last_synced_at, null);
+  assert.deepEqual(await listSearchableRagSources(db), []);
+
+  const indexedEvents = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count
+     FROM review_events
+     WHERE project_id = 'proj-index-race' AND metadata->>'kind' = 'rag_indexed'`,
+  );
+  assert.equal((Array.isArray(indexedEvents) ? indexedEvents : indexedEvents.rows)[0]?.count, '0');
 });
 
 test('public file_search filters are structurally mandatory and only cover indexed sources', async () => {
