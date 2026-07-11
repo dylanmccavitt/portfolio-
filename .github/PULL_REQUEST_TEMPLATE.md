@@ -44,8 +44,8 @@ the plan.
 
 ## Risks
 
-- 
+-
 
 ## Handoff
 
-- 
+-

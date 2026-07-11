@@ -26,15 +26,15 @@ remains the default outside that issue range. See `.agents/envelope/linear-map.m
 
 ## Non-goals
 
-- 
+-
 
 ## Relevant files
 
-- 
+-
 
 ## Verification
 
-- 
+-
 
 ## Deferred scope custody
 
@@ -63,7 +63,7 @@ remains the default outside that issue range. See `.agents/envelope/linear-map.m
 
 ## Risks
 
-- 
+-
 
 ## Desired base branch
 
