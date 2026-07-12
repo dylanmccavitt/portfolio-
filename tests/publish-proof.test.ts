@@ -593,7 +593,15 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
       TEST_CONFIG,
       {
         db,
-        model: streamingModel('The publish proof published project documents the scan-to-publish workflow.'),
+        model: streamingModel(JSON.stringify({
+          claims: [{
+            projectId: publishedProjectId,
+            fields: ['summary'],
+            metricIds: [],
+            linkIds: [],
+            citationIds: [],
+          }],
+        })),
       },
     ),
   );
