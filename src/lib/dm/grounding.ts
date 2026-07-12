@@ -110,7 +110,12 @@ export function withPacketCitations(packet: ProjectFactPacket, citations: Public
   return { ...packet, citations: citations.filter((citation) => allowed.has(citation.projectId)) };
 }
 
-export function projectDraftBlocks(draft: ProjectDraft, packet: ProjectFactPacket): AnswerBlock[] {
+export function projectDraftBlocks(
+  request: DMChatRequest,
+  draft: ProjectDraft,
+  packet: ProjectFactPacket,
+): AnswerBlock[] {
+  if (requestExcludesProjectArtifacts(request.message)) return [];
   const selectedIds = new Set(draft.claims.map((claim) => claim.projectId));
   const items = packet.projects.filter((project) => selectedIds.has(project.id)).map(factSummary);
   if (items.length === 0) return [];
@@ -138,6 +143,7 @@ export function projectPacketPrompt(packet: ProjectFactPacket): string {
     'Deep dives: select at most two projects, four fields, two metrics, one link, and two citations per project.',
     'Use about or notes only for an explicit deep-dive, details, implementation, architecture, source, evidence, or citation request.',
     'Select only ids and fields from PROJECT_FACT_PACKET. Every metric, link, and citation id must belong to that claim project.',
+    'Card-display instructions do not change fact selection. Select the claims needed for useful prose; the server controls which artifacts render.',
     'The server will render all prose from the selected facts. Do not add text, explanations, names, numbers, URLs, or facts outside this shape.',
     `PROJECT_FACT_PACKET=${JSON.stringify(packet)}`,
   ].join('\n');
@@ -183,7 +189,6 @@ export function enforceProjectDraft(
   packet: ProjectFactPacket,
 ): ProjectDraft {
   const artifactLimit = requestedProjectArtifactLimit(request.message);
-  if (artifactLimit === 0) return { claims: [] };
 
   if (isSingularProjectCoreference(request.message) && packet.projects.length === 1) {
     const project = packet.projects[0];
@@ -200,6 +205,10 @@ export function enforceProjectDraft(
   }
 
   return artifactLimit === 1 ? { claims: draft.claims.slice(0, 1) } : draft;
+}
+
+export function requestExcludesProjectArtifacts(value: string): boolean {
+  return requestedProjectArtifactLimit(value) === 0;
 }
 
 function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {

@@ -143,7 +143,7 @@ test('fresh non-project and project-history reset turns do not retrieve or emit 
   }
 });
 
-test('post-model enforcement limits selected-subset and zero project artifacts', async () => {
+test('post-model enforcement limits selected-subset and answers over-selection with grounded prose but zero artifacts', async () => {
   const source = await createEvalProjectSource();
   const overSelectedPlan = JSON.stringify({
     claims: ['agentic-trader', 'exit-manager', 'slurmlet'].map((projectId) => ({
@@ -169,8 +169,61 @@ test('post-model enforcement limits selected-subset and zero project artifacts',
     CONFIG,
     { db: source.db, projectLoader: source.projectLoader, model: model(overSelectedPlan) },
   ));
+  const excludedDone = excluded.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  assert.deepEqual(
+    excludedDone?.facts?.projects.map((project) => project.id).sort(),
+    ['agentic-trader', 'exit-manager', 'slurmlet'],
+  );
   assert.equal(excluded.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
-  assert.match(text(excluded), /could not select a published project/i);
+  assert.deepEqual(
+    excluded.filter((event) => event.type === 'block').map((event) => event.block.kind),
+    [],
+  );
+  assert.match(text(excluded), /agentic-trader/i);
+  assert.match(text(excluded), /exit-manager/i);
+  assert.match(text(excluded), /slurmlet/i);
+  assert.doesNotMatch(text(excluded), /could not select a published project/i);
+
+  const misleadingKeyword = await readNdjsonEvents(createDMChatStream(
+    {
+      message: 'Which of these projects best helps teams hire without showing any project cards?',
+      context: { projectIds: ['agentic-trader', 'exit-manager', 'slurmlet'] },
+    },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: model(overSelectedPlan) },
+  ));
+  assert.deepEqual(
+    misleadingKeyword.filter((event) => event.type === 'block').map((event) => event.block.kind),
+    [],
+  );
+  assert.match(text(misleadingKeyword), /agentic-trader/i);
+  assert.doesNotMatch(text(misleadingKeyword), /could not select a published project/i);
+
+  for (const mixedRequest of [
+    {
+      message: 'Tell me about Dylan’s projects without showing any project cards, and tell me whether he is available for work.',
+      expectedKind: 'contact',
+    },
+    {
+      message: 'Tell me about Dylan’s projects without showing any project cards, and summarize his career.',
+      expectedKind: 'resume',
+    },
+  ] as const) {
+    const mixedEvents = await readNdjsonEvents(createDMChatStream(
+      {
+        message: mixedRequest.message,
+        context: { projectIds: ['agentic-trader', 'exit-manager', 'slurmlet'] },
+      },
+      CONFIG,
+      { db: source.db, projectLoader: source.projectLoader, model: model(overSelectedPlan) },
+    ));
+    assert.equal(mixedEvents.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+    assert.deepEqual(
+      mixedEvents.filter((event) => event.type === 'block').map((event) => event.block.kind),
+      [mixedRequest.expectedKind],
+    );
+    assert.match(text(mixedEvents), /agentic-trader/i);
+  }
 });
 
 test('explicit project coreference is enforced after a zero-selection model plan', async () => {

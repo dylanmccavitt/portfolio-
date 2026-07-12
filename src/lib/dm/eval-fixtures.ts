@@ -91,11 +91,24 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
   {
     name: 'artifacts: answer plan can select zero project artifacts',
     prompt: 'Tell me about Dylan’s projects without showing any project cards.',
-    answerPlan: { claims: [] },
+    answerPlan: {
+      claims: [
+        { projectId: 'agentic-trader', fields: ['summary', 'status'] },
+        { projectId: 'exit-manager', fields: ['summary', 'status'] },
+        { projectId: 'slurmlet', fields: ['summary', 'status'] },
+      ],
+    },
     expect(events) {
       const done = doneEvent(events);
       if (!done || (done.facts?.projects.length ?? 0) === 0) return 'expected retrieval evidence for zero-artifact selection';
       if (projectBlockFor(events)) return 'retrieval emitted a project artifact despite zero answer selection';
+      const artifacts = events.filter((event) => event.type === 'block');
+      if (artifacts.length > 0) return `zero-card project answer emitted unrelated artifacts: ${artifacts.map((event) => event.type === 'block' ? event.block.kind : '').join(', ')}`;
+      const answer = events.flatMap((event) => event.type === 'text-delta' ? [event.delta] : []).join('');
+      for (const project of done.facts?.projects ?? []) {
+        if (!answer.includes(project.title)) return `zero-card prose omitted grounded project ${project.id}`;
+      }
+      if (/could not select a published project/i.test(answer)) return 'answerable zero-card request fell back to a refusal';
       return null;
     },
   },

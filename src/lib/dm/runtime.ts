@@ -1,7 +1,6 @@
 import { gateway } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { isStepCount, streamText, tool, type LanguageModel, type ToolSet } from 'ai';
-import { z } from 'zod';
+import { isStepCount, streamText, type LanguageModel } from 'ai';
 import type { ProjectReadQueryable } from '@/lib/db/project-reads';
 import { loadPublicProjectDetails, type PublicProjectEnv } from '@/lib/public-projects';
 import {
@@ -21,6 +20,7 @@ import {
   projectAnswerDisclosure,
   projectDraftBlocks,
   projectPacketPrompt,
+  requestExcludesProjectArtifacts,
   renderProjectDraft,
   retrieveProjectFactPacket,
   validateProjectDraft,
@@ -218,7 +218,6 @@ export function createDMChatStream(
           model,
           system,
           messages: modelMessages(normalizedRequest),
-          tools: aiTools(tools),
           stopWhen: isStepCount(budgets.maxSteps),
           maxOutputTokens: budgets.maxOutputTokens,
           abortSignal: abort.signal,
@@ -276,7 +275,7 @@ export function createDMChatStream(
         }
 
         if (enforcedDraft) {
-          for (const block of projectDraftBlocks(enforcedDraft, factPacket)) {
+          for (const block of projectDraftBlocks(normalizedRequest, enforcedDraft, factPacket)) {
             answer.push(block);
             emit({ type: 'block', index: blockIndex, block });
             blockIndex += 1;
@@ -321,42 +320,6 @@ export function createDMChatStream(
 
 function isDMToolError(error: unknown): error is DMToolError {
   return error instanceof Error && error.name === 'DMToolError';
-}
-
-function wrapTool<T>(execute: (input: T) => Promise<unknown>) {
-  return async (input: T) => {
-    try {
-      return await execute(input);
-    } catch (error) {
-      if (isDMToolError(error) && error.code !== 'public_data_unavailable') {
-        return {
-          ok: false,
-          error: error.code,
-          message: error.message,
-          safeMessage: error.safeMessage,
-        };
-      }
-      throw error;
-    }
-  };
-}
-
-function aiTools(tools: PublicDMDataTools): ToolSet {
-  const dmTools: ToolSet = {
-    readResume: tool({
-      description: 'Read static public resume tracks from src/data/resume.ts with unpublished project links removed.',
-      inputSchema: z.object({
-        trackIds: z.array(z.string().min(1).max(80)).max(8).optional(),
-      }),
-      execute: wrapTool((input) => tools.readResume(input)),
-    }),
-    getContact: tool({
-      description: 'Read public contact data from the static resume source.',
-      inputSchema: z.object({}),
-      execute: wrapTool(() => Promise.resolve(tools.getContact())),
-    }),
-  };
-  return dmTools;
 }
 
 async function addRequestedRagCitations(
@@ -445,13 +408,23 @@ async function deterministicBlocks(
   const normalized = request.message.toLowerCase();
   const hasResume = existing.some((block) => block.kind === 'resume');
   const hasContact = existing.some((block) => block.kind === 'contact');
+  const zeroCardProjectRequest = requestExcludesProjectArtifacts(request.message);
+  const asksResume = request.context?.resumeTrackIds?.length || (zeroCardProjectRequest
+    ? /\b(?:resume|résumé|cv|experience|education|employment|degree)\b/.test(normalized)
+      || /\b(?:summarize|share|show|read|tell me about|what about)\b.{0,30}\b(?:his|dylan(?:'s|’s)) (?:career|background)\b/.test(normalized)
+    : matchesAny(normalized, ['resume', 'experience', 'background', 'education', 'career']));
+  const asksContact = zeroCardProjectRequest
+    ? /\b(?:contact|email|reach|phone|location|availability|open to work)\b/.test(normalized)
+      || /\b(?:whether|is)\b.{0,20}\b(?:he|dylan)\b.{0,20}\b(?:available|open to opportunities)\b/.test(normalized)
+      || /\b(?:how|where)\b.{0,20}\b(?:contact|reach|hire)\b.{0,12}\b(?:dylan|him)\b/.test(normalized)
+    : matchesAny(normalized, ['contact', 'email', 'reach', 'hire', 'available', 'opportunities']);
 
-  if (!hasResume && (request.context?.resumeTrackIds?.length || matchesAny(normalized, ['resume', 'experience', 'background', 'education', 'career']))) {
+  if (!hasResume && asksResume) {
     const trackIds = request.context?.resumeTrackIds ?? ['now', 'kroll', 'stevens', 'bella-era'];
     blocks.push({ kind: 'resume', trackIds });
   }
 
-  if (!hasContact && matchesAny(normalized, ['contact', 'email', 'reach', 'hire', 'available', 'opportunities'])) {
+  if (!hasContact && asksContact) {
     blocks.push(toAnswerContact(tools.getContact()));
   }
 
