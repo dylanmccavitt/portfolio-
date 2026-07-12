@@ -51,6 +51,9 @@ export async function retrieveProjectFactPacket(
   const query = contextualProjectQuery(request);
   const allProjects = await tools.allPublishedProjects();
   const namedProjectIds = resolveNamedProjectIds(request, allProjects);
+  if (isSingleTokenIdentityQuestion(request.message) && !request.context?.projectIds?.length && !request.context?.fitCheck && namedProjectIds.length === 0) {
+    return emptyPacket(request.message);
+  }
   if (isExplicitProjectCoreference(normalized) && !request.context?.projectIds?.length && !request.context?.fitCheck && namedProjectIds.length === 0) {
     return emptyPacket(request.message);
   }
@@ -298,19 +301,31 @@ function resolveNamedProjectIds(request: DMChatRequest, projects: ProjectSummary
   const conversation = request.conversation?.slice(-6).toReversed() ?? [];
   for (const message of conversation) {
     const matches = identityMatches(normalizeIdentityText(message.content), projects);
-    if (matches.length > 0) return [matches.at(-1) as string];
+    if (matches.length > 0) {
+      return isPluralProjectCoreference(current) ? matches : [matches.at(-1) as string];
+    }
   }
   return [];
 }
 
 function isExplicitProjectCoreference(value: string): boolean {
-  return /\b(?:it|its|that|this|one)\b|\b(?:what|how)\s+about\b/.test(value);
+  return /\b(?:it|its|that|this|one|they|their|them|these|those|ones)\b|\b(?:what|how)\s+about\b/.test(value);
+}
+
+function isPluralProjectCoreference(value: string): boolean {
+  return /\b(?:they|their|them|these|those|ones)\b/.test(value);
 }
 
 function looksLikeNamedProjectQuestion(value: string): boolean {
   if (/\b[a-z0-9]+-[a-z0-9-]+\b/i.test(value)) return true;
+  if (isSingleTokenIdentityQuestion(value)) return true;
   const namedWords = value.match(/\b[A-Z][a-zA-Z0-9]+\b/g) ?? [];
   return namedWords.some((word) => !['Dylan', 'What', 'Which', 'Tell', 'Show', 'Give', 'How', 'Is', 'Has', 'Does'].includes(word));
+}
+
+function isSingleTokenIdentityQuestion(value: string): boolean {
+  const match = normalizeIdentityText(value).match(/^(?:what is|tell me about|show me|give me|how is) ([a-z0-9]+)$/);
+  return Boolean(match && !['project', 'projects', 'work', 'portfolio'].includes(match[1]));
 }
 
 function identityMatches(text: string, projects: ProjectSummary[]): string[] {

@@ -78,6 +78,17 @@ test('project alias questions cannot bypass the fact packet or prose validator',
   assert.ok(!text(events).includes('secret unpublished backend'));
 });
 
+for (const lowerCaseAliasPrompt of ['what is slurmlet?', 'tell me about loom']) {
+  test(`lowercase single-word project aliases reach published alias resolution: ${lowerCaseAliasPrompt}`, async () => {
+    const projectId = lowerCaseAliasPrompt.includes('slurmlet') ? 'slurmlet' : 'loom';
+    const events = await run(lowerCaseAliasPrompt, answerPlan(projectId));
+    const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+    assert.equal(done?.facts?.operation, 'rankProjects');
+    assert.deepEqual(done?.facts?.projects.map((project) => project.id), [projectId]);
+    assert.match(text(events), new RegExp(projectId, 'i'));
+  });
+}
+
 test('conversation follow-ups retrieve a new same-turn packet from recent public context', async () => {
   const events = await runRequest({
     message: 'What about it?',
@@ -92,9 +103,24 @@ test('conversation follow-ups retrieve a new same-turn packet from recent public
   assert.match(text(events), /slurmlet/i);
 });
 
+test('plural project follow-ups resolve every referenced project from recent public context', async () => {
+  const events = await runRequest({
+    message: 'What are their architectures?',
+    conversation: [
+      { role: 'user', content: 'Tell me about Dylan’s projects.' },
+      { role: 'assistant', content: 'Loom and Slurmlet are published projects.' },
+    ],
+  }, answerPlan('loom'));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  assert.equal(done?.facts?.operation, 'rankProjects');
+  assert.deepEqual(done?.facts?.projects.map((project) => project.id).sort(), ['loom', 'slurmlet']);
+  assert.match(text(events), /loom/i);
+});
+
 test('fresh non-project and project-history reset turns do not retrieve or emit project artifacts', async () => {
   for (const request of [
     { message: 'What is the weather today?' },
+    { message: 'What is weather?' },
     {
       message: 'What is your favorite color?',
       conversation: [
