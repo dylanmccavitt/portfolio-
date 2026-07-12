@@ -379,7 +379,7 @@ test('deep-dive evidence collapses repeated chunks to one entry per selected cit
   assert.equal(evidenceBlocks[0]?.block?.ragSources?.[0]?.ragSourceId, 'rag-public');
   assert.equal(evidenceBlocks[0]?.block?.ragSources?.[0]?.score, 0.93);
   const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /Top-ranked approved chunk/);
+  assert.match(answerText, /Approved public RAG source text/);
   assert.doesNotMatch(answerText, /must not expand the evidence block/);
 });
 
@@ -1080,14 +1080,24 @@ function projectDraft(
   projectId: string,
   references: { metricIds?: string[]; linkIds?: string[]; citationIds?: string[] } = {},
 ): string {
+  const citationIds = references.citationIds ?? [];
+  const identity: Record<string, { title: string; status: string }> = {
+    'agentic-trader': { title: 'agentic-trader', status: 'Dry-run' },
+    'exit-manager': { title: 'tastytrade-exit-manager', status: 'Live' },
+  };
+  const project = identity[projectId] ?? { title: projectId, status: 'Published' };
   return JSON.stringify({
     claims: [{
-      projectId,
-      fields: ['tagline', 'status', 'activity'],
-      metricIds: references.metricIds ?? [],
-      linkIds: references.linkIds ?? [],
-      citationIds: references.citationIds ?? [],
+      text: `${project.title} is a public project. Status: ${project.status}.${citationIds.length > 0 ? ' Approved public RAG source text with enough detail to support a recruiter-facing answer.' : ''}`,
+      evidenceIds: [
+        `${projectId}:identity`,
+        `${projectId}:status`,
+        ...(references.metricIds ?? []),
+        ...(references.linkIds ?? []),
+        ...citationIds.map((id) => `citation:${id}`),
+      ],
     }],
+    artifactProjectIds: [projectId],
   });
 }
 

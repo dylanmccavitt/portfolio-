@@ -78,6 +78,25 @@
       "stack": [{ "label": "Source", "value": "Published DB record" }]
     },
     {
+      "id": "evalgate",
+      "slug": "evalgate",
+      "lifecycleState": "published",
+      "title": "Evalgate",
+      "area": "Agents & MCP",
+      "status": ["dry", "Dry-run"],
+      "year": 2026,
+      "activity": "evaluated",
+      "line": "release evaluation gates for grounded agent behavior",
+      "summary": "Evalgate tests whether an agent answer is direct, grounded, and honest before release.",
+      "wip": true,
+      "money": false,
+      "links": [{ "label": "Case study", "href": "/projects/evalgate" }],
+      "metrics": [{ "value": "6", "label": "quality dimensions" }],
+      "about": ["It turns multi-turn failure reports into repeatable release checks."],
+      "notes": ["The evaluator separates subject continuity from the latest question's intent."],
+      "stack": [{ "label": "Language", "value": "TypeScript" }]
+    },
+    {
       "id": "draft-control",
       "slug": "draft-control",
       "lifecycleState": "draft_only",

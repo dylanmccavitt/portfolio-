@@ -86,11 +86,13 @@ test('CLI judge prompt carries the rubric and the payload', () => {
         summary: 'Coordinates tracked delivery work through a reviewed public workflow.',
         about: ['Coordinates tracked delivery work.'],
         notes: [],
+        stack: [{ id: 'loom:stack:0', projectId: 'loom', label: 'Language', value: 'TypeScript' }],
         metrics: [{ id: 'loom:metric:0', projectId: 'loom', value: '8', label: 'workflow stages' }],
         links: [{ id: 'loom:link:0', projectId: 'loom', label: 'Case study', href: '/projects/loom' }],
       },
     ],
     citations: [],
+    evidence: [{ id: 'loom:identity', projectId: 'loom', kind: 'identity', label: 'Project', value: 'Loom', sensitive: true }],
   } satisfies ProjectFactPacket;
   const prompt = buildCliJudgePrompt({
     visitorQuestion: 'What is Loom?',
@@ -110,14 +112,14 @@ test('score extraction takes the last valid JSON object out of noisy CLI output'
     '[2026-07-09T02:00:00] codex exec session started',
     '{"event": "thinking", "tokens": 120}',
     'Here is my assessment.',
-    '{"grounded": 5, "honest": 4, "useful": 5, "notes": "Concrete and correct."}',
+    '{"grounded": 5, "honest": 4, "useful": 5, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5, "notes": "Concrete and correct."}',
   ].join('\n');
-  assert.deepEqual(extractJudgeScore(noisy), { grounded: 5, honest: 4, useful: 5, notes: 'Concrete and correct.' });
+  assert.deepEqual(extractJudgeScore(noisy), { grounded: 5, honest: 4, useful: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, notes: 'Concrete and correct.' });
 
-  const outOfRange = extractJudgeScore('{"grounded": 9, "honest": -2, "useful": 3}');
+  const outOfRange = extractJudgeScore('{"grounded": 9, "honest": -2, "useful": 3, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5}');
   assert.ok('error' in outOfRange);
 
-  const fractional = extractJudgeScore('{"grounded": 3.6, "honest": 5, "useful": 4}');
+  const fractional = extractJudgeScore('{"grounded": 3.6, "honest": 5, "useful": 4, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5}');
   assert.ok('error' in fractional);
 
   const missing = extractJudgeScore('no scores here');
@@ -128,9 +130,9 @@ test('runCliJudge captures scores from a real subprocess and reports failures', 
   const fake: DMCliJudge = {
     kind: 'cli',
     label: 'fake-cli',
-    command: ['node', '-e', 'console.log("noise"); console.log(JSON.stringify({grounded: 4, honest: 5, useful: 4, notes: "ok"}))'],
+    command: ['node', '-e', 'console.log("noise"); console.log(JSON.stringify({grounded: 4, honest: 5, useful: 4, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, notes: "ok"}))'],
   };
-  assert.deepEqual(await runCliJudge(fake, 'prompt'), { grounded: 4, honest: 5, useful: 4, notes: 'ok' });
+  assert.deepEqual(await runCliJudge(fake, 'prompt'), { grounded: 4, honest: 5, useful: 4, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, notes: 'ok' });
 
   const failing: DMCliJudge = { kind: 'cli', label: 'fail-cli', command: ['node', '-e', 'process.exit(3)'] };
   const failed = await runCliJudge(failing, 'prompt');

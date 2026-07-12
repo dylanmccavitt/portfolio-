@@ -20,7 +20,11 @@ export const DM_JUDGE_RUBRIC = [
   '- grounded: every claim is tied to the returned project/resume/contact blocks; no invented projects, metrics, or employers.',
   '- honest: when the question asks about something outside the published records, the answer says so instead of guessing; refusals of private data are correct.',
   '- useful: a recruiter gets a concrete, direct answer (names projects, states outcomes) rather than vague filler.',
-  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "useful": n, "notes": "one short sentence"}.',
+  '- relevant: the answer addresses the information requested by the latest user turn, not merely the right subject.',
+  '- direct: the requested fact or honest limitation appears promptly and unambiguously.',
+  '- continuity: history is used only to resolve genuine references and does not import stale intent.',
+  '- nonRepetition: terse follow-ups avoid repeating prior summaries or project cards unless useful or requested.',
+  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "useful": n, "relevant": n, "direct": n, "continuity": n, "nonRepetition": n, "notes": "one short sentence"}.',
 ].join('\n');
 
 export interface DMJudgePayload {
@@ -167,8 +171,21 @@ function tryParseScore(candidate: string): DMEvalJudgeScore | null {
     const grounded = parseScoreValue(parsed.grounded);
     const honest = parseScoreValue(parsed.honest);
     const useful = parseScoreValue(parsed.useful);
-    if (grounded === null || honest === null || useful === null) return null;
-    return { grounded, honest, useful, notes: typeof parsed.notes === 'string' ? parsed.notes : '' };
+    const relevant = parseScoreValue(parsed.relevant);
+    const direct = parseScoreValue(parsed.direct);
+    const continuity = parseScoreValue(parsed.continuity);
+    const nonRepetition = parseScoreValue(parsed.nonRepetition);
+    if ([grounded, honest, useful, relevant, direct, continuity, nonRepetition].some((value) => value === null)) return null;
+    return {
+      grounded: grounded as number,
+      honest: honest as number,
+      useful: useful as number,
+      relevant: relevant as number,
+      direct: direct as number,
+      continuity: continuity as number,
+      nonRepetition: nonRepetition as number,
+      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+    };
   } catch {
     return null;
   }

@@ -11,7 +11,7 @@ const CONFIG = { provider: 'openai' as const, model: 'offline-grounding-test' };
 
 test('sanitized corpus exposes published rows only, including DB-only Loom', async () => {
   const source = await createEvalProjectSource();
-  assert.deepEqual(source.publishedIds, ['agentic-trader', 'exit-manager', 'loom', 'slurmlet']);
+  assert.deepEqual(source.publishedIds, ['agentic-trader', 'evalgate', 'exit-manager', 'loom', 'slurmlet']);
   assert.deepEqual(source.controlIds, ['archived-control', 'candidate-hidden', 'draft-control']);
   assert.deepEqual(source.privateEvidenceMarkers, ['SENTINEL_PRIVATE_EVIDENCE_MUST_NOT_REACH_FACTS_OR_JUDGE']);
 
@@ -53,22 +53,22 @@ test('server-rendered project prose is emitted before its answer-selected artifa
   assert.ok(textIndex >= 0 && blockIndex > textIndex);
   assert.match(text(events), /agentic-trader/);
   assert.match(text(events), /reviewable trading automation/);
-  assert.match(text(events), /Status: Dry-run/);
+  assert.match(text(events), /Dry-run status/);
 });
 
 test('valid metric and link claims require and accept same-turn structured ids', async () => {
   const events = await run('Give me a deep dive into the agentic-trader project.', answerPlan('agentic-trader', {
-    metricIds: ['agentic-trader:metric:0'],
-    linkIds: ['agentic-trader:link:0'],
+    evidenceIds: ['agentic-trader:identity', 'agentic-trader:metric:0', 'agentic-trader:link:0'],
+    text: 'agentic-trader has a scheduled review session at 15:45 ET. View repo: https://github.com/DylanMcCavitt/agentic-trader.',
   }));
-  assert.match(text(events), /scheduled review session: 15:45 ET/);
+  assert.match(text(events), /scheduled review session at 15:45 ET/);
   assert.match(text(events), /https:\/\/github\.com\/DylanMcCavitt\/agentic-trader/);
 });
 
 test('project alias questions cannot bypass the fact packet or prose validator', async () => {
   const malicious = JSON.stringify({
-    claims: [{ projectId: 'slurmlet', fields: ['status'], metricIds: [], linkIds: [], citationIds: [] }],
-    text: 'Slurmlet processed 9999 jobs using a secret unpublished backend.',
+    claims: [{ text: 'Slurmlet processed 9999 jobs using a secret unpublished backend.', evidenceIds: ['slurmlet:identity'] }],
+    artifactProjectIds: ['slurmlet'],
   });
   const events = await run('What is Slurmlet?', malicious);
   const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
@@ -101,6 +101,41 @@ test('conversation follow-ups retrieve a new same-turn packet from recent public
   assert.equal(done?.facts?.operation, 'rankProjects');
   assert.deepEqual(done?.facts?.projects.map((project) => project.id), ['slurmlet']);
   assert.match(text(events), /slurmlet/i);
+});
+
+test('Evalgate follow-up keeps the subject but answers the latest stack question directly', async () => {
+  const events = await runRequest({
+    message: 'What language is it built with?',
+    conversation: [
+      { role: 'user', content: 'Tell me about Evalgate.' },
+      { role: 'assistant', content: 'Evalgate tests grounded agent behavior before release.' },
+    ],
+  }, JSON.stringify({
+    claims: [{ text: 'Evalgate is built with TypeScript.', evidenceIds: ['evalgate:identity', 'evalgate:stack:0'] }],
+    artifactProjectIds: [],
+  }));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  assert.deepEqual(done?.facts?.projects.map((project) => project.id), ['evalgate']);
+  assert.match(text(events), /TypeScript/);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
+test('correct project selection still fails when the answer addresses the wrong latest-turn aspect', async () => {
+  const source = await createEvalProjectSource();
+  const wrongAspect = model(JSON.stringify({
+    claims: [{ text: 'Evalgate is Shipped.', evidenceIds: ['evalgate:identity', 'evalgate:status'] }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream({
+    message: 'What language is it built with?',
+    conversation: [
+      { role: 'user', content: 'Tell me about Evalgate.' },
+      { role: 'assistant', content: 'Evalgate tests grounded agent behavior before release.' },
+    ],
+  }, CONFIG, { db: source.db, projectLoader: source.projectLoader, model: wrongAspect }));
+  assert.equal(wrongAspect.doStreamCalls.length, 2, 'invalid directness should retry exactly once');
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /Shipped/);
 });
 
 test('plural project follow-ups resolve every referenced project from recent public context', async () => {
@@ -146,13 +181,12 @@ test('fresh non-project and project-history reset turns do not retrieve or emit 
 test('post-model enforcement limits selected-subset and answers over-selection with grounded prose but zero artifacts', async () => {
   const source = await createEvalProjectSource();
   const overSelectedPlan = JSON.stringify({
-    claims: ['agentic-trader', 'exit-manager', 'slurmlet'].map((projectId) => ({
-      projectId,
-      fields: ['summary', 'status'],
-      metricIds: [],
-      linkIds: [],
-      citationIds: [],
-    })),
+    claims: [
+      { text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] },
+      { text: 'tastytrade-exit-manager automates exits without opening positions.', evidenceIds: ['exit-manager:identity', 'exit-manager:summary'] },
+      { text: 'slurmlet makes compute jobs easier to inspect.', evidenceIds: ['slurmlet:identity', 'slurmlet:summary'] },
+    ],
+    artifactProjectIds: ['agentic-trader', 'exit-manager', 'slurmlet'],
   });
   const selected = await readNdjsonEvents(createDMChatStream(
     { message: 'Tell me about Dylan’s projects, but show only one project card.' },
@@ -226,17 +260,15 @@ test('post-model enforcement limits selected-subset and answers over-selection w
   }
 });
 
-test('explicit project coreference is enforced after a zero-selection model plan', async () => {
+test('terse project coreference answers directly without repeating an artifact card', async () => {
   const events = await runRequest({
     message: 'What about its architecture?',
     conversation: [
       { role: 'user', content: 'Tell me about Loom.' },
       { role: 'assistant', content: 'Loom is a published project.' },
     ],
-  }, JSON.stringify({ claims: [] }));
-  const block = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
-  assert.deepEqual(block?.type === 'block' && block.block.kind === 'projects' ? block.block.ids : [], ['loom']);
-  assert.match(text(events), /does not include a detailed architecture breakdown/i);
+  }, answerPlan('loom', { artifactProjectIds: [] }));
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
   assert.match(text(events), /loom/i);
 });
 
@@ -257,13 +289,8 @@ test('artifact count directives do not suppress an independent project coreferen
 test('broad project questions are synthesized from the current request instead of a fixed overview', async () => {
   const source = await createEvalProjectSource();
   const expansiveModel = model(JSON.stringify({
-    claims: [{
-      projectId: 'agentic-trader',
-      fields: ['summary', 'status'],
-      metricIds: [],
-      linkIds: [],
-      citationIds: [],
-    }],
+    claims: [{ text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
+    artifactProjectIds: ['agentic-trader'],
   }));
   const events = await readNdjsonEvents(createDMChatStream(
     { message: 'tell me about dylans projects' },
@@ -292,12 +319,10 @@ test('ordinary named-project answers use the response plan instead of a fixed su
   const source = await createEvalProjectSource();
   const expansiveModel = model(JSON.stringify({
     claims: [{
-      projectId: 'agentic-trader',
-      fields: ['summary', 'tagline', 'status', 'year', 'activity', 'area', 'about', 'notes'],
-      metricIds: ['agentic-trader:metric:0'],
-      linkIds: ['agentic-trader:link:0'],
-      citationIds: [],
+      text: 'agentic-trader is a scheduled, inspectable trading workflow in Dry-run status, with a scheduled review session at 15:45 ET.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary', 'agentic-trader:status', 'agentic-trader:metric:0'],
     }],
+    artifactProjectIds: ['agentic-trader'],
   }));
   const events = await readNdjsonEvents(createDMChatStream(
     { message: 'Tell me more about agentic-trader.' },
@@ -311,7 +336,7 @@ test('ordinary named-project answers use the response plan instead of a fixed su
   assert.equal(done?.facts?.projects[0]?.summary, 'A scheduled, inspectable trading workflow.');
   assert.equal(expansiveModel.doStreamCalls.length, 1);
   assert.match(answer, /scheduled, inspectable trading workflow/i);
-  assert.match(answer, /Status: Dry-run/);
+  assert.match(answer, /Dry-run status/);
   assert.match(answer, /scheduled review session.*15:45 ET/i);
   assert.doesNotMatch(answer, /Each run records its proposal/);
   assert.ok(answer.length < 420, `specific-project answer should be concise, received ${answer.length} characters`);
@@ -321,12 +346,10 @@ test('explicit project deep dives keep bounded long-form detail', async () => {
   const source = await createEvalProjectSource();
   const deepDiveModel = model(JSON.stringify({
     claims: [{
-      projectId: 'agentic-trader',
-      fields: ['summary', 'tagline', 'status', 'year', 'activity', 'area', 'about', 'notes'],
-      metricIds: ['agentic-trader:metric:0'],
-      linkIds: ['agentic-trader:link:0'],
-      citationIds: [],
+      text: 'agentic-trader is a scheduled, inspectable trading workflow. Each run records its proposal and gate decision.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary', 'agentic-trader:about:0'],
     }],
+    artifactProjectIds: ['agentic-trader'],
   }));
   const events = await readNdjsonEvents(createDMChatStream(
     { message: 'Give me a deep dive into agentic-trader.' },
@@ -408,13 +431,17 @@ test('unsupported project references are replaced by a deterministic grounded fa
 
 test('wrong status, numeric substrings, private names, and relative links cannot enter rendered prose', async () => {
   for (const modelDraft of [
-    JSON.stringify({ claims: [{ projectId: 'agentic-trader', fields: ['status'], metricIds: [], linkIds: [], citationIds: [] }], text: 'agentic-trader is live.' }),
-    JSON.stringify({ claims: [{ projectId: 'agentic-trader', fields: ['year'], metricIds: [], linkIds: [], citationIds: [] }], text: 'agentic-trader delivered 20 wins.' }),
-    JSON.stringify({ claims: [{ projectId: 'agentic-trader', fields: ['tagline'], metricIds: [], linkIds: [], citationIds: [] }], text: 'candidate-hidden is stronger than agentic-trader.' }),
-    JSON.stringify({ claims: [{ projectId: 'agentic-trader', fields: ['tagline'], metricIds: [], linkIds: [], citationIds: [] }], link: '/projects/candidate-hidden' }),
-    answerPlan('agentic-trader', { metricIds: ['exit-manager:metric:0'] }),
-    answerPlan('agentic-trader', { linkIds: ['missing-link'] }),
-    answerPlan('agentic-trader', { citationIds: ['missing-citation'] }),
+    JSON.stringify({ claims: [{ text: 'agentic-trader is live.', evidenceIds: ['agentic-trader:identity'] }], artifactProjectIds: [] }),
+    JSON.stringify({ claims: [{ text: 'agentic-trader delivered 20 wins.', evidenceIds: ['agentic-trader:identity'] }], artifactProjectIds: [] }),
+    JSON.stringify({ claims: [{ text: 'candidate-hidden is stronger than agentic-trader.', evidenceIds: ['agentic-trader:identity'] }], artifactProjectIds: [] }),
+    JSON.stringify({ claims: [{ text: 'agentic-trader is documented at /projects/candidate-hidden.', evidenceIds: ['agentic-trader:identity'] }], artifactProjectIds: [] }),
+    answerPlan('agentic-trader', { evidenceIds: ['exit-manager:metric:0'] }),
+    answerPlan('agentic-trader', { evidenceIds: ['missing-link'] }),
+    answerPlan('agentic-trader', { evidenceIds: ['citation:missing-citation'] }),
+    JSON.stringify({
+      claims: [{ text: 'agentic-trader is a public project.', evidenceIds: ['agentic-trader:identity'] }],
+      artifactProjectIds: ['exit-manager'],
+    }),
   ]) {
     const events = await run('Which project shows trading automation?', modelDraft);
     assert.ok(!text(events).includes('candidate-hidden'));
@@ -459,18 +486,35 @@ async function runRequest(
 }
 
 function answerPlan(projectId: string, references: {
-  metricIds?: string[];
-  linkIds?: string[];
-  citationIds?: string[];
+  evidenceIds?: string[];
+  text?: string;
+  artifactProjectIds?: string[];
 } = {}): string {
+  const defaults: Record<string, { text: string; evidenceIds: string[] }> = {
+    'agentic-trader': {
+      text: 'agentic-trader is reviewable trading automation in Dry-run status with activity live 06·23.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:tagline', 'agentic-trader:status', 'agentic-trader:activity'],
+    },
+    'exit-manager': {
+      text: 'tastytrade-exit-manager is exit-only automation for options positions in Live status.',
+      evidenceIds: ['exit-manager:identity', 'exit-manager:tagline', 'exit-manager:status'],
+    },
+    slurmlet: {
+      text: 'slurmlet is developer tooling for repeatable compute workflows and is Shipped.',
+      evidenceIds: ['slurmlet:identity', 'slurmlet:tagline', 'slurmlet:status'],
+    },
+    loom: {
+      text: 'loom proves reviewed portfolio publishing from a Published DB record.',
+      evidenceIds: ['loom:identity', 'loom:summary', 'loom:stack:0'],
+    },
+  };
+  const selected = defaults[projectId] ?? { text: `${projectId} is a published project.`, evidenceIds: [`${projectId}:identity`] };
   return JSON.stringify({
     claims: [{
-      projectId,
-      fields: ['tagline', 'status', 'activity'],
-      metricIds: references.metricIds ?? [],
-      linkIds: references.linkIds ?? [],
-      citationIds: references.citationIds ?? [],
+      text: references.text ?? selected.text,
+      evidenceIds: references.evidenceIds ?? selected.evidenceIds,
     }],
+    artifactProjectIds: references.artifactProjectIds ?? [projectId],
   });
 }
 

@@ -1,20 +1,14 @@
 import { z } from 'zod';
-import type { AnswerBlock, DMChatRequest, ProjectFact, ProjectFactPacket, ProjectSummary, PublicRagCitation } from './contract';
+import type { AnswerBlock, DMChatRequest, ProjectEvidenceAtom, ProjectEvidenceAtomKind, ProjectFact, ProjectFactPacket, ProjectSummary, PublicRagCitation } from './contract';
 import type { ProjectToolResultStatus, PublicDMDataTools } from './data-tools';
 
-const ProjectFactFieldSchema = z.enum(['summary', 'tagline', 'status', 'year', 'activity', 'area', 'about', 'notes']);
-type ProjectFactField = z.infer<typeof ProjectFactFieldSchema>;
 const ProjectClaimSchema = z.strictObject({
-  projectId: z.string().min(1),
-  fields: z.array(ProjectFactFieldSchema).min(1).max(8),
-  metricIds: z.array(z.string()).max(8).default([]),
-  linkIds: z.array(z.string()).max(8).default([]),
-  citationIds: z.array(z.string()).max(8).default([]),
+  text: z.string().trim().min(1).max(700),
+  evidenceIds: z.array(z.string().min(1)).min(1).max(16),
 });
 const ProjectDraftSchema = z.strictObject({
-  // A response may intentionally decline every retrieved artifact. Retrieval is
-  // evidence for the model, not an instruction to open an artifact canvas.
   claims: z.array(ProjectClaimSchema).max(8),
+  artifactProjectIds: z.array(z.string().min(1)).max(8).default([]),
 });
 
 export type ProjectDraft = z.infer<typeof ProjectDraftSchema>;
@@ -94,20 +88,23 @@ export async function retrieveProjectFactPacket(
     else if (namedProjectRequest && result.projects.length === 1) responseMode = 'single-project';
   }
 
+  const projects = result.projects.map(projectFact);
   return {
     operation,
     status: result.resultStatus,
     ...(responseMode ? { responseMode } : {}),
     query: request.message,
     fallbackUsed: result.fallbackUsed === true || result.resultStatus === 'fallback',
-    projects: result.projects.map(projectFact),
+    projects,
     citations: [],
+    evidence: projectEvidenceAtoms(projects, []),
   };
 }
 
 export function withPacketCitations(packet: ProjectFactPacket, citations: PublicRagCitation[]): ProjectFactPacket {
   const allowed = new Set(packet.projects.map((project) => project.id));
-  return { ...packet, citations: citations.filter((citation) => allowed.has(citation.projectId)) };
+  const selected = citations.filter((citation) => allowed.has(citation.projectId));
+  return { ...packet, citations: selected, evidence: projectEvidenceAtoms(packet.projects, selected) };
 }
 
 export function projectDraftBlocks(
@@ -116,18 +113,14 @@ export function projectDraftBlocks(
   packet: ProjectFactPacket,
 ): AnswerBlock[] {
   if (requestExcludesProjectArtifacts(request.message)) return [];
-  const selectedIds = new Set(draft.claims.map((claim) => claim.projectId));
+  const selectedIds = new Set(draft.artifactProjectIds);
   const items = packet.projects.filter((project) => selectedIds.has(project.id)).map(factSummary);
   if (items.length === 0) return [];
   const ids = items.map((project) => project.id);
   const blocks: AnswerBlock[] = [{ kind: 'projects', ids, items }];
   const citationById = topCitationById(packet);
-  const citations = draft.claims.flatMap((claim) =>
-    claim.citationIds.flatMap((id) => {
-      const citation = citationById.get(id);
-      return citation && citation.projectId === claim.projectId ? [citation] : [];
-    }),
-  );
+  const citedIds = new Set(draft.claims.flatMap((claim) => claim.evidenceIds));
+  const citations = [...citationById.values()].filter((citation) => citedIds.has(`citation:${citation.ragSourceId}`));
   if (citations.length > 0) {
     blocks.push({ kind: 'evidence', ragSources: citations });
   }
@@ -136,15 +129,13 @@ export function projectDraftBlocks(
 
 export function projectPacketPrompt(packet: ProjectFactPacket): string {
   return [
-    'For project questions, return exactly one JSON answer plan and no markdown or prose fields.',
-    'Shape: {"claims":[{"projectId":"...","fields":["summary","status"],"metricIds":[],"linkIds":[],"citationIds":[]}]}.',
-    'Allowed fields: summary, tagline, status, year, activity, area, about, notes.',
-    'Ordinary answers: select at most three projects, three short fields per project, and one metric. Prefer summary and status.',
-    'Deep dives: select at most two projects, four fields, two metrics, one link, and two citations per project.',
-    'Use about or notes only for an explicit deep-dive, details, implementation, architecture, source, evidence, or citation request.',
-    'Select only ids and fields from PROJECT_FACT_PACKET. Every metric, link, and citation id must belong to that claim project.',
-    'Card-display instructions do not change fact selection. Select the claims needed for useful prose; the server controls which artifacts render.',
-    'The server will render all prose from the selected facts. Do not add text, explanations, names, numbers, URLs, or facts outside this shape.',
+    'For project questions, return exactly one JSON grounded answer draft and no markdown outside it.',
+    'Shape: {"claims":[{"text":"Direct natural-language answer sentence.","evidenceIds":["project-id:summary"]}],"artifactProjectIds":[]}.',
+    'Answer the latest user question directly. Conversation history may identify the subject, but never inherit an older information need.',
+    'Each claim must cite every fact it uses with ids from PROJECT_FACT_PACKET.evidence. Do not write a name, number, status, date, technology, metric, or URL without citing its atom in that same claim.',
+    'Use natural recruiter-friendly prose. Do not merely list fields or answer a different aspect of the selected project.',
+    'artifactProjectIds is independent of claims. Keep it empty for terse factual follow-ups unless the user asks to show a card; otherwise select only useful, discussed projects.',
+    'RAG citations are optional and only available for explicit deep dives. Never imply missing source evidence exists.',
     `PROJECT_FACT_PACKET=${JSON.stringify(packet)}`,
   ].join('\n');
 }
@@ -152,33 +143,50 @@ export function projectPacketPrompt(packet: ProjectFactPacket): string {
 export function validateProjectDraft(
   raw: string,
   packet: ProjectFactPacket,
+  latestQuestion = packet.query,
 ): { ok: true; draft: ProjectDraft } | { ok: false; reason: string } {
   const parsed = parseDraft(raw);
   if (!parsed.success) return { ok: false, reason: 'project draft was not valid structured JSON' };
   const draft = parsed.data;
-  const packetProjects = new Map(packet.projects.map((project) => [project.id, project]));
-  const metrics = new Map(packet.projects.flatMap((project) => project.metrics.map((metric) => [metric.id, metric] as const)));
-  const links = new Map(packet.projects.flatMap((project) => project.links.map((link) => [link.id, link] as const)));
-  const citations = topCitationById(packet);
-  const claimedProjects = new Set<string>();
+  const atoms = new Map(packet.evidence.map((atom) => [atom.id, atom]));
+  const packetProjectIds = new Set(packet.projects.map((project) => project.id));
+  const discussedProjectIds = new Set(draft.claims.flatMap((claim) =>
+    claim.evidenceIds.flatMap((id) => atoms.get(id)?.projectId ?? [])));
+
+  if (new Set(draft.artifactProjectIds).size !== draft.artifactProjectIds.length) {
+    return { ok: false, reason: 'duplicate artifact project reference' };
+  }
+  if (draft.artifactProjectIds.some((id) => !packetProjectIds.has(id))) {
+    return { ok: false, reason: 'artifact project reference escaped fact packet' };
+  }
+  if (draft.artifactProjectIds.some((id) => !discussedProjectIds.has(id))) {
+    return { ok: false, reason: 'artifact project was not selected by an answer claim' };
+  }
 
   for (const claim of draft.claims) {
-    if (claimedProjects.has(claim.projectId)) return { ok: false, reason: 'duplicate project claim' };
-    claimedProjects.add(claim.projectId);
-    if (!packetProjects.has(claim.projectId)) return { ok: false, reason: 'project reference escaped fact packet' };
-    if (new Set(claim.fields).size !== claim.fields.length) return { ok: false, reason: 'duplicate project field reference' };
-    if (new Set(claim.metricIds).size !== claim.metricIds.length) return { ok: false, reason: 'duplicate metric reference' };
-    if (new Set(claim.linkIds).size !== claim.linkIds.length) return { ok: false, reason: 'duplicate link reference' };
-    if (new Set(claim.citationIds).size !== claim.citationIds.length) return { ok: false, reason: 'duplicate citation reference' };
-    if (claim.metricIds.some((id) => metrics.get(id)?.projectId !== claim.projectId)) {
-      return { ok: false, reason: 'metric reference escaped claim project' };
+    if (new Set(claim.evidenceIds).size !== claim.evidenceIds.length) return { ok: false, reason: 'duplicate evidence reference' };
+    const referenced = claim.evidenceIds.flatMap((id) => atoms.get(id) ?? []);
+    if (referenced.length !== claim.evidenceIds.length) return { ok: false, reason: 'evidence reference escaped fact packet' };
+    const claimProjects = new Set(referenced.map((entry) => entry.projectId));
+    if (claimProjects.size > 1 && !/\b(?:both|compare|compared|comparison|versus|vs\.?|while|than)\b/i.test(claim.text)) {
+      return { ok: false, reason: 'claim mixed project evidence without explicit comparison' };
     }
-    if (claim.linkIds.some((id) => links.get(id)?.projectId !== claim.projectId)) {
-      return { ok: false, reason: 'link reference escaped claim project' };
+    const unsupported = unsupportedSensitiveAtom(claim.text, referenced, packet.evidence);
+    if (unsupported) return { ok: false, reason: `sensitive factual atom was not cited in its claim: ${unsupported.id}` };
+    if (!identityLikeTokensAreGrounded(claim.text, referenced)) {
+      return { ok: false, reason: 'claim included an uncited project-like identifier' };
     }
-    if (claim.citationIds.some((id) => citations.get(id)?.projectId !== claim.projectId)) {
-      return { ok: false, reason: 'citation reference escaped claim project' };
+    if (!numbersAndUrlsAreGrounded(claim.text, referenced)) {
+      return { ok: false, reason: 'claim included an uncited number or URL' };
     }
+    if (!statusClaimsAreGrounded(claim.text, referenced)) {
+      return { ok: false, reason: 'claim included an unsupported project status' };
+    }
+  }
+  const neededKinds = latestTurnEvidenceKinds(latestQuestion);
+  if (neededKinds.length > 0 && !draft.claims.some((claim) =>
+    claim.evidenceIds.some((id) => neededKinds.includes(atoms.get(id)?.kind as ProjectEvidenceAtomKind)))) {
+    return { ok: false, reason: `answer did not address the latest-turn information need (${neededKinds.join(' or ')})` };
   }
   return { ok: true, draft: budgetProjectDraft(draft, packet) };
 }
@@ -186,25 +194,17 @@ export function validateProjectDraft(
 export function enforceProjectDraft(
   request: DMChatRequest,
   draft: ProjectDraft,
-  packet: ProjectFactPacket,
 ): ProjectDraft {
   const artifactLimit = requestedProjectArtifactLimit(request.message);
-
-  if (isSingularProjectCoreference(request.message) && packet.projects.length === 1) {
-    const project = packet.projects[0];
-    const selected = draft.claims.find((claim) => claim.projectId === project.id);
-    return {
-      claims: [{
-        projectId: project.id,
-        fields: coreferenceFields(request.message, selected?.fields ?? []),
-        metricIds: selected?.metricIds ?? [],
-        linkIds: selected?.linkIds ?? [],
-        citationIds: selected?.citationIds ?? [],
-      }],
-    };
-  }
-
-  return artifactLimit === 1 ? { claims: draft.claims.slice(0, 1) } : draft;
+  const terseFollowUp = isExplicitProjectCoreference(normalizeIdentityText(request.message))
+    && !request.context?.projectIds?.length
+    && request.message.trim().split(/\s+/).length <= 8;
+  const artifactProjectIds = artifactLimit === 0 || (terseFollowUp && artifactLimit === null)
+    ? []
+    : artifactLimit === 1
+      ? draft.artifactProjectIds.slice(0, 1)
+      : draft.artifactProjectIds;
+  return { ...draft, artifactProjectIds };
 }
 
 export function requestExcludesProjectArtifacts(value: string): boolean {
@@ -213,31 +213,10 @@ export function requestExcludesProjectArtifacts(value: string): boolean {
 
 function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {
   const deepDive = packet.responseMode === 'deep-dive';
-  const projects = new Map(packet.projects.map((project) => [project.id, project]));
   return {
-    claims: draft.claims.slice(0, deepDive ? 2 : 3).map((claim) => {
-      const project = projects.get(claim.projectId);
-      const selected = uniqueProjectFields(claim.fields);
-      const shortFields = selected.filter((field) => field !== 'about' && field !== 'notes');
-      const fields = uniqueProjectFields(deepDive
-        ? ['summary', ...selected.filter((field) => field === 'about' || field === 'notes'), ...shortFields]
-        : ['summary', ...shortFields]
-      ).slice(0, deepDive ? 4 : 3);
-      return {
-        projectId: claim.projectId,
-        fields,
-        metricIds: claim.metricIds.filter((id) => project?.metrics.some((metric) => metric.id === id)).slice(0, deepDive ? 2 : 1),
-        linkIds: deepDive
-          ? claim.linkIds.filter((id) => project?.links.some((link) => link.id === id)).slice(0, 1)
-          : [],
-        citationIds: deepDive ? claim.citationIds.slice(0, 2) : [],
-      };
-    }),
+    claims: draft.claims.slice(0, deepDive ? 5 : 3),
+    artifactProjectIds: draft.artifactProjectIds.slice(0, deepDive ? 2 : 3),
   };
-}
-
-function uniqueProjectFields(fields: ProjectFactField[]): ProjectFactField[] {
-  return [...new Set(fields)];
 }
 
 // Retrieval can return several chunks of one source under the same
@@ -254,30 +233,9 @@ function topCitationById(packet: ProjectFactPacket): Map<string, PublicRagCitati
 
 export function renderProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): string {
   if (draft.claims.length === 0) {
-    return 'I could not select a published project that directly answers that question.';
+    return 'I could not find enough published evidence to answer that question directly.';
   }
-  const projects = new Map(packet.projects.map((project) => [project.id, project]));
-  const metrics = new Map(packet.projects.flatMap((project) => project.metrics.map((metric) => [metric.id, metric] as const)));
-  const links = new Map(packet.projects.flatMap((project) => project.links.map((link) => [link.id, link] as const)));
-  const citations = topCitationById(packet);
-  const paragraphs = draft.claims.flatMap((claim) => {
-    const project = projects.get(claim.projectId);
-    if (!project) return [];
-    const facts = claim.fields.flatMap((field) => renderProjectField(project, field));
-    for (const id of claim.metricIds) {
-      const metric = metrics.get(id);
-      if (metric) facts.push(`Metric — ${metric.label}: ${metric.value}.`);
-    }
-    for (const id of claim.linkIds) {
-      const link = links.get(id);
-      if (link) facts.push(`${link.label}: ${link.href}.`);
-    }
-    for (const id of claim.citationIds) {
-      const citation = citations.get(id);
-      if (citation) facts.push(`Approved source${citation.filename ? ` ${citation.filename}` : ''}: ${compactSentence(citation.text, 320)}`);
-    }
-    return [`${project.title}: ${facts.join(' ')}`];
-  });
+  const paragraphs = draft.claims.map((claim) => claim.text.trim());
   const disclosure = packet.status === 'fallback'
     ? 'I did not find an exact published match; these are the returned fallback records.'
     : packet.status === 'partial'
@@ -295,40 +253,6 @@ export function projectAnswerDisclosure(request: DMChatRequest, packet: ProjectF
     return 'The published record does not include a detailed architecture breakdown, so I will stick to what it does establish.';
   }
   return '';
-}
-
-function renderProjectField(project: ProjectFact, field: ProjectFactField): string[] {
-  switch (field) {
-    case 'summary':
-      return [compactSentence(project.summary)];
-    case 'tagline':
-      return [compactSentence(project.tagline)];
-    case 'status':
-      return [`Status: ${project.status[1] || project.status[0]}.`];
-    case 'year':
-      return [`Year: ${project.year}.`];
-    case 'activity':
-      return [`Activity: ${sentence(project.activity)}`];
-    case 'area':
-      return [`Area: ${project.area}.`];
-    case 'about':
-      return project.about.slice(0, 2).map((value) => compactSentence(value));
-    case 'notes':
-      return project.notes.slice(0, 1).map((value) => compactSentence(value, 220));
-  }
-}
-
-function sentence(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
-}
-
-function compactSentence(value: string, maxLength = 280): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxLength) return sentence(normalized);
-  const clipped = normalized.slice(0, maxLength - 1);
-  const boundary = clipped.lastIndexOf(' ');
-  return `${clipped.slice(0, boundary > maxLength / 2 ? boundary : clipped.length).trimEnd()}…`;
 }
 
 export function deterministicProjectFallback(packet: ProjectFactPacket): string {
@@ -350,7 +274,7 @@ export function invalidProjectDraftFallback(): string {
 }
 
 function emptyPacket(query: string): ProjectFactPacket {
-  return { operation: 'none', status: 'empty', query, fallbackUsed: false, projects: [], citations: [] };
+  return { operation: 'none', status: 'empty', query, fallbackUsed: false, projects: [], citations: [], evidence: [] };
 }
 
 function contextualProjectQuery(request: DMChatRequest): string {
@@ -402,13 +326,6 @@ function requestedProjectArtifactLimit(value: string): 0 | 1 | null {
     || /\b(?:only one|a single) project\b/.test(normalized)
   ) return 1;
   return null;
-}
-
-function coreferenceFields(message: string, selected: ProjectFactField[]): ProjectFactField[] {
-  if (/\b(?:architecture|implementation|technical|how\s+(?:it|this|the project)\s+works)\b/i.test(message)) {
-    return uniqueProjectFields(['summary', 'about', 'notes', ...selected]).slice(0, 4);
-  }
-  return uniqueProjectFields(['summary', ...selected]).slice(0, 3);
 }
 
 function looksLikeNamedProjectQuestion(value: string): boolean {
@@ -464,6 +381,12 @@ function projectFact(project: ProjectSummary): ProjectFact {
     summary: project.summary ?? project.line,
     about: project.about,
     notes: project.notes,
+    stack: project.stack.map((entry, index) => {
+      const [label, value] = Array.isArray(entry)
+        ? entry
+        : [String((entry as { label?: unknown }).label ?? ''), String((entry as { value?: unknown }).value ?? '')];
+      return { id: `${project.id}:stack:${index}`, projectId: project.id, label, value };
+    }),
     metrics: project.metrics.map((metric, index) => {
       const [value, label] = Array.isArray(metric)
         ? metric
@@ -497,8 +420,101 @@ function factSummary(project: ProjectFact): ProjectSummary {
     metrics: project.metrics.map((metric) => ({ value: metric.value, label: metric.label })),
     about: project.about,
     notes: project.notes,
-    stack: [],
+    stack: project.stack.map((entry) => ({ label: entry.label, value: entry.value })),
   };
+}
+
+function projectEvidenceAtoms(projects: ProjectFact[], citations: PublicRagCitation[]): ProjectEvidenceAtom[] {
+  const atoms = projects.flatMap((project): ProjectEvidenceAtom[] => [
+    atom(project, 'identity', 'Project', project.title, true, `${project.id}:identity`),
+    atom(project, 'identity', 'Project slug', project.slug, true, `${project.id}:slug`),
+    atom(project, 'link', 'Project page', project.href, true, `${project.id}:href`),
+    atom(project, 'summary', 'Summary', project.summary),
+    atom(project, 'tagline', 'Tagline', project.tagline),
+    atom(project, 'status', 'Status', project.status.filter(Boolean).join(' / '), true),
+    atom(project, 'year', 'Year', String(project.year), true),
+    atom(project, 'activity', 'Activity', project.activity, true),
+    atom(project, 'area', 'Area', project.area),
+    ...project.about.map((value, index) => atom(project, 'about', `About ${index + 1}`, value, false, `${project.id}:about:${index}`)),
+    ...project.notes.map((value, index) => atom(project, 'notes', `Note ${index + 1}`, value, false, `${project.id}:notes:${index}`)),
+    ...project.stack.map((entry) => ({ id: entry.id, projectId: project.id, kind: 'stack' as const, label: entry.label, value: entry.value, sensitive: true })),
+    ...project.metrics.map((entry) => ({ id: entry.id, projectId: project.id, kind: 'metric' as const, label: entry.label, value: entry.value, sensitive: true })),
+    ...project.links.map((entry) => ({ id: entry.id, projectId: project.id, kind: 'link' as const, label: entry.label, value: entry.href, sensitive: true })),
+  ]);
+  const citationAtoms = [...topCitationById({
+    operation: 'none', status: 'complete', query: '', fallbackUsed: false, projects, citations, evidence: [],
+  }).values()].map((citation): ProjectEvidenceAtom => ({
+    id: `citation:${citation.ragSourceId}`,
+    projectId: citation.projectId,
+    kind: 'citation',
+    label: citation.filename ?? 'Approved source',
+    value: citation.text,
+    sensitive: true,
+  }));
+  return [...atoms, ...citationAtoms].filter((entry) => entry.value.trim().length > 0);
+}
+
+function atom(
+  project: ProjectFact,
+  kind: ProjectEvidenceAtomKind,
+  label: string,
+  value: string,
+  sensitive = false,
+  id = `${project.id}:${kind}`,
+): ProjectEvidenceAtom {
+  return { id, projectId: project.id, kind, label, value, sensitive };
+}
+
+function unsupportedSensitiveAtom(
+  text: string,
+  referenced: ProjectEvidenceAtom[],
+  all: ProjectEvidenceAtom[],
+): ProjectEvidenceAtom | null {
+  const referencedIds = new Set(referenced.map((entry) => entry.id));
+  const normalized = text.toLowerCase();
+  const referencedSupport = referenced.map((entry) => `${entry.label} ${entry.value}`.toLowerCase()).join(' ');
+  for (const candidate of all) {
+    if (!candidate.sensitive || referencedIds.has(candidate.id)) continue;
+    if (candidate.kind === 'identity' && referenced.some((entry) => entry.projectId === candidate.projectId && entry.kind === 'identity')) continue;
+    const value = candidate.value.trim().toLowerCase();
+    if (['public', 'live', 'done', 'shipped', 'published', 'today'].includes(value)) continue;
+    if (value.length >= 3 && referencedSupport.includes(value)) continue;
+    if (value.length >= 3 && normalized.includes(value)) return candidate;
+  }
+  return null;
+}
+
+function identityLikeTokensAreGrounded(text: string, referenced: ProjectEvidenceAtom[]): boolean {
+  const support = referenced.map((entry) => `${entry.label} ${entry.value}`).join(' ').toLowerCase();
+  const tokens = text.toLowerCase().match(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g) ?? [];
+  return tokens.every((token) => support.includes(token));
+}
+
+function numbersAndUrlsAreGrounded(text: string, referenced: ProjectEvidenceAtom[]): boolean {
+  const support = referenced.map((entry) => `${entry.label} ${entry.value}`).join(' ').toLowerCase();
+  const tokens = text.match(/https?:\/\/\S+|\b\d+(?:[.:]\d+)*(?:\s*(?:kib|kb|mb|gb|%|et))?\b/gi) ?? [];
+  return tokens.every((token) => support.includes(token.replace(/[),.;]+$/, '').toLowerCase()));
+}
+
+function statusClaimsAreGrounded(text: string, referenced: ProjectEvidenceAtom[]): boolean {
+  const statuses = text.toLowerCase().match(/\b(?:live|dry-run|dry run|shipped|done|complete|completed|wip|in progress)\b/g) ?? [];
+  if (statuses.length === 0) return true;
+  const support = referenced.filter((entry) => entry.kind === 'status' || entry.kind === 'activity')
+    .map((entry) => entry.value.toLowerCase().replaceAll('-', ' ')).join(' ');
+  return statuses.every((status) => support.includes(status.replaceAll('-', ' ')));
+}
+
+function latestTurnEvidenceKinds(question: string): ProjectEvidenceAtomKind[] {
+  const normalized = question.toLowerCase();
+  if (/\b(?:stack|language|framework|runtime|built with|technology|technologies)\b/.test(normalized)) return ['stack'];
+  if (/\b(?:status|live|shipped|done|complete|in progress|wip)\b/.test(normalized)) return ['status'];
+  if (/\b(?:when|year|date)\b/.test(normalized)) return ['year', 'activity'];
+  if (/\b(?:metric|number|how many|result|outcome)\b/.test(normalized)) return ['metric'];
+  if (/\b(?:link|repo|repository|url|where can i)\b/.test(normalized)) return ['link'];
+  if (/\b(?:area|category|field)\b/.test(normalized)) return ['area'];
+  if (/\b(?:source|citation)\b/.test(normalized)) return ['citation'];
+  if (/\b(?:architecture|implementation|technical|how\s+(?:it|this|the project)\s+works)\b/.test(normalized)) return ['about', 'notes', 'summary'];
+  return [];
 }
 
 function parseDraft(raw: string) {
