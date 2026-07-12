@@ -10,16 +10,94 @@ import {
   type ProjectReadQueryable,
 } from '@/lib/db/project-reads';
 import type { PublishedProjectLoader } from './data-tools';
-import type { DMStreamEvent } from './contract';
+import type { DMChatRequest, DMStreamEvent } from './contract';
+
+interface DMEvalAnswerPlan {
+  claims: Array<{
+    projectId: string;
+    fields: Array<'summary' | 'tagline' | 'status' | 'year' | 'activity' | 'area' | 'about' | 'notes'>;
+    metricIds?: string[];
+    linkIds?: string[];
+    citationIds?: string[];
+  }>;
+}
 
 export interface DMEvalCase {
   name: string;
   prompt: string;
+  request?: DMChatRequest;
   modelText?: string;
+  answerPlan?: DMEvalAnswerPlan;
   expect(events: DMStreamEvent[]): string | null;
 }
 
 export const DM_EVAL_CASES: DMEvalCase[] = [
+  {
+    name: 'routing: fresh unsupported turn stays out of project retrieval',
+    prompt: 'What is the weather today?',
+    expect(events) {
+      return expectNoProjectArtifacts(events, 'fresh unsupported turn');
+    },
+  },
+  {
+    name: 'routing: unrelated turn resets after project-focused history',
+    prompt: 'What is your favorite color?',
+    request: {
+      message: 'What is your favorite color?',
+      conversation: [
+        { role: 'user', content: 'Tell me about Dylan’s projects.' },
+        { role: 'assistant', content: 'Loom is a published project.' },
+      ],
+    },
+    expect(events) {
+      return expectNoProjectArtifacts(events, 'project-history reset');
+    },
+  },
+  {
+    name: 'routing: explicit project coreference resolves only the referenced public project',
+    prompt: 'What about its architecture?',
+    request: {
+      message: 'What about its architecture?',
+      conversation: [
+        { role: 'user', content: 'Tell me about Loom.' },
+        { role: 'assistant', content: 'Loom is a published project.' },
+      ],
+    },
+    answerPlan: {
+      claims: [{ projectId: 'loom', fields: ['summary', 'about'] }],
+    },
+    expect(events) {
+      const projectBlock = projectBlockFor(events);
+      if (!projectBlock || !projectBlock.ids.includes('loom')) return 'missing Loom artifact for explicit coreference';
+      if (projectBlock.ids.length !== 1) return `coreference selected unrelated artifacts: ${projectBlock.ids.join(', ')}`;
+      return null;
+    },
+  },
+  {
+    name: 'artifacts: answer plan selects fewer retrieved project artifacts',
+    prompt: 'Tell me about Dylan’s projects.',
+    answerPlan: {
+      claims: [{ projectId: 'agentic-trader', fields: ['summary', 'status'] }],
+    },
+    expect(events) {
+      const done = doneEvent(events);
+      const projectBlock = projectBlockFor(events);
+      if (!done || done.facts?.projects.length !== 3) return 'expected representative retrieval set before answer selection';
+      if (!projectBlock || projectBlock.ids.join(',') !== 'agentic-trader') return 'answer plan did not limit artifacts to agentic-trader';
+      return null;
+    },
+  },
+  {
+    name: 'artifacts: answer plan can select zero project artifacts',
+    prompt: 'Tell me about Dylan’s projects.',
+    answerPlan: { claims: [] },
+    expect(events) {
+      const done = doneEvent(events);
+      if (!done || (done.facts?.projects.length ?? 0) === 0) return 'expected retrieval evidence for zero-artifact selection';
+      if (projectBlockFor(events)) return 'retrieval emitted a project artifact despite zero answer selection';
+      return null;
+    },
+  },
   {
     name: 'grounding: trading automation resolves through active public project source',
     prompt: 'Which published project shows trading automation and brokerage workflow work?',
@@ -76,9 +154,9 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       if (done.facts.responseMode !== 'representative-overview') return 'missing representative overview response mode';
       if (done.facts.projects.length !== 3) return `expected three representative projects, got ${done.facts.projects.length}`;
       const text = answerText(events);
-      if (!text.includes('three representative projects')) return 'missing concise overview introduction';
       if (text.includes('returned fallback records')) return 'broad overview used fallback disclosure';
-      if (text.length >= 700) return `overview was too long at ${text.length} characters`;
+      if (!text.includes('agentic-trader')) return 'broad project answer omitted selected public facts';
+      if (text.length >= 1_000) return `overview was too long at ${text.length} characters`;
       return expectProjectNamesBackedByBlocks(events);
     },
   },
@@ -221,6 +299,7 @@ function createPacketAwareMockModel(testCase: DMEvalCase): MockLanguageModelV4 {
       const prompt = JSON.stringify(options.prompt);
       const packet = packetFromPrompt(prompt);
       if (!packet) return streamingResponse(testCase.modelText ?? 'Public resume and contact details are available.');
+      if (testCase.answerPlan) return streamingResponse(JSON.stringify(testCase.answerPlan));
       return streamingResponse(JSON.stringify({
         claims: packet.projects.map((project) => ({
           projectId: project.id,
@@ -320,6 +399,22 @@ function expectProjectNamesBackedByBlocks(events: DMStreamEvent[]): string | nul
     }
   }
   return null;
+}
+
+function expectNoProjectArtifacts(events: DMStreamEvent[], label: string): string | null {
+  const done = doneEvent(events);
+  if (done?.facts?.operation !== 'none') return `${label} unexpectedly retrieved projects`;
+  if (projectBlockFor(events)) return `${label} emitted project artifacts`;
+  return null;
+}
+
+function projectBlockFor(events: DMStreamEvent[]): Extract<DMStreamEvent, { type: 'block' }>['block'] & { kind: 'projects' } | null {
+  const event = events.find((candidate) => candidate.type === 'block' && candidate.block.kind === 'projects');
+  return event?.type === 'block' && event.block.kind === 'projects' ? event.block : null;
+}
+
+function doneEvent(events: DMStreamEvent[]): Extract<DMStreamEvent, { type: 'done' }> | null {
+  return events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done') ?? null;
 }
 
 function answerText(events: DMStreamEvent[]): string {

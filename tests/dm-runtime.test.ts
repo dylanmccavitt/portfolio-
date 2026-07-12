@@ -521,7 +521,7 @@ test('DM route exposes explicit emergency catalog mode without initializing a DB
       createDbCalls += 1;
       throw new Error('the emergency source must not initialize a database');
     },
-    model: throwingModel(),
+    model: streamingModel(projectDraft('exit-manager')),
   });
   const response = await POST({
     request: new Request('https://example.test/api/dm/chat', {
@@ -558,7 +558,7 @@ test('DM route keeps real limiter storage while serving the emergency catalog on
       createDbCalls += 1;
       return limiterDb as never;
     },
-    model: throwingModel(),
+    model: streamingModel(projectDraft('exit-manager')),
   });
   const response = await post({
     request: new Request('https://example.test/api/dm/chat', {

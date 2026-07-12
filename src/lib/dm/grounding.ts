@@ -12,7 +12,9 @@ const ProjectClaimSchema = z.strictObject({
   citationIds: z.array(z.string()).max(8).default([]),
 });
 const ProjectDraftSchema = z.strictObject({
-  claims: z.array(ProjectClaimSchema).min(1).max(8),
+  // A response may intentionally decline every retrieved artifact. Retrieval is
+  // evidence for the model, not an instruction to open an artifact canvas.
+  claims: z.array(ProjectClaimSchema).max(8),
 });
 
 export type ProjectDraft = z.infer<typeof ProjectDraftSchema>;
@@ -23,21 +25,20 @@ export function isProjectDeepDiveRequest(message: string): boolean {
 
 export function requestNeedsProjectFacts(request: DMChatRequest): boolean {
   if (request.context?.projectIds?.length || request.context?.fitCheck) return true;
-  const current = request.message.trim().toLowerCase();
-  if (!current || /^(?:hi|hello|hey|thanks|thank you|good (?:morning|afternoon|evening))[!.?\s]*$/.test(current)) {
+  const current = request.message.trim();
+  const normalized = current.toLowerCase();
+  if (!normalized || /^(?:hi|hello|hey|thanks|thank you|good (?:morning|afternoon|evening))[!.?\s]*$/.test(normalized)) {
     return false;
   }
-  const strongProjectIntent = /\b(projects?|built|build|ship|shipped|backend|ai|client|automation|tool|tooling|apps?|integration|live|done|portfolio|most impressive|best|strongest|top|favorite)\b/;
+  const strongProjectIntent = /\b(projects?|built|build|ship|shipped|backend|client|automation|tool|tooling|apps?|integration|live|done|portfolio|most impressive|best|strongest|top)\b|\bfavorite\s+(?:project|work|portfolio)\b/;
   const publicResumeOrContactIntent = /\b(resume|résumé|cv|contact|email|reach|phone|location|education|degree|school|university|career|employment|employer|job history|open to work|availability)\b/;
-  if (publicResumeOrContactIntent.test(current) && !strongProjectIntent.test(current)) return false;
+  if (publicResumeOrContactIntent.test(normalized) && !strongProjectIntent.test(normalized)) return false;
 
-  const recentConversation = request.conversation?.slice(-6).map((message) => message.content.toLowerCase()).join(' ') ?? '';
-  if (strongProjectIntent.test(current) || strongProjectIntent.test(recentConversation)) return true;
+  if (strongProjectIntent.test(normalized) || looksLikeNamedProjectQuestion(current)) return true;
 
-  // Ambiguous factual turns default to grounded retrieval. This covers aliases,
-  // unknown project names, and follow-ups such as “What about it?” without
-  // maintaining a second project-name allowlist in the router.
-  return true;
+  // History is allowed only to resolve an explicit current-turn reference such
+  // as "What about its architecture?". It never inherits project intent.
+  return isExplicitProjectCoreference(normalized) && Boolean(request.conversation?.length);
 }
 
 export async function retrieveProjectFactPacket(
@@ -50,6 +51,12 @@ export async function retrieveProjectFactPacket(
   const query = contextualProjectQuery(request);
   const allProjects = await tools.allPublishedProjects();
   const namedProjectIds = resolveNamedProjectIds(request, allProjects);
+  if (isSingleTokenIdentityQuestion(request.message) && !request.context?.projectIds?.length && !request.context?.fitCheck && namedProjectIds.length === 0) {
+    return emptyPacket(request.message);
+  }
+  if (isExplicitProjectCoreference(normalized) && !request.context?.projectIds?.length && !request.context?.fitCheck && namedProjectIds.length === 0) {
+    return emptyPacket(request.message);
+  }
   const namedProjectRequest = Boolean(request.context?.projectIds?.length || namedProjectIds.length);
   let operation: ProjectFactPacket['operation'];
   let responseMode: ProjectFactPacket['responseMode'];
@@ -98,42 +105,21 @@ export async function retrieveProjectFactPacket(
   };
 }
 
-export function deterministicProjectOverview(packet: ProjectFactPacket): string | null {
-  if (packet.responseMode !== 'representative-overview' || packet.projects.length === 0) return null;
-  const projects = packet.projects.slice(0, 3);
-  const introduction = projects.length === 3
-    ? 'Here are three representative projects from Dylan’s published work.'
-    : 'Here are representative projects from Dylan’s published work.';
-  return [
-    introduction,
-    ...projects.map((project) => `${project.title} — ${sentence(project.tagline)}`),
-    'Ask me to go deeper on any one of them.',
-  ].join('\n\n');
-}
-
-export function deterministicSingleProjectAnswer(packet: ProjectFactPacket): string | null {
-  if (packet.responseMode !== 'single-project' || packet.projects.length !== 1) return null;
-  const project = packet.projects[0];
-  const metric = project.metrics[0];
-  return [
-    `${project.title}: ${compactSentence(project.summary)}`,
-    `Status: ${project.status[1] || project.status[0]}.`,
-    metric ? `Proof point: ${metric.label} — ${metric.value}.` : '',
-  ].filter(Boolean).join('\n\n');
-}
-
 export function withPacketCitations(packet: ProjectFactPacket, citations: PublicRagCitation[]): ProjectFactPacket {
   const allowed = new Set(packet.projects.map((project) => project.id));
   return { ...packet, citations: citations.filter((citation) => allowed.has(citation.projectId)) };
 }
 
-export function projectPacketBlocks(packet: ProjectFactPacket): AnswerBlock[] {
-  if (packet.projects.length === 0) return [];
-  const items = packet.projects.map(factSummary);
+export function projectDraftBlocks(draft: ProjectDraft, packet: ProjectFactPacket): AnswerBlock[] {
+  const selectedIds = new Set(draft.claims.map((claim) => claim.projectId));
+  const items = packet.projects.filter((project) => selectedIds.has(project.id)).map(factSummary);
+  if (items.length === 0) return [];
   const ids = items.map((project) => project.id);
   const blocks: AnswerBlock[] = [{ kind: 'projects', ids, items }];
-  if (packet.citations.length > 0) {
-    blocks.push({ kind: 'evidence', ragSources: packet.citations });
+  const citationIds = new Set(draft.claims.flatMap((claim) => claim.citationIds));
+  const citations = packet.citations.filter((citation) => citationIds.has(citation.ragSourceId) && selectedIds.has(citation.projectId));
+  if (citations.length > 0) {
+    blocks.push({ kind: 'evidence', ragSources: citations });
   }
   return blocks;
 }
@@ -216,6 +202,9 @@ function uniqueProjectFields(fields: ProjectFactField[]): ProjectFactField[] {
 }
 
 export function renderProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): string {
+  if (draft.claims.length === 0) {
+    return 'I could not select a published project that directly answers that question.';
+  }
   const projects = new Map(packet.projects.map((project) => [project.id, project]));
   const metrics = new Map(packet.projects.flatMap((project) => project.metrics.map((metric) => [metric.id, metric] as const)));
   const links = new Map(packet.projects.flatMap((project) => project.links.map((link) => [link.id, link] as const)));
@@ -299,23 +288,44 @@ function emptyPacket(query: string): ProjectFactPacket {
 }
 
 function contextualProjectQuery(request: DMChatRequest): string {
-  const prior = request.conversation?.slice(-4).map((message) => message.content.trim()).filter(Boolean) ?? [];
   const fitCheck = request.context?.fitCheck?.jobDescription.trim();
-  return [...prior, request.message.trim(), ...(fitCheck ? [fitCheck] : [])].join(' ').slice(-1_200);
+  return [request.message.trim(), ...(fitCheck ? [fitCheck] : [])].join(' ').slice(-1_200);
 }
 
 function resolveNamedProjectIds(request: DMChatRequest, projects: ProjectSummary[]): string[] {
   const current = normalizeIdentityText(request.message);
   const currentMatches = identityMatches(current, projects);
   if (currentMatches.length > 0) return currentMatches;
-  if (!/\b(it|that|this|one|what about|how about)\b/.test(current)) return [];
+  if (!isExplicitProjectCoreference(current)) return [];
 
   const conversation = request.conversation?.slice(-6).toReversed() ?? [];
   for (const message of conversation) {
     const matches = identityMatches(normalizeIdentityText(message.content), projects);
-    if (matches.length > 0) return [matches.at(-1) as string];
+    if (matches.length > 0) {
+      return isPluralProjectCoreference(current) ? matches : [matches.at(-1) as string];
+    }
   }
   return [];
+}
+
+function isExplicitProjectCoreference(value: string): boolean {
+  return /\b(?:it|its|that|this|one|they|their|them|these|those|ones)\b|\b(?:what|how)\s+about\b/.test(value);
+}
+
+function isPluralProjectCoreference(value: string): boolean {
+  return /\b(?:they|their|them|these|those|ones)\b/.test(value);
+}
+
+function looksLikeNamedProjectQuestion(value: string): boolean {
+  if (/\b[a-z0-9]+-[a-z0-9-]+\b/i.test(value)) return true;
+  if (isSingleTokenIdentityQuestion(value)) return true;
+  const namedWords = value.match(/\b[A-Z][a-zA-Z0-9]+\b/g) ?? [];
+  return namedWords.some((word) => !['Dylan', 'What', 'Which', 'Tell', 'Show', 'Give', 'How', 'Is', 'Has', 'Does'].includes(word));
+}
+
+function isSingleTokenIdentityQuestion(value: string): boolean {
+  const match = normalizeIdentityText(value).match(/^(?:what is|tell me about|show me|give me|how is) ([a-z0-9]+)$/);
+  return Boolean(match && !['project', 'projects', 'work', 'portfolio'].includes(match[1]));
 }
 
 function identityMatches(text: string, projects: ProjectSummary[]): string[] {

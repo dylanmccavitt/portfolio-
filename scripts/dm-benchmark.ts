@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       for (const testCase of DM_EVAL_CASES) {
         const sessionStartMs = Date.now();
         const stream = createDMChatStream(
-          { message: testCase.prompt },
+          testCase.request ?? { message: testCase.prompt },
           { provider: modelSpec.provider, model: modelSpec.model },
           { db: source.db, projectLoader: source.projectLoader, ...(dryRun ? { model: createStubModelForEvalCase(testCase) } : {}) },
         );

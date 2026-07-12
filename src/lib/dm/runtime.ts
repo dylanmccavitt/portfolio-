@@ -14,11 +14,9 @@ import { createPublicDMDataTools, DMToolError, type PublishedProjectLoader, type
 import { createDMMetricsRecorder, shouldRecordDMMetrics } from './metrics';
 import { AGENT_NAME, type AnswerBlock, type DMChatRequest, type DMStreamEvent, type ProjectFactPacket, type PublicRagCitation, type ToolTraceItem, type ToolTraceMetadata } from './contract';
 import {
-  deterministicProjectOverview,
   deterministicProjectFallback,
-  deterministicSingleProjectAnswer,
   isProjectDeepDiveRequest,
-  projectPacketBlocks,
+  projectDraftBlocks,
   projectPacketPrompt,
   renderProjectDraft,
   retrieveProjectFactPacket,
@@ -185,12 +183,6 @@ export function createDMChatStream(
           return;
         }
 
-        for (const block of projectPacketBlocks(factPacket)) {
-          answer.push(block);
-          emit({ type: 'block', index: blockIndex, block });
-          blockIndex += 1;
-        }
-
         if (factPacket.operation === 'none') {
           const responseText = deterministicPublicInfoAnswer(normalizedRequest);
           emit({ type: 'text-delta', delta: responseText });
@@ -209,34 +201,6 @@ export function createDMChatStream(
           const fallback = deterministicProjectFallback(factPacket);
           emit({ type: 'text-delta', delta: fallback });
           answer.unshift({ kind: 'text', text: fallback });
-          const supplementalBlocks = await deterministicBlocks(normalizedRequest, tools, answer);
-          for (const block of supplementalBlocks) {
-            answer.push(block);
-            emit({ type: 'block', index: blockIndex, block });
-            blockIndex += 1;
-          }
-          emit({ type: 'done', answer, trace: trace(traceItems), facts: factPacket });
-          return;
-        }
-
-        const projectOverview = deterministicProjectOverview(factPacket);
-        if (projectOverview) {
-          emit({ type: 'text-delta', delta: projectOverview });
-          answer.unshift({ kind: 'text', text: projectOverview });
-          const supplementalBlocks = await deterministicBlocks(normalizedRequest, tools, answer);
-          for (const block of supplementalBlocks) {
-            answer.push(block);
-            emit({ type: 'block', index: blockIndex, block });
-            blockIndex += 1;
-          }
-          emit({ type: 'done', answer, trace: trace(traceItems), facts: factPacket });
-          return;
-        }
-
-        const singleProjectAnswer = deterministicSingleProjectAnswer(factPacket);
-        if (singleProjectAnswer) {
-          emit({ type: 'text-delta', delta: singleProjectAnswer });
-          answer.unshift({ kind: 'text', text: singleProjectAnswer });
           const supplementalBlocks = await deterministicBlocks(normalizedRequest, tools, answer);
           for (const block of supplementalBlocks) {
             answer.push(block);
@@ -302,6 +266,14 @@ export function createDMChatStream(
         if (emittedText) {
           emit({ type: 'text-delta', delta: emittedText });
           answer.unshift({ kind: 'text', text: emittedText });
+        }
+
+        if (validated.ok) {
+          for (const block of projectDraftBlocks(validated.draft, factPacket)) {
+            answer.push(block);
+            emit({ type: 'block', index: blockIndex, block });
+            blockIndex += 1;
+          }
         }
 
         const supplementalBlocks = await deterministicBlocks(normalizedRequest, tools, answer);

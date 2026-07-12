@@ -46,11 +46,11 @@ test('resume and contact turns never stream unconstrained model project prose', 
   assert.match(text(events), /public resume highlights and contact details/);
 });
 
-test('server-rendered project prose is emitted only after the same-turn project blocks', async () => {
+test('server-rendered project prose is emitted before its answer-selected artifact blocks', async () => {
   const events = await run('Which project shows trading automation?', answerPlan('agentic-trader'));
   const blockIndex = events.findIndex((event) => event.type === 'block' && event.block.kind === 'projects');
   const textIndex = events.findIndex((event) => event.type === 'text-delta');
-  assert.ok(blockIndex >= 0 && textIndex > blockIndex);
+  assert.ok(textIndex >= 0 && blockIndex > textIndex);
   assert.match(text(events), /agentic-trader/);
   assert.match(text(events), /reviewable trading automation/);
   assert.match(text(events), /Status: Dry-run/);
@@ -78,6 +78,17 @@ test('project alias questions cannot bypass the fact packet or prose validator',
   assert.ok(!text(events).includes('secret unpublished backend'));
 });
 
+for (const lowerCaseAliasPrompt of ['what is slurmlet?', 'tell me about loom']) {
+  test(`lowercase single-word project aliases reach published alias resolution: ${lowerCaseAliasPrompt}`, async () => {
+    const projectId = lowerCaseAliasPrompt.includes('slurmlet') ? 'slurmlet' : 'loom';
+    const events = await run(lowerCaseAliasPrompt, answerPlan(projectId));
+    const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+    assert.equal(done?.facts?.operation, 'rankProjects');
+    assert.deepEqual(done?.facts?.projects.map((project) => project.id), [projectId]);
+    assert.match(text(events), new RegExp(projectId, 'i'));
+  });
+}
+
 test('conversation follow-ups retrieve a new same-turn packet from recent public context', async () => {
   const events = await runRequest({
     message: 'What about it?',
@@ -92,16 +103,77 @@ test('conversation follow-ups retrieve a new same-turn packet from recent public
   assert.match(text(events), /slurmlet/i);
 });
 
-test('broad project overviews stay concise even when the model requests every long-form field', async () => {
+test('plural project follow-ups resolve every referenced project from recent public context', async () => {
+  const events = await runRequest({
+    message: 'What are their architectures?',
+    conversation: [
+      { role: 'user', content: 'Tell me about Dylan’s projects.' },
+      { role: 'assistant', content: 'Loom and Slurmlet are published projects.' },
+    ],
+  }, answerPlan('loom'));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  assert.equal(done?.facts?.operation, 'rankProjects');
+  assert.deepEqual(done?.facts?.projects.map((project) => project.id).sort(), ['loom', 'slurmlet']);
+  assert.match(text(events), /loom/i);
+});
+
+test('fresh non-project and project-history reset turns do not retrieve or emit project artifacts', async () => {
+  for (const request of [
+    { message: 'What is the weather today?' },
+    { message: 'What is weather?' },
+    {
+      message: 'What is your favorite color?',
+      conversation: [
+        { role: 'user' as const, content: 'Tell me about Dylan’s projects.' },
+        { role: 'assistant' as const, content: 'Loom is a published project.' },
+      ],
+    },
+  ]) {
+    const source = await createEvalProjectSource();
+    const unusedModel = model(answerPlan('loom'));
+    const events = await readNdjsonEvents(createDMChatStream(
+      request,
+      CONFIG,
+      { db: source.db, projectLoader: source.projectLoader, model: unusedModel },
+    ));
+    const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+    assert.equal(done?.facts?.operation, 'none');
+    assert.equal(unusedModel.doStreamCalls.length, 0);
+    assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+  }
+});
+
+test('the answer plan alone selects fewer or zero project artifacts than retrieval returns', async () => {
+  const source = await createEvalProjectSource();
+  const selected = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: model(answerPlan('agentic-trader')) },
+  ));
+  const selectedDone = selected.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  const selectedBlock = selected.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  assert.equal(selectedDone?.facts?.projects.length, 3);
+  assert.deepEqual(selectedBlock?.type === 'block' && selectedBlock.block.kind === 'projects' ? selectedBlock.block.ids : [], ['agentic-trader']);
+
+  const excluded = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: model(JSON.stringify({ claims: [] })) },
+  ));
+  assert.equal(excluded.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+  assert.match(text(excluded), /could not select a published project/i);
+});
+
+test('broad project questions are synthesized from the current request instead of a fixed overview', async () => {
   const source = await createEvalProjectSource();
   const expansiveModel = model(JSON.stringify({
-    claims: ['agentic-trader', 'exit-manager', 'loom', 'slurmlet'].map((projectId) => ({
-      projectId,
-      fields: ['tagline', 'status', 'year', 'activity', 'area', 'about', 'notes'],
+    claims: [{
+      projectId: 'agentic-trader',
+      fields: ['summary', 'status'],
       metricIds: [],
       linkIds: [],
       citationIds: [],
-    })),
+    }],
   }));
   const events = await readNdjsonEvents(createDMChatStream(
     { message: 'tell me about dylans projects' },
@@ -109,20 +181,24 @@ test('broad project overviews stay concise even when the model requests every lo
     { db: source.db, projectLoader: source.projectLoader, model: expansiveModel },
   ));
   const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  const selectedBlock = events.find(
+    (event): event is Extract<DMStreamEvent, { type: 'block' }> => event.type === 'block' && event.block.kind === 'projects',
+  );
   const answer = text(events);
 
   assert.equal(done?.facts?.operation, 'rankProjects');
   assert.equal(done?.facts?.status, 'partial');
   assert.equal(done?.facts?.responseMode, 'representative-overview');
   assert.equal(done?.facts?.projects.length, 3);
-  assert.equal(expansiveModel.doStreamCalls.length, 0);
-  assert.match(answer, /three representative projects/i);
-  assert.match(answer, /ask me to go deeper/i);
+  assert.equal(done?.facts?.fallbackUsed, false);
+  assert.equal(expansiveModel.doStreamCalls.length, 1);
+  assert.match(answer, /agentic-trader/i);
+  assert.deepEqual(selectedBlock?.block.kind === 'projects' ? selectedBlock.block.ids : [], ['agentic-trader']);
   assert.doesNotMatch(answer, /did not find an exact published match|returned fallback records/i);
   assert.ok(answer.length < 700, `overview should be concise, received ${answer.length} characters`);
 });
 
-test('ordinary named-project answers use the canonical summary and stay concise', async () => {
+test('ordinary named-project answers use the response plan instead of a fixed summary', async () => {
   const source = await createEvalProjectSource();
   const expansiveModel = model(JSON.stringify({
     claims: [{
@@ -143,7 +219,7 @@ test('ordinary named-project answers use the canonical summary and stay concise'
 
   assert.equal(done?.facts?.responseMode, 'single-project');
   assert.equal(done?.facts?.projects[0]?.summary, 'A scheduled, inspectable trading workflow.');
-  assert.equal(expansiveModel.doStreamCalls.length, 0);
+  assert.equal(expansiveModel.doStreamCalls.length, 1);
   assert.match(answer, /scheduled, inspectable trading workflow/i);
   assert.match(answer, /Status: Dry-run/);
   assert.match(answer, /scheduled review session.*15:45 ET/i);
@@ -210,8 +286,7 @@ for (const qualifiedPrompt of [
     const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
 
     assert.notEqual(done?.facts?.responseMode, 'representative-overview');
-    const expectedModelCalls = qualifiedPrompt === 'What are Dylan’s projects built with?' ? 0 : 1;
-    assert.equal(responseModel.doStreamCalls.length, expectedModelCalls);
+    assert.ok(responseModel.doStreamCalls.length <= 1);
     if (/contact/i.test(qualifiedPrompt)) {
       assert.ok(events.some((event) => event.type === 'block' && event.block.kind === 'contact'));
     }

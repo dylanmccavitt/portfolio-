@@ -82,7 +82,7 @@ async function main(): Promise<void> {
       const started = performance.now();
       const events = await readNdjsonEvents(
         createDMChatStream(
-          { message: testCase.prompt },
+          testCase.request ?? { message: testCase.prompt },
           spec ? { provider: spec.provider, model: spec.model } : OFFLINE_CONFIG,
           { db: source.db, projectLoader: source.projectLoader, ...(spec ? {} : { model: createStubModelForEvalCase(testCase) }) },
         ),
