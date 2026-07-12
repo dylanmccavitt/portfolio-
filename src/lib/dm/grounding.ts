@@ -177,6 +177,31 @@ export function validateProjectDraft(
   return { ok: true, draft: budgetProjectDraft(draft, packet) };
 }
 
+export function enforceProjectDraft(
+  request: DMChatRequest,
+  draft: ProjectDraft,
+  packet: ProjectFactPacket,
+): ProjectDraft {
+  const artifactLimit = requestedProjectArtifactLimit(request.message);
+  if (artifactLimit === 0) return { claims: [] };
+
+  if (isSingularProjectCoreference(request.message) && packet.projects.length === 1) {
+    const project = packet.projects[0];
+    const selected = draft.claims.find((claim) => claim.projectId === project.id);
+    return {
+      claims: [{
+        projectId: project.id,
+        fields: coreferenceFields(request.message, selected?.fields ?? []),
+        metricIds: selected?.metricIds ?? [],
+        linkIds: selected?.linkIds ?? [],
+        citationIds: selected?.citationIds ?? [],
+      }],
+    };
+  }
+
+  return artifactLimit === 1 ? { claims: draft.claims.slice(0, 1) } : draft;
+}
+
 function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {
   const deepDive = packet.responseMode === 'deep-dive';
   const projects = new Map(packet.projects.map((project) => [project.id, project]));
@@ -252,6 +277,17 @@ export function renderProjectDraft(draft: ProjectDraft, packet: ProjectFactPacke
   return [disclosure, ...paragraphs].filter(Boolean).join('\n\n');
 }
 
+export function projectAnswerDisclosure(request: DMChatRequest, packet: ProjectFactPacket): string {
+  if (
+    packet.projects.length === 1
+    && isSingularProjectCoreference(request.message)
+    && /\b(?:architecture|implementation|technical|how\s+(?:it|this|the project)\s+works)\b/i.test(request.message)
+  ) {
+    return 'The published record does not include a detailed architecture breakdown, so I will stick to what it does establish.';
+  }
+  return '';
+}
+
 function renderProjectField(project: ProjectFact, field: ProjectFactField): string[] {
   switch (field) {
     case 'summary':
@@ -300,6 +336,10 @@ export function deterministicProjectFallback(packet: ProjectFactPacket): string 
   return `The published projects returned for this question are ${names}.`;
 }
 
+export function invalidProjectDraftFallback(): string {
+  return 'I could not produce a validated answer from the published project records for that question.';
+}
+
 function emptyPacket(query: string): ProjectFactPacket {
   return { operation: 'none', status: 'empty', query, fallbackUsed: false, projects: [], citations: [] };
 }
@@ -326,11 +366,40 @@ function resolveNamedProjectIds(request: DMChatRequest, projects: ProjectSummary
 }
 
 function isExplicitProjectCoreference(value: string): boolean {
-  return /\b(?:it|its|that|this|one|they|their|them|these|those|ones)\b|\b(?:what|how)\s+about\b/.test(value);
+  const withoutArtifactDirective = normalizeIdentityText(value)
+    .replace(/\b(?:show|render|open) (?:only )?(?:one|1|a single) (?:project )?(?:card|artifact)\b/g, '')
+    .replace(/\b(?:only one|a single) project\b/g, '')
+    .replace(/\b(?:without|no) (?:showing |rendering |opening )?(?:any )?(?:project )?(?:cards|artifacts)\b/g, '')
+    .replace(/\b(?:do not|don t) (?:show|render|open) (?:any )?(?:project )?(?:cards|artifacts)\b/g, '');
+  return /\b(?:it|its|that|this|one|they|their|them|these|those|ones)\b|\b(?:what|how)\s+about\b/.test(withoutArtifactDirective);
 }
 
 function isPluralProjectCoreference(value: string): boolean {
   return /\b(?:they|their|them|these|those|ones)\b/.test(value);
+}
+
+function isSingularProjectCoreference(value: string): boolean {
+  return isExplicitProjectCoreference(normalizeIdentityText(value)) && !isPluralProjectCoreference(normalizeIdentityText(value));
+}
+
+function requestedProjectArtifactLimit(value: string): 0 | 1 | null {
+  const normalized = normalizeIdentityText(value);
+  if (
+    /\b(?:without|no) (?:showing |rendering |opening )?(?:any )?(?:project )?(?:cards|artifacts)\b/.test(normalized)
+    || /\b(?:do not|don t) (?:show|render|open) (?:any )?(?:project )?(?:cards|artifacts)\b/.test(normalized)
+  ) return 0;
+  if (
+    /\b(?:show|render|open) (?:only )?(?:one|1|a single) (?:project )?(?:card|artifact)\b/.test(normalized)
+    || /\b(?:only one|a single) project\b/.test(normalized)
+  ) return 1;
+  return null;
+}
+
+function coreferenceFields(message: string, selected: ProjectFactField[]): ProjectFactField[] {
+  if (/\b(?:architecture|implementation|technical|how\s+(?:it|this|the project)\s+works)\b/i.test(message)) {
+    return uniqueProjectFields(['summary', 'about', 'notes', ...selected]).slice(0, 4);
+  }
+  return uniqueProjectFields(['summary', ...selected]).slice(0, 3);
 }
 
 function looksLikeNamedProjectQuestion(value: string): boolean {
@@ -360,7 +429,9 @@ function normalizeIdentityText(value: string): string {
 }
 
 function isBroadProjectOverviewQuery(value: string): boolean {
-  const normalized = normalizeIdentityText(value);
+  const normalized = normalizeIdentityText(value)
+    .replace(/\s+but show only (?:one|1|a single) project (?:card|artifact)$/, '')
+    .replace(/\s+without (?:showing )?(?:any )?project (?:cards|artifacts)$/, '');
   const subject = String.raw`(?:dylan(?:s| s)?|his|your|the)?\s*(?:projects|portfolio|work)`;
   return new RegExp(`^(?:tell me about|show me|give me an overview of|overview of)\\s+${subject}$`).test(normalized)
     || /^(?:what projects (?:has|did) dylan (?:build|built|ship|shipped)|what has dylan (?:built|shipped))$/.test(normalized);

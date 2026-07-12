@@ -143,12 +143,21 @@ test('fresh non-project and project-history reset turns do not retrieve or emit 
   }
 });
 
-test('the answer plan alone selects fewer or zero project artifacts than retrieval returns', async () => {
+test('post-model enforcement limits selected-subset and zero project artifacts', async () => {
   const source = await createEvalProjectSource();
+  const overSelectedPlan = JSON.stringify({
+    claims: ['agentic-trader', 'exit-manager', 'slurmlet'].map((projectId) => ({
+      projectId,
+      fields: ['summary', 'status'],
+      metricIds: [],
+      linkIds: [],
+      citationIds: [],
+    })),
+  });
   const selected = await readNdjsonEvents(createDMChatStream(
-    { message: 'Tell me about Dylan’s projects.' },
+    { message: 'Tell me about Dylan’s projects, but show only one project card.' },
     CONFIG,
-    { db: source.db, projectLoader: source.projectLoader, model: model(answerPlan('agentic-trader')) },
+    { db: source.db, projectLoader: source.projectLoader, model: model(overSelectedPlan) },
   ));
   const selectedDone = selected.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
   const selectedBlock = selected.find((event) => event.type === 'block' && event.block.kind === 'projects');
@@ -156,12 +165,40 @@ test('the answer plan alone selects fewer or zero project artifacts than retriev
   assert.deepEqual(selectedBlock?.type === 'block' && selectedBlock.block.kind === 'projects' ? selectedBlock.block.ids : [], ['agentic-trader']);
 
   const excluded = await readNdjsonEvents(createDMChatStream(
-    { message: 'Tell me about Dylan’s projects.' },
+    { message: 'Tell me about Dylan’s projects without showing any project cards.' },
     CONFIG,
-    { db: source.db, projectLoader: source.projectLoader, model: model(JSON.stringify({ claims: [] })) },
+    { db: source.db, projectLoader: source.projectLoader, model: model(overSelectedPlan) },
   ));
   assert.equal(excluded.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
   assert.match(text(excluded), /could not select a published project/i);
+});
+
+test('explicit project coreference is enforced after a zero-selection model plan', async () => {
+  const events = await runRequest({
+    message: 'What about its architecture?',
+    conversation: [
+      { role: 'user', content: 'Tell me about Loom.' },
+      { role: 'assistant', content: 'Loom is a published project.' },
+    ],
+  }, JSON.stringify({ claims: [] }));
+  const block = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  assert.deepEqual(block?.type === 'block' && block.block.kind === 'projects' ? block.block.ids : [], ['loom']);
+  assert.match(text(events), /does not include a detailed architecture breakdown/i);
+  assert.match(text(events), /loom/i);
+});
+
+test('artifact count directives do not suppress an independent project coreference', async () => {
+  const events = await runRequest({
+    message: 'What about its architecture? Show only one project card.',
+    conversation: [
+      { role: 'user', content: 'Tell me about Loom.' },
+      { role: 'assistant', content: 'Loom is a published project.' },
+    ],
+  }, answerPlan('loom'));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  const block = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  assert.deepEqual(done?.facts?.projects.map((project) => project.id), ['loom']);
+  assert.deepEqual(block?.type === 'block' && block.block.kind === 'projects' ? block.block.ids : [], ['loom']);
 });
 
 test('broad project questions are synthesized from the current request instead of a fixed overview', async () => {
@@ -311,7 +348,8 @@ for (const exactCase of [
 test('unsupported project references are replaced by a deterministic grounded fallback', async () => {
   const events = await run('Which project shows trading automation?', answerPlan('candidate-hidden'));
   assert.ok(!text(events).includes('candidate-hidden'));
-  assert.match(text(events), /published projects returned|returned fallback projects|partial set/i);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
   assert.ok(events.some((event) => event.type === 'done'));
 });
 
@@ -329,7 +367,8 @@ test('wrong status, numeric substrings, private names, and relative links cannot
     assert.ok(!text(events).includes('candidate-hidden'));
     assert.ok(!text(events).includes('20 wins'));
     assert.ok(!text(events).includes(' is live'));
-    assert.match(text(events), /published projects returned|returned fallback projects|partial set/i);
+    assert.match(text(events), /could not produce a validated answer/i);
+    assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
     assert.ok(events.some((event) => event.type === 'done'));
   }
 });
@@ -343,7 +382,8 @@ test('malformed project prose falls back without emitting the malformed draft', 
   );
   assert.ok(!text(events).includes('not-json'));
   assert.ok(!text(events).includes('9999'));
-  assert.match(text(events), /tastytrade-exit-manager/);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /tastytrade-exit-manager/);
   assert.equal(metrics.length, 1);
   assert.equal(JSON.parse(metrics[0].slice('[dm-metrics] '.length)).fallbackUsed, true);
 });

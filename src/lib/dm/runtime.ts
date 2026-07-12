@@ -15,7 +15,10 @@ import { createDMMetricsRecorder, shouldRecordDMMetrics } from './metrics';
 import { AGENT_NAME, type AnswerBlock, type DMChatRequest, type DMStreamEvent, type ProjectFactPacket, type PublicRagCitation, type ToolTraceItem, type ToolTraceMetadata } from './contract';
 import {
   deterministicProjectFallback,
+  enforceProjectDraft,
+  invalidProjectDraftFallback,
   isProjectDeepDiveRequest,
+  projectAnswerDisclosure,
   projectDraftBlocks,
   projectPacketPrompt,
   renderProjectDraft,
@@ -260,16 +263,20 @@ export function createDMChatStream(
           factPacket.projects.length + factPacket.citations.length,
           factPacket.fallbackUsed || !validated.ok,
         );
-        const emittedText = validated.ok
-          ? renderProjectDraft(validated.draft, factPacket)
-          : deterministicProjectFallback(factPacket);
+        const enforcedDraft = validated.ok
+          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket)
+          : null;
+        const disclosure = enforcedDraft ? projectAnswerDisclosure(normalizedRequest, factPacket) : '';
+        const emittedText = enforcedDraft
+          ? [disclosure, renderProjectDraft(enforcedDraft, factPacket)].filter(Boolean).join('\n\n')
+          : invalidProjectDraftFallback();
         if (emittedText) {
           emit({ type: 'text-delta', delta: emittedText });
           answer.unshift({ kind: 'text', text: emittedText });
         }
 
-        if (validated.ok) {
-          for (const block of projectDraftBlocks(validated.draft, factPacket)) {
+        if (enforcedDraft) {
+          for (const block of projectDraftBlocks(enforcedDraft, factPacket)) {
             answer.push(block);
             emit({ type: 'block', index: blockIndex, block });
             blockIndex += 1;

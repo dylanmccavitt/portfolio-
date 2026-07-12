@@ -75,7 +75,7 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
   },
   {
     name: 'artifacts: answer plan selects fewer retrieved project artifacts',
-    prompt: 'Tell me about Dylan’s projects.',
+    prompt: 'Tell me about Dylan’s projects, but show only one project card.',
     answerPlan: {
       claims: [{ projectId: 'agentic-trader', fields: ['summary', 'status'] }],
     },
@@ -83,13 +83,14 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       const done = doneEvent(events);
       const projectBlock = projectBlockFor(events);
       if (!done || done.facts?.projects.length !== 3) return 'expected representative retrieval set before answer selection';
-      if (!projectBlock || projectBlock.ids.join(',') !== 'agentic-trader') return 'answer plan did not limit artifacts to agentic-trader';
+      if (!projectBlock || projectBlock.ids.length !== 1) return 'answer plan did not limit artifacts to one selected project';
+      if (!done.facts?.projects.some((project) => project.id === projectBlock.ids[0])) return 'selected artifact escaped the same-turn fact packet';
       return null;
     },
   },
   {
     name: 'artifacts: answer plan can select zero project artifacts',
-    prompt: 'Tell me about Dylan’s projects.',
+    prompt: 'Tell me about Dylan’s projects without showing any project cards.',
     answerPlan: { claims: [] },
     expect(events) {
       const done = doneEvent(events);
