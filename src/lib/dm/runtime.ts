@@ -1,7 +1,6 @@
 import { gateway } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { isStepCount, streamText, tool, type LanguageModel, type ToolSet } from 'ai';
-import { z } from 'zod';
+import { isStepCount, streamText, type LanguageModel } from 'ai';
 import type { ProjectReadQueryable } from '@/lib/db/project-reads';
 import { loadPublicProjectDetails, type PublicProjectEnv } from '@/lib/public-projects';
 import {
@@ -218,7 +217,6 @@ export function createDMChatStream(
           model,
           system,
           messages: modelMessages(normalizedRequest),
-          tools: aiTools(tools),
           stopWhen: isStepCount(budgets.maxSteps),
           maxOutputTokens: budgets.maxOutputTokens,
           abortSignal: abort.signal,
@@ -276,7 +274,7 @@ export function createDMChatStream(
         }
 
         if (enforcedDraft) {
-          for (const block of projectDraftBlocks(enforcedDraft, factPacket)) {
+          for (const block of projectDraftBlocks(normalizedRequest, enforcedDraft, factPacket)) {
             answer.push(block);
             emit({ type: 'block', index: blockIndex, block });
             blockIndex += 1;
@@ -321,42 +319,6 @@ export function createDMChatStream(
 
 function isDMToolError(error: unknown): error is DMToolError {
   return error instanceof Error && error.name === 'DMToolError';
-}
-
-function wrapTool<T>(execute: (input: T) => Promise<unknown>) {
-  return async (input: T) => {
-    try {
-      return await execute(input);
-    } catch (error) {
-      if (isDMToolError(error) && error.code !== 'public_data_unavailable') {
-        return {
-          ok: false,
-          error: error.code,
-          message: error.message,
-          safeMessage: error.safeMessage,
-        };
-      }
-      throw error;
-    }
-  };
-}
-
-function aiTools(tools: PublicDMDataTools): ToolSet {
-  const dmTools: ToolSet = {
-    readResume: tool({
-      description: 'Read static public resume tracks from src/data/resume.ts with unpublished project links removed.',
-      inputSchema: z.object({
-        trackIds: z.array(z.string().min(1).max(80)).max(8).optional(),
-      }),
-      execute: wrapTool((input) => tools.readResume(input)),
-    }),
-    getContact: tool({
-      description: 'Read public contact data from the static resume source.',
-      inputSchema: z.object({}),
-      execute: wrapTool(() => Promise.resolve(tools.getContact())),
-    }),
-  };
-  return dmTools;
 }
 
 async function addRequestedRagCitations(
