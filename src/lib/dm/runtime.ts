@@ -271,7 +271,7 @@ export function createDMChatStream(
           factPacket.fallbackUsed || !validated.ok,
         );
         const enforcedDraft = validated.ok
-          ? enforceProjectDraft(normalizedRequest, validated.draft)
+          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket)
           : null;
         const disclosure = enforcedDraft ? projectAnswerDisclosure(normalizedRequest, factPacket) : '';
         const emittedText = enforcedDraft

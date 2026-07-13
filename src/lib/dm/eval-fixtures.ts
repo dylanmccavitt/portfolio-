@@ -98,7 +98,7 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
     name: 'artifacts: answer plan selects fewer retrieved project artifacts',
     prompt: 'Tell me about Dylan’s projects, but show only one project card.',
     answerPlan: {
-      claims: [{ text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
+      claims: [{ text: 'Agentic / Trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
       artifactProjectIds: ['agentic-trader'],
     },
     expect(events) {
@@ -107,6 +107,11 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       if (!done || done.facts?.projects.length !== 3) return 'expected representative retrieval set before answer selection';
       if (!projectBlock || projectBlock.ids.length !== 1) return 'answer plan did not limit artifacts to one selected project';
       if (!done.facts?.projects.some((project) => project.id === projectBlock.ids[0])) return 'selected artifact escaped the same-turn fact packet';
+      const answer = answerText(events);
+      const selectedProject = done.facts.projects.find((project) => project.id === projectBlock.ids[0]);
+      if (!selectedProject || !identityTextIncludes(answer, selectedProject.title)) return 'selected artifact did not match the project named in prose';
+      const excludedProject = done.facts.projects.find((project) => project.id !== projectBlock.ids[0] && identityTextIncludes(answer, project.title));
+      if (excludedProject) return `one-card prose named excluded project ${excludedProject.id}`;
       return null;
     },
   },
@@ -483,6 +488,16 @@ function answerText(events: DMStreamEvent[]): string {
       return [];
     })
     .join(' ');
+}
+
+function identityTextIncludes(text: string, identity: string): boolean {
+  const normalizedText = ` ${normalizeIdentityText(text)} `;
+  const normalizedIdentity = normalizeIdentityText(identity);
+  return normalizedIdentity.length > 1 && normalizedText.includes(` ${normalizedIdentity} `);
+}
+
+function normalizeIdentityText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 const EVAL_PROJECT_IDENTITIES = [

@@ -128,13 +128,19 @@ export function projectDraftBlocks(
 }
 
 export function projectPacketPrompt(packet: ProjectFactPacket): string {
+  const artifactLimit = requestedProjectArtifactLimit(packet.query);
+  const artifactInstruction = artifactLimit === 0
+    ? 'The latest request explicitly requires zero project cards. Keep artifactProjectIds empty, but still answer with grounded project claims.'
+    : artifactLimit === 1
+      ? 'The latest request explicitly requires exactly one project card. Select one project, write claims only about that project, and return that same single id in artifactProjectIds.'
+      : 'artifactProjectIds is independent of claims. Keep it empty for terse factual follow-ups unless the user asks to show a card; otherwise select only useful, discussed projects.';
   return [
     'For project questions, return exactly one JSON grounded answer draft and no markdown outside it.',
     'Shape: {"claims":[{"text":"Direct natural-language answer sentence.","evidenceIds":["project-id:summary"]}],"artifactProjectIds":[]}.',
     'Answer the latest user question directly. Conversation history may identify the subject, but never inherit an older information need.',
     'Each claim must cite every fact it uses with ids from PROJECT_FACT_PACKET.evidence. Every substantive claim must cite at least one non-identity atom; identity-only evidence is allowed only when the entire claim is the project name. Do not write a name, number, status, date, technology, metric, or URL without citing its atom in that same claim.',
     'Use natural recruiter-friendly prose. Do not merely list fields or answer a different aspect of the selected project.',
-    'artifactProjectIds is independent of claims. Keep it empty for terse factual follow-ups unless the user asks to show a card; otherwise select only useful, discussed projects.',
+    artifactInstruction,
     'RAG citations are optional and only available for explicit deep dives. Never imply missing source evidence exists.',
     `PROJECT_FACT_PACKET=${JSON.stringify(packet)}`,
   ].join('\n');
@@ -200,24 +206,32 @@ export function validateProjectDraft(
     const missing = missingKindGroups.map((group) => group.join(' or ')).join(' and ');
     return { ok: false, reason: `answer did not address every latest-turn information need (${missing})` };
   }
+  if (requestedProjectArtifactLimit(latestQuestion) === 1 && !selectOneCardProject(draft, packet, latestQuestion)) {
+    return { ok: false, reason: 'one-card answer did not contain a complete claim for one selected project' };
+  }
   return { ok: true, draft };
 }
 
 export function enforceProjectDraft(
   request: DMChatRequest,
   draft: ProjectDraft,
+  packet: ProjectFactPacket,
 ): ProjectDraft {
   const artifactLimit = requestedProjectArtifactLimit(request.message);
   const terseFollowUp = isExplicitProjectCoreference(normalizeIdentityText(request.message))
     && !request.context?.projectIds?.length
     && !requestExplicitlyIncludesProjectArtifacts(request.message)
     && request.message.trim().split(/\s+/).length <= 8;
-  const artifactProjectIds = artifactLimit === 0 || (terseFollowUp && artifactLimit === null)
-    ? []
-    : artifactLimit === 1
-      ? draft.artifactProjectIds.slice(0, 1)
-      : draft.artifactProjectIds;
-  return { ...draft, artifactProjectIds };
+  if (artifactLimit === 0 || (terseFollowUp && artifactLimit === null)) {
+    return { ...draft, artifactProjectIds: [] };
+  }
+  if (artifactLimit === 1) {
+    const selection = selectOneCardProject(draft, packet, request.message);
+    return selection
+      ? { claims: selection.claims, artifactProjectIds: [selection.projectId] }
+      : { claims: [], artifactProjectIds: [] };
+  }
+  return draft;
 }
 
 export function requestExcludesProjectArtifacts(value: string): boolean {
@@ -237,6 +251,43 @@ function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): Pro
     claims,
     artifactProjectIds: draft.artifactProjectIds.slice(0, deepDive ? 2 : 3),
   };
+}
+
+function selectOneCardProject(
+  draft: ProjectDraft,
+  packet: ProjectFactPacket,
+  latestQuestion: string,
+): { projectId: string; claims: ProjectDraft['claims'] } | null {
+  const atoms = new Map(packet.evidence.map((atom) => [atom.id, atom]));
+  const claimProjectIds = draft.claims.map((claim) => projectIdsForClaim(claim, atoms));
+  const candidates = [...new Set([
+    ...draft.artifactProjectIds,
+    ...claimProjectIds.flat(),
+  ])];
+
+  for (const projectId of candidates) {
+    const claims = draft.claims.filter((_, index) => {
+      const projectIds = claimProjectIds[index];
+      return projectIds.length === 1 && projectIds[0] === projectId;
+    });
+    if (claims.length === 0) continue;
+    if (!claims.some((claim) => claimNamesProject(claim.text, projectId, packet.projects))) continue;
+    if (claims.some((claim) => packet.projects.some((project) =>
+      project.id !== projectId && claimNamesProject(claim.text, project.id, packet.projects)))) continue;
+    const citedKinds = new Set(claims.flatMap((claim) =>
+      claim.evidenceIds.flatMap((id) => atoms.get(id)?.kind ?? [])));
+    const addressesLatestTurn = latestTurnEvidenceKindGroups(latestQuestion)
+      .every((group) => group.some((kind) => citedKinds.has(kind)));
+    if (addressesLatestTurn) return { projectId, claims };
+  }
+  return null;
+}
+
+function projectIdsForClaim(
+  claim: ProjectDraft['claims'][number],
+  atoms: Map<string, ProjectEvidenceAtom>,
+): string[] {
+  return [...new Set(claim.evidenceIds.flatMap((id) => atoms.get(id)?.projectId ?? []))];
 }
 
 // Retrieval can return several chunks of one source under the same

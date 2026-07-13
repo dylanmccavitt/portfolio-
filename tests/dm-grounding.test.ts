@@ -275,7 +275,7 @@ test('fresh non-project and project-history reset turns do not retrieve or emit 
   }
 });
 
-test('post-model enforcement limits selected-subset and answers over-selection with grounded prose but zero artifacts', async () => {
+test('post-model enforcement keeps one-card prose and blocks on one matching selected project', async () => {
   const source = await createEvalProjectSource();
   const overSelectedPlan = JSON.stringify({
     claims: [
@@ -294,11 +294,48 @@ test('post-model enforcement limits selected-subset and answers over-selection w
   const selectedBlock = selected.find((event) => event.type === 'block' && event.block.kind === 'projects');
   assert.equal(selectedDone?.facts?.projects.length, 3);
   assert.deepEqual(selectedBlock?.type === 'block' && selectedBlock.block.kind === 'projects' ? selectedBlock.block.ids : [], ['agentic-trader']);
+  assert.match(text(selected), /agentic-trader/i);
+  assert.doesNotMatch(text(selected), /exit-manager/i);
+  assert.doesNotMatch(text(selected), /slurmlet/i);
+
+  const omittedSelectionModel = model(JSON.stringify({
+    ...JSON.parse(overSelectedPlan),
+    artifactProjectIds: [],
+  }));
+  const omittedSelection = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects, but show only one project card.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: omittedSelectionModel },
+  ));
+  const omittedBlock = omittedSelection.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  assert.deepEqual(omittedBlock?.type === 'block' && omittedBlock.block.kind === 'projects' ? omittedBlock.block.ids : [], ['agentic-trader']);
+  assert.match(text(omittedSelection), /agentic-trader/i);
+  assert.doesNotMatch(text(omittedSelection), /exit-manager|slurmlet/i);
+  assert.match(JSON.stringify(omittedSelectionModel.doStreamCalls[0]?.prompt), /explicitly requires exactly one project card/);
+
+  const preferredSelection = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects, but show only one project card.' },
+    CONFIG,
+    {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: model(JSON.stringify({
+        ...JSON.parse(overSelectedPlan),
+        artifactProjectIds: ['exit-manager'],
+      })),
+    },
+  ));
+  const preferredBlock = preferredSelection.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  assert.deepEqual(preferredBlock?.type === 'block' && preferredBlock.block.kind === 'projects' ? preferredBlock.block.ids : [], ['exit-manager']);
+  assert.match(text(preferredSelection), /exit-manager/i);
+  assert.doesNotMatch(text(preferredSelection), /agentic-trader|slurmlet/i);
+
+  const zeroCardModel = model(overSelectedPlan);
 
   const excluded = await readNdjsonEvents(createDMChatStream(
     { message: 'Tell me about Dylan’s projects without showing any project cards.' },
     CONFIG,
-    { db: source.db, projectLoader: source.projectLoader, model: model(overSelectedPlan) },
+    { db: source.db, projectLoader: source.projectLoader, model: zeroCardModel },
   ));
   const excludedDone = excluded.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
   assert.deepEqual(
@@ -314,6 +351,7 @@ test('post-model enforcement limits selected-subset and answers over-selection w
   assert.match(text(excluded), /exit-manager/i);
   assert.match(text(excluded), /slurmlet/i);
   assert.doesNotMatch(text(excluded), /could not select a published project/i);
+  assert.match(JSON.stringify(zeroCardModel.doStreamCalls[0]?.prompt), /explicitly requires zero project cards/);
 
   const misleadingKeyword = await readNdjsonEvents(createDMChatStream(
     {
@@ -355,6 +393,69 @@ test('post-model enforcement limits selected-subset and answers over-selection w
     );
     assert.match(text(mixedEvents), /agentic-trader/i);
   }
+});
+
+test('a one-card plan without a complete single-project claim retries once and fails honestly', async () => {
+  const source = await createEvalProjectSource();
+  const comparisonOnly = model(JSON.stringify({
+    claims: [{
+      text: 'agentic-trader is a scheduled, inspectable trading workflow, while tastytrade-exit-manager automates exits without opening positions.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary', 'exit-manager:identity', 'exit-manager:summary'],
+    }],
+    artifactProjectIds: ['agentic-trader'],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects, but show only one project card.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: comparisonOnly },
+  ));
+
+  assert.equal(comparisonOnly.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /scheduled, inspectable|automates exits/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
+test('a one-card plan with pronoun-only prose retries once and fails honestly', async () => {
+  const source = await createEvalProjectSource();
+  const pronounOnly = model(JSON.stringify({
+    claims: [{
+      text: 'It is a scheduled, inspectable trading workflow.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+    }],
+    artifactProjectIds: ['agentic-trader'],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects, but show only one project card.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: pronounOnly },
+  ));
+
+  assert.equal(pronounOnly.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /scheduled, inspectable/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
+test('a one-card plan that names an unsupported project alias retries once and fails honestly', async () => {
+  const source = await createEvalProjectSource();
+  const excludedAlias = model(JSON.stringify({
+    claims: [{
+      text: 'agentic-trader is a scheduled, inspectable trading workflow like Exit Manager.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+    }],
+    artifactProjectIds: ['agentic-trader'],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan’s projects, but show only one project card.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: excludedAlias },
+  ));
+
+  assert.equal(excludedAlias.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /scheduled, inspectable|Exit Manager/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
 });
 
 test('terse project coreference answers directly without repeating an artifact card', async () => {
