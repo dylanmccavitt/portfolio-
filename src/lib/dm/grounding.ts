@@ -25,7 +25,7 @@ export function requestNeedsProjectFacts(request: DMChatRequest): boolean {
     return false;
   }
   const strongProjectIntent = /\b(projects?|built|build|ship|shipped|backend|client|automation|tool|tooling|apps?|integration|live|done|portfolio|most impressive|best|strongest|top)\b|\bfavorite\s+(?:project|work|portfolio)\b/;
-  const publicResumeOrContactIntent = /\b(resume|résumé|cv|contact|email|reach|phone|location|education|degree|school|university|career|employment|employer|job history|open to work|availability)\b/;
+  const publicResumeOrContactIntent = /\b(resume|résumé|cv|contact|e[- ]?mail|reach|phone|location|education|degree|school|university|career|employment|employer|job history|open to work|availability)\b/;
   if (publicResumeOrContactIntent.test(normalized) && !strongProjectIntent.test(normalized)) return false;
 
   if (strongProjectIntent.test(normalized) || looksLikeNamedProjectQuestion(current)) return true;
@@ -112,12 +112,12 @@ export function projectDraftBlocks(
   draft: ProjectDraft,
   packet: ProjectFactPacket,
 ): AnswerBlock[] {
-  if (requestExcludesProjectArtifacts(request.message)) return [];
   const selectedIds = new Set(draft.artifactProjectIds);
   const items = packet.projects.filter((project) => selectedIds.has(project.id)).map(factSummary);
-  if (items.length === 0) return [];
-  const ids = items.map((project) => project.id);
-  const blocks: AnswerBlock[] = [{ kind: 'projects', ids, items }];
+  const blocks: AnswerBlock[] = [];
+  if (!requestExcludesProjectArtifacts(request.message) && items.length > 0) {
+    blocks.push({ kind: 'projects', ids: items.map((project) => project.id), items });
+  }
   const citationById = topCitationById(packet);
   const citedIds = new Set(draft.claims.flatMap((claim) => claim.evidenceIds));
   const citations = [...citationById.values()].filter((citation) => citedIds.has(`citation:${citation.ragSourceId}`));
@@ -147,7 +147,10 @@ export function validateProjectDraft(
 ): { ok: true; draft: ProjectDraft } | { ok: false; reason: string } {
   const parsed = parseDraft(raw);
   if (!parsed.success) return { ok: false, reason: 'project draft was not valid structured JSON' };
-  const draft = parsed.data;
+  const draft = budgetProjectDraft(parsed.data, packet);
+  if (draft.claims.length === 0 && packet.projects.length > 0) {
+    return { ok: false, reason: 'project draft did not contain an answer claim' };
+  }
   const atoms = new Map(packet.evidence.map((atom) => [atom.id, atom]));
   const packetProjectIds = new Set(packet.projects.map((project) => project.id));
   const discussedProjectIds = new Set(draft.claims.flatMap((claim) =>
@@ -171,6 +174,9 @@ export function validateProjectDraft(
     if (claimProjects.size > 1 && !/\b(?:both|compare|compared|comparison|versus|vs\.?|while|than)\b/i.test(claim.text)) {
       return { ok: false, reason: 'claim mixed project evidence without explicit comparison' };
     }
+    if (claimProjects.size > 1 && [...claimProjects].some((projectId) => !claimNamesProject(claim.text, projectId, packet.projects))) {
+      return { ok: false, reason: 'multi-project claim did not name every cited project' };
+    }
     const unsupported = unsupportedSensitiveAtom(claim.text, referenced, packet.evidence);
     if (unsupported) return { ok: false, reason: `sensitive factual atom was not cited in its claim: ${unsupported.id}` };
     if (!identityLikeTokensAreGrounded(claim.text, referenced)) {
@@ -188,7 +194,7 @@ export function validateProjectDraft(
     claim.evidenceIds.some((id) => neededKinds.includes(atoms.get(id)?.kind as ProjectEvidenceAtomKind)))) {
     return { ok: false, reason: `answer did not address the latest-turn information need (${neededKinds.join(' or ')})` };
   }
-  return { ok: true, draft: budgetProjectDraft(draft, packet) };
+  return { ok: true, draft };
 }
 
 export function enforceProjectDraft(
@@ -198,6 +204,7 @@ export function enforceProjectDraft(
   const artifactLimit = requestedProjectArtifactLimit(request.message);
   const terseFollowUp = isExplicitProjectCoreference(normalizeIdentityText(request.message))
     && !request.context?.projectIds?.length
+    && !requestExplicitlyIncludesProjectArtifacts(request.message)
     && request.message.trim().split(/\s+/).length <= 8;
   const artifactProjectIds = artifactLimit === 0 || (terseFollowUp && artifactLimit === null)
     ? []
@@ -213,8 +220,15 @@ export function requestExcludesProjectArtifacts(value: string): boolean {
 
 function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {
   const deepDive = packet.responseMode === 'deep-dive';
+  const seen = new Set<string>();
+  const claims = draft.claims.filter((claim) => {
+    const normalized = claim.text.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  }).slice(0, deepDive ? 5 : 3);
   return {
-    claims: draft.claims.slice(0, deepDive ? 5 : 3),
+    claims,
     artifactProjectIds: draft.artifactProjectIds.slice(0, deepDive ? 2 : 3),
   };
 }
@@ -249,6 +263,8 @@ export function projectAnswerDisclosure(request: DMChatRequest, packet: ProjectF
     packet.projects.length === 1
     && isSingularProjectCoreference(request.message)
     && /\b(?:architecture|implementation|technical|how\s+(?:it|this|the project)\s+works)\b/i.test(request.message)
+    && packet.projects[0].about.length === 0
+    && packet.projects[0].notes.length === 0
   ) {
     return 'The published record does not include a detailed architecture breakdown, so I will stick to what it does establish.';
   }
@@ -279,7 +295,7 @@ function emptyPacket(query: string): ProjectFactPacket {
 
 function contextualProjectQuery(request: DMChatRequest): string {
   const fitCheck = request.context?.fitCheck?.jobDescription.trim();
-  return [request.message.trim(), ...(fitCheck ? [fitCheck] : [])].join(' ').slice(-1_200);
+  return [request.message.trim().slice(0, 300), ...(fitCheck ? [fitCheck.slice(0, 900)] : [])].join(' ');
 }
 
 function resolveNamedProjectIds(request: DMChatRequest, projects: ProjectSummary[]): string[] {
@@ -328,8 +344,14 @@ function requestedProjectArtifactLimit(value: string): 0 | 1 | null {
   return null;
 }
 
+function requestExplicitlyIncludesProjectArtifacts(value: string): boolean {
+  const normalized = normalizeIdentityText(value);
+  return /\b(?:show|render|open)\b.{0,40}\b(?:card|cards|artifact|artifacts)\b/.test(normalized)
+    && requestedProjectArtifactLimit(value) !== 0;
+}
+
 function looksLikeNamedProjectQuestion(value: string): boolean {
-  if (/\b[a-z0-9]+-[a-z0-9-]+\b/i.test(value)) return true;
+  if (/\b(?:what is|tell me (?:more )?about|show me|how is|does|give me a deep dive (?:into|on|about))\s+[a-z0-9]+-[a-z0-9-]+\b/i.test(value)) return true;
   if (isSingleTokenIdentityQuestion(value)) return true;
   const namedWords = value.match(/\b[A-Z][a-zA-Z0-9]+\b/g) ?? [];
   return namedWords.some((word) => !['Dylan', 'What', 'Which', 'Tell', 'Show', 'Give', 'How', 'Is', 'Has', 'Does'].includes(word));
@@ -344,10 +366,22 @@ function identityMatches(text: string, projects: ProjectSummary[]): string[] {
   const padded = ` ${text} `;
   return projects.flatMap((project) => {
     const aliases = [project.id, project.slug, project.title]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 1)
-      .map(normalizeIdentityText);
-    return aliases.some((alias) => padded.includes(` ${alias} `)) ? [project.id] : [];
-  });
+      .filter((value): value is string => typeof value === 'string')
+      .map(normalizeIdentityText)
+      .filter((alias) => alias.length > 1);
+    const lastIndex = Math.max(...aliases.map((alias) => padded.lastIndexOf(` ${alias} `)));
+    return lastIndex >= 0 ? [{ id: project.id, lastIndex }] : [];
+  }).sort((a, b) => a.lastIndex - b.lastIndex).map(({ id }) => id);
+}
+
+function claimNamesProject(text: string, projectId: string, projects: ProjectFact[]): boolean {
+  const project = projects.find((candidate) => candidate.id === projectId);
+  if (!project) return false;
+  const normalized = ` ${normalizeIdentityText(text)} `;
+  return [project.id, project.slug, project.title]
+    .map(normalizeIdentityText)
+    .filter((alias) => alias.length > 1)
+    .some((alias) => normalized.includes(` ${alias} `));
 }
 
 function normalizeIdentityText(value: string): string {
@@ -381,6 +415,8 @@ function projectFact(project: ProjectSummary): ProjectFact {
     summary: project.summary ?? project.line,
     about: project.about,
     notes: project.notes,
+    wip: project.wip,
+    money: project.money,
     stack: project.stack.map((entry, index) => {
       const [label, value] = Array.isArray(entry)
         ? entry
@@ -414,8 +450,8 @@ function factSummary(project: ProjectFact): ProjectSummary {
     line: project.tagline,
     summary: project.summary,
     href: project.href,
-    wip: project.status[0] === 'wip',
-    money: false,
+    wip: project.wip,
+    money: project.money,
     links: project.links.map((link) => ({ label: link.label, href: link.href })),
     metrics: project.metrics.map((metric) => ({ value: metric.value, label: metric.label })),
     about: project.about,

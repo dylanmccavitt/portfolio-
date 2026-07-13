@@ -86,6 +86,8 @@ test('CLI judge prompt carries the rubric and the payload', () => {
         summary: 'Coordinates tracked delivery work through a reviewed public workflow.',
         about: ['Coordinates tracked delivery work.'],
         notes: [],
+        wip: false,
+        money: false,
         stack: [{ id: 'loom:stack:0', projectId: 'loom', label: 'Language', value: 'TypeScript' }],
         metrics: [{ id: 'loom:metric:0', projectId: 'loom', value: '8', label: 'workflow stages' }],
         links: [{ id: 'loom:link:0', projectId: 'loom', label: 'Case study', href: '/projects/loom' }],

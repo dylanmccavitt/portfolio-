@@ -138,6 +138,44 @@ test('correct project selection still fails when the answer addresses the wrong 
   assert.doesNotMatch(text(events), /Shipped/);
 });
 
+test('comparison claims must name every project whose evidence they cite', async () => {
+  const source = await createEvalProjectSource();
+  const misleading = model(JSON.stringify({
+    claims: [{
+      text: 'Compared to earlier work, agentic-trader has 3 exit mechanisms.',
+      evidenceIds: ['agentic-trader:identity', 'exit-manager:metric:0'],
+    }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream({
+    message: 'Compare agentic-trader and tastytrade-exit-manager.',
+    context: { projectIds: ['agentic-trader', 'exit-manager'] },
+  }, CONFIG, { db: source.db, projectLoader: source.projectLoader, model: misleading }));
+  assert.equal(misleading.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /3 exit mechanisms/);
+});
+
+test('validation runs after claim budgeting so truncated claims cannot support artifacts or directness', async () => {
+  const source = await createEvalProjectSource();
+  const fourthOnly = model(JSON.stringify({
+    claims: [
+      { text: 'agentic-trader is public.', evidenceIds: ['agentic-trader:identity'] },
+      { text: 'tastytrade-exit-manager is public.', evidenceIds: ['exit-manager:identity'] },
+      { text: 'slurmlet is public.', evidenceIds: ['slurmlet:identity'] },
+      { text: 'Evalgate uses TypeScript.', evidenceIds: ['evalgate:identity', 'evalgate:stack:0'] },
+    ],
+    artifactProjectIds: ['evalgate'],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream({
+    message: 'Which language does Evalgate use?',
+    context: { projectIds: ['agentic-trader', 'exit-manager', 'slurmlet', 'evalgate'] },
+  }, CONFIG, { db: source.db, projectLoader: source.projectLoader, model: fourthOnly }));
+  assert.equal(fourthOnly.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
 test('plural project follow-ups resolve every referenced project from recent public context', async () => {
   const events = await runRequest({
     message: 'What are their architectures?',
@@ -284,6 +322,43 @@ test('artifact count directives do not suppress an independent project coreferen
   const block = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
   assert.deepEqual(done?.facts?.projects.map((project) => project.id), ['loom']);
   assert.deepEqual(block?.type === 'block' && block.block.kind === 'projects' ? block.block.ids : [], ['loom']);
+});
+
+test('a terse coreference that explicitly asks for its card keeps the selected artifact', async () => {
+  const events = await runRequest({
+    message: 'Show its card.',
+    conversation: [
+      { role: 'user', content: 'Tell me about Evalgate.' },
+      { role: 'assistant', content: 'Evalgate tests grounded agent behavior.' },
+    ],
+  }, JSON.stringify({
+    claims: [{ text: 'Evalgate tests grounded agent behavior.', evidenceIds: ['evalgate:identity', 'evalgate:summary'] }],
+    artifactProjectIds: ['evalgate'],
+  }));
+  const block = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  assert.deepEqual(block?.type === 'block' && block.block.kind === 'projects' ? block.block.ids : [], ['evalgate']);
+});
+
+test('singular coreference resolves the last-mentioned project rather than catalog order', async () => {
+  const events = await runRequest({
+    message: 'What about it?',
+    conversation: [
+      { role: 'user', content: 'Compare Loom and Slurmlet.' },
+      { role: 'assistant', content: 'Loom is published, while Slurmlet is shipped.' },
+    ],
+  }, answerPlan('slurmlet', { artifactProjectIds: [] }));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  assert.deepEqual(done?.facts?.projects.map((project) => project.id), ['slurmlet']);
+});
+
+test('fit-check retrieval preserves the latest question ahead of a long job description', async () => {
+  const events = await runRequest({
+    message: 'Which project shows trading automation?',
+    context: { fitCheck: { kind: 'job-description', jobDescription: 'quantum cryptography research '.repeat(80) } },
+  }, answerPlan('agentic-trader'));
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  assert.ok(done?.facts?.projects.some((project) => project.id === 'agentic-trader'));
+  assert.match(text(events), /agentic-trader/i);
 });
 
 test('broad project questions are synthesized from the current request instead of a fixed overview', async () => {
@@ -466,6 +541,30 @@ test('malformed project prose falls back without emitting the malformed draft', 
   assert.doesNotMatch(text(events), /tastytrade-exit-manager/);
   assert.equal(metrics.length, 1);
   assert.equal(JSON.parse(metrics[0].slice('[dm-metrics] '.length)).fallbackUsed, true);
+});
+
+test('empty answer claims retry once and fail honestly over an answerable packet', async () => {
+  const source = await createEvalProjectSource();
+  const empty = model(JSON.stringify({ claims: [], artifactProjectIds: [] }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Loom.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: empty },
+  ));
+  assert.equal(empty.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+});
+
+test('duplicate natural-language claims render only once', async () => {
+  const duplicate = JSON.stringify({
+    claims: [
+      { text: 'Loom proves reviewed portfolio publishing.', evidenceIds: ['loom:identity', 'loom:summary'] },
+      { text: 'Loom proves reviewed portfolio publishing.', evidenceIds: ['loom:identity', 'loom:summary'] },
+    ],
+    artifactProjectIds: ['loom'],
+  });
+  const events = await run('Tell me about Loom.', duplicate);
+  assert.equal(text(events).match(/Loom proves reviewed portfolio publishing\./g)?.length, 1);
 });
 
 async function run(prompt: string, modelText: string): Promise<DMStreamEvent[]> {

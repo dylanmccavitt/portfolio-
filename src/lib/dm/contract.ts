@@ -74,6 +74,8 @@ export interface ProjectFact {
   summary: string;
   about: string[];
   notes: string[];
+  wip: boolean;
+  money: boolean;
   stack: Array<{ id: string; projectId: string; label: string; value: string }>;
   metrics: ProjectFactMetric[];
   links: ProjectFactLink[];

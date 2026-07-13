@@ -383,6 +383,22 @@ test('deep-dive evidence collapses repeated chunks to one entry per selected cit
   assert.doesNotMatch(answerText, /must not expand the evidence block/);
 });
 
+test('excluding project cards does not suppress selected approved-source citations', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  const events = await readNdjson(createDMChatStream(
+    { message: 'Use source evidence about agentic-trader without showing any project cards.' },
+    TEST_CONFIG,
+    {
+      db,
+      model: streamingModel(projectDraft('agentic-trader', { citationIds: ['rag-public'] })),
+      ragSearch: createMockRagSearch(),
+    },
+  ));
+  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'projects').length, 0);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence').length, 1);
+});
+
 test('DM stream accepts project context ids from the explicit emergency catalog source', async () => withCatalogEmergency(async () => {
   const db = await publishedProjectDb();
   const events = await readNdjson(
@@ -398,6 +414,7 @@ test('DM stream accepts project context ids from the explicit emergency catalog 
   assert.match(answerText, /tastytrade-exit-manager/i);
   const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
   assert.equal(projectBlock?.block?.items?.[0]?.id, 'exit-manager');
+  assert.equal((projectBlock?.block?.items?.[0] as { money?: boolean } | undefined)?.money, true);
   assert.ok(!events.some((event) => /isn't in my published records yet/i.test(String(event.block?.text))));
   assert.ok(events.some((event) => event.type === 'done'));
   assert.ok(!events.some((event) => event.type === 'error'));
