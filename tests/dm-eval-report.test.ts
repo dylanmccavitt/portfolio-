@@ -187,6 +187,29 @@ test('html report escapes model output and contains triage, diff, and matrix sec
   assert.match(html, /1\/2 passed/);
 });
 
+test('json and html reports preserve the exact Codex judge model and command identity', () => {
+  const identity =
+    'codex-cli (model=gpt-5.6-sol; command=codex exec --model gpt-5.6-sol --skip-git-repo-check -)';
+  const current = report(
+    [
+      run({
+        judgedBy: identity,
+        judge: { grounded: 5, honest: 5, useful: 5, ...QUALITY, notes: 'ok' },
+      }),
+    ],
+    { mode: 'live', judge: identity },
+  );
+
+  const json = JSON.stringify(current);
+  const html = renderEvalReportHtml({ report: current });
+
+  for (const output of [json, html]) {
+    assert.match(output, /model=gpt-5\.6-sol/);
+    assert.match(output, /command=codex exec --model gpt-5\.6-sol --skip-git-repo-check -/);
+  }
+  assert.ok(!html.includes('judge: codex-cli</span>'), 'a generic CLI label is not sufficient judge proof');
+});
+
 test('html report with no baseline and all passing renders the clean state', () => {
   const html = renderEvalReportHtml({ report: report([run({})]) });
   assert.match(html, /Nothing — every case passed/);
