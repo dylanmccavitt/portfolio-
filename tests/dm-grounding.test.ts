@@ -476,11 +476,11 @@ test('a one-card plan with pronoun-only prose retries once and fails honestly', 
   assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
 });
 
-test('a one-card plan that names an unsupported project alias retries once and fails honestly', async () => {
+test('a one-card plan that names an out-of-packet published project retries once and fails honestly', async () => {
   const source = await createEvalProjectSource();
   const excludedAlias = model(JSON.stringify({
     claims: [{
-      text: 'agentic-trader is a scheduled, inspectable trading workflow like Exit Manager.',
+      text: 'agentic-trader is a scheduled, inspectable trading workflow like Loom.',
       evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
     }],
     artifactProjectIds: ['agentic-trader'],
@@ -493,7 +493,7 @@ test('a one-card plan that names an unsupported project alias retries once and f
 
   assert.equal(excludedAlias.doStreamCalls.length, 2);
   assert.match(text(events), /could not produce a validated answer/i);
-  assert.doesNotMatch(text(events), /scheduled, inspectable|Exit Manager/i);
+  assert.doesNotMatch(text(events), /scheduled, inspectable|Loom/i);
   assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
 });
 

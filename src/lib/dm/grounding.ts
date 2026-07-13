@@ -12,6 +12,7 @@ const ProjectDraftSchema = z.strictObject({
 });
 
 export type ProjectDraft = z.infer<typeof ProjectDraftSchema>;
+type ProjectIdentity = Pick<ProjectSummary, 'id' | 'slug' | 'title'>;
 
 export function isProjectDeepDiveRequest(message: string): boolean {
   return /\b(?:deep[ -]dive|details?|technical|implementation|architecture|sources?|evidence|citations?)\b|\bhow\s+(?:it|this|the project)\s+works\b/i.test(message);
@@ -150,6 +151,7 @@ export function validateProjectDraft(
   raw: string,
   packet: ProjectFactPacket,
   latestQuestion = packet.query,
+  publishedProjects: ProjectIdentity[] = packet.projects,
 ): { ok: true; draft: ProjectDraft } | { ok: false; reason: string } {
   const parsed = parseDraft(raw);
   if (!parsed.success) return { ok: false, reason: 'project draft was not valid structured JSON' };
@@ -206,7 +208,7 @@ export function validateProjectDraft(
     const missing = missingKindGroups.map((group) => group.join(' or ')).join(' and ');
     return { ok: false, reason: `answer did not address every latest-turn information need (${missing})` };
   }
-  if (requestedProjectArtifactLimit(latestQuestion) === 1 && !selectOneCardProject(draft, packet, latestQuestion)) {
+  if (requestedProjectArtifactLimit(latestQuestion) === 1 && !selectOneCardProject(draft, packet, latestQuestion, publishedProjects)) {
     return { ok: false, reason: 'one-card answer did not contain a complete claim for one selected project' };
   }
   return { ok: true, draft };
@@ -216,6 +218,7 @@ export function enforceProjectDraft(
   request: DMChatRequest,
   draft: ProjectDraft,
   packet: ProjectFactPacket,
+  publishedProjects: ProjectIdentity[] = packet.projects,
 ): ProjectDraft {
   const artifactLimit = requestedProjectArtifactLimit(request.message);
   const terseFollowUp = isExplicitProjectCoreference(normalizeIdentityText(request.message))
@@ -226,7 +229,7 @@ export function enforceProjectDraft(
     return { ...draft, artifactProjectIds: [] };
   }
   if (artifactLimit === 1) {
-    const selection = selectOneCardProject(draft, packet, request.message);
+    const selection = selectOneCardProject(draft, packet, request.message, publishedProjects);
     return selection
       ? { claims: selection.claims, artifactProjectIds: [selection.projectId] }
       : { claims: [], artifactProjectIds: [] };
@@ -236,6 +239,10 @@ export function enforceProjectDraft(
 
 export function requestExcludesProjectArtifacts(value: string): boolean {
   return requestedProjectArtifactLimit(value) === 0;
+}
+
+export function requestRequiresOneProjectArtifact(value: string): boolean {
+  return requestedProjectArtifactLimit(value) === 1;
 }
 
 function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {
@@ -257,6 +264,7 @@ function selectOneCardProject(
   draft: ProjectDraft,
   packet: ProjectFactPacket,
   latestQuestion: string,
+  publishedProjects: ProjectIdentity[],
 ): { projectId: string; claims: ProjectDraft['claims'] } | null {
   const atoms = new Map(packet.evidence.map((atom) => [atom.id, atom]));
   const claimProjectIds = draft.claims.map((claim) => projectIdsForClaim(claim, atoms));
@@ -272,8 +280,8 @@ function selectOneCardProject(
     });
     if (claims.length === 0) continue;
     if (!claims.some((claim) => claimNamesProject(claim.text, projectId, packet.projects))) continue;
-    if (claims.some((claim) => packet.projects.some((project) =>
-      project.id !== projectId && claimNamesProject(claim.text, project.id, packet.projects)))) continue;
+    if (claims.some((claim) => publishedProjects.some((project) =>
+      project.id !== projectId && claimNamesProject(claim.text, project.id, publishedProjects)))) continue;
     const citedKinds = new Set(claims.flatMap((claim) =>
       claim.evidenceIds.flatMap((id) => atoms.get(id)?.kind ?? [])));
     const addressesLatestTurn = latestTurnEvidenceKindGroups(latestQuestion)
@@ -431,11 +439,16 @@ function identityMatches(text: string, projects: ProjectSummary[]): string[] {
   }).sort((a, b) => a.lastIndex - b.lastIndex).map(({ id }) => id);
 }
 
-function claimNamesProject(text: string, projectId: string, projects: ProjectFact[]): boolean {
+function claimNamesProject(
+  text: string,
+  projectId: string,
+  projects: ProjectIdentity[],
+): boolean {
   const project = projects.find((candidate) => candidate.id === projectId);
   if (!project) return false;
   const normalized = ` ${normalizeIdentityText(text)} `;
   return [project.id, project.slug, project.title]
+    .filter((alias): alias is string => typeof alias === 'string')
     .map(normalizeIdentityText)
     .filter((alias) => alias.length > 1)
     .some((alias) => normalized.includes(` ${alias} `));

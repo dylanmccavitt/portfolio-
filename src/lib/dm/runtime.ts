@@ -21,6 +21,7 @@ import {
   projectDraftBlocks,
   projectPacketPrompt,
   requestExcludesProjectArtifacts,
+  requestRequiresOneProjectArtifact,
   renderProjectDraft,
   retrieveProjectFactPacket,
   validateProjectDraft,
@@ -213,7 +214,11 @@ export function createDMChatStream(
           return;
         }
 
-        let validated = validateProjectDraft('', factPacket, normalizedRequest.message);
+        const publishedProjectIdentities = requestRequiresOneProjectArtifact(normalizedRequest.message)
+          ? await tools.allPublishedProjects()
+          : factPacket.projects;
+
+        let validated = validateProjectDraft('', factPacket, normalizedRequest.message, publishedProjectIdentities);
         let rejectionReason = '';
         for (let attempt = 0; attempt < 2; attempt += 1) {
           let finalText = '';
@@ -261,7 +266,7 @@ export function createDMChatStream(
             // Provider usage is optional instrumentation, never a stream failure.
           }
           metrics.setUsage(usage?.inputTokens ?? null, usage?.outputTokens ?? null);
-          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest.message);
+          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest.message, publishedProjectIdentities);
           if (validated.ok) break;
           rejectionReason = validated.reason;
         }
@@ -271,7 +276,7 @@ export function createDMChatStream(
           factPacket.fallbackUsed || !validated.ok,
         );
         const enforcedDraft = validated.ok
-          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket)
+          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket, publishedProjectIdentities)
           : null;
         const disclosure = enforcedDraft ? projectAnswerDisclosure(normalizedRequest, factPacket) : '';
         const emittedText = enforcedDraft
