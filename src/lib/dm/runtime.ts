@@ -450,15 +450,28 @@ async function deterministicPublicInfoAnswer(request: DMChatRequest, tools: Publ
   const asksContact = matchesAny(normalized, ['contact', 'email', 'reach', 'phone', 'location', 'hire', 'available', 'availability', 'opportunities', 'open to work']);
   if (!asksResume && !asksContact) return "Ask me about Dylan's published projects, public resume, or contact details.";
 
-  const resume = asksResume ? await tools.readResume({}) : { tracks: [] };
-  const current = resume.tracks.find((track) => track.id === 'now');
-  const education = resume.tracks.find((track) => track.id === 'stevens');
-  const cyberRisk = resume.tracks.find((track) => track.id === 'kroll');
-  const resumeHighlights = [
-    current?.about[0] ?? (current ? `${current.title}: ${current.role}.` : ''),
-    education ? `${education.role} at ${education.title}.` : '',
-    cyberRisk ? `${cyberRisk.role} at ${cyberRisk.title}.` : '',
-  ].filter(Boolean).join(' ');
+  const requestedTrackIds = request.context?.resumeTrackIds;
+  const resume = asksResume
+    ? await tools.readResume(requestedTrackIds?.length ? { trackIds: requestedTrackIds } : {})
+    : { tracks: [] };
+  const resumeTracks = requestedTrackIds?.length
+    ? resume.tracks
+    : ['now', 'stevens', 'kroll']
+      .map((id) => resume.tracks.find((track) => track.id === id))
+      .filter((track): track is (typeof resume.tracks)[number] => Boolean(track));
+  const current = resumeTracks.find((track) => track.id === 'now');
+  const education = resumeTracks.find((track) => track.id === 'stevens');
+  const cyberRisk = resumeTracks.find((track) => track.id === 'kroll');
+  const resumeHighlights = requestedTrackIds?.length
+    ? resumeTracks.map((track) => [
+      `${track.title}: ${track.role} (${track.when}).`,
+      track.about[0] ?? '',
+    ].filter(Boolean).join(' ')).join(' ')
+    : [
+      current?.about[0] ?? (current ? `${current.title}: ${current.role}.` : ''),
+      education ? `${education.role} at ${education.title}.` : '',
+      cyberRisk ? `${cyberRisk.role} at ${cyberRisk.title}.` : '',
+    ].filter(Boolean).join(' ');
   const contact = asksContact ? tools.getContact() : null;
   const contactDetails = contact
     ? `Recruiters can reach Dylan at ${contact.email}.`

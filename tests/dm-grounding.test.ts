@@ -62,6 +62,17 @@ test('resume and contact single-aspect turns state public facts in prose', async
   assert.match(text(resumeEvents), /Stevens Institute of Technology/);
   assert.ok(resumeEvents.some((event) => event.type === 'block' && event.block.kind === 'resume'));
 
+  const scopedModel = model('candidate-hidden 9999 https://private.example/secret');
+  const scopedEvents = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about this resume entry.', context: { resumeTrackIds: ['bella-era'] } },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: scopedModel },
+  ));
+  assert.equal(scopedModel.doStreamCalls.length, 0);
+  assert.match(text(scopedEvents), /freelance full-stack contract/i);
+  assert.doesNotMatch(text(scopedEvents), /Stevens Institute|Kroll|software engineering roles/i);
+  assert.ok(scopedEvents.some((event) => event.type === 'block' && event.block.kind === 'resume' && event.block.trackIds.length === 1 && event.block.trackIds[0] === 'bella-era'));
+
   const contactModel = model('candidate-hidden 9999 https://private.example/secret');
   const contactEvents = await readNdjsonEvents(createDMChatStream(
     { message: 'How can a recruiter contact Dylan?' },
