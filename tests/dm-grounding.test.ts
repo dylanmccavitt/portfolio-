@@ -560,16 +560,16 @@ test('fit-check retrieval preserves the latest question ahead of a long job desc
   assert.match(text(events), /agentic-trader/i);
 });
 
-test('broad project questions are synthesized from the current request instead of a fixed overview', async () => {
+test('representative overviews reject a one-of-three draft after budgeting', async () => {
   const source = await createEvalProjectSource();
-  const expansiveModel = model(JSON.stringify({
+  const incompleteModel = model(JSON.stringify({
     claims: [{ text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
     artifactProjectIds: ['agentic-trader'],
   }));
   const events = await readNdjsonEvents(createDMChatStream(
     { message: 'tell me about dylans projects' },
     CONFIG,
-    { db: source.db, projectLoader: source.projectLoader, model: expansiveModel },
+    { db: source.db, projectLoader: source.projectLoader, model: incompleteModel },
   ));
   const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
   const selectedBlock = events.find(
@@ -582,11 +582,157 @@ test('broad project questions are synthesized from the current request instead o
   assert.equal(done?.facts?.responseMode, 'representative-overview');
   assert.equal(done?.facts?.projects.length, 3);
   assert.equal(done?.facts?.fallbackUsed, false);
-  assert.equal(expansiveModel.doStreamCalls.length, 1);
-  assert.match(answer, /agentic-trader/i);
-  assert.deepEqual(selectedBlock?.block.kind === 'projects' ? selectedBlock.block.ids : [], ['agentic-trader']);
-  assert.doesNotMatch(answer, /did not find an exact published match|returned fallback records/i);
+  assert.equal(incompleteModel.doStreamCalls.length, 2, 'incomplete representative coverage should retry exactly once');
+  assert.match(answer, /could not produce a validated answer/i);
+  assert.equal(selectedBlock, undefined);
+  assert.doesNotMatch(answer, /agentic-trader is a scheduled/i);
+});
+
+test('no-card representative overviews still require complete prose coverage', async () => {
+  const source = await createEvalProjectSource();
+  const incompleteModel = model(JSON.stringify({
+    claims: [{ text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
+    artifactProjectIds: ['agentic-trader'],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Dylan\'s projects without showing any project cards.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: incompleteModel },
+  ));
+
+  assert.equal(incompleteModel.doStreamCalls.length, 2, 'incomplete prose-only coverage should retry exactly once');
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /agentic-trader is a scheduled/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
+test('ordinary project answers materialize missing blocks from validated claims across retrieval routes', async () => {
+  const cases = [
+    {
+      prompt: 'List the live projects Dylan can discuss.',
+      projectId: 'exit-manager',
+      claim: {
+        text: 'tastytrade-exit-manager is exit-only automation for options positions in Live status.',
+        evidenceIds: ['exit-manager:identity', 'exit-manager:tagline', 'exit-manager:status'],
+      },
+    },
+    {
+      prompt: "Tell me about Dylan's most impressive project.",
+      projectId: 'exit-manager',
+      claim: {
+        text: 'tastytrade-exit-manager automates scale-out, trailing, and OCO exits without opening positions.',
+        evidenceIds: ['exit-manager:identity', 'exit-manager:summary'],
+      },
+    },
+    {
+      prompt: 'Show practical AI-assisted workflow evidence.',
+      projectId: 'agentic-trader',
+      claim: {
+        text: 'agentic-trader is a scheduled, inspectable trading workflow.',
+        evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+      },
+    },
+    {
+      prompt: "Tell me about Dylan's loom project.",
+      projectId: 'loom',
+      claim: {
+        text: 'Loom proves that a reviewed project can become visible without entering the static catalog.',
+        evidenceIds: ['loom:identity', 'loom:summary'],
+      },
+    },
+  ];
+
+  for (const testCase of cases) {
+    const events = await run(testCase.prompt, JSON.stringify({ claims: [testCase.claim], artifactProjectIds: [] }));
+    const projectBlock = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+    assert.deepEqual(
+      projectBlock?.type === 'block' && projectBlock.block.kind === 'projects' ? projectBlock.block.ids : [],
+      [testCase.projectId],
+      testCase.prompt,
+    );
+    assert.doesNotMatch(text(events), /could not produce a validated answer/i, testCase.prompt);
+  }
+});
+
+test('representative overview materializes concise prose and blocks for its validated selected facts', async () => {
+  const events = await run('tell me about dylans projects', JSON.stringify({
+    claims: [
+      { text: 'tastytrade-exit-manager automates exits without opening positions.', evidenceIds: ['exit-manager:identity', 'exit-manager:summary'] },
+      { text: 'slurmlet makes compute jobs easier to inspect.', evidenceIds: ['slurmlet:identity', 'slurmlet:summary'] },
+      { text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] },
+    ],
+    artifactProjectIds: [],
+  }));
+  const projectBlock = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+  const answer = text(events);
+
+  assert.deepEqual(
+    projectBlock?.type === 'block' && projectBlock.block.kind === 'projects' ? projectBlock.block.ids : [],
+    ['exit-manager', 'slurmlet', 'agentic-trader'],
+  );
   assert.ok(answer.length < 700, `overview should be concise, received ${answer.length} characters`);
+  assert.doesNotMatch(answer, /could not produce a validated answer/i);
+});
+
+test('representative overview rejects schema-valid prose above its aggregate budget', async () => {
+  const source = await createEvalProjectSource();
+  const oversized = model(JSON.stringify({
+    claims: [
+      {
+        text: 'tastytrade-exit-manager automates scale-out, trailing, and OCO exits without opening positions. '.repeat(5).trim(),
+        evidenceIds: ['exit-manager:identity', 'exit-manager:summary'],
+      },
+      {
+        text: 'slurmlet is a small developer tool that makes compute jobs easier to inspect. '.repeat(5).trim(),
+        evidenceIds: ['slurmlet:identity', 'slurmlet:summary'],
+      },
+      {
+        text: 'agentic-trader is a scheduled, inspectable trading workflow. '.repeat(5).trim(),
+        evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+      },
+    ],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'tell me about dylans projects' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: oversized },
+  ));
+
+  assert.equal(oversized.doStreamCalls.length, 2, 'oversized representative prose should retry exactly once');
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
+test('ordinary project answers replace a mismatched artifact plan with the projects proven by validated claims', async () => {
+  const events = await run('Which project shows trading automation?', JSON.stringify({
+    claims: [{
+      text: 'agentic-trader is a scheduled, inspectable trading workflow.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+    }],
+    artifactProjectIds: ['exit-manager'],
+  }));
+  const projectBlock = events.find((event) => event.type === 'block' && event.block.kind === 'projects');
+
+  assert.deepEqual(
+    projectBlock?.type === 'block' && projectBlock.block.kind === 'projects' ? projectBlock.block.ids : [],
+    ['agentic-trader'],
+  );
+  assert.doesNotMatch(text(events), /could not produce a validated answer/i);
+});
+
+test('ordinary project answers reject published project names outside the fact packet', async () => {
+  const events = await run('Which project shows trading automation?', JSON.stringify({
+    claims: [{
+      text: 'Loom is stronger than agentic-trader for trading automation.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /Loom is stronger/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
 });
 
 test('ordinary named-project answers use the response plan instead of a fixed summary', async () => {
@@ -712,10 +858,6 @@ test('wrong status, numeric substrings, private names, and relative links cannot
     answerPlan('agentic-trader', { evidenceIds: ['exit-manager:metric:0'] }),
     answerPlan('agentic-trader', { evidenceIds: ['missing-link'] }),
     answerPlan('agentic-trader', { evidenceIds: ['citation:missing-citation'] }),
-    JSON.stringify({
-      claims: [{ text: 'agentic-trader is a public project.', evidenceIds: ['agentic-trader:identity'] }],
-      artifactProjectIds: ['exit-manager'],
-    }),
   ]) {
     const events = await run('Which project shows trading automation?', modelDraft);
     assert.ok(!text(events).includes('candidate-hidden'));
@@ -752,6 +894,107 @@ test('empty answer claims retry once and fail honestly over an answerable packet
   ));
   assert.equal(empty.doStreamCalls.length, 2);
   assert.match(text(events), /could not produce a validated answer/i);
+});
+
+test('refusal-only non-empty claims retry once and fail honestly over an answerable packet', async () => {
+  const source = await createEvalProjectSource();
+  const refusal = model(JSON.stringify({
+    claims: [{
+      text: 'I could not find enough published evidence to answer that question directly.',
+      evidenceIds: ['loom:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Loom.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: refusal },
+  ));
+
+  assert.equal(refusal.doStreamCalls.length, 2, 'refusal-only prose should retry exactly once');
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /could not find enough published evidence/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
+test('naming a project does not rescue a pure refusal without grounded answer content', async () => {
+  const source = await createEvalProjectSource();
+  const refusal = model(JSON.stringify({
+    claims: [{
+      text: 'I cannot answer questions about Loom.',
+      evidenceIds: ['loom:identity', 'loom:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Loom.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: refusal },
+  ));
+
+  assert.equal(refusal.doStreamCalls.length, 2);
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /cannot answer questions about Loom/i);
+});
+
+test('grounded limitation prose remains valid when it answers from an answerable packet', async () => {
+  const source = await createEvalProjectSource();
+  const limitation = model(JSON.stringify({
+    claims: [{
+      text: 'tastytrade-exit-manager manages exits but cannot open positions.',
+      evidenceIds: ['exit-manager:identity', 'exit-manager:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'What does tastytrade-exit-manager do?' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: limitation },
+  ));
+
+  assert.equal(limitation.doStreamCalls.length, 1);
+  assert.match(text(events), /manages exits but cannot open positions/i);
+  assert.doesNotMatch(text(events), /could not produce a validated answer/i);
+});
+
+test('a boundary clause does not erase grounded project substance in the same claim', async () => {
+  const source = await createEvalProjectSource();
+  const boundaryAnswer = model(JSON.stringify({
+    claims: [{
+      text: 'I cannot discuss private evidence; Loom proves reviewed portfolio publishing through its public record.',
+      evidenceIds: ['loom:identity', 'loom:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Tell me about Loom.' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: boundaryAnswer },
+  ));
+
+  assert.equal(boundaryAnswer.doStreamCalls.length, 1);
+  assert.match(text(events), /Loom proves reviewed portfolio publishing/i);
+  assert.doesNotMatch(text(events), /could not produce a validated answer/i);
+});
+
+test('named grounded uncertainty is not treated as a refusal-only claim', async () => {
+  const source = await createEvalProjectSource();
+  const groundedUncertainty = model(JSON.stringify({
+    claims: [{
+      text: 'I do not see evidence of a mobile client in the published Loom record.',
+      evidenceIds: ['loom:identity', 'loom:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+  const events = await readNdjsonEvents(createDMChatStream(
+    { message: 'Does Loom include a mobile client?' },
+    CONFIG,
+    { db: source.db, projectLoader: source.projectLoader, model: groundedUncertainty },
+  ));
+
+  assert.equal(groundedUncertainty.doStreamCalls.length, 1);
+  assert.match(text(events), /do not see evidence of a mobile client/i);
+  assert.doesNotMatch(text(events), /could not produce a validated answer/i);
 });
 
 test('duplicate natural-language claims render only once', async () => {
