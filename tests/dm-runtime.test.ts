@@ -379,8 +379,24 @@ test('deep-dive evidence collapses repeated chunks to one entry per selected cit
   assert.equal(evidenceBlocks[0]?.block?.ragSources?.[0]?.ragSourceId, 'rag-public');
   assert.equal(evidenceBlocks[0]?.block?.ragSources?.[0]?.score, 0.93);
   const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /Top-ranked approved chunk/);
+  assert.match(answerText, /Approved public RAG source text/);
   assert.doesNotMatch(answerText, /must not expand the evidence block/);
+});
+
+test('excluding project cards does not suppress selected approved-source citations', async () => {
+  const db = await publishedProjectDb();
+  await insertIndexedPublicRagSource(db);
+  const events = await readNdjson(createDMChatStream(
+    { message: 'Use source evidence about agentic-trader without showing any project cards.' },
+    TEST_CONFIG,
+    {
+      db,
+      model: streamingModel(projectDraft('agentic-trader', { citationIds: ['rag-public'] })),
+      ragSearch: createMockRagSearch(),
+    },
+  ));
+  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'projects').length, 0);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence').length, 1);
 });
 
 test('DM stream accepts project context ids from the explicit emergency catalog source', async () => withCatalogEmergency(async () => {
@@ -398,6 +414,7 @@ test('DM stream accepts project context ids from the explicit emergency catalog 
   assert.match(answerText, /tastytrade-exit-manager/i);
   const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
   assert.equal(projectBlock?.block?.items?.[0]?.id, 'exit-manager');
+  assert.equal((projectBlock?.block?.items?.[0] as { money?: boolean } | undefined)?.money, true);
   assert.ok(!events.some((event) => /isn't in my published records yet/i.test(String(event.block?.text))));
   assert.ok(events.some((event) => event.type === 'done'));
   assert.ok(!events.some((event) => event.type === 'error'));
@@ -1080,14 +1097,24 @@ function projectDraft(
   projectId: string,
   references: { metricIds?: string[]; linkIds?: string[]; citationIds?: string[] } = {},
 ): string {
+  const citationIds = references.citationIds ?? [];
+  const identity: Record<string, { title: string; status: string }> = {
+    'agentic-trader': { title: 'agentic-trader', status: 'Dry-run' },
+    'exit-manager': { title: 'tastytrade-exit-manager', status: 'Live' },
+  };
+  const project = identity[projectId] ?? { title: projectId, status: 'Published' };
   return JSON.stringify({
     claims: [{
-      projectId,
-      fields: ['tagline', 'status', 'activity'],
-      metricIds: references.metricIds ?? [],
-      linkIds: references.linkIds ?? [],
-      citationIds: references.citationIds ?? [],
+      text: `${project.title} is a public project. Status: ${project.status}.${citationIds.length > 0 ? ' Approved public RAG source text with enough detail to support a recruiter-facing answer.' : ''}`,
+      evidenceIds: [
+        `${projectId}:identity`,
+        `${projectId}:status`,
+        ...(references.metricIds ?? []),
+        ...(references.linkIds ?? []),
+        ...citationIds.map((id) => `citation:${id}`),
+      ],
     }],
+    artifactProjectIds: [projectId],
   });
 }
 

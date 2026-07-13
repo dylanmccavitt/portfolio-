@@ -36,6 +36,31 @@ export interface ProjectFactLink {
   href: string;
 }
 
+export type ProjectEvidenceAtomKind =
+  | 'identity'
+  | 'summary'
+  | 'tagline'
+  | 'status'
+  | 'year'
+  | 'activity'
+  | 'area'
+  | 'about'
+  | 'notes'
+  | 'stack'
+  | 'metric'
+  | 'link'
+  | 'citation';
+
+/** One addressable, public fact that a generated answer claim may cite. */
+export interface ProjectEvidenceAtom {
+  id: string;
+  projectId: string;
+  kind: ProjectEvidenceAtomKind;
+  label: string;
+  value: string;
+  sensitive: boolean;
+}
+
 export interface ProjectFact {
   id: string;
   slug: string;
@@ -49,6 +74,9 @@ export interface ProjectFact {
   summary: string;
   about: string[];
   notes: string[];
+  wip: boolean;
+  money: boolean;
+  stack: Array<{ id: string; projectId: string; label: string; value: string }>;
   metrics: ProjectFactMetric[];
   links: ProjectFactLink[];
 }
@@ -62,6 +90,7 @@ export interface ProjectFactPacket {
   fallbackUsed: boolean;
   projects: ProjectFact[];
   citations: PublicRagCitation[];
+  evidence: ProjectEvidenceAtom[];
 }
 
 export interface DMConversationMessage {

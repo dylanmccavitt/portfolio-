@@ -595,12 +595,10 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
         db,
         model: streamingModel(JSON.stringify({
           claims: [{
-            projectId: publishedProjectId,
-            fields: ['summary'],
-            metricIds: [],
-            linkIds: [],
-            citationIds: [],
+            text: 'The published workflow is documented in the public project summary.',
+            evidenceIds: [`${publishedProjectId}:summary`],
           }],
+          artifactProjectIds: [publishedProjectId],
         })),
       },
     ),

@@ -136,7 +136,6 @@ export function createDMChatStream(
       const traceItems: ToolTraceItem[] = [];
       const answer: AnswerBlock[] = [];
       let blockIndex = 0;
-      let finalText = '';
 
       const emit = (event: DMStreamEvent, force = false): void => {
         if (abort.signal.aborted && !force) return;
@@ -214,56 +213,65 @@ export function createDMChatStream(
           return;
         }
 
-        const result = streamText({
-          model,
-          system,
-          messages: modelMessages(normalizedRequest),
-          stopWhen: isStepCount(budgets.maxSteps),
-          maxOutputTokens: budgets.maxOutputTokens,
-          abortSignal: abort.signal,
-        });
+        let validated = validateProjectDraft('', factPacket, normalizedRequest.message);
+        let rejectionReason = '';
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          let finalText = '';
+          const retryInstruction = attempt === 0 ? '' : [
+            'Your previous grounded answer draft was rejected by the server.',
+            `Reason: ${rejectionReason}`,
+            'Return one corrected JSON draft over the exact same PROJECT_FACT_PACKET. Do not repeat the invalid prose.',
+          ].join('\n');
+          const result = streamText({
+            model,
+            system: retryInstruction ? `${system}\n\n${retryInstruction}` : system,
+            messages: modelMessages(normalizedRequest),
+            stopWhen: isStepCount(budgets.maxSteps),
+            maxOutputTokens: budgets.maxOutputTokens,
+            abortSignal: abort.signal,
+          });
 
-        for await (const part of result.stream) {
-          throwIfAborted(abort.signal);
-          if (part.type === 'text-delta') {
-            const delta = textDelta(part);
-            if (delta) {
-              finalText += delta;
+          for await (const part of result.stream) {
+            throwIfAborted(abort.signal);
+            if (part.type === 'text-delta') {
+              const delta = textDelta(part);
+              if (delta) finalText += delta;
+            } else if (part.type === 'tool-call') {
+              const item = traceItem(part.toolName, toolSummary(part.toolName));
+              traceItems.push(item);
+              emit({ type: 'tool', name: item.tool, summary: item.label });
+            } else if (part.type === 'tool-result') {
+              const blocks = blocksFromToolResult(part.output);
+              for (const block of blocks) {
+                answer.push(block);
+                emit({ type: 'block', index: blockIndex, block });
+                blockIndex += 1;
+              }
+            } else if (part.type === 'tool-error') {
+              throw new DMAgentError('tool_failed', `DM tool failed: ${part.toolName}`, safeToolError(part.error));
+            } else if (part.type === 'error') {
+              throw new DMAgentError('model_stream_failed', 'DM model stream failed.');
             }
-          } else if (part.type === 'tool-call') {
-            const item = traceItem(part.toolName, toolSummary(part.toolName));
-            traceItems.push(item);
-            emit({ type: 'tool', name: item.tool, summary: item.label });
-          } else if (part.type === 'tool-result') {
-            const blocks = blocksFromToolResult(part.output);
-            for (const block of blocks) {
-              answer.push(block);
-              emit({ type: 'block', index: blockIndex, block });
-              blockIndex += 1;
-            }
-          } else if (part.type === 'tool-error') {
-            throw new DMAgentError('tool_failed', `DM tool failed: ${part.toolName}`, safeToolError(part.error));
-          } else if (part.type === 'error') {
-            throw new DMAgentError('model_stream_failed', 'DM model stream failed.');
           }
-        }
 
-        let usage: Awaited<typeof result.usage> | null = null;
-        try {
-          usage = await result.usage;
-        } catch {
-          // Provider usage is optional instrumentation, never a stream failure.
+          let usage: Awaited<typeof result.usage> | null = null;
+          try {
+            usage = await result.usage;
+          } catch {
+            // Provider usage is optional instrumentation, never a stream failure.
+          }
+          metrics.setUsage(usage?.inputTokens ?? null, usage?.outputTokens ?? null);
+          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest.message);
+          if (validated.ok) break;
+          rejectionReason = validated.reason;
         }
-        metrics.setUsage(usage?.inputTokens ?? null, usage?.outputTokens ?? null);
-
-        const validated = validateProjectDraft(finalText.trim(), factPacket);
         metrics.setSource(
           sourceModeFromPacket(factPacket, normalizedRequest),
           factPacket.projects.length + factPacket.citations.length,
           factPacket.fallbackUsed || !validated.ok,
         );
         const enforcedDraft = validated.ok
-          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket)
+          ? enforceProjectDraft(normalizedRequest, validated.draft)
           : null;
         const disclosure = enforcedDraft ? projectAnswerDisclosure(normalizedRequest, factPacket) : '';
         const emittedText = enforcedDraft

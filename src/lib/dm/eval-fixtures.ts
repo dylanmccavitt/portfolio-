@@ -14,12 +14,10 @@ import type { DMChatRequest, DMStreamEvent } from './contract';
 
 interface DMEvalAnswerPlan {
   claims: Array<{
-    projectId: string;
-    fields: Array<'summary' | 'tagline' | 'status' | 'year' | 'activity' | 'area' | 'about' | 'notes'>;
-    metricIds?: string[];
-    linkIds?: string[];
-    citationIds?: string[];
+    text: string;
+    evidenceIds: string[];
   }>;
+  artifactProjectIds: string[];
 }
 
 export interface DMEvalCase {
@@ -64,12 +62,35 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       ],
     },
     answerPlan: {
-      claims: [{ projectId: 'loom', fields: ['summary', 'about'] }],
+      claims: [{ text: 'Loom proves reviewed publishing through its public record.', evidenceIds: ['loom:identity', 'loom:summary'] }],
+      artifactProjectIds: [],
     },
     expect(events) {
       const projectBlock = projectBlockFor(events);
-      if (!projectBlock || !projectBlock.ids.includes('loom')) return 'missing Loom artifact for explicit coreference';
-      if (projectBlock.ids.length !== 1) return `coreference selected unrelated artifacts: ${projectBlock.ids.join(', ')}`;
+      if (projectBlock) return 'terse coreference repeated a project artifact';
+      if (!answerText(events).includes('Loom')) return 'coreference answer omitted Loom';
+      return null;
+    },
+  },
+  {
+    name: 'directness: Evalgate follow-up answers latest stack question without repeating a card',
+    prompt: 'What language is it built with?',
+    request: {
+      message: 'What language is it built with?',
+      conversation: [
+        { role: 'user', content: 'Tell me about Evalgate.' },
+        { role: 'assistant', content: 'Evalgate tests grounded agent behavior before release.' },
+      ],
+    },
+    answerPlan: {
+      claims: [{ text: 'Evalgate is built with TypeScript.', evidenceIds: ['evalgate:identity', 'evalgate:stack:0'] }],
+      artifactProjectIds: [],
+    },
+    expect(events) {
+      const done = doneEvent(events);
+      if (done?.facts?.projects.map((project) => project.id).join(',') !== 'evalgate') return 'Evalgate subject was not resolved';
+      if (!answerText(events).includes('TypeScript')) return 'selected the right project but answered the wrong aspect';
+      if (projectBlockFor(events)) return 'terse factual follow-up repeated a project card';
       return null;
     },
   },
@@ -77,7 +98,8 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
     name: 'artifacts: answer plan selects fewer retrieved project artifacts',
     prompt: 'Tell me about Dylan’s projects, but show only one project card.',
     answerPlan: {
-      claims: [{ projectId: 'agentic-trader', fields: ['summary', 'status'] }],
+      claims: [{ text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
+      artifactProjectIds: ['agentic-trader'],
     },
     expect(events) {
       const done = doneEvent(events);
@@ -93,10 +115,11 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
     prompt: 'Tell me about Dylan’s projects without showing any project cards.',
     answerPlan: {
       claims: [
-        { projectId: 'agentic-trader', fields: ['summary', 'status'] },
-        { projectId: 'exit-manager', fields: ['summary', 'status'] },
-        { projectId: 'slurmlet', fields: ['summary', 'status'] },
+        { text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] },
+        { text: 'tastytrade-exit-manager automates exits without opening positions.', evidenceIds: ['exit-manager:identity', 'exit-manager:summary'] },
+        { text: 'slurmlet makes compute jobs easier to inspect.', evidenceIds: ['slurmlet:identity', 'slurmlet:summary'] },
       ],
+      artifactProjectIds: [],
     },
     expect(events) {
       const done = doneEvent(events);
@@ -315,19 +338,33 @@ function createPacketAwareMockModel(testCase: DMEvalCase): MockLanguageModelV4 {
       if (!packet) return streamingResponse(testCase.modelText ?? 'Public resume and contact details are available.');
       if (testCase.answerPlan) return streamingResponse(JSON.stringify(testCase.answerPlan));
       return streamingResponse(JSON.stringify({
-        claims: packet.projects.map((project) => ({
-          projectId: project.id,
-          fields: ['tagline', 'status', 'activity'],
-          metricIds: project.metricIds.slice(0, 1),
-          linkIds: [],
-          citationIds: [],
-        })),
+        claims: packet.projects.map((project) => evalClaimForProject(project, testCase.prompt)),
+        artifactProjectIds: packet.projects.map((project) => project.id),
       }));
     },
   });
 }
 
-function packetFromPrompt(prompt: string): { projects: Array<{ id: string; metricIds: string[] }> } | null {
+interface StubPacketProject {
+  id: string;
+  title: string;
+  summary: string;
+  status: string;
+  stack: Array<{ id: string; label: string; value: string }>;
+}
+
+function evalClaimForProject(project: StubPacketProject, prompt: string): { text: string; evidenceIds: string[] } {
+  if (/\b(?:status|live|shipped|done|in progress|wip|available)\b/i.test(prompt)) {
+    return { text: `${project.title} has status ${project.status}.`, evidenceIds: [`${project.id}:identity`, `${project.id}:status`] };
+  }
+  if (/\b(?:stack|language|built with|technology|runtime)\b/i.test(prompt) && project.stack[0]) {
+    const stack = project.stack[0];
+    return { text: `${project.title} uses ${stack.value}.`, evidenceIds: [`${project.id}:identity`, stack.id] };
+  }
+  return { text: `${project.title} — ${project.summary}`, evidenceIds: [`${project.id}:identity`, `${project.id}:summary`] };
+}
+
+function packetFromPrompt(prompt: string): { projects: StubPacketProject[] } | null {
   const marker = 'PROJECT_FACT_PACKET=';
   const start = prompt.indexOf(marker);
   if (start < 0) return null;
@@ -335,15 +372,22 @@ function packetFromPrompt(prompt: string): { projects: Array<{ id: string; metri
   const end = slice.indexOf('\\n');
   const encoded = (end >= 0 ? slice.slice(0, end) : slice).replace(/\\"/g, '"');
   try {
-    const parsed = JSON.parse(encoded) as { projects?: Array<{ id?: unknown; metrics?: Array<{ id?: unknown }> }> };
+    const parsed = JSON.parse(encoded) as { projects?: Array<{ id?: unknown; title?: unknown; summary?: unknown; status?: unknown; stack?: unknown }> };
     if (!Array.isArray(parsed.projects)) return null;
     return {
       projects: parsed.projects.flatMap((project) => typeof project.id === 'string'
         ? [{
             id: project.id,
-            metricIds: Array.isArray(project.metrics)
-              ? project.metrics.flatMap((metric) => typeof metric.id === 'string' ? [metric.id] : [])
-              : [],
+            title: typeof project.title === 'string' ? project.title : project.id,
+            summary: typeof project.summary === 'string' ? project.summary : 'Published project.',
+            status: Array.isArray(project.status) ? project.status.map(String).filter(Boolean).join(' / ') : 'published',
+            stack: Array.isArray(project.stack) ? project.stack.flatMap((entry) => {
+              if (!entry || typeof entry !== 'object') return [];
+              const value = entry as { id?: unknown; label?: unknown; value?: unknown };
+              return typeof value.id === 'string' && typeof value.value === 'string'
+                ? [{ id: value.id, label: String(value.label ?? 'Stack'), value: value.value }]
+                : [];
+            }) : [],
           }]
         : []),
     };
