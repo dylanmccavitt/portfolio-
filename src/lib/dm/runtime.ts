@@ -213,7 +213,7 @@ export function createDMChatStream(
           return;
         }
 
-        let validated = validateProjectDraft('', factPacket, normalizedRequest.message);
+        let validated = validateProjectDraft('', factPacket, normalizedRequest);
         let rejectionReason = '';
         for (let attempt = 0; attempt < 2; attempt += 1) {
           let finalText = '';
@@ -221,6 +221,7 @@ export function createDMChatStream(
             'Your previous grounded answer draft was rejected by the server.',
             `Reason: ${rejectionReason}`,
             'Return one corrected JSON draft over the exact same PROJECT_FACT_PACKET. Do not repeat the invalid prose.',
+            `The packet contains ${factPacket.projects.length} published project result(s). If their evidence answers the latest question, return at least one supported claim instead of an empty plan or refusal.`,
           ].join('\n');
           const result = streamText({
             model,
@@ -261,7 +262,7 @@ export function createDMChatStream(
             // Provider usage is optional instrumentation, never a stream failure.
           }
           metrics.setUsage(usage?.inputTokens ?? null, usage?.outputTokens ?? null);
-          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest.message);
+          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest);
           if (validated.ok) break;
           rejectionReason = validated.reason;
         }
@@ -271,7 +272,7 @@ export function createDMChatStream(
           factPacket.fallbackUsed || !validated.ok,
         );
         const enforcedDraft = validated.ok
-          ? enforceProjectDraft(normalizedRequest, validated.draft)
+          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket)
           : null;
         const disclosure = enforcedDraft ? projectAnswerDisclosure(normalizedRequest, factPacket) : '';
         const emittedText = enforcedDraft
