@@ -202,6 +202,10 @@ export function validateProjectDraft(
       return { ok: false, reason: 'substantive claim cited only project identity evidence' };
     }
     const claimProjects = new Set(referenced.map((entry) => entry.projectId));
+    if (publishedProjects.some((project) =>
+      !claimProjects.has(project.id) && claimNamesProject(claim.text, project.id, publishedProjects))) {
+      return { ok: false, reason: 'claim named a published project outside its cited fact packet evidence' };
+    }
     if (claimProjects.size > 1 && !/\b(?:both|compare|compared|comparison|versus|vs\.?|while|than)\b/i.test(claim.text)) {
       return { ok: false, reason: 'claim mixed project evidence without explicit comparison' };
     }

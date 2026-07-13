@@ -721,6 +721,20 @@ test('ordinary project answers replace a mismatched artifact plan with the proje
   assert.doesNotMatch(text(events), /could not produce a validated answer/i);
 });
 
+test('ordinary project answers reject published project names outside the fact packet', async () => {
+  const events = await run('Which project shows trading automation?', JSON.stringify({
+    claims: [{
+      text: 'Loom is stronger than agentic-trader for trading automation.',
+      evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'],
+    }],
+    artifactProjectIds: [],
+  }));
+
+  assert.match(text(events), /could not produce a validated answer/i);
+  assert.doesNotMatch(text(events), /Loom is stronger/i);
+  assert.equal(events.filter((event) => event.type === 'block' && event.block.kind === 'projects').length, 0);
+});
+
 test('ordinary named-project answers use the response plan instead of a fixed summary', async () => {
   const source = await createEvalProjectSource();
   const expansiveModel = model(JSON.stringify({

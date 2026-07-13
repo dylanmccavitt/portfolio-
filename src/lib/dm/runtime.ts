@@ -21,7 +21,6 @@ import {
   projectDraftBlocks,
   projectPacketPrompt,
   requestExcludesProjectArtifacts,
-  requestRequiresOneProjectArtifact,
   renderProjectDraft,
   retrieveProjectFactPacket,
   validateProjectDraft,
@@ -214,9 +213,7 @@ export function createDMChatStream(
           return;
         }
 
-        const publishedProjectIdentities = requestRequiresOneProjectArtifact(normalizedRequest.message)
-          ? await tools.allPublishedProjects()
-          : factPacket.projects;
+        const publishedProjectIdentities = await tools.allPublishedProjects();
 
         let validated = validateProjectDraft('', factPacket, normalizedRequest, publishedProjectIdentities);
         let rejectionReason = '';
