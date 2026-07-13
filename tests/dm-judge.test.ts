@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import {
   buildCliJudgePrompt,
+  CODEX_JUDGE_MODEL,
   codexJudge,
+  describeJudge,
   describeJudgeConfig,
   DM_JUDGE_RUBRIC,
   extractJudgeScore,
@@ -25,7 +30,8 @@ test('judge arg parses CLI presets, auto mode, and gateway model ids', () => {
   assert.deepEqual(codex.mode === 'fixed' && codex.judge, {
     kind: 'cli',
     label: 'codex-cli',
-    command: ['codex', 'exec', '--skip-git-repo-check', '-'],
+    command: ['codex', 'exec', '--model', 'gpt-5.6-sol', '--skip-git-repo-check', '-'],
+    model: 'gpt-5.6-sol',
   });
 
   for (const alias of ['opus', 'claude']) {
@@ -34,6 +40,7 @@ test('judge arg parses CLI presets, auto mode, and gateway model ids', () => {
       kind: 'cli',
       label: 'opus-cli',
       command: ['claude', '-p', '--model', 'opus'],
+      model: 'opus',
     });
   }
 
@@ -44,7 +51,19 @@ test('judge arg parses CLI presets, auto mode, and gateway model ids', () => {
 
 test('auto routing is cross-family: codex judges anthropic answers, opus judges the rest', () => {
   const auto = { mode: 'auto' as const };
-  assert.equal(judgeForAnsweringModel(auto, 'anthropic/claude-sonnet-4.6', NO_OVERRIDES).label, 'codex-cli');
+  const codex = judgeForAnsweringModel(auto, 'anthropic/claude-sonnet-4.6', NO_OVERRIDES);
+  assert.equal(codex.label, 'codex-cli');
+  assert.equal(codex.kind, 'cli');
+  assert.equal(codex.kind === 'cli' && codex.model, CODEX_JUDGE_MODEL);
+  assert.deepEqual(codex.kind === 'cli' && codex.command, [
+    'codex',
+    'exec',
+    '--model',
+    CODEX_JUDGE_MODEL,
+    '--skip-git-repo-check',
+    '-',
+  ]);
+  assert.match(describeJudge(codex), /model=gpt-5\.6-sol; command=codex exec --model gpt-5\.6-sol/);
   assert.equal(judgeForAnsweringModel(auto, 'openai/gpt-5.5', NO_OVERRIDES).label, 'opus-cli');
   assert.equal(judgeForAnsweringModel(auto, 'google/gemini-2.5-pro', NO_OVERRIDES).label, 'opus-cli');
 
@@ -58,12 +77,17 @@ test('judge CLI commands can be overridden through env vars', () => {
     DM_JUDGE_OPUS_CMD: 'claude -p --model claude-opus-4-6',
   };
   assert.deepEqual(codexJudge(env).command, ['codex', 'exec', '-m', 'gpt-5.3-codex', '--skip-git-repo-check', '-']);
+  assert.equal(codexJudge(env).model, 'gpt-5.3-codex');
   assert.deepEqual(opusJudge(env).command, ['claude', '-p', '--model', 'claude-opus-4-6']);
 });
 
 test('describeJudgeConfig names the routing so reports stay readable', () => {
-  assert.match(describeJudgeConfig({ mode: 'auto' }), /codex-cli.*anthropic.*opus-cli/);
-  assert.equal(describeJudgeConfig(parseJudgeArg('opus', KEYS, NO_OVERRIDES)), 'opus-cli');
+  const autoDescription = describeJudgeConfig({ mode: 'auto' }, NO_OVERRIDES);
+  assert.match(autoDescription, /anthropic answers -> codex-cli/);
+  assert.match(autoDescription, /model=gpt-5\.6-sol/);
+  assert.match(autoDescription, /command=codex exec --model gpt-5\.6-sol --skip-git-repo-check -/);
+  assert.match(autoDescription, /other answers -> opus-cli/);
+  assert.match(describeJudgeConfig(parseJudgeArg('opus', KEYS, NO_OVERRIDES)), /opus-cli \(model=opus; command=claude/);
 });
 
 test('CLI judge prompt carries the rubric and the payload', () => {
@@ -144,3 +168,54 @@ test('runCliJudge captures scores from a real subprocess and reports failures', 
   const notFound = await runCliJudge(missing, 'prompt');
   assert.ok('error' in notFound);
 });
+
+test('runCliJudge timeout kills the spawned process group before report writing continues', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dm-judge-timeout-'));
+  const descendantPidPath = join(directory, 'descendant.pid');
+  const reportPath = join(directory, 'report.json');
+  let descendantPid: number | undefined;
+
+  try {
+    const descendantScript = 'setInterval(() => {}, 1000)';
+    const launcherScript = [
+      "const { spawn } = require('node:child_process')",
+      "const { writeFileSync } = require('node:fs')",
+      `const descendant = spawn(process.execPath, ['-e', ${JSON.stringify(descendantScript)}], { stdio: 'inherit' })`,
+      `writeFileSync(${JSON.stringify(descendantPidPath)}, String(descendant.pid))`,
+      'setInterval(() => {}, 1000)',
+    ].join(';');
+    const hanging: DMCliJudge = {
+      kind: 'cli',
+      label: 'hanging-cli',
+      command: [process.execPath, '-e', launcherScript],
+    };
+
+    const timedOut = await runCliJudge(hanging, 'prompt', 500);
+    assert.ok('error' in timedOut && timedOut.error.includes('timed out after 500ms'));
+
+    descendantPid = Number(await readFile(descendantPidPath, 'utf8'));
+    await writeFile(reportPath, JSON.stringify({ judge: timedOut }));
+    assert.match(await readFile(reportPath, 'utf8'), /timed out after 500ms/);
+    assert.equal(await waitForProcessExit(descendantPid), true, `descendant ${descendantPid} survived judge timeout`);
+  } finally {
+    if (descendantPid && isProcessRunning(descendantPid)) process.kill(descendantPid, 'SIGKILL');
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function waitForProcessExit(pid: number): Promise<boolean> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (!isProcessRunning(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error instanceof Error && 'code' in error && error.code === 'ESRCH');
+  }
+}

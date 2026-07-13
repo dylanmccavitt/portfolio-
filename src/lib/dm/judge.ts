@@ -48,6 +48,7 @@ export interface DMCliJudge {
   kind: 'cli';
   label: string;
   command: string[];
+  model?: string;
 }
 
 export interface DMModelJudge {
@@ -60,23 +61,39 @@ export type DMJudge = DMCliJudge | DMModelJudge;
 
 export type DMJudgeConfig = { mode: 'auto' } | { mode: 'fixed'; judge: DMJudge };
 
+export const CODEX_JUDGE_MODEL = 'gpt-5.6-sol';
 /** `codex exec` reads the prompt from stdin when the prompt arg is `-`. */
-const CODEX_DEFAULT_CMD = 'codex exec --skip-git-repo-check -';
+const CODEX_DEFAULT_CMD = `codex exec --model ${CODEX_JUDGE_MODEL} --skip-git-repo-check -`;
 /** `claude -p` reads the prompt from piped stdin. */
 const OPUS_DEFAULT_CMD = 'claude -p --model opus';
 
 type Env = Record<string, string | undefined>;
 
 export function codexJudge(env: Env = process.env): DMCliJudge {
-  return { kind: 'cli', label: 'codex-cli', command: splitCommand(env.DM_JUDGE_CODEX_CMD ?? CODEX_DEFAULT_CMD) };
+  const command = splitCommand(env.DM_JUDGE_CODEX_CMD ?? CODEX_DEFAULT_CMD);
+  return { kind: 'cli', label: 'codex-cli', command, model: readCommandModel(command) };
 }
 
 export function opusJudge(env: Env = process.env): DMCliJudge {
-  return { kind: 'cli', label: 'opus-cli', command: splitCommand(env.DM_JUDGE_OPUS_CMD ?? OPUS_DEFAULT_CMD) };
+  const command = splitCommand(env.DM_JUDGE_OPUS_CMD ?? OPUS_DEFAULT_CMD);
+  return { kind: 'cli', label: 'opus-cli', command, model: readCommandModel(command) };
 }
 
 function splitCommand(raw: string): string[] {
   return raw.split(/\s+/).filter(Boolean);
+}
+
+function readCommandModel(command: string[]): string | undefined {
+  for (let index = 0; index < command.length; index += 1) {
+    const arg = command[index];
+    if (arg === '--model' || arg === '-m') return command[index + 1];
+    if (arg?.startsWith('--model=')) return arg.slice('--model='.length);
+  }
+  return undefined;
+}
+
+function formatCommand(command: string[]): string {
+  return command.map((arg) => (/^[A-Za-z0-9_./:=+-]+$/.test(arg) ? arg : JSON.stringify(arg))).join(' ');
 }
 
 /**
@@ -99,9 +116,17 @@ export function judgeForAnsweringModel(config: DMJudgeConfig, answeringModelId: 
   return creator === 'anthropic' ? codexJudge(env) : opusJudge(env);
 }
 
-export function describeJudgeConfig(config: DMJudgeConfig): string {
-  if (config.mode === 'auto') return 'auto (codex-cli judges anthropic answers, opus-cli judges the rest)';
-  return config.judge.label;
+export function describeJudge(judge: DMJudge): string {
+  if (judge.kind === 'model') return `${judge.label} (model=${judge.spec.label})`;
+  const model = judge.model ? `model=${judge.model}; ` : 'model=not explicit; ';
+  return `${judge.label} (${model}command=${formatCommand(judge.command)})`;
+}
+
+export function describeJudgeConfig(config: DMJudgeConfig, env: Env = process.env): string {
+  if (config.mode === 'auto') {
+    return `auto (anthropic answers -> ${describeJudge(codexJudge(env))}; other answers -> ${describeJudge(opusJudge(env))})`;
+  }
+  return describeJudge(config.judge);
 }
 
 export async function runCliJudge(
@@ -113,7 +138,13 @@ export async function runCliJudge(
   if (!command) return { error: `${judge.label}: empty judge command` };
 
   const output = await new Promise<{ ok: boolean; text: string }>((resolve) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    // A detached POSIX child becomes the leader of a new process group. Codex
+    // can launch MCP descendants, so timeout cleanup must signal that group,
+    // not only the direct shell child.
+    const child = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
+    });
     let stdout = '';
     let stderr = '';
     let settled = false;
@@ -124,7 +155,11 @@ export async function runCliJudge(
       resolve(result);
     };
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
+      terminateProcessTree(child);
+      child.stdin.destroy();
+      child.stdout.destroy();
+      child.stderr.destroy();
+      child.unref();
       settle({ ok: false, text: `timed out after ${timeoutMs}ms` });
     }, timeoutMs);
 
@@ -142,6 +177,18 @@ export async function runCliJudge(
 
   if (!output.ok) return { error: `${judge.label}: ${output.text}` };
   return extractJudgeScore(output.text);
+}
+
+function terminateProcessTree(child: ReturnType<typeof spawn>): void {
+  if (process.platform !== 'win32' && child.pid) {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+      return;
+    } catch {
+      // The group may already have exited between the timeout and the signal.
+    }
+  }
+  child.kill('SIGKILL');
 }
 
 /**
