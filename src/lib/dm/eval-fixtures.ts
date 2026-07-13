@@ -98,7 +98,7 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
     name: 'artifacts: answer plan selects fewer retrieved project artifacts',
     prompt: 'Tell me about Dylan’s projects, but show only one project card.',
     answerPlan: {
-      claims: [{ text: 'agentic-trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
+      claims: [{ text: 'Agentic / Trader is a scheduled, inspectable trading workflow.', evidenceIds: ['agentic-trader:identity', 'agentic-trader:summary'] }],
       artifactProjectIds: ['agentic-trader'],
     },
     expect(events) {
@@ -107,6 +107,11 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       if (!done || done.facts?.projects.length !== 3) return 'expected representative retrieval set before answer selection';
       if (!projectBlock || projectBlock.ids.length !== 1) return 'answer plan did not limit artifacts to one selected project';
       if (!done.facts?.projects.some((project) => project.id === projectBlock.ids[0])) return 'selected artifact escaped the same-turn fact packet';
+      const answer = answerText(events);
+      const selectedProject = done.facts.projects.find((project) => project.id === projectBlock.ids[0]);
+      if (!selectedProject || !identityTextIncludes(answer, selectedProject.title)) return 'selected artifact did not match the project named in prose';
+      const excludedProject = done.facts.projects.find((project) => project.id !== projectBlock.ids[0] && identityTextIncludes(answer, project.title));
+      if (excludedProject) return `one-card prose named excluded project ${excludedProject.id}`;
       return null;
     },
   },
@@ -157,6 +162,32 @@ export const DM_EVAL_CASES: DMEvalCase[] = [
       if (!hasResume) return 'missing public resume answer block';
       if (!contactBlock || contactBlock.type !== 'block' || contactBlock.block.kind !== 'contact') return 'missing public contact answer block';
       if (contactBlock.block.email !== 'dylanmccavitt@outlook.com') return 'contact email did not match canonical resume data';
+      const answer = answerText(events);
+      if (!/Stevens Institute of Technology/.test(answer)) return 'prose omitted a public resume highlight';
+      if (!/dylanmccavitt@outlook\.com/.test(answer)) return 'prose omitted the public contact method';
+      if (/included below/i.test(answer)) return 'prose only pointed to the structured blocks';
+      return null;
+    },
+  },
+  {
+    name: 'grounding: public resume single-aspect prose is direct',
+    prompt: "What is Dylan's public resume background?",
+    expect(events) {
+      const answer = answerText(events);
+      if (!/software engineering roles/i.test(answer)) return 'resume prose omitted current public role';
+      if (!/Stevens Institute of Technology/.test(answer)) return 'resume prose omitted education';
+      if (!events.some((event) => event.type === 'block' && event.block.kind === 'resume')) return 'missing public resume answer block';
+      return null;
+    },
+  },
+  {
+    name: 'grounding: public contact single-aspect prose is direct',
+    prompt: 'How can a recruiter contact Dylan?',
+    expect(events) {
+      const answer = answerText(events);
+      if (!/dylanmccavitt@outlook\.com/.test(answer)) return 'contact prose omitted the public email';
+      if (!/open to opportunities/i.test(answer)) return 'contact prose omitted public availability';
+      if (!events.some((event) => event.type === 'block' && event.block.kind === 'contact')) return 'missing public contact answer block';
       return null;
     },
   },
@@ -502,6 +533,16 @@ function answerText(events: DMStreamEvent[]): string {
       return [];
     })
     .join(' ');
+}
+
+function identityTextIncludes(text: string, identity: string): boolean {
+  const normalizedText = ` ${normalizeIdentityText(text)} `;
+  const normalizedIdentity = normalizeIdentityText(identity);
+  return normalizedIdentity.length > 1 && normalizedText.includes(` ${normalizedIdentity} `);
+}
+
+function normalizeIdentityText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 const EVAL_PROJECT_IDENTITIES = [

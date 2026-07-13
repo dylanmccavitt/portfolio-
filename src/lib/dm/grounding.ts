@@ -10,8 +10,10 @@ const ProjectDraftSchema = z.strictObject({
   claims: z.array(ProjectClaimSchema).max(8),
   artifactProjectIds: z.array(z.string().min(1)).max(8).default([]),
 });
+const REPRESENTATIVE_OVERVIEW_PROSE_MAX_CHARS = 900;
 
 export type ProjectDraft = z.infer<typeof ProjectDraftSchema>;
+type ProjectIdentity = Pick<ProjectSummary, 'id' | 'slug' | 'title'>;
 
 export function isProjectDeepDiveRequest(message: string): boolean {
   return /\b(?:deep[ -]dive|details?|technical|implementation|architecture|sources?|evidence|citations?)\b|\bhow\s+(?:it|this|the project)\s+works\b/i.test(message);
@@ -128,15 +130,23 @@ export function projectDraftBlocks(
 }
 
 export function projectPacketPrompt(packet: ProjectFactPacket): string {
+  const artifactLimit = requestedProjectArtifactLimit(packet.query);
+  const artifactInstruction = artifactLimit === 0
+    ? 'The latest request explicitly requires zero project cards. Keep artifactProjectIds empty, but still answer with grounded project claims.'
+    : artifactLimit === 1
+      ? 'The latest request explicitly requires exactly one project card. Select one project, write claims only about that project, and return that same single id in artifactProjectIds.'
+      : 'artifactProjectIds is independent of claims. Keep it empty for terse factual follow-ups unless the user asks to show a card; otherwise select only useful, discussed projects.';
   return [
     'For project questions, return exactly one JSON grounded answer draft and no markdown outside it.',
     'Shape: {"claims":[{"text":"Direct natural-language answer sentence.","evidenceIds":["project-id:summary"]}],"artifactProjectIds":[]}.',
+    'When PROJECT_FACT_PACKET.projects is non-empty and its evidence answers the question, claims must be non-empty. Do not return a refusal or an empty plan for an answerable packet.',
     'Answer the latest user question directly. Conversation history may identify the subject, but never inherit an older information need.',
     'Each claim must cite every fact it uses with ids from PROJECT_FACT_PACKET.evidence. Every substantive claim must cite at least one non-identity atom; identity-only evidence is allowed only when the entire claim is the project name. Do not write a name, number, status, date, technology, metric, or URL without citing its atom in that same claim.',
     'Treat every evidence atom as an independent fact. Do not infer causal, timing, review, publication, or execution relationships by combining a label, value, status, or prose atom. Cite the prose atom that states a relationship or omit that relationship.',
     'When you use a metric, include its exact label and value. When you use a link, include its exact URL. For an evidence-seeking question, include an applicable distinctive metric or public link for each discussed project when its packet provides one. For a general single-project overview, include one when available.',
     'Use natural recruiter-friendly prose. Do not merely list fields or answer a different aspect of the selected project.',
-    'artifactProjectIds is independent of claims. Keep it empty for terse factual follow-ups unless the user asks to show a card; otherwise select only useful, discussed projects.',
+    `For a representative overview unless the latest request explicitly requires exactly one project card, cover every selected project. Keep total representative-overview claim prose at or below ${REPRESENTATIVE_OVERVIEW_PROSE_MAX_CHARS} characters. For a project list, name only projects supported by claims in this draft.`,
+    artifactInstruction,
     'RAG citations are optional and only available for explicit deep dives. Never imply missing source evidence exists.',
     `PROJECT_FACT_PACKET=${JSON.stringify(packet)}`,
   ].join('\n');
@@ -145,11 +155,12 @@ export function projectPacketPrompt(packet: ProjectFactPacket): string {
 export function validateProjectDraft(
   raw: string,
   packet: ProjectFactPacket,
-  latestQuestion = packet.query,
+  request: DMChatRequest = { message: packet.query },
+  publishedProjects: ProjectIdentity[] = packet.projects,
 ): { ok: true; draft: ProjectDraft } | { ok: false; reason: string } {
   const parsed = parseDraft(raw);
   if (!parsed.success) return { ok: false, reason: 'project draft was not valid structured JSON' };
-  const draft = budgetProjectDraft(parsed.data, packet);
+  const draft = enforceProjectDraft(request, budgetProjectDraft(parsed.data, packet), packet, publishedProjects);
   if (draft.claims.length === 0 && packet.projects.length > 0) {
     return { ok: false, reason: 'project draft did not contain an answer claim' };
   }
@@ -159,6 +170,23 @@ export function validateProjectDraft(
     claim.evidenceIds.flatMap((id) => atoms.get(id)?.projectId ?? [])));
   const explicitlyUsedKinds = new Set<ProjectEvidenceAtomKind>();
   const usedDistinctiveEvidenceProjectIds = new Set<string>();
+
+  if (packet.projects.length > 0 && refusalOnlyProjectDraft(draft, packet)) {
+    return { ok: false, reason: 'project draft returned only a refusal over an answerable fact packet' };
+  }
+  if (packet.responseMode === 'representative-overview') {
+    if (requestedProjectArtifactLimit(request.message) !== 1) {
+      const missingProjectIds = packet.projects
+        .map((project) => project.id)
+        .filter((id) => !discussedProjectIds.has(id));
+      if (missingProjectIds.length > 0) {
+        return { ok: false, reason: `representative overview omitted selected projects: ${missingProjectIds.join(', ')}` };
+      }
+    }
+    if (projectDraftProseLength(draft) > REPRESENTATIVE_OVERVIEW_PROSE_MAX_CHARS) {
+      return { ok: false, reason: 'representative overview exceeded its aggregate prose budget' };
+    }
+  }
 
   if (new Set(draft.artifactProjectIds).size !== draft.artifactProjectIds.length) {
     return { ok: false, reason: 'duplicate artifact project reference' };
@@ -178,6 +206,10 @@ export function validateProjectDraft(
       return { ok: false, reason: 'substantive claim cited only project identity evidence' };
     }
     const claimProjects = new Set(referenced.map((entry) => entry.projectId));
+    if (publishedProjects.some((project) =>
+      !claimProjects.has(project.id) && claimNamesProject(claim.text, project.id, publishedProjects))) {
+      return { ok: false, reason: 'claim named a published project outside its cited fact packet evidence' };
+    }
     if (claimProjects.size > 1 && !/\b(?:both|compare|compared|comparison|versus|vs\.?|while|than)\b/i.test(claim.text)) {
       return { ok: false, reason: 'claim mixed project evidence without explicit comparison' };
     }
@@ -207,13 +239,13 @@ export function validateProjectDraft(
       }
     }
   }
-  const requiredKindGroups = latestTurnEvidenceKindGroups(latestQuestion);
+  const requiredKindGroups = latestTurnEvidenceKindGroups(request.message);
   const missingKindGroups = requiredKindGroups.filter((group) => !group.some((kind) => explicitlyUsedKinds.has(kind)));
   if (missingKindGroups.length > 0) {
     const missing = missingKindGroups.map((group) => group.join(' or ')).join(' and ');
     return { ok: false, reason: `answer did not address every latest-turn information need (${missing})` };
   }
-  if (requiresDistinctiveEvidence(latestQuestion, packet)) {
+  if (requiresDistinctiveEvidence(request.message, packet)) {
     const missingDistinctiveEvidenceProjectIds = [...discussedProjectIds].filter((projectId) =>
       packet.evidence.some((entry) => entry.projectId === projectId && isDistinctiveEvidenceAtom(entry))
       && !usedDistinctiveEvidenceProjectIds.has(projectId));
@@ -221,28 +253,42 @@ export function validateProjectDraft(
       return { ok: false, reason: 'answer omitted an applicable distinctive metric or public link for a discussed project' };
     }
   }
+  if (requestedProjectArtifactLimit(request.message) === 1 && !selectOneCardProject(draft, packet, request.message, publishedProjects)) {
+    return { ok: false, reason: 'one-card answer did not contain a complete claim for one selected project' };
+  }
   return { ok: true, draft };
 }
 
 export function enforceProjectDraft(
   request: DMChatRequest,
   draft: ProjectDraft,
+  packet: ProjectFactPacket,
+  publishedProjects: ProjectIdentity[] = packet.projects,
 ): ProjectDraft {
   const artifactLimit = requestedProjectArtifactLimit(request.message);
   const terseFollowUp = isExplicitProjectCoreference(normalizeIdentityText(request.message))
     && !request.context?.projectIds?.length
     && !requestExplicitlyIncludesProjectArtifacts(request.message)
     && request.message.trim().split(/\s+/).length <= 8;
-  const artifactProjectIds = artifactLimit === 0 || (terseFollowUp && artifactLimit === null)
-    ? []
-    : artifactLimit === 1
-      ? draft.artifactProjectIds.slice(0, 1)
-      : draft.artifactProjectIds;
-  return { ...draft, artifactProjectIds };
+  const discussedProjectIds = discussedDraftProjectIds(draft, packet);
+  if (artifactLimit === 0 || (terseFollowUp && artifactLimit === null)) {
+    return { ...draft, artifactProjectIds: [] };
+  }
+  if (artifactLimit === 1) {
+    const selection = selectOneCardProject(draft, packet, request.message, publishedProjects);
+    return selection
+      ? { claims: selection.claims, artifactProjectIds: [selection.projectId] }
+      : { claims: [], artifactProjectIds: [] };
+  }
+  return { ...draft, artifactProjectIds: discussedProjectIds };
 }
 
 export function requestExcludesProjectArtifacts(value: string): boolean {
   return requestedProjectArtifactLimit(value) === 0;
+}
+
+export function requestRequiresOneProjectArtifact(value: string): boolean {
+  return requestedProjectArtifactLimit(value) === 1;
 }
 
 function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): ProjectDraft {
@@ -258,6 +304,87 @@ function budgetProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): Pro
     claims,
     artifactProjectIds: draft.artifactProjectIds.slice(0, deepDive ? 2 : 3),
   };
+}
+
+function discussedDraftProjectIds(draft: ProjectDraft, packet: ProjectFactPacket): string[] {
+  const atoms = new Map(packet.evidence.map((entry) => [entry.id, entry]));
+  return [...new Set(draft.claims.flatMap((claim) =>
+    claim.evidenceIds.flatMap((id) => atoms.get(id)?.projectId ?? [])))];
+}
+
+function projectDraftProseLength(draft: ProjectDraft): number {
+  return draft.claims.map((claim) => claim.text.trim()).join('\n\n').length;
+}
+
+function refusalOnlyProjectDraft(draft: ProjectDraft, packet: ProjectFactPacket): boolean {
+  return draft.claims.length > 0 && draft.claims.every((claim) => refusalOnlyProjectClaim(claim.text, packet.projects));
+}
+
+function refusalOnlyProjectClaim(text: string, projects: ProjectFact[]): boolean {
+  const clauses = text
+    .split(/[;.!?]+|\b(?:but|however|yet)\b/i)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  return clauses.length > 0 && clauses.every((clause) => {
+    const namesProject = projects.some((project) => claimNamesProject(clause, project.id, projects));
+    return refusalOnlyProjectClause(clause, namesProject);
+  });
+}
+
+function refusalOnlyProjectClause(text: string, namesProject: boolean): boolean {
+  const normalized = text.toLowerCase().replaceAll('’', "'").replace(/\s+/g, ' ').trim();
+  const groundedUncertainty = [
+    /\b(?:i|we)\s+(?:can(?:not|'t)|could(?: not|n't)|(?:am|are) unable to)\s+(?:confirm|determine|find|identify)\b.{0,160}\b(?:evidence|information|details?|data|records?)\b/,
+    /\b(?:i|we)\s+(?:do(?: not|n't))\s+(?:find|have|see)\b.{0,160}\b(?:evidence|information|details?|data|records?)\b/,
+  ].some((pattern) => pattern.test(normalized));
+  if (groundedUncertainty) return !namesProject;
+  const firstPersonRefusal = [
+    /\b(?:i|we)\s+(?:can(?:not|'t)|could(?: not|n't)|(?:am|are) unable to)\s+(?:answer|confirm|describe|determine|discuss|find|identify|provide|say|tell)\b/,
+    /\b(?:i|we)\s+(?:do(?: not|n't))\s+(?:find|have|see)\b.{0,80}\b(?:evidence|information|details?|data|records?)\b/,
+  ].some((pattern) => pattern.test(normalized));
+  if (firstPersonRefusal) return true;
+  return !namesProject && [
+    /\b(?:not enough|insufficient)\s+(?:published\s+)?(?:evidence|information|details?|data|records?)\b/,
+    /\bno\s+(?:matching\s+)?(?:published\s+)?projects?\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function selectOneCardProject(
+  draft: ProjectDraft,
+  packet: ProjectFactPacket,
+  latestQuestion: string,
+  publishedProjects: ProjectIdentity[],
+): { projectId: string; claims: ProjectDraft['claims'] } | null {
+  const atoms = new Map(packet.evidence.map((atom) => [atom.id, atom]));
+  const claimProjectIds = draft.claims.map((claim) => projectIdsForClaim(claim, atoms));
+  const candidates = [...new Set([
+    ...draft.artifactProjectIds,
+    ...claimProjectIds.flat(),
+  ])];
+
+  for (const projectId of candidates) {
+    const claims = draft.claims.filter((_, index) => {
+      const projectIds = claimProjectIds[index];
+      return projectIds.length === 1 && projectIds[0] === projectId;
+    });
+    if (claims.length === 0) continue;
+    if (!claims.some((claim) => claimNamesProject(claim.text, projectId, packet.projects))) continue;
+    if (claims.some((claim) => publishedProjects.some((project) =>
+      project.id !== projectId && claimNamesProject(claim.text, project.id, publishedProjects)))) continue;
+    const citedKinds = new Set(claims.flatMap((claim) =>
+      claim.evidenceIds.flatMap((id) => atoms.get(id)?.kind ?? [])));
+    const addressesLatestTurn = latestTurnEvidenceKindGroups(latestQuestion)
+      .every((group) => group.some((kind) => citedKinds.has(kind)));
+    if (addressesLatestTurn) return { projectId, claims };
+  }
+  return null;
+}
+
+function projectIdsForClaim(
+  claim: ProjectDraft['claims'][number],
+  atoms: Map<string, ProjectEvidenceAtom>,
+): string[] {
+  return [...new Set(claim.evidenceIds.flatMap((id) => atoms.get(id)?.projectId ?? []))];
 }
 
 // Retrieval can return several chunks of one source under the same
@@ -401,11 +528,16 @@ function identityMatches(text: string, projects: ProjectSummary[]): string[] {
   }).sort((a, b) => a.lastIndex - b.lastIndex).map(({ id }) => id);
 }
 
-function claimNamesProject(text: string, projectId: string, projects: ProjectFact[]): boolean {
+function claimNamesProject(
+  text: string,
+  projectId: string,
+  projects: ProjectIdentity[],
+): boolean {
   const project = projects.find((candidate) => candidate.id === projectId);
   if (!project) return false;
   const normalized = ` ${normalizeIdentityText(text)} `;
   return [project.id, project.slug, project.title]
+    .filter((alias): alias is string => typeof alias === 'string')
     .map(normalizeIdentityText)
     .filter((alias) => alias.length > 1)
     .some((alias) => normalized.includes(` ${alias} `));

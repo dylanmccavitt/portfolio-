@@ -186,7 +186,7 @@ export function createDMChatStream(
         }
 
         if (factPacket.operation === 'none') {
-          const responseText = deterministicPublicInfoAnswer(normalizedRequest);
+          const responseText = await deterministicPublicInfoAnswer(normalizedRequest, tools);
           emit({ type: 'text-delta', delta: responseText });
           answer.unshift({ kind: 'text', text: responseText });
           const supplementalBlocks = await deterministicBlocks(normalizedRequest, tools, answer);
@@ -213,7 +213,9 @@ export function createDMChatStream(
           return;
         }
 
-        let validated = validateProjectDraft('', factPacket, normalizedRequest.message);
+        const publishedProjectIdentities = await tools.allPublishedProjects();
+
+        let validated = validateProjectDraft('', factPacket, normalizedRequest, publishedProjectIdentities);
         let rejectionReason = '';
         for (let attempt = 0; attempt < 2; attempt += 1) {
           let finalText = '';
@@ -221,6 +223,7 @@ export function createDMChatStream(
             'Your previous grounded answer draft was rejected by the server.',
             `Reason: ${rejectionReason}`,
             'Return one corrected JSON draft over the exact same PROJECT_FACT_PACKET. Do not repeat the invalid prose.',
+            `The packet contains ${factPacket.projects.length} published project result(s). If their evidence answers the latest question, return at least one supported claim instead of an empty plan or refusal.`,
           ].join('\n');
           const result = streamText({
             model,
@@ -261,7 +264,7 @@ export function createDMChatStream(
             // Provider usage is optional instrumentation, never a stream failure.
           }
           metrics.setUsage(usage?.inputTokens ?? null, usage?.outputTokens ?? null);
-          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest.message);
+          validated = validateProjectDraft(finalText.trim(), factPacket, normalizedRequest, publishedProjectIdentities);
           if (validated.ok) break;
           rejectionReason = validated.reason;
         }
@@ -271,7 +274,7 @@ export function createDMChatStream(
           factPacket.fallbackUsed || !validated.ok,
         );
         const enforcedDraft = validated.ok
-          ? enforceProjectDraft(normalizedRequest, validated.draft)
+          ? enforceProjectDraft(normalizedRequest, validated.draft, factPacket, publishedProjectIdentities)
           : null;
         const disclosure = enforcedDraft ? projectAnswerDisclosure(normalizedRequest, factPacket) : '';
         const emittedText = enforcedDraft
@@ -443,15 +446,45 @@ async function deterministicBlocks(
   return blocks;
 }
 
-function deterministicPublicInfoAnswer(request: DMChatRequest): string {
+async function deterministicPublicInfoAnswer(request: DMChatRequest, tools: PublicDMDataTools): Promise<string> {
   const normalized = request.message.toLowerCase();
   const asksResume = Boolean(request.context?.resumeTrackIds?.length) ||
     matchesAny(normalized, ['resume', 'résumé', 'cv', 'experience', 'background', 'education', 'career', 'employment', 'degree']);
   const asksContact = matchesAny(normalized, ['contact', 'email', 'reach', 'phone', 'location', 'hire', 'available', 'availability', 'opportunities', 'open to work']);
-  if (asksResume && asksContact) return "Dylan's public resume highlights and contact details are included below.";
-  if (asksResume) return "Dylan's public resume highlights are included below.";
-  if (asksContact) return "Dylan's public contact details are included below.";
-  return "Ask me about Dylan's published projects, public resume, or contact details.";
+  if (!asksResume && !asksContact) return "Ask me about Dylan's published projects, public resume, or contact details.";
+
+  const requestedTrackIds = request.context?.resumeTrackIds;
+  const resume = asksResume
+    ? await tools.readResume(requestedTrackIds?.length ? { trackIds: requestedTrackIds } : {})
+    : { tracks: [] };
+  const resumeTracks = requestedTrackIds?.length
+    ? resume.tracks
+    : ['now', 'stevens', 'kroll']
+      .map((id) => resume.tracks.find((track) => track.id === id))
+      .filter((track): track is (typeof resume.tracks)[number] => Boolean(track));
+  const current = resumeTracks.find((track) => track.id === 'now');
+  const education = resumeTracks.find((track) => track.id === 'stevens');
+  const cyberRisk = resumeTracks.find((track) => track.id === 'kroll');
+  const resumeHighlights = requestedTrackIds?.length
+    ? resumeTracks.map((track) => [
+      `${track.title}: ${track.role} (${track.when}).`,
+      track.about[0] ?? '',
+    ].filter(Boolean).join(' ')).join(' ')
+    : [
+      current?.about[0] ?? (current ? `${current.title}: ${current.role}.` : ''),
+      education ? `${education.role} at ${education.title}.` : '',
+      cyberRisk ? `${cyberRisk.role} at ${cyberRisk.title}.` : '',
+    ].filter(Boolean).join(' ');
+  const contact = asksContact ? tools.getContact() : null;
+  const contactDetails = contact
+    ? `Recruiters can reach Dylan at ${contact.email}.`
+    : '';
+
+  if (asksResume && asksContact) {
+    return `Dylan's public resume highlights and contact details: ${resumeHighlights} ${contactDetails}`.trim();
+  }
+  if (asksResume) return `Dylan's public resume highlights: ${resumeHighlights}`.trim();
+  return `Dylan's public contact details: ${contactDetails} He is ${contact?.status ?? 'open to opportunities'} in ${contact?.location ?? 'New York City'}.`.trim();
 }
 
 async function buildSystemPrompt(tools: PublicDMDataTools, packet: ProjectFactPacket): Promise<string> {

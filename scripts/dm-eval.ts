@@ -17,6 +17,7 @@ import {
 import {
   buildCliJudgePrompt,
   buildJudgePayloadJson,
+  describeJudge,
   describeJudgeConfig,
   DM_JUDGE_RUBRIC,
   extractJudgeScore,
@@ -290,7 +291,7 @@ async function judgeAnswer(
   record: EvalRunRecord,
 ): Promise<JudgeScore | { error: string }> {
   const judge = judgeForAnsweringModel(config, answeringModelId);
-  record.judgedBy = judge.label;
+  record.judgedBy = describeJudge(judge);
   const payload: DMJudgePayload = {
     visitorQuestion: testCase.prompt,
     answerText: record.answerText.slice(0, 6000),
@@ -379,7 +380,8 @@ Environment:
   DM_MODEL              Default live model (full <creator>/<model> id, e.g. anthropic/claude-sonnet-4.6).
   DM_EVAL_MODELS        Comma-separated live eval model list; --models overrides this.
                         Legacy fallback only when DM_MODEL is unset: DM_BENCH_MODELS.
-  DM_JUDGE_CODEX_CMD    Override the codex judge command (default: codex exec --skip-git-repo-check -).
+  DM_JUDGE_CODEX_CMD    Override the codex judge command
+                        (default: codex exec --model gpt-5.6-sol --skip-git-repo-check -).
   DM_JUDGE_OPUS_CMD     Override the opus judge command (default: claude -p --model opus).
 `);
 }
