@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createDbClient, getDatabaseUrl, type DbClient } from '@/lib/db/client';
 import type { ProjectReadQueryable } from '@/lib/db/project-reads';
 import {
-  createDMChatStream,
+  createDMChatResponse,
   DMAgentError,
   DMRuntimeConfigError,
   readDMRuntimeConfig,
@@ -23,7 +23,7 @@ import {
   type DMRateLimitEnv,
 } from '@/lib/dm/rate-limit';
 import { createDMMetricsRecorder } from '@/lib/dm/metrics';
-import type { DMChatContext, DMChatRequest } from '@/lib/dm/contract';
+import type { DMChatContext, DMChatRequest, DMUIMessage } from '@/lib/dm/contract';
 import { resolvePublicProjectSourceMode, type PublicProjectSourceMode } from '@/lib/public-projects';
 import {
   FIT_CHECK_INPUT_LIMIT,
@@ -99,22 +99,16 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
       }
       assertRequestSize(request);
       const payload = await parseRequest(request);
-      return new Response(createDMChatStream(payload, config, {
+      const response = createDMChatResponse(payload, config, {
         db,
         model: deps.model,
         env: deps.env,
         signal: request.signal,
         traceId,
         budgets: readDMBudgetConfig(deps.env),
-      }), {
-        headers: {
-          'Cache-Control': 'no-store',
-          'Content-Type': 'application/x-ndjson; charset=utf-8',
-          'X-Content-Type-Options': 'nosniff',
-          'X-Public-Project-Source': projectSourceMode,
-          'X-DM-Trace-Id': traceId,
-        },
       });
+      response.headers.set('X-Public-Project-Source', projectSourceMode);
+      return response;
     } catch (error) {
       if (error instanceof DMAgentError) {
         console.error('[dm] agent failure', { code: error.code, message: error.message });
@@ -174,15 +168,10 @@ async function parseRequest(request: Request): Promise<DMChatRequest> {
   }
 
   const candidate = body as Record<string, unknown>;
-  const message = candidate.message;
-  if (typeof message !== 'string') {
-    throw badRequest('Request body must include a string message.');
-  }
-
-  const conversation = parseConversation(candidate.conversation);
+  const messages = parseMessages(candidate.messages);
   const context = parseContext(candidate.context);
 
-  return { message, conversation, context };
+  return { messages, context };
 }
 
 function assertRequestSize(request: Request): void {
@@ -194,29 +183,38 @@ function assertRequestSize(request: Request): void {
   }
 }
 
-function parseConversation(value: unknown): DMChatRequest['conversation'] {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw badRequest('conversation must be an array when provided.');
-
-  return value.slice(-12).map((entry) => {
+function parseMessages(value: unknown): DMUIMessage[] {
+  if (!Array.isArray(value) || value.length === 0) throw badRequest('messages must be a non-empty array.');
+  const messages = value.slice(-13).map((entry) => {
     if (!entry || typeof entry !== 'object') {
-      throw badRequest('conversation entries must be objects.');
+      throw badRequest('message entries must be objects.');
     }
 
     const record = entry as Record<string, unknown>;
+    if (typeof record.id !== 'string' || !record.id.trim() || record.id.length > 200) {
+      throw badRequest('message id must be a bounded string.');
+    }
     if (record.role !== 'user' && record.role !== 'assistant') {
-      throw badRequest('conversation role must be user or assistant.');
+      throw badRequest('message role must be user or assistant.');
     }
-
-    if (typeof record.content !== 'string') {
-      throw badRequest('conversation content must be a string.');
+    if (!Array.isArray(record.parts) || record.parts.length === 0) {
+      throw badRequest('message parts must be a non-empty array.');
     }
-
     return {
+      id: record.id,
       role: record.role,
-      content: record.content.slice(0, 4000),
-    };
+      parts: record.parts.map((part) => {
+        if (!part || typeof part !== 'object') throw badRequest('message parts must be objects.');
+        const value = part as Record<string, unknown>;
+        if (value.type !== 'text' || typeof value.text !== 'string') {
+          throw badRequest('only text message parts are accepted.');
+        }
+        return { type: 'text' as const, text: value.text.slice(0, 4_000) };
+      }),
+    } satisfies DMUIMessage;
   });
+  if (messages.at(-1)?.role !== 'user') throw badRequest('the latest message must be from the user.');
+  return messages;
 }
 
 function parseContext(value: unknown): DMChatContext | undefined {

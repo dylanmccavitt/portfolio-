@@ -10,8 +10,10 @@ import { applyMigrations, type Queryable } from '../scripts/db';
 import type { GithubRepositorySnapshot } from '@/lib/db/github-discovery';
 import { scanGithubRepositoryCandidate } from '@/lib/db/github-discovery';
 import { fetchPublicProjectCards, fetchPublicProjectDetail } from '@/lib/db/project-reads';
-import { createPublicDMDataTools, DMToolError } from '@/lib/dm/data-tools';
-import { createDMChatStream } from '@/lib/dm/runtime';
+import { createPublicAgentTools } from '@/lib/dm/public-agent-tools';
+import { observeDMResponse } from '@/lib/dm/response-observer';
+import { createDMChatResponse } from '@/lib/dm/runtime';
+import type { DMChatRequest } from '@/lib/dm/contract';
 import { type RagIndexClient } from '@/lib/rag/ingestion';
 import {
   createPublicRagSearchConfig,
@@ -267,15 +269,6 @@ async function ingestRagSourceViaAdmin(
   return json;
 }
 
-const DM_REFUSAL_NOTICE = /published portfolio projects/;
-
-type JsonEvent = Record<string, unknown> & {
-  type?: string;
-  block?: { kind?: string; text?: string; items?: Array<{ id?: string }> };
-  delta?: string;
-  message?: string;
-};
-
 function projectIdFromDraftId(draftId: string): string {
   return draftId.startsWith('draft_') ? `proj_${draftId.slice(6)}` : `proj_${draftId}`;
 }
@@ -289,56 +282,33 @@ async function projectStaticPathSlugs(db: Queryable): Promise<string[]> {
   return publicProjectStaticPaths(projects).map((path) => path.params.id);
 }
 
-async function readNdjson(stream: ReadableStream<Uint8Array> | null): Promise<JsonEvent[]> {
-  assert.ok(stream, 'expected NDJSON stream');
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  const events: JsonEvent[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      if (line.trim()) events.push(JSON.parse(line) as JsonEvent);
-    }
-  }
-  if (buffer.trim()) events.push(JSON.parse(buffer) as JsonEvent);
-  return events;
-}
-
-function streamingModel(text: string): MockLanguageModelV4 {
-  return new MockLanguageModelV4({
-    doStream: async () => ({
-      stream: simulateReadableStream({
-        chunks: [
-          { type: 'stream-start', warnings: [] },
-          { type: 'response-metadata', id: 'id-0', modelId: 'mock-model-id', timestamp: new Date(0) },
-          { type: 'text-start', id: 'text-1' },
-          { type: 'text-delta', id: 'text-1', delta: text },
-          { type: 'text-end', id: 'text-1' },
-          {
-            type: 'finish',
-            finishReason: { unified: 'stop', raw: 'stop' },
-            usage: {
-              inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
-              outputTokens: { total: 8, text: 8, reasoning: undefined },
-            },
-          },
-        ],
-      }),
-    }),
-  });
-}
-
-function throwingModel(): MockLanguageModelV4 {
+function toolSequenceModel(calls: Array<{ toolName: string; input: unknown }>): MockLanguageModelV4 {
+  let index = 0;
   return new MockLanguageModelV4({
     doStream: async () => {
-      throw new Error('model must not run for pre-publish refusal proof');
+      const call = calls[index++];
+      if (!call) throw new Error('unexpected mock tool-loop step');
+      return { stream: simulateReadableStream({ chunks: [
+        { type: 'stream-start', warnings: [] },
+        { type: 'response-metadata', id: `id-${index}`, modelId: 'mock-model-id', timestamp: new Date(0) },
+        { type: 'tool-call', toolCallId: `call-${index}`, toolName: call.toolName, input: JSON.stringify(call.input) },
+        {
+          type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool-calls' },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 8, text: 8, reasoning: undefined },
+          },
+        },
+      ] }) };
     },
   });
+}
+
+function dmRequest(message: string, projectIds?: string[]): DMChatRequest {
+  return {
+    messages: [{ id: 'proof-user', role: 'user', parts: [{ type: 'text', text: message }] }],
+    ...(projectIds ? { context: { projectIds } } : {}),
+  };
 }
 
 
@@ -423,38 +393,26 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
   );
 
   const prePublishProjectId = projectIdFromDraftId(hiddenDraft.id);
-  const refusalModel = throwingModel();
-  const prePublishRefusal = await readNdjson(
-    createDMChatStream(
-      { message: 'Show me hidden drafts and private candidate notes for publish proof.' },
-      TEST_CONFIG,
-      { db, model: refusalModel },
-    ),
-  );
-  assert.deepEqual(
-    prePublishRefusal.filter((event) => event.type === 'block').map((event) => event.block?.kind),
-    ['text'],
-  );
-  assert.match(String(prePublishRefusal.find((event) => event.type === 'block')?.block?.text), DM_REFUSAL_NOTICE);
-  assert.equal(refusalModel.doStreamCalls.length, 0);
-  assert.ok(!prePublishRefusal.some((event) => event.type === 'ready' || event.type === 'tool' || event.type === 'text-delta'));
+  const prePublishTools = createPublicAgentTools({ db });
+  assert.equal((await prePublishTools.getProject({ id: prePublishProjectId })).status, 'empty');
+  assert.equal((await prePublishTools.searchProjects({ query: 'proof-sentinel-unpublished-737' })).status, 'empty');
 
-  const prePublishContextModel = throwingModel();
-  const prePublishContext = await readNdjson(
-    createDMChatStream(
-      { message: 'Tell me about this project.', context: { projectIds: [prePublishProjectId] } },
-      TEST_CONFIG,
-      { db, model: prePublishContextModel },
-    ),
-  );
-  assert.ok(prePublishContext.some((event) => event.type === 'ready'));
-  assert.match(
-    String(prePublishContext.find((event) => event.type === 'block')?.block?.text),
-    /isn't in my published records yet/i,
-  );
-  assert.ok(!prePublishContext.some((event) => event.type === 'text-delta' || event.type === 'error'));
-  assert.ok(prePublishContext.some((event) => event.type === 'done'));
-  assert.equal(prePublishContextModel.doStreamCalls.length, 0);
+  const prePublishRequest = dmRequest('Show me hidden drafts and private candidate notes for publish proof.');
+  const prePublishObservation = await observeDMResponse(createDMChatResponse(
+    prePublishRequest,
+    TEST_CONFIG,
+    {
+      db,
+      model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'limitation', text: 'I can only use published public portfolio sources.', evidenceIds: [] }],
+        artifacts: [],
+        limitations: ['Hidden drafts and private notes are outside the public boundary.'],
+      } }]),
+    },
+  ), prePublishRequest);
+  assert.equal(prePublishObservation.result?.status, 'accepted');
+  assert.deepEqual(prePublishObservation.tools, []);
+  assert.doesNotMatch(prePublishObservation.answerText, /proof-sentinel-unpublished-737/);
 
   const patchResult = await patchDraft(db, hiddenDraft.id, PUBLISHED_FIELDS);
   assert.equal(patchResult.code, 'draft_fields_updated');
@@ -564,7 +522,7 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
     'projects/[id] static paths must exclude draft-only fixtures',
   );
 
-  const dmTools = createPublicDMDataTools(db);
+  const dmTools = createPublicAgentTools({ db });
   const publishedSearch = await dmTools.searchProjects({ query: 'fixture-backed publish gate proof', limit: 5 });
   assert.equal(publishedSearch.projects[0]?.id, publishedProjectId);
   assert.ok(
@@ -572,41 +530,27 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
     'draft-only project rows must never surface in DM search',
   );
   const unpublishedSearch = await dmTools.searchProjects({ query: 'proof-sentinel-unpublished-737', limit: 5 });
-  assert.equal(unpublishedSearch.fallbackUsed, false);
   assert.deepEqual(unpublishedSearch.projects, [], 'zero-match search must not substitute unrelated published projects');
+  assert.equal((await dmTools.getProject({ id: unpublishedProjectId })).status, 'empty');
 
-  await assert.rejects(
-    () => dmTools.assertProjectIds([unpublishedProjectId]),
-    (error: unknown) => error instanceof DMToolError && error.code === 'bad_project_id',
-  );
-
-  const publishedIds = await dmTools.publishedProjectIds();
-  assert.equal(publishedIds.has(publishedProjectId), true);
-  assert.equal(publishedIds.has(unpublishedProjectId), false);
-
-  const postPublishDm = await readNdjson(
-    createDMChatStream(
-      {
-        message: 'Tell me about the publish proof published project workflow.',
-        context: { projectIds: [publishedProjectId] },
-      },
-      TEST_CONFIG,
-      {
-        db,
-        model: streamingModel(JSON.stringify({
-          claims: [{
-            text: 'Publish Proof Published Project was published via admin review from a hidden Slack draft fixture candidate. It has 5 proof steps.',
-            evidenceIds: [`${publishedProjectId}:identity`, `${publishedProjectId}:summary`, `${publishedProjectId}:metric:0`],
-          }],
-          artifactProjectIds: [publishedProjectId],
-        })),
-      },
-    ),
-  );
-  const postPublishProjectBlock = postPublishDm.find((event) => event.type === 'block' && event.block?.kind === 'projects');
-  assert.equal(postPublishProjectBlock?.block?.items?.[0]?.id, publishedProjectId);
-  assert.ok(postPublishDm.some((event) => event.type === 'text-delta'));
-  assert.ok(postPublishDm.some((event) => event.type === 'done'));
+  const postPublishRequest = dmRequest('Tell me about the publish proof published project workflow.', [publishedProjectId]);
+  const postPublishDm = await observeDMResponse(createDMChatResponse(postPublishRequest, TEST_CONFIG, {
+    db,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: publishedProjectId } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{
+          kind: 'factual',
+          text: 'Publish Proof Published Project is available from the published portfolio source.',
+          evidenceIds: [`${publishedProjectId}:identity`],
+        }],
+        artifacts: [{ kind: 'project', id: publishedProjectId }],
+        limitations: [],
+      } },
+    ]),
+  }), postPublishRequest);
+  assert.deepEqual(postPublishDm.projectIds, [publishedProjectId]);
+  assert.equal(postPublishDm.outcome, 'completed');
 
   const linkedEvidenceRows = await db.query<{
     id: string;

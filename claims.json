@@ -37,10 +37,35 @@
       "statement": "public DM tool modules cannot import Slack, admin, private, candidate, visitor, credential, or secret source modules or query private-source tables",
       "subjectRefs": [
         "src/lib/dm/public-agent-tools.ts",
-        "src/lib/dm/data-tools.ts",
+        "src/lib/dm/runtime.ts",
         "scripts/check-public-dm-tool-boundary.mjs"
       ],
       "check": "node scripts/check-public-dm-tool-boundary.mjs"
+    },
+    {
+      "id": "dm-tool-loop-runtime",
+      "statement": "DM uses one AI SDK ToolLoopAgent over typed public tools and emits validated same-run evidence and artifacts through the standard UIMessage stream",
+      "subjectRefs": [
+        "src/lib/dm/runtime.ts",
+        "src/lib/dm/contract.ts",
+        "src/pages/api/dm/chat.ts",
+        "src/scripts/dm.ts",
+        "tests/dm-runtime.test.ts"
+      ],
+      "check": "npm run test:dm"
+    },
+    {
+      "id": "dm-removed-scripted-runtime",
+      "statement": "the scripted DM router, planner, deterministic answer paths, fake trace, canned answer fixtures, and custom NDJSON protocol are absent",
+      "subjectRefs": [
+        "src/lib/dm/runtime.ts",
+        "src/lib/dm/contract.ts",
+        "src/lib/dm/client.ts",
+        "src/scripts/dm.ts",
+        "scripts/check-dm-scripted-runtime-removed.mjs",
+        "package.json"
+      ],
+      "check": "npm run test:dm-removal"
     },
     {
       "id": "filter-slugs",
@@ -71,7 +96,7 @@
       "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case, and canned unit answers cannot produce a release score",
       "subjectRefs": [
         "src/lib/dm/eval-corpus.ts",
-        "src/lib/dm/eval-fixtures.ts",
+        "src/lib/dm/eval-source.ts",
         "src/lib/dm/judge.ts",
         "src/lib/dm/eval-report.ts",
         "scripts/dm-eval.ts",

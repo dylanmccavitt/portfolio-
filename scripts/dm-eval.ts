@@ -2,7 +2,6 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { generateText, type LanguageModel } from 'ai';
-import type { AnswerBlock, DMStreamEvent } from '@/lib/dm/contract';
 import {
   DM_LIVE_EVAL_CORPUS,
   DM_RELEASE_MODELS,
@@ -13,7 +12,8 @@ import {
   validateDMLiveEvalCorpus,
   type DMLiveEvalCase,
 } from '@/lib/dm/eval-corpus';
-import { createEvalProjectSource, readNdjsonEvents } from '@/lib/dm/eval-fixtures';
+import { createEvalProjectSource } from '@/lib/dm/eval-source';
+import { observeDMResponse } from '@/lib/dm/response-observer';
 import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { formatMissingLiveModelKeysError, parseDMEvalModelSpecs, readModelKeyAvailability } from '@/lib/dm/model-specs';
 import {
@@ -38,7 +38,7 @@ import {
   type DMJudgeConfig,
   type DMJudgePayload,
 } from '@/lib/dm/judge';
-import { createDMChatStream, createDMModel } from '@/lib/dm/runtime';
+import { createDMChatResponse, createDMModel } from '@/lib/dm/runtime';
 
 interface CliOptions {
   live: boolean;
@@ -97,9 +97,10 @@ async function main(): Promise<void> {
         const telemetry = { modelCalls: 0 };
         const model = instrumentModel(createDMModel({ provider: spec.provider, model: spec.model }), telemetry);
         const started = performance.now();
-        const events = await readNdjsonEvents(
-          createDMChatStream(
-            requestForEvalCase(testCase),
+        const request = requestForEvalCase(testCase);
+        const observation = await observeDMResponse(
+          createDMChatResponse(
+            request,
             { provider: spec.provider, model: spec.model },
             {
               db: source.db,
@@ -110,18 +111,16 @@ async function main(): Promise<void> {
               ...(testCase.toolFailure?.tool === 'searchPublicSources'
                 ? { ragSearch: async () => { throw new Error('simulated eval public source unavailable'); } }
                 : {}),
-              metricsLogger(line) {
+              metricsLogger(line: string) {
                 metrics = parseMetricsLine(line) ?? metrics;
               },
             },
           ),
+          request,
         );
         const elapsedMs = Math.round(performance.now() - started);
-        const answerText = collectAnswerText(events);
-        const blockKinds = collectBlockKinds(events);
-        const tools = collectTools(events);
-        const projectIds = collectProjectIds(events);
-        const outcome = metrics?.outcome ?? inferOutcome(events);
+        const { answerText, blockKinds, tools, projectIds } = observation;
+        const outcome = metrics?.outcome ?? observation.outcome;
         const failure = evaluateDMEvalObservation(testCase, { answerText, tools, blockKinds, projectIds, outcome });
         const record: EvalRunRecord = {
           model: spec.label,
@@ -139,7 +138,7 @@ async function main(): Promise<void> {
           outcome,
           answerText,
           blockKinds,
-          evidenceIds: collectEvidenceIds(events),
+          evidenceIds: observation.evidenceIds,
         };
 
         if (judgeConfig) {
@@ -288,48 +287,6 @@ function mean(values: number[]): string {
   return (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1);
 }
 
-function collectAnswerText(events: DMStreamEvent[]): string {
-  const parts: string[] = [];
-  for (const event of events) {
-    if (event.type === 'text-delta') parts.push(event.delta);
-    if (event.type === 'block' && event.block.kind === 'text') parts.push(`\n${event.block.text}`);
-  }
-  return parts.join('').trim();
-}
-
-function collectBlockKinds(events: DMStreamEvent[]): string[] {
-  const kinds: string[] = [];
-  for (const event of events) {
-    if (event.type === 'block') kinds.push(describeBlock(event.block));
-  }
-  return kinds;
-}
-
-function collectTools(events: DMStreamEvent[]): string[] {
-  return events.flatMap((event) => event.type === 'tool' ? [event.name] : []);
-}
-
-function collectProjectIds(events: DMStreamEvent[]): string[] {
-  return [...new Set(events.flatMap((event) =>
-    event.type === 'block' && event.block.kind === 'projects' ? event.block.ids : [],
-  ))];
-}
-
-function collectEvidenceIds(events: DMStreamEvent[]): string[] {
-  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
-  if (!done?.facts) return [];
-  return [...new Set([
-    ...done.facts.evidence.map((item) => item.id),
-    ...done.facts.citations.map((item) => item.ragSourceId),
-  ])];
-}
-
-function inferOutcome(events: DMStreamEvent[]): string {
-  if (events.some((event) => event.type === 'done')) return 'completed';
-  if (events.some((event) => event.type === 'error')) return 'error';
-  return 'incomplete';
-}
-
 function parseMetricsLine(line: string): DMMetricsRecord | null {
   const prefix = '[dm-metrics] ';
   if (!line.startsWith(prefix)) return null;
@@ -353,27 +310,6 @@ function instrumentModel(model: LanguageModel, telemetry: { modelCalls: number }
       return typeof value === 'function' ? value.bind(target) : value;
     },
   }) as LanguageModel;
-}
-
-function describeBlock(block: AnswerBlock): string {
-  switch (block.kind) {
-    case 'projects':
-      return `projects:${block.ids.join('+')}`;
-    case 'resume':
-      return `resume:${block.trackIds.join('+')}`;
-    case 'evidence':
-      return 'evidence';
-    case 'contact':
-      return 'contact';
-    case 'links':
-      return 'links';
-    case 'text':
-      return 'text';
-    default: {
-      const exhaustive: never = block;
-      return String(exhaustive);
-    }
-  }
 }
 
 async function judgeAnswer(

@@ -2,10 +2,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { aggregateBenchmarkRuns, classifyBenchmarkRun, type DMBenchmarkRunRecord, type TimedDMEvent } from '@/lib/dm/benchmark';
-import { createEvalProjectSource, createStubModelForUnitEvalCase, DM_UNIT_EVAL_CASES } from '@/lib/dm/eval-fixtures';
-import type { DMStreamEvent } from '@/lib/dm/contract';
+import { DM_LIVE_EVAL_CORPUS, evaluateDMEvalObservation, requestForEvalCase } from '@/lib/dm/eval-corpus';
+import { createEvalProjectSource } from '@/lib/dm/eval-source';
 import { parseDMModelSpecs, readModelKeyAvailability } from '@/lib/dm/model-specs';
-import { createDMChatStream } from '@/lib/dm/runtime';
+import { observeDMResponse } from '@/lib/dm/response-observer';
+import { createDMChatResponse } from '@/lib/dm/runtime';
 
 process.env.DM_METRICS ??= '0';
 
@@ -17,10 +18,9 @@ interface CliOptions {
   help: boolean;
 }
 
-interface TimedReadResult {
-  events: TimedDMEvent[];
-  completionMs: number;
-}
+const BENCHMARK_CASES = DM_LIVE_EVAL_CORPUS.filter((testCase) =>
+  ['mf-trading-automation', 'mf-recruiter-resume-contact', 'mf-unmatched-quantum', 'derived-project-comparison'].includes(testCase.id),
+);
 
 async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
@@ -31,11 +31,13 @@ async function main(): Promise<void> {
 
   const iterations = parseIterations(options.iterationsArg ?? process.env.DM_BENCH_ITERATIONS);
   const keys = readModelKeyAvailability();
-  const modelSpecs = parseDMModelSpecs(options.modelsArg ?? process.env.DM_BENCH_MODELS, keys, [
-    process.env.DM_MODEL?.trim() || 'openai/gpt-4.1',
-    'anthropic/claude-sonnet-4.6',
-  ]);
-  const dryRun = !keys.hasGatewayKey && !keys.hasOpenaiKey;
+  if (!keys.hasGatewayKey && !keys.hasOpenaiKey) {
+    throw new Error('DM benchmark requires AI_GATEWAY_API_KEY or OPENAI_API_KEY; scripted benchmark fallbacks were removed.');
+  }
+  const configuredModels = options.modelsArg ?? process.env.DM_BENCH_MODELS ?? process.env.DM_MODEL;
+  if (!configuredModels?.trim()) throw new Error('DM benchmark requires --models, DM_BENCH_MODELS, or DM_MODEL.');
+  const modelSpecs = parseDMModelSpecs(configuredModels, keys, []);
+  const dryRun = false;
 
   if (modelSpecs.length < 2) {
     console.warn(`[dm:bench] expected at least two models for comparison; running ${modelSpecs.length}.`);
@@ -44,25 +46,25 @@ async function main(): Promise<void> {
   const source = await createEvalProjectSource();
   const runRecords: DMBenchmarkRunRecord[] = [];
 
-  console.log(`[dm:bench] mode=${dryRun ? 'dry (stubbed, NOT valid latency evidence)' : 'live'} iterations=${iterations} cases=${DM_UNIT_EVAL_CASES.length}`);
+  console.log(`[dm:bench] mode=live iterations=${iterations} cases=${BENCHMARK_CASES.length}`);
   console.log(`[dm:bench] models=${modelSpecs.map((spec) => `${spec.label} via ${spec.provider}`).join(', ')}`);
 
   for (const modelSpec of modelSpecs) {
     for (let iteration = 1; iteration <= iterations; iteration += 1) {
-      for (const testCase of DM_UNIT_EVAL_CASES) {
+      for (const testCase of BENCHMARK_CASES) {
         const sessionStartMs = Date.now();
-        const stream = createDMChatStream(
-          testCase.request ?? { message: testCase.prompt },
+        const request = requestForEvalCase(testCase);
+        const started = performance.now();
+        const observation = await observeDMResponse(createDMChatResponse(
+          request,
           { provider: modelSpec.provider, model: modelSpec.model },
-          { db: source.db, projectLoader: source.projectLoader, ...(dryRun ? { model: createStubModelForUnitEvalCase(testCase) } : {}) },
-        );
-
-        const timed = await readTimedNdjson(stream);
-        const events = timed.events.map((entry) => entry.event);
-        const evalFailure = testCase.expect(events);
+          { db: source.db, projectLoader: source.projectLoader },
+        ), request);
+        const completionMs = Math.max(0, Math.round(performance.now() - started));
+        const evalFailure = evaluateDMEvalObservation(testCase, observation);
         const classified = classifyBenchmarkRun({
-          events: timed.events,
-          completionMs: timed.completionMs,
+          events: observation.timedChunks.map((entry): TimedDMEvent => ({ event: entry.chunk, elapsedMs: entry.elapsedMs })),
+          completionMs,
           evalFailure,
         });
 
@@ -94,9 +96,6 @@ async function main(): Promise<void> {
   const summaries = aggregateBenchmarkRuns(runRecords);
   console.log('');
   console.log(renderSummaryTable(summaries));
-  if (dryRun) {
-    console.log('[dm:bench] dry mode uses deterministic stubs. These timings are plumbing checks only, not valid latency evidence.');
-  }
   console.log(
     `[dm:bench] live latency evidence runs=${runRecords.filter((run) => run.validLatency && run.modelExercised && !run.dryRun).length}/${runRecords.length}`,
   );
@@ -105,7 +104,7 @@ async function main(): Promise<void> {
     generatedAt: new Date().toISOString(),
     dryRun,
     iterations,
-    fixtures: DM_UNIT_EVAL_CASES.map((testCase) => testCase.name),
+    fixtures: BENCHMARK_CASES.map((testCase) => testCase.name),
     models: modelSpecs.map((spec) => spec.label),
     summaries,
     runs: runRecords,
@@ -174,58 +173,6 @@ function parseIterations(value: string | undefined): number {
   return parsed;
 }
 
-async function readTimedNdjson(stream: ReadableStream<Uint8Array>): Promise<TimedReadResult> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  const started = performance.now();
-  let buffer = '';
-  const events: TimedDMEvent[] = [];
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    buffer = drainBuffer(buffer, events, started);
-  }
-
-  buffer += decoder.decode();
-  drainBuffer(buffer, events, started, true);
-
-  return { events, completionMs: Math.max(0, Math.round(performance.now() - started)) };
-}
-
-function drainBuffer(buffer: string, target: TimedDMEvent[], started: number, flush = false): string {
-  let cursor = buffer;
-  while (true) {
-    const newline = cursor.indexOf('\n');
-    if (newline < 0) break;
-    const line = cursor.slice(0, newline).trim();
-    cursor = cursor.slice(newline + 1);
-    if (!line) continue;
-    target.push({
-      event: parseEvent(line),
-      elapsedMs: Math.max(0, Math.round(performance.now() - started)),
-    });
-  }
-
-  if (flush) {
-    const tail = cursor.trim();
-    if (tail) {
-      target.push({
-        event: parseEvent(tail),
-        elapsedMs: Math.max(0, Math.round(performance.now() - started)),
-      });
-    }
-    return '';
-  }
-
-  return cursor;
-}
-
-function parseEvent(line: string): DMStreamEvent {
-  return JSON.parse(line) as DMStreamEvent;
-}
-
 function formatMs(value: number | null): string {
   return value === null ? 'n/a' : `${value}ms`;
 }
@@ -290,7 +237,7 @@ function printUsage(): void {
 Usage: npm run dm:bench -- [options]
 
 Options:
-  --models <list>       Comma-separated model list (openai/gpt-4.1,anthropic/claude-sonnet-4.6)
+  --models <list>       Comma-separated model ids to measure
   --iterations <n>      Iterations per fixture (default: 3 or DM_BENCH_ITERATIONS)
   --json                Print JSON report to stdout
   --json-path <path>    Write JSON report to a file path

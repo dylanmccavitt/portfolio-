@@ -75,8 +75,8 @@ test('eval model specs prefer cli models, then DM_EVAL_MODELS, then DM_MODEL', (
 
 test('benchmark classification marks no-token errors as MODEL_CALL_FAILED invalid latency', () => {
   const events: TimedDMEvent[] = [
-    { elapsedMs: 2, event: { type: 'ready', agent: 'DM', provider: 'openai', trace: emptyTrace() } },
-    { elapsedMs: 5, event: { type: 'error', message: 'DM is unavailable right now.' } },
+    { elapsedMs: 2, event: { type: 'start' } },
+    { elapsedMs: 5, event: { type: 'error', errorText: 'DM is unavailable right now.' } },
   ];
   const result = classifyBenchmarkRun({ events, completionMs: 8, evalFailure: 'missing refusal text block' });
 
@@ -89,9 +89,9 @@ test('benchmark classification marks no-token errors as MODEL_CALL_FAILED invali
 
 test('benchmark classification keeps eval failures latency-valid when stream completed', () => {
   const events: TimedDMEvent[] = [
-    { elapsedMs: 1, event: { type: 'ready', agent: 'DM', provider: 'openai', trace: emptyTrace() } },
-    { elapsedMs: 9, event: { type: 'text-delta', delta: 'public answer token' } },
-    { elapsedMs: 12, event: { type: 'done', answer: [], trace: emptyTrace() } },
+    { elapsedMs: 1, event: { type: 'start' } },
+    { elapsedMs: 9, event: answerChunk() },
+    { elapsedMs: 12, event: { type: 'finish' } },
   ];
   const result = classifyBenchmarkRun({ events, completionMs: 15, evalFailure: 'missing projects answer block' });
 
@@ -102,26 +102,17 @@ test('benchmark classification keeps eval failures latency-valid when stream com
   assert.equal(result.evalPassed, false);
 });
 
-test('benchmark classification marks deterministic refusal paths as non-model', () => {
+test('benchmark classification requires the model-backed standard stream', () => {
   const events: TimedDMEvent[] = [
-    {
-      elapsedMs: 2,
-      event: {
-        type: 'block',
-        index: 0,
-        block: {
-          kind: 'text',
-          text: 'I can only discuss published portfolio projects, public resume facts, and contact details.',
-        },
-      },
-    },
-    { elapsedMs: 4, event: { type: 'done', answer: [], trace: emptyTrace() } },
+    { elapsedMs: 1, event: { type: 'start' } },
+    { elapsedMs: 2, event: answerChunk() },
+    { elapsedMs: 4, event: { type: 'finish' } },
   ];
   const result = classifyBenchmarkRun({ events, completionMs: 5, evalFailure: null });
 
   assert.equal(result.failureClass, 'OK');
   assert.equal(result.validLatency, true);
-  assert.equal(result.modelExercised, false);
+  assert.equal(result.modelExercised, true);
   assert.equal(result.firstTokenMs, 2);
 });
 
@@ -202,6 +193,13 @@ function runRecord(overrides: Partial<DMBenchmarkRunRecord>): DMBenchmarkRunReco
   };
 }
 
-function emptyTrace() {
-  return { mode: 'vercel-ai-sdk' as const, agent: 'DM' as const, items: [] };
+function answerChunk(): TimedDMEvent['event'] {
+  return {
+    type: 'data-dm-answer',
+    data: {
+      status: 'accepted',
+      repairAttempted: false,
+      answer: { segments: [{ text: 'Public answer.', evidenceIds: [], evidence: [] }], artifacts: [], limitations: [] },
+    },
+  };
 }

@@ -279,8 +279,11 @@ export interface DMEvalObservation {
 
 export function requestForEvalCase(testCase: DMLiveEvalCase): DMChatRequest {
   return {
-    message: testCase.prompt,
-    ...(testCase.history.length > 0 ? { conversation: testCase.history } : {}),
+    messages: [...testCase.history, { role: 'user' as const, content: testCase.prompt }].map((message, index) => ({
+      id: `${testCase.id}-${index + 1}`,
+      role: message.role,
+      parts: [{ type: 'text' as const, text: message.content }],
+    })),
   };
 }
 

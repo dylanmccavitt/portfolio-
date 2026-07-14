@@ -1,57 +1,36 @@
 /**
- * DM landing — production chat client island.
- *
- * Submits visitor questions to `/api/dm/chat`, consumes the NDJSON stream,
- * and renders user turns, streamed answer text, tool trace, and artifact blocks.
- * Network text is only ever written via `textContent`, so streamed content
- * can never inject markup. The contract lives in `lib/dm/client.ts`.
+ * DM landing client island. The AI SDK DefaultChatTransport owns the standard
+ * UIMessage SSE protocol; this file only renders typed chunks with textContent.
  */
 
+import { DefaultChatTransport, type UIMessageChunk } from 'ai';
 import {
   AGENT_NAME,
   DM_ENDPOINT,
   fitCheckValidationMessage,
-  parseStreamLine,
-  resolveContact,
-  resolveEvidence,
-  resolveTracks,
   sanitizeJobDescriptionForFitCheck,
-  type AnswerBlock,
-  type ChatMessage,
-  type ProjectArtifact,
-  type RagSourceEvidence,
-  type StreamEvent,
+  validateFinalizationResult,
 } from '@/lib/dm/client';
-import type { Project } from '@/data/catalog';
-import type { ResumeTrack } from '@/data/resume';
+import type {
+  DMAnswerArtifact,
+  DMAnswerSegment,
+  DMChatContext,
+  DMUIData,
+  DMUIMessage,
+  DMValidatedAnswer,
+} from '@/lib/dm/contract';
+import type {
+  PublicContactRecord,
+  PublicProjectToolRecord,
+  PublicResumeTrackRecord,
+  PublicSourceRecord,
+  PublicToolEvidence,
+} from '@/lib/dm/public-agent-tools';
 
-type RenderProject = ProjectArtifact;
-type EvidenceFact = [string, string] | { value: string; label: string };
-
-// ---------------------------------------------------------------------------
-// Tiny DOM helpers — explicit and XSS-safe (text via textContent only).
-// ---------------------------------------------------------------------------
-
-/**
- * Element props: `class` / `text` / `hue` / `hidden` are handled specially; any
- * other key (`href`, `target`, `rel`, `data-*`, `aria-*`, …) is set verbatim as
- * an attribute. Loose by design — this is an internal builder.
- */
 type ElProps = Record<string, string | boolean | undefined>;
-type ChatContext = {
-  projectIds?: string[];
-  resumeTrackIds?: string[];
-  fitCheck?: {
-    kind: 'job-description';
-    jobDescription: string;
-    originalLength: number;
-    truncated: boolean;
-  };
-};
-type AskOptions = {
-  displayMessage?: string;
-  transientContext?: ChatContext;
-};
+type AskOptions = { displayMessage?: string; transientContext?: DMChatContext };
+
+const transport = new DefaultChatTransport<DMUIMessage>({ api: DM_ENDPOINT });
 
 function make<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -68,16 +47,9 @@ function make<K extends keyof HTMLElementTagNameMap>(
       if (value) node.setAttribute('hidden', '');
     } else node.setAttribute(key, String(value));
   }
-  for (const child of children) {
-    if (child == null) continue;
-    node.append(child);
-  }
+  for (const child of children) if (child != null) node.append(child);
   return node;
 }
-
-// ---------------------------------------------------------------------------
-// Per-turn controller — owns one Q&A turn's DOM + streaming state.
-// ---------------------------------------------------------------------------
 
 class Turn {
   readonly root: HTMLElement;
@@ -89,12 +61,10 @@ class Turn {
   private readonly usedEl: HTMLDetailsElement;
   private readonly usedSummaryCount: HTMLElement;
   private readonly usedListEl: HTMLUListElement;
-
   private canvasEl: HTMLElement | null = null;
-  private openTextEl: HTMLParagraphElement | null = null;
   private answerShown = false;
   private toolCount = 0;
-  /** Collected answer text, for multi-turn history. */
+  private answerRendered = false;
   text = '';
 
   constructor(question: string) {
@@ -106,32 +76,18 @@ class Turn {
       ]),
       this.logEl,
     ]);
-
-    this.usedSummaryCount = make('span', { text: '' });
+    this.usedSummaryCount = make('span');
     this.usedListEl = make('ul', { class: 'dm-used-list' });
     this.usedEl = make('details', { class: 'dm-used', hidden: true }, [
-      make('summary', {}, [
-        make('span', { class: 'dm-check', 'aria-hidden': 'true', text: '✓' }),
-        ' ',
-        this.usedSummaryCount,
-      ]),
+      make('summary', {}, [make('span', { class: 'dm-check', 'aria-hidden': 'true', text: '✓' }), ' ', this.usedSummaryCount]),
       this.usedListEl,
     ]);
-
     this.proseEl = make('div', { class: 'dm-prose' });
     this.splitEl = make('div', { class: 'dm-split dm-split--solo' }, [this.proseEl]);
-    this.answerEl = make(
-      'div',
-      { class: 'dm-answer', hidden: true, 'aria-live': 'polite' },
-      [
-        make('div', { class: 'dm-answer-head' }, [
-          make('span', { class: 'dm-tag', text: AGENT_NAME }),
-          this.usedEl,
-        ]),
-        this.splitEl,
-      ],
-    );
-
+    this.answerEl = make('div', { class: 'dm-answer', hidden: true, 'aria-live': 'polite' }, [
+      make('div', { class: 'dm-answer-head' }, [make('span', { class: 'dm-tag', text: AGENT_NAME }), this.usedEl]),
+      this.splitEl,
+    ]);
     this.root = make('article', { class: 'dm-turn' }, [
       make('div', { class: 'dm-user-row' }, [
         make('span', { class: 'dm-user-tag', text: 'You' }),
@@ -142,22 +98,152 @@ class Turn {
     ]);
   }
 
-  /** Route one stream event to the right rendering path. */
-  handle(event: StreamEvent): void {
-    switch (event.type) {
-      case 'tool':
-        this.addTool(event.name, event.summary);
-        break;
-      case 'text-delta':
-        this.appendDelta(event.delta);
-        break;
-      case 'block':
-        this.renderBlock(event.block);
-        break;
-      case 'error':
-        this.showError(event.message);
-        break;
+  addTool(name: string): void {
+    if (name === 'finalizeAnswer') return;
+    this.toolCount += 1;
+    const label = `${name} · ${toolSummary(name)}`;
+    this.logEl.append(make('li', { class: 'dm-log-line' }, [
+      make('span', { class: 'dm-spin', 'aria-hidden': 'true' }),
+      make('code', { text: label }),
+    ]));
+    this.usedListEl.append(make('li', {}, [make('code', { text: label })]));
+    this.usedSummaryCount.textContent = `used ${this.toolCount} tool${this.toolCount === 1 ? '' : 's'}`;
+    this.usedEl.hidden = false;
+  }
+
+  renderAnswer(answer: DMValidatedAnswer): void {
+    if (this.answerRendered) return;
+    this.answerRendered = true;
+    this.revealAnswer();
+    for (const segment of answer.segments) {
+      this.proseEl.append(make('p', { class: 'dm-p', text: segment.text }));
+      this.text += `${this.text ? '\n\n' : ''}${segment.text}`;
     }
+    for (const limitation of answer.limitations) {
+      this.proseEl.append(make('p', { class: 'dm-p', text: limitation }));
+      this.text += `${this.text ? '\n\n' : ''}${limitation}`;
+    }
+    if (answer.followUp) {
+      this.proseEl.append(make('div', { class: 'dm-next' }, [
+        make('p', { class: 'dm-next-label', text: answer.followUp }),
+      ]));
+      this.text += `${this.text ? '\n\n' : ''}${answer.followUp}`;
+    }
+    for (const artifact of answer.artifacts) this.renderArtifact(artifact);
+    const evidence = uniqueEvidence(answer.segments);
+    if (evidence.length > 0) this.renderEvidence(evidence);
+  }
+
+  private renderArtifact(artifact: DMAnswerArtifact): void {
+    if (artifact.kind === 'project') this.renderProject(artifact.project);
+    else if (artifact.kind === 'resume') this.renderResume(artifact.track);
+    else if (artifact.kind === 'contact') this.renderContact(artifact.contact);
+    else if (artifact.kind === 'evidence') this.renderPublicSource(artifact.source);
+    else this.renderLinks(artifact.items);
+  }
+
+  private renderProject(project: PublicProjectToolRecord): void {
+    const [statusKind = 'done', statusLabel = 'Published'] = project.status;
+    const wrap = make('div', { class: 'dm-projs' }, [
+      make('a', { class: 'dm-proj', href: project.href, hue: '#8b7cf6' }, [
+        make('span', { class: 'dm-proj__rule', 'aria-hidden': 'true' }),
+        make('span', { class: 'dm-proj__body' }, [
+          make('span', { class: 'dm-proj__main' }, [
+            make('span', { class: 'dm-proj__id', text: project.id }),
+            make('span', { class: 'dm-proj__title', text: project.title }),
+          ]),
+          make('span', { class: 'dm-proj__meta' }, [
+            make('span', { class: `badge ${statusKind}`, text: statusLabel }),
+            make('span', { class: 'dm-proj__cat', text: `${project.area} · ${project.year}` }),
+            make('span', { class: 'dm-proj__act', text: project.activity }),
+          ]),
+          make('span', { class: 'dm-proj__line', text: project.tagline }),
+        ]),
+        make('span', { class: 'dm-proj__go', 'aria-hidden': 'true', text: '→' }),
+      ]),
+    ]);
+    this.canvas().append(wrap);
+  }
+
+  private renderResume(track: PublicResumeTrackRecord): void {
+    this.canvas().append(make('div', { class: 'dm-resume' }, [
+      make('a', { class: 'dm-track', href: `/journey/${track.id}`, hue: '#8b7cf6' }, [
+        make('span', { class: 'dm-track-top' }, [make('span', { class: 'dm-track-title', text: track.title })]),
+        make('span', { class: 'dm-track-role', text: track.role }),
+        make('span', { class: 'dm-track-when', text: track.when }),
+      ]),
+    ]));
+  }
+
+  private renderContact(contact: PublicContactRecord): void {
+    this.canvas().append(make('div', { class: 'dm-contact' }, [
+      this.contactRow('email', contact.email, `mailto:${contact.email}`),
+      this.contactRow('github', contact.github.replace(/^https?:\/\//, ''), contact.github, true),
+      this.contactRow('résumé', 'Download PDF →', contact.resume),
+      this.contactRow('based', contact.location),
+      make('div', { class: 'dm-contact-row' }, [
+        make('span', { class: 'dm-contact-key', text: 'status' }),
+        make('span', { class: 'dm-contact-val dm-contact-status' }, [make('span', { class: 'dm-dot', 'aria-hidden': 'true' }), contact.status]),
+      ]),
+    ]));
+  }
+
+  private renderPublicSource(source: PublicSourceRecord): void {
+    const text = source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
+    this.canvas().append(make('article', { class: 'dm-evidence-item' }, [
+      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
+      make('span', { class: 'dm-evidence-top' }, [
+        make('span', { class: 'dm-evidence-type', text: 'public source' }),
+        make('span', { class: 'badge done', text: 'Cited' }),
+      ]),
+      make('h3', { class: 'dm-evidence-title', text: source.label }),
+      make('p', { class: 'dm-evidence-line', text }),
+    ]));
+  }
+
+  private renderLinks(items: Array<{ label: string; href: string }>): void {
+    if (!items.length) return;
+    this.proseEl.append(make('div', { class: 'dm-next' }, [
+      make('p', { class: 'dm-next-label', text: 'Relevant public links:' }),
+      make('div', { class: 'dm-next-chips' }, items.map((item) =>
+        make('a', { class: 'dm-chip', href: item.href, text: item.label, target: '_blank', rel: 'noopener' }),
+      )),
+    ]));
+  }
+
+  private renderEvidence(evidence: PublicToolEvidence[]): void {
+    const wrap = make('section', { class: 'dm-evidence', 'aria-label': 'Evidence summary' }, [
+      make('div', { class: 'dm-evidence-head' }, [
+        make('span', { class: 'dm-evidence-kicker', text: 'evidence summary' }),
+        make('span', { class: 'dm-evidence-count', text: `${evidence.length} fact${evidence.length === 1 ? '' : 's'}` }),
+      ]),
+    ]);
+    for (const item of evidence.slice(0, 8)) {
+      wrap.append(make('article', { class: 'dm-evidence-item' }, [
+        make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
+        make('span', { class: 'dm-evidence-top' }, [make('span', { class: 'dm-evidence-type', text: item.source.replace('_', ' ') })]),
+        make('h3', { class: 'dm-evidence-title', text: item.label }),
+        make('p', { class: 'dm-evidence-line', text: item.value }),
+      ]));
+    }
+    this.canvas().append(wrap);
+  }
+
+  private contactRow(key: string, value: string, href?: string, external = false): HTMLElement {
+    const children = [make('span', { class: 'dm-contact-key', text: key }), make('span', { class: 'dm-contact-val', text: value })];
+    return href
+      ? make('a', { class: 'dm-contact-row', href, ...(external ? { target: '_blank', rel: 'noopener' } : {}) }, children)
+      : make('div', { class: 'dm-contact-row' }, children);
+  }
+
+  private canvas(): HTMLElement {
+    this.revealAnswer();
+    if (!this.canvasEl) {
+      this.canvasEl = make('div', { class: 'dm-canvas' }, [make('p', { class: 'dm-canvas-label', 'aria-hidden': 'true', text: 'artifacts' })]);
+      this.splitEl.classList.remove('dm-split--solo');
+      this.splitEl.append(this.canvasEl);
+    }
+    return this.canvasEl;
   }
 
   private revealAnswer(): void {
@@ -167,321 +253,75 @@ class Turn {
     this.answerEl.hidden = false;
   }
 
-  private addTool(name: string, summary?: string): void {
-    this.toolCount += 1;
-    const label = summary ? `${name} · ${summary}` : `${name}()`;
-    this.logEl.append(
-      make('li', { class: 'dm-log-line' }, [
-        make('span', { class: 'dm-spin', 'aria-hidden': 'true' }),
-        make('code', { text: label }),
-      ]),
-    );
-    this.usedListEl.append(make('li', {}, [make('code', { text: label })]));
-    this.usedSummaryCount.textContent = `used ${this.toolCount} tool${
-      this.toolCount === 1 ? '' : 's'
-    }`;
-    this.usedEl.hidden = false;
-  }
-
-  private appendDelta(delta: string): void {
-    this.revealAnswer();
-    if (!this.openTextEl) {
-      this.openTextEl = make('p', { class: 'dm-p' });
-      this.proseEl.append(this.openTextEl);
-    }
-    this.openTextEl.textContent = (this.openTextEl.textContent ?? '') + delta;
-    this.text += delta;
-  }
-
-  private renderBlock(block: AnswerBlock): void {
-    this.revealAnswer();
-    switch (block.kind) {
-      case 'text': {
-        this.openTextEl = null; // a complete paragraph closes any open stream
-        this.proseEl.append(make('p', { class: 'dm-p', text: block.text }));
-        this.text += (this.text ? '\n\n' : '') + block.text;
-        break;
-      }
-      case 'projects': {
-        const projects = block.items;
-        if (!projects.length) break;
-        const wrap = make('div', { class: 'dm-projs' });
-        for (const p of projects) {
-          const [kind, statusLabel] = p.status;
-          wrap.append(
-            make('a', { class: 'dm-proj', href: projectHref(p), hue: projectHue(p) }, [
-              make('span', { class: 'dm-proj__rule', 'aria-hidden': 'true' }),
-              make('span', { class: 'dm-proj__body' }, [
-                make('span', { class: 'dm-proj__main' }, [
-                  make('span', { class: 'dm-proj__id', text: p.id }),
-                  make('span', { class: 'dm-proj__title', text: p.title }),
-                ]),
-                make('span', { class: 'dm-proj__meta' }, [
-                  make('span', { class: `badge ${kind}`, text: statusLabel }),
-                  make('span', { class: 'dm-proj__cat', text: `${p.area} · ${p.year}` }),
-                  make('span', { class: 'dm-proj__act', text: p.activity }),
-                ]),
-                make('span', { class: 'dm-proj__line', text: p.line }),
-              ]),
-              make('span', { class: 'dm-proj__go', 'aria-hidden': 'true', text: '→' }),
-            ]),
-          );
-        }
-        this.canvas().append(wrap);
-        break;
-      }
-      case 'resume': {
-        const tracks = resolveTracks(block.trackIds);
-        if (!tracks.length) break;
-        const wrap = make('div', { class: 'dm-resume' });
-        for (const t of tracks) {
-          wrap.append(
-            make('div', { class: 'dm-track', hue: t.hue }, [
-              make('span', { class: 'dm-track-top' }, [
-                make('span', { class: 'dm-track-title', text: t.title }),
-                t.current ? make('span', { class: 'badge live', text: 'Now' }) : null,
-              ]),
-              make('span', { class: 'dm-track-role', text: t.role }),
-              make('span', { class: 'dm-track-when', text: t.when }),
-            ]),
-          );
-        }
-        this.canvas().append(wrap);
-        break;
-      }
-      case 'evidence': {
-        const resolved = resolveEvidence(block);
-        const projects = resolved.projects;
-        const tracks = resolved.tracks;
-        const ragSources = (block.ragSources ?? []).filter((source) => typeof source.text === 'string' && source.text.trim().length);
-        if (!projects.length && !tracks.length && !ragSources.length) break;
-
-        const count = projects.length + tracks.length + ragSources.length;
-        const wrap = make('section', { class: 'dm-evidence', 'aria-label': 'Evidence summary' }, [
-          make('div', { class: 'dm-evidence-head' }, [
-            make('span', { class: 'dm-evidence-kicker', text: 'evidence summary' }),
-            make('span', {
-              class: 'dm-evidence-count',
-              text: `${count} source${count === 1 ? '' : 's'}`,
-            }),
-          ]),
-        ]);
-
-        for (const project of projects) {
-          wrap.append(this.projectEvidence(project));
-        }
-        for (const track of tracks) {
-          wrap.append(this.resumeEvidence(track));
-        }
-        for (const source of ragSources) {
-          wrap.append(this.ragSourceEvidence(source));
-        }
-
-
-        this.canvas().append(wrap);
-        break;
-      }
-      case 'contact': {
-        const c = resolveContact(block);
-        this.canvas().append(
-          make('div', { class: 'dm-contact' }, [
-            this.contactRow('email', c.email, `mailto:${c.email}`),
-            this.contactRow('github', c.github.replace(/^https?:\/\//, ''), c.github, true),
-            this.contactRow('résumé', 'Download PDF →', c.resume),
-            this.contactRow('based', c.location),
-            make('div', { class: 'dm-contact-row' }, [
-              make('span', { class: 'dm-contact-key', text: 'status' }),
-              make('span', { class: 'dm-contact-val dm-contact-status' }, [
-                make('span', { class: 'dm-dot', 'aria-hidden': 'true' }),
-                c.status,
-              ]),
-            ]),
-          ]),
-        );
-        break;
-      }
-      case 'links': {
-        if (!block.items.length) break;
-        this.proseEl.append(
-          make('div', { class: 'dm-next' }, [
-            make('p', { class: 'dm-next-label', text: 'Suggested next steps:' }),
-            make(
-              'div',
-              { class: 'dm-next-chips' },
-              block.items.map(([label, href]) =>
-                make('a', { class: 'dm-chip', href, text: label }),
-              ),
-            ),
-          ]),
-        );
-        break;
-      }
-    }
-  }
-
-  private projectEvidence(project: RenderProject): HTMLElement {
-    const [kind, statusLabel] = project.status;
-    const facts = [...projectMetrics(project).slice(0, 2), ...projectStack(project).slice(0, 2)];
-
-    return make('a', { class: 'dm-evidence-item', href: projectHref(project), hue: projectHue(project) }, [
-      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
-      make('span', { class: 'dm-evidence-top' }, [
-        make('span', { class: 'dm-evidence-type', text: 'project' }),
-        make('span', { class: `badge ${kind}`, text: statusLabel }),
-      ]),
-      make('h3', { class: 'dm-evidence-title', text: project.title }),
-      make('p', { class: 'dm-evidence-line', text: project.line }),
-      this.evidenceFacts(facts),
-      projectNotes(project)[0] ? make('p', { class: 'dm-evidence-note', text: projectNotes(project)[0] }) : null,
-      make('span', { class: 'dm-evidence-route', text: 'Open project →' }),
-    ]);
-  }
-
-  private resumeEvidence(track: ResumeTrack): HTMLElement {
-    return make('a', { class: 'dm-evidence-item', href: `/journey/${track.id}`, hue: track.hue }, [
-      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
-      make('span', { class: 'dm-evidence-top' }, [
-        make('span', { class: 'dm-evidence-type', text: 'resume' }),
-        track.current ? make('span', { class: 'badge live', text: 'Now' }) : null,
-      ]),
-      make('h3', { class: 'dm-evidence-title', text: track.title }),
-      make('p', { class: 'dm-evidence-line', text: `${track.role} · ${track.when}` }),
-      this.evidenceFacts(track.credits.slice(0, 3)),
-      track.notes[0] ? make('p', { class: 'dm-evidence-note', text: track.notes[0] }) : null,
-      make('span', { class: 'dm-evidence-route', text: 'Open resume entry →' }),
-    ]);
-  }
-
-  private ragSourceEvidence(source: RagSourceEvidence): HTMLElement {
-    const text = source.text.length > 180 ? `${source.text.slice(0, 177)}…` : source.text;
-    return make('article', { class: 'dm-evidence-item' }, [
-      make('span', { class: 'dm-evidence-rule', 'aria-hidden': 'true' }),
-      make('span', { class: 'dm-evidence-top' }, [
-        make('span', { class: 'dm-evidence-type', text: 'public source' }),
-        make('span', { class: 'badge done', text: 'Cited' }),
-      ]),
-      make('h3', { class: 'dm-evidence-title', text: source.filename ?? 'Published project source' }),
-      make('p', { class: 'dm-evidence-line', text }),
-    ]);
-  }
-
-  private evidenceFacts(facts: EvidenceFact[]): HTMLElement {
-    return make(
-      'ul',
-      { class: 'dm-evidence-facts' },
-      facts.map((fact) => {
-        const value = Array.isArray(fact) ? fact[0] : fact.value;
-        const label = Array.isArray(fact) ? fact[1] : fact.label;
-        return make('li', {}, [
-          make('span', { class: 'dm-evidence-fact-value', text: value }),
-          make('span', { class: 'dm-evidence-fact-label', text: label }),
-        ]);
-      }),
-    );
-  }
-
-  private contactRow(key: string, value: string, href?: string, external = false): HTMLElement {
-    const valueEl = make('span', { class: 'dm-contact-val', text: value });
-    const keyEl = make('span', { class: 'dm-contact-key', text: key });
-    if (!href) return make('div', { class: 'dm-contact-row' }, [keyEl, valueEl]);
-    return make(
-      'a',
-      {
-        class: 'dm-contact-row',
-        href,
-        ...(external ? { target: '_blank', rel: 'noopener' } : {}),
-      },
-      [keyEl, valueEl],
-    );
-  }
-
-  /** Lazily create the right-hand artifact canvas on first artifact. */
-  private canvas(): HTMLElement {
-    this.revealAnswer();
-    if (!this.canvasEl) {
-      this.canvasEl = make('div', { class: 'dm-canvas' }, [
-        make('p', { class: 'dm-canvas-label', 'aria-hidden': 'true', text: 'artifacts' }),
-      ]);
-      this.splitEl.classList.remove('dm-split--solo');
-      this.splitEl.append(this.canvasEl);
-    }
-    return this.canvasEl;
-  }
-
   showError(message: string): void {
     this.revealAnswer();
-    this.proseEl.append(
-      make('div', { class: 'dm-error' }, [
-        make('p', { text: message }),
-        make('p', {}, [
-          'You can still reach Dylan directly at ',
-          make('a', { href: 'mailto:dylanmccavitt@outlook.com', text: 'dylanmccavitt@outlook.com' }),
-          '.',
-        ]),
-      ]),
-    );
+    this.proseEl.append(make('div', { class: 'dm-error' }, [
+      make('p', { text: message }),
+      make('p', {}, ['You can still reach Dylan directly at ', make('a', { href: 'mailto:dylanmccavitt@outlook.com', text: 'dylanmccavitt@outlook.com' }), '.']),
+    ]));
   }
 
-  /** Stream finished with no answer content at all. */
   finishEmptyIfNeeded(): void {
     if (this.answerShown) return;
-    this.revealAnswer();
-    this.proseEl.append(
-      make('p', {
-        class: 'dm-p',
-        text: `${AGENT_NAME} didn't return an answer for that. Try rephrasing, or pick a suggested prompt.`,
-      }),
-    );
+    this.showError(`${AGENT_NAME} didn't return a verified answer. Please try rephrasing the question.`);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Streaming — POST the question, read NDJSON, dispatch events to the turn.
-// ---------------------------------------------------------------------------
 
 async function streamInto(
   turn: Turn,
-  message: string,
-  conversation: ChatMessage[],
-  context: ChatContext | undefined,
+  messages: DMUIMessage[],
+  context: DMChatContext | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  const payload = context ? { message, conversation, context } : { message, conversation };
-  const res = await fetch(DM_ENDPOINT, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
-    body: JSON.stringify(payload),
-    signal,
+  const stream = await transport.sendMessages({
+    trigger: 'submit-message',
+    chatId: 'dm-public',
+    messageId: undefined,
+    messages,
+    abortSignal: signal,
+    ...(context ? { body: { context } } : {}),
   });
-  if (!res.ok || !res.body) {
-    throw new Error(`DM endpoint responded ${res.status}`);
+  const toolCalls = new Map<string, string>();
+  const announced = new Set<string>();
+  for await (const chunk of stream) {
+    handleChunk(turn, chunk as UIMessageChunk<unknown, DMUIData>, toolCalls, announced);
   }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  const flushLine = (line: string): void => {
-    const event = parseStreamLine(line);
-    if (event) turn.handle(event);
-  };
-
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buffer.indexOf('\n')) >= 0) {
-      flushLine(buffer.slice(0, nl));
-      buffer = buffer.slice(nl + 1);
-    }
-  }
-  if (buffer.trim()) flushLine(buffer);
 }
 
-// ---------------------------------------------------------------------------
-// Island wiring.
-// ---------------------------------------------------------------------------
+function handleChunk(
+  turn: Turn,
+  chunk: UIMessageChunk<unknown, DMUIData>,
+  toolCalls: Map<string, string>,
+  announced: Set<string>,
+): void {
+  if (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-available') {
+    toolCalls.set(chunk.toolCallId, chunk.toolName);
+    if (!announced.has(chunk.toolCallId)) {
+      announced.add(chunk.toolCallId);
+      turn.addTool(chunk.toolName);
+    }
+    return;
+  }
+  if (chunk.type === 'error') {
+    turn.showError(chunk.errorText);
+    return;
+  }
+  if (chunk.type === 'data-dm-answer') {
+    const result = validateFinalizationResult(chunk.data);
+    if (result && result.status !== 'rejected') turn.renderAnswer(result.answer);
+    return;
+  }
+  if (chunk.type === 'tool-output-available') {
+    const name = toolCalls.get(chunk.toolCallId);
+    if (name !== 'finalizeAnswer') return;
+    const result = validateFinalizationResult(chunk.output);
+    if (result && result.status !== 'rejected') {
+      // The dedicated data part follows and is authoritative; rendering here
+      // keeps the client resilient if an intermediary strips custom data parts.
+      turn.renderAnswer(result.answer);
+    }
+  }
+}
 
 function initRoot(root: HTMLElement): void {
   const thread = root.querySelector<HTMLElement>('[data-dm-thread]');
@@ -491,14 +331,13 @@ function initRoot(root: HTMLElement): void {
   if (!thread || !form || !input) return;
 
   const projectId = root.dataset.dmProjectId?.trim();
-  const context = projectId ? { projectIds: [projectId] } : undefined;
+  const context: DMChatContext | undefined = projectId ? { projectIds: [projectId] } : undefined;
   const fitForm = root.querySelector<HTMLFormElement>('[data-dm-fit-form]');
   const fitInput = root.querySelector<HTMLTextAreaElement>('[data-dm-fit-input]');
   const fitSubmit = root.querySelector<HTMLButtonElement>('[data-dm-fit-submit]');
   const fitCount = root.querySelector<HTMLElement>('[data-dm-fit-count]');
   const fitError = root.querySelector<HTMLElement>('[data-dm-fit-error]');
-
-  const history: ChatMessage[] = [];
+  const history: DMUIMessage[] = [];
   let busy = false;
   let controller: AbortController | null = null;
 
@@ -519,24 +358,21 @@ function initRoot(root: HTMLElement): void {
     const requestContext = mergeContext(context, options.transientContext);
     setBusy(true);
     root.classList.add('dm-started');
-
-    const historySnapshot = history.slice();
-    history.push({ role: 'user', content: displayMessage });
+    history.push(uiTextMessage('user', message));
 
     const turn = new Turn(displayMessage);
     thread.append(turn.root);
     thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' });
-
     controller = new AbortController();
     try {
-      await streamInto(turn, message, historySnapshot, requestContext, controller.signal);
+      await streamInto(turn, history.slice(-13), requestContext, controller.signal);
       turn.finishEmptyIfNeeded();
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
-      console.error('[dm] stream failed', err);
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') return;
+      console.error('[dm] UIMessage stream failed', { name: error instanceof Error ? error.name : typeof error });
       turn.showError(`${AGENT_NAME} is unavailable right now. Please try again in a moment.`);
     } finally {
-      history.push({ role: 'assistant', content: turn.text });
+      if (turn.text) history.push(uiTextMessage('assistant', turn.text));
       setBusy(false);
       controller = null;
     }
@@ -549,7 +385,6 @@ function initRoot(root: HTMLElement): void {
       trigger.setAttribute('aria-expanded', 'false');
       trigger.focus({ preventScroll: true });
     };
-
     const open = (): void => {
       if (!dialog.hidden) return;
       dialog.hidden = false;
@@ -557,66 +392,50 @@ function initRoot(root: HTMLElement): void {
       if (shouldAvoidAutoKeyboard()) panel.focus({ preventScroll: true });
       else input.focus({ preventScroll: true });
     };
-
-    const focusable = (): HTMLElement[] =>
-      Array.from(
-        panel.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((el) => !el.hasAttribute('disabled') && !el.closest('[hidden]'));
-
+    const focusable = (): HTMLElement[] => Array.from(panel.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => !element.hasAttribute('disabled') && !element.closest('[hidden]'));
     trigger.addEventListener('click', open);
-    root.querySelectorAll<HTMLElement>('[data-dm-close]').forEach((btn) => {
-      btn.addEventListener('click', close);
-    });
-    dialog.addEventListener('click', (e) => {
-      if (e.target === dialog) close();
-    });
-    dialog.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
+    root.querySelectorAll<HTMLElement>('[data-dm-close]').forEach((button) => button.addEventListener('click', close));
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
         close();
         return;
       }
-      if (e.key !== 'Tab') return;
-
+      if (event.key !== 'Tab') return;
       const items = focusable();
       if (!items.length) {
-        e.preventDefault();
+        event.preventDefault();
         panel.focus();
         return;
       }
-
       const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
+      const last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
       }
     });
   }
 
-  // suggested prompts submit their label as a real question
-  root.querySelectorAll<HTMLElement>('[data-dm-send]').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const label = btn.dataset.label ?? btn.textContent ?? '';
-      void ask(label);
+  root.querySelectorAll<HTMLElement>('[data-dm-send]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      void ask(button.dataset.label ?? button.textContent ?? '');
     });
   });
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
     const text = input.value;
     input.value = '';
     if (dialog && panel && shouldAvoidAutoKeyboard() && text.trim()) {
       input.blur();
-      requestAnimationFrame(() => {
-        panel.focus({ preventScroll: true });
-      });
+      requestAnimationFrame(() => panel.focus({ preventScroll: true }));
     }
     void ask(text);
   });
@@ -626,14 +445,11 @@ function initRoot(root: HTMLElement): void {
       if (fitCount) fitCount.textContent = `${fitInput.value.length.toLocaleString()} / ${fitInput.maxLength.toLocaleString()}`;
       if (fitError) fitError.hidden = true;
     };
-
     fitInput.addEventListener('input', updateFitCount);
     updateFitCount();
-
-    fitForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const raw = fitInput.value;
-      const validation = fitCheckValidationMessage(raw);
+    fitForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const validation = fitCheckValidationMessage(fitInput.value);
       if (validation) {
         if (fitError) {
           fitError.textContent = validation;
@@ -642,21 +458,12 @@ function initRoot(root: HTMLElement): void {
         fitInput.focus();
         return;
       }
-
-      const sanitized = sanitizeJobDescriptionForFitCheck(raw);
+      const sanitized = sanitizeJobDescriptionForFitCheck(fitInput.value);
       fitInput.value = '';
       updateFitCount();
       void ask(
         "Fit-check this job description against Dylan's portfolio and resume. Present a fit summary, strongest evidence projects, resume/background evidence, gaps or unknowns, and next contact steps. Do not assign a match score or imply a hiring guarantee.",
-        {
-          displayMessage: 'Fit-check pasted job description',
-          transientContext: {
-            fitCheck: {
-              kind: 'job-description',
-              ...sanitized,
-            },
-          },
-        },
+        { displayMessage: 'Fit-check pasted job description', transientContext: { fitCheck: { kind: 'job-description', ...sanitized } } },
       );
     });
   }
@@ -672,29 +479,29 @@ function initRoot(root: HTMLElement): void {
   });
 }
 
-function projectHref(project: RenderProject): string {
-  return project.href;
+function uiTextMessage(role: 'user' | 'assistant', text: string): DMUIMessage {
+  return { id: crypto.randomUUID(), role, parts: [{ type: 'text', text }] };
 }
 
-function projectHue(project: RenderProject): string {
-  return 'hue' in project && typeof project.hue === 'string' ? project.hue : '#8b7cf6';
+function toolSummary(name: string): string {
+  const summaries: Record<string, string> = {
+    searchProjects: 'Search published projects',
+    getProject: 'Read a published project',
+    readResume: 'Read public resume facts',
+    getContact: 'Read public contact details',
+    searchPublicSources: 'Search approved public sources',
+    searchProfile: 'Search published profile facts',
+  };
+  return summaries[name] ?? 'Use a public portfolio tool';
 }
 
-function projectMetrics(project: RenderProject): Project['metrics'] {
-  return 'metrics' in project && Array.isArray(project.metrics) ? project.metrics : [];
+function uniqueEvidence(segments: DMAnswerSegment[]): PublicToolEvidence[] {
+  const evidence = new Map<string, PublicToolEvidence>();
+  for (const segment of segments) for (const item of segment.evidence) evidence.set(item.id, item);
+  return [...evidence.values()];
 }
 
-function projectStack(project: RenderProject): Project['stack'] {
-  return 'stack' in project && Array.isArray(project.stack) ? project.stack : [];
-}
-
-function projectNotes(project: RenderProject): string[] {
-  return 'notes' in project && Array.isArray(project.notes) ? project.notes : [];
-}
-
-document.querySelectorAll<HTMLElement>('[data-dm-root]').forEach(initRoot);
-
-function mergeContext(base: ChatContext | undefined, transient: ChatContext | undefined): ChatContext | undefined {
+function mergeContext(base: DMChatContext | undefined, transient: DMChatContext | undefined): DMChatContext | undefined {
   if (!base && !transient) return undefined;
   return {
     ...(base ?? {}),
@@ -703,3 +510,5 @@ function mergeContext(base: ChatContext | undefined, transient: ChatContext | un
     resumeTrackIds: transient?.resumeTrackIds ?? base?.resumeTrackIds,
   };
 }
+
+document.querySelectorAll<HTMLElement>('[data-dm-root]').forEach(initRoot);

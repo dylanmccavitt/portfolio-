@@ -111,9 +111,12 @@ test('deterministic observation checks enforce tools, evidence, artifacts, and f
 test('multi-turn cases preserve history but send the latest question separately', () => {
   const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'derived-correction-subject')!;
   const request = requestForEvalCase(testCase);
-  assert.equal(request.message, testCase.prompt);
-  assert.deepEqual(request.conversation, testCase.history);
-  assert.equal(request.conversation?.at(-1)?.content.includes('Loom'), true);
+  const latestPart = request.messages.at(-1)?.parts[0];
+  const priorPart = request.messages.at(-2)?.parts[0];
+  assert.equal(latestPart?.type, 'text');
+  assert.equal(latestPart?.type === 'text' ? latestPart.text : '', testCase.prompt);
+  assert.equal(request.messages.length, testCase.history.length + 1);
+  assert.equal(priorPart?.type === 'text' ? priorPart.text.includes('Loom') : false, true);
 });
 
 test('release command is fixed to Luna and Grok, three runs, live mode, and no stub import', async () => {

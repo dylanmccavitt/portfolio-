@@ -75,15 +75,15 @@ export function parseDMEvalModelSpecs(
   keys: DMModelKeyAvailability,
 ): DMModelSpec[] {
   const rawModels = [modelsArg, env.DM_EVAL_MODELS, env.DM_MODEL].find((value) => Boolean(value?.trim()));
-  return parseDMModelSpecs(rawModels ?? env.DM_BENCH_MODELS, keys, ['openai/gpt-4.1']);
+  return parseDMModelSpecs(rawModels ?? env.DM_BENCH_MODELS, keys, []);
 }
 
 export function parseDMModelSpecs(
   raw: string | undefined,
   keys: DMModelKeyAvailability,
-  fallback: string[],
+  defaults: string[],
 ): DMModelSpec[] {
-  const ids = (raw ? raw.split(',') : fallback).map((item) => item.trim()).filter(Boolean);
+  const ids = (raw ? raw.split(',') : defaults).map((item) => item.trim()).filter(Boolean);
   const unique = [...new Set(ids)];
   if (unique.length === 0) throw new Error('No models configured.');
   return unique.map((id) => parseDMModelSpec(id, keys));
