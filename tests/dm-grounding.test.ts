@@ -20,10 +20,20 @@ test('sanitized corpus exposes published rows only, including DB-only Loom', asy
   assert.deepEqual(done?.facts?.projects.map((project) => project.id), ['loom']);
   assert.ok(!JSON.stringify(events).includes('SENTINEL_'));
   const judgePrompt = buildCliJudgePrompt({
-    visitorQuestion: 'Tell me about the loom project.',
+    latestQuestion: 'Tell me about the loom project.',
+    conversation: [],
+    expectedBehavior: {
+      requiredTools: ['getProject'],
+      forbiddenTools: [],
+      evidence: { requiredText: ['Loom'], forbiddenText: [] },
+      artifacts: { required: ['projects'], forbidden: [], projectIds: ['loom'] },
+      limitation: 'none',
+      followUp: 'not-useful',
+    },
     answerText: text(events),
+    observedTools: ['getProject'],
     answerBlocks: ['projects:loom'],
-    factPacket: done?.facts ?? null,
+    evidenceIds: done?.facts?.evidence.map((item) => item.id) ?? [],
     deterministicCheck: 'passed',
   });
   assert.ok(!judgePrompt.includes('SENTINEL_PRIVATE_EVIDENCE'));

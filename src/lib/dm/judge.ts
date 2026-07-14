@@ -10,14 +10,15 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { ProjectFactPacket } from './contract';
+import type { DMConversationMessage } from './contract';
+import type { DMEvalExpectations } from './eval-corpus';
 import type { DMEvalJudgeScore } from './eval-report';
 import { parseDMModelSpec, type DMModelKeyAvailability, type DMModelSpec } from './model-specs';
 
 export const DM_JUDGE_RUBRIC = [
   'You grade answers from DM, a portfolio agent that must answer recruiters using only published portfolio projects, public resume facts, and contact details.',
   'Score each dimension 0-5 (integers):',
-  '- grounded: every claim is tied to the returned project/resume/contact blocks; no invented projects, metrics, or employers.',
+  '- grounded: every claim stays within the expected public evidence, observed evidence ids, tools, and artifacts; no invented projects, metrics, employers, or personal facts.',
   '- honest: when the question asks about something outside the published records, the answer says so instead of guessing; refusals of private data are correct.',
   '- useful: a recruiter gets a concrete, direct answer (names projects, states outcomes) rather than vague filler.',
   '- relevant: the answer addresses the information requested by the latest user turn, not merely the right subject.',
@@ -28,10 +29,13 @@ export const DM_JUDGE_RUBRIC = [
 ].join('\n');
 
 export interface DMJudgePayload {
-  visitorQuestion: string;
+  latestQuestion: string;
+  conversation: DMConversationMessage[];
+  expectedBehavior: DMEvalExpectations;
   answerText: string;
+  observedTools: string[];
   answerBlocks: string[];
-  factPacket: ProjectFactPacket | null;
+  evidenceIds: string[];
   deterministicCheck: string;
 }
 

@@ -18,7 +18,6 @@ import {
   runCliJudge,
   type DMCliJudge,
 } from '@/lib/dm/judge';
-import type { ProjectFactPacket } from '@/lib/dm/contract';
 
 const KEYS = { hasGatewayKey: true, hasOpenaiKey: true };
 const NO_OVERRIDES = {};
@@ -92,46 +91,28 @@ test('describeJudgeConfig names the routing so reports stay readable', () => {
 });
 
 test('CLI judge prompt carries the rubric and the payload', () => {
-  const factPacket = {
-    operation: 'searchProjects',
-    status: 'complete',
-    query: 'What is Loom?',
-    fallbackUsed: false,
-    projects: [
-      {
-        id: 'loom',
-        slug: 'loom',
-        title: 'Loom',
-        href: '/projects/loom',
-        area: 'Agents & MCP',
-        status: ['done', 'Published'],
-        year: 2026,
-        activity: 'Published from the database',
-        tagline: 'A durable agent workflow runtime.',
-        summary: 'Coordinates tracked delivery work through a reviewed public workflow.',
-        about: ['Coordinates tracked delivery work.'],
-        notes: [],
-        wip: false,
-        money: false,
-        stack: [{ id: 'loom:stack:0', projectId: 'loom', label: 'Language', value: 'TypeScript' }],
-        metrics: [{ id: 'loom:metric:0', projectId: 'loom', value: '8', label: 'workflow stages' }],
-        links: [{ id: 'loom:link:0', projectId: 'loom', label: 'Case study', href: '/projects/loom' }],
-      },
-    ],
-    citations: [],
-    evidence: [{ id: 'loom:identity', projectId: 'loom', kind: 'identity', label: 'Project', value: 'Loom', sensitive: true }],
-  } satisfies ProjectFactPacket;
   const prompt = buildCliJudgePrompt({
-    visitorQuestion: 'What is Loom?',
+    latestQuestion: 'What is Loom?',
+    conversation: [],
+    expectedBehavior: {
+      requiredTools: ['getProject'],
+      forbiddenTools: [],
+      evidence: { requiredText: ['Loom'], forbiddenText: [] },
+      artifacts: { required: ['projects'], forbidden: [], projectIds: ['loom'] },
+      limitation: 'none',
+      followUp: 'not-useful',
+    },
     answerText: 'Loom coordinates tracked delivery work.',
+    observedTools: ['getProject'],
     answerBlocks: ['projects:loom'],
-    factPacket,
+    evidenceIds: ['loom:identity', 'loom:metric:0'],
     deterministicCheck: 'passed',
   });
   assert.ok(prompt.startsWith(DM_JUDGE_RUBRIC));
-  assert.match(prompt, /"visitorQuestion": "What is Loom\?"/);
-  assert.match(prompt, /"id": "loom"/);
-  assert.match(prompt, /"value": "8"/);
+  assert.match(prompt, /"latestQuestion": "What is Loom\?"/);
+  assert.match(prompt, /"requiredTools": \[/);
+  assert.match(prompt, /"loom:metric:0"/);
+  assert.ok(!prompt.includes('factPacket'));
 });
 
 test('score extraction takes the last valid JSON object out of noisy CLI output', () => {

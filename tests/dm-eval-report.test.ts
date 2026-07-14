@@ -13,22 +13,34 @@ import {
 const QUALITY = { relevant: 5, direct: 5, continuity: 5, nonRepetition: 5 } as const;
 
 function run(overrides: Partial<DMEvalRunRecord>): DMEvalRunRecord {
-  return {
+  const record: DMEvalRunRecord = {
     model: 'openai/gpt-4.1',
+    caseId: 'sample-case',
     caseName: 'grounding: sample case',
+    runNumber: 1,
     passed: true,
     failure: null,
     elapsedMs: 120,
+    tools: ['searchProjects'],
+    stepCount: 2,
+    inputTokens: 120,
+    outputTokens: 40,
+    repairCount: 0,
+    outcome: 'completed',
     answerText: 'sample answer',
     blockKinds: ['projects:agentic-trader'],
+    evidenceIds: ['agentic-trader:identity'],
     ...overrides,
   };
+  if (!overrides.caseId && overrides.caseName) record.caseId = overrides.caseName;
+  return record;
 }
 
 function report(runs: DMEvalRunRecord[], overrides: Partial<DMEvalReport> = {}): DMEvalReport {
   return {
     generatedAt: '2026-07-09T00:00:00.000Z',
     mode: 'offline',
+    scoreKind: 'none',
     judge: null,
     runs,
     ...overrides,
@@ -208,6 +220,28 @@ test('json and html reports preserve the exact Codex judge model and command ide
     assert.match(output, /command=codex exec --model gpt-5\.6-sol --skip-git-repo-check -/);
   }
   assert.ok(!html.includes('judge: codex-cli</span>'), 'a generic CLI label is not sufficient judge proof');
+});
+
+test('sanitized run reports retain telemetry without visitor prompts, history, or full tool results', () => {
+  const current = report([run({
+    model: 'openai/gpt-5.6-luna',
+    caseId: 'privacy-control',
+    runNumber: 3,
+    tools: ['searchProjects'],
+    stepCount: 2,
+    inputTokens: 321,
+    outputTokens: 87,
+    repairCount: 0,
+    outcome: 'completed',
+  })], { mode: 'live', scoreKind: 'release' });
+  const json = JSON.stringify(current);
+  assert.match(json, /"runNumber":3/);
+  assert.match(json, /"inputTokens":321/);
+  assert.match(json, /"outcome":"completed"/);
+  assert.ok(!json.includes('visitorQuestion'));
+  assert.ok(!json.includes('conversation'));
+  assert.ok(!json.includes('factPacket'));
+  assert.ok(!json.includes('toolResults'));
 });
 
 test('html report with no baseline and all passing renders the clean state', () => {

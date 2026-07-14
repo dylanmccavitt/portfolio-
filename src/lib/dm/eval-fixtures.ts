@@ -20,7 +20,8 @@ interface DMEvalAnswerPlan {
   artifactProjectIds: string[];
 }
 
-export interface DMEvalCase {
+/** Deterministic unit/benchmark fixture. Never consumed by the release evaluator. */
+export interface DMUnitEvalCase {
   name: string;
   prompt: string;
   request?: DMChatRequest;
@@ -29,7 +30,7 @@ export interface DMEvalCase {
   expect(events: DMStreamEvent[]): string | null;
 }
 
-export const DM_EVAL_CASES: DMEvalCase[] = [
+export const DM_UNIT_EVAL_CASES: DMUnitEvalCase[] = [
   {
     name: 'routing: fresh unsupported turn stays out of project retrieval',
     prompt: 'What is the weather today?',
@@ -376,11 +377,11 @@ export async function createEvalProjectSource(): Promise<EvalProjectSource> {
   };
 }
 
-export function createStubModelForEvalCase(testCase: DMEvalCase): MockLanguageModelV4 {
+export function createStubModelForUnitEvalCase(testCase: DMUnitEvalCase): MockLanguageModelV4 {
   return testCase.name.startsWith('refusal:') ? createThrowingMockModel() : createPacketAwareMockModel(testCase);
 }
 
-function createPacketAwareMockModel(testCase: DMEvalCase): MockLanguageModelV4 {
+function createPacketAwareMockModel(testCase: DMUnitEvalCase): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doStream: async (options) => {
       const prompt = JSON.stringify(options.prompt);

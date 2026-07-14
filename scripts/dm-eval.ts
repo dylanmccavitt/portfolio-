@@ -1,10 +1,21 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { generateText } from 'ai';
+import { generateText, type LanguageModel } from 'ai';
 import type { AnswerBlock, DMStreamEvent } from '@/lib/dm/contract';
-import { createEvalProjectSource, createStubModelForEvalCase, DM_EVAL_CASES, readNdjsonEvents, type DMEvalCase } from '@/lib/dm/eval-fixtures';
-import { formatMissingLiveModelKeysError, parseDMEvalModelSpecs, readModelKeyAvailability, type DMModelSpec } from '@/lib/dm/model-specs';
+import {
+  DM_LIVE_EVAL_CORPUS,
+  DM_RELEASE_MODELS,
+  DM_RELEASE_RUNS_PER_CASE,
+  assertDMReleaseConfiguration,
+  evaluateDMEvalObservation,
+  requestForEvalCase,
+  validateDMLiveEvalCorpus,
+  type DMLiveEvalCase,
+} from '@/lib/dm/eval-corpus';
+import { createEvalProjectSource, readNdjsonEvents } from '@/lib/dm/eval-fixtures';
+import type { DMMetricsRecord } from '@/lib/dm/metrics';
+import { formatMissingLiveModelKeysError, parseDMEvalModelSpecs, readModelKeyAvailability } from '@/lib/dm/model-specs';
 import {
   applyEvalReleaseGate,
   diffEvalReports,
@@ -29,12 +40,10 @@ import {
 } from '@/lib/dm/judge';
 import { createDMChatStream, createDMModel } from '@/lib/dm/runtime';
 
-process.env.DM_METRICS ??= '0';
-
-const OFFLINE_CONFIG = { provider: 'openai' as const, model: 'offline-eval-model' };
-
 interface CliOptions {
   live: boolean;
+  release: boolean;
+  runs: number;
   modelsArg?: string;
   judgeArg?: string;
   jsonPath?: string;
@@ -54,61 +63,93 @@ async function main(): Promise<void> {
     return;
   }
 
+  validateDMLiveEvalCorpus();
+  if (!options.live) {
+    if (options.release || options.judgeArg || options.reportDir || options.jsonPath) {
+      throw new Error('Reports and release scores require --live; offline mode only validates the corpus contract.');
+    }
+    console.log(`[dm:eval] offline corpus validation passed: ${DM_LIVE_EVAL_CORPUS.length} conversational cases`);
+    console.log('[dm:eval] no models were called and no release-quality score was produced');
+    return;
+  }
+
   const keys = readModelKeyAvailability();
-  if (options.live && !keys.hasGatewayKey && !keys.hasOpenaiKey) {
+  if (!keys.hasGatewayKey && !keys.hasOpenaiKey) {
     throw new Error(formatMissingLiveModelKeysError());
   }
 
-  const modelSpecs = options.live
-    ? parseDMEvalModelSpecs(options.modelsArg, process.env, keys)
-    : null;
+  const modelSpecs = parseDMEvalModelSpecs(options.modelsArg ?? DM_RELEASE_MODELS.join(','), {}, keys);
   const judgeConfig = options.judgeArg ? parseJudgeArg(options.judgeArg, keys) : null;
-  if (judgeConfig && !options.live) {
-    throw new Error('--judge only applies to --live runs; offline answers come from stubs.');
-  }
+  if (options.release) assertDMReleaseConfiguration(modelSpecs.map((spec) => spec.label), options.runs, judgeConfig !== null);
 
   const source = await createEvalProjectSource();
   const records: EvalRunRecord[] = [];
-  const targets: Array<DMModelSpec | undefined> = modelSpecs ?? [undefined];
+  process.env.DM_METRICS = '1';
 
-  console.log(`[dm:eval] mode=${options.live ? 'live' : 'offline (stubbed models)'} cases=${DM_EVAL_CASES.length}`);
-  if (modelSpecs) {
-    console.log(`[dm:eval] models=${modelSpecs.map((spec) => `${spec.label} via ${spec.provider}`).join(', ')}`);
-    if (judgeConfig) console.log(`[dm:eval] judge=${describeJudgeConfig(judgeConfig)}`);
-  }
+  console.log(`[dm:eval] mode=live score=${options.release ? 'release' : 'diagnostic'} cases=${DM_LIVE_EVAL_CORPUS.length} runs=${options.runs}`);
+  console.log(`[dm:eval] models=${modelSpecs.map((spec) => `${spec.label} via ${spec.provider}`).join(', ')}`);
+  if (judgeConfig) console.log(`[dm:eval] judge=${describeJudgeConfig(judgeConfig)}`);
 
-  for (const spec of targets) {
-    const modelLabel = spec?.label ?? 'offline-stub';
-    for (const testCase of DM_EVAL_CASES) {
-      const started = performance.now();
-      const events = await readNdjsonEvents(
-        createDMChatStream(
-          testCase.request ?? { message: testCase.prompt },
-          spec ? { provider: spec.provider, model: spec.model } : OFFLINE_CONFIG,
-          { db: source.db, projectLoader: source.projectLoader, ...(spec ? {} : { model: createStubModelForEvalCase(testCase) }) },
-        ),
-      );
-      const elapsedMs = Math.round(performance.now() - started);
-      const failure = testCase.expect(events);
-      const doneEvent = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
-      const record: EvalRunRecord = {
-        model: modelLabel,
-        caseName: testCase.name,
-        passed: failure === null,
-        failure,
-        elapsedMs,
-        answerText: collectAnswerText(events),
-        blockKinds: collectBlockKinds(events),
-        factPacket: doneEvent?.facts,
-      };
+  for (const spec of modelSpecs) {
+    for (const testCase of DM_LIVE_EVAL_CORPUS) {
+      for (let runNumber = 1; runNumber <= options.runs; runNumber += 1) {
+        let metrics: DMMetricsRecord | undefined;
+        const telemetry = { modelCalls: 0 };
+        const model = instrumentModel(createDMModel({ provider: spec.provider, model: spec.model }), telemetry);
+        const started = performance.now();
+        const events = await readNdjsonEvents(
+          createDMChatStream(
+            requestForEvalCase(testCase),
+            { provider: spec.provider, model: spec.model },
+            {
+              db: source.db,
+              model,
+              projectLoader: testCase.toolFailure?.tool === 'searchProjects'
+                ? async () => { throw new Error('simulated eval project source unavailable'); }
+                : source.projectLoader,
+              ...(testCase.toolFailure?.tool === 'searchPublicSources'
+                ? { ragSearch: async () => { throw new Error('simulated eval public source unavailable'); } }
+                : {}),
+              metricsLogger(line) {
+                metrics = parseMetricsLine(line) ?? metrics;
+              },
+            },
+          ),
+        );
+        const elapsedMs = Math.round(performance.now() - started);
+        const answerText = collectAnswerText(events);
+        const blockKinds = collectBlockKinds(events);
+        const tools = collectTools(events);
+        const projectIds = collectProjectIds(events);
+        const outcome = metrics?.outcome ?? inferOutcome(events);
+        const failure = evaluateDMEvalObservation(testCase, { answerText, tools, blockKinds, projectIds, outcome });
+        const record: EvalRunRecord = {
+          model: spec.label,
+          caseId: testCase.id,
+          caseName: testCase.name,
+          runNumber,
+          passed: failure === null,
+          failure,
+          elapsedMs,
+          tools,
+          stepCount: telemetry.modelCalls,
+          inputTokens: metrics?.inputTokens ?? null,
+          outputTokens: metrics?.outputTokens ?? null,
+          repairCount: Math.max(0, telemetry.modelCalls - tools.length - (telemetry.modelCalls > 0 ? 1 : 0)),
+          outcome,
+          answerText,
+          blockKinds,
+          evidenceIds: collectEvidenceIds(events),
+        };
 
-      if (judgeConfig && spec) {
-        record.judge = await judgeAnswer(judgeConfig, spec.model, testCase, record);
+        if (judgeConfig) {
+          record.judge = await judgeAnswer(judgeConfig, spec.model, testCase, record);
+        }
+
+        const gated = applyEvalReleaseGate(record);
+        records.push(gated);
+        console.log(formatRunLine(gated));
       }
-
-      const gated = applyEvalReleaseGate(record);
-      records.push(gated);
-      console.log(formatRunLine(gated));
     }
   }
 
@@ -119,7 +160,8 @@ async function main(): Promise<void> {
 
   const report: DMEvalReport = {
     generatedAt: new Date().toISOString(),
-    mode: options.live ? 'live' : 'offline',
+    mode: 'live',
+    scoreKind: options.release ? 'release' : 'diagnostic',
     judge: judgeConfig ? describeJudgeConfig(judgeConfig) : null,
     runs: records,
   };
@@ -219,7 +261,7 @@ function formatRunLine(record: EvalRunRecord): string {
       : ` | judge g/h/u=${record.judge.grounded}/${record.judge.honest}/${record.judge.useful}`
     : '';
   const failure = record.failure ? ` - ${record.failure}` : '';
-  return `${status} [${record.model}] ${record.caseName} (${record.elapsedMs}ms)${judge}${failure}`;
+  return `${status} [${record.model}] ${record.caseName} run ${record.runNumber} (${record.elapsedMs}ms)${judge}${failure}`;
 }
 
 function summarize(records: EvalRunRecord[]): string[] {
@@ -237,7 +279,7 @@ function summarize(records: EvalRunRecord[]): string[] {
           scored.map((s) => s.useful),
         )}`
       : '';
-    return `SUMMARY [${model}] ${passed}/${runs.length} passed (${Math.round((passed / runs.length) * 100)}%)${judgePart}`;
+    return `LIVE SUMMARY [${model}] ${passed}/${runs.length} passed (${Math.round((passed / runs.length) * 100)}%)${judgePart}`;
   });
 }
 
@@ -261,6 +303,56 @@ function collectBlockKinds(events: DMStreamEvent[]): string[] {
     if (event.type === 'block') kinds.push(describeBlock(event.block));
   }
   return kinds;
+}
+
+function collectTools(events: DMStreamEvent[]): string[] {
+  return events.flatMap((event) => event.type === 'tool' ? [event.name] : []);
+}
+
+function collectProjectIds(events: DMStreamEvent[]): string[] {
+  return [...new Set(events.flatMap((event) =>
+    event.type === 'block' && event.block.kind === 'projects' ? event.block.ids : [],
+  ))];
+}
+
+function collectEvidenceIds(events: DMStreamEvent[]): string[] {
+  const done = events.find((event): event is Extract<DMStreamEvent, { type: 'done' }> => event.type === 'done');
+  if (!done?.facts) return [];
+  return [...new Set([
+    ...done.facts.evidence.map((item) => item.id),
+    ...done.facts.citations.map((item) => item.ragSourceId),
+  ])];
+}
+
+function inferOutcome(events: DMStreamEvent[]): string {
+  if (events.some((event) => event.type === 'done')) return 'completed';
+  if (events.some((event) => event.type === 'error')) return 'error';
+  return 'incomplete';
+}
+
+function parseMetricsLine(line: string): DMMetricsRecord | null {
+  const prefix = '[dm-metrics] ';
+  if (!line.startsWith(prefix)) return null;
+  try {
+    return JSON.parse(line.slice(prefix.length)) as DMMetricsRecord;
+  } catch {
+    return null;
+  }
+}
+
+function instrumentModel(model: LanguageModel, telemetry: { modelCalls: number }): LanguageModel {
+  return new Proxy(model as object, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (property === 'doStream' && typeof value === 'function') {
+        return (...args: unknown[]) => {
+          telemetry.modelCalls += 1;
+          return Reflect.apply(value, target, args);
+        };
+      }
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as LanguageModel;
 }
 
 function describeBlock(block: AnswerBlock): string {
@@ -287,16 +379,19 @@ function describeBlock(block: AnswerBlock): string {
 async function judgeAnswer(
   config: DMJudgeConfig,
   answeringModelId: string,
-  testCase: DMEvalCase,
+  testCase: DMLiveEvalCase,
   record: EvalRunRecord,
 ): Promise<JudgeScore | { error: string }> {
   const judge = judgeForAnsweringModel(config, answeringModelId);
   record.judgedBy = describeJudge(judge);
   const payload: DMJudgePayload = {
-    visitorQuestion: testCase.prompt,
+    latestQuestion: testCase.prompt,
+    conversation: testCase.history,
+    expectedBehavior: testCase.expectations,
     answerText: record.answerText.slice(0, 6000),
+    observedTools: record.tools,
     answerBlocks: record.blockKinds,
-    factPacket: record.factPacket ?? null,
+    evidenceIds: record.evidenceIds,
     deterministicCheck: record.failure ?? 'passed',
   };
 
@@ -316,7 +411,7 @@ async function judgeAnswer(
 }
 
 function parseCliOptions(argv: string[]): CliOptions {
-  const options: CliOptions = { live: false, help: false };
+  const options: CliOptions = { live: false, release: false, runs: DM_RELEASE_RUNS_PER_CASE, help: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (!arg) continue;
@@ -324,6 +419,12 @@ function parseCliOptions(argv: string[]): CliOptions {
       options.help = true;
     } else if (arg === '--live') {
       options.live = true;
+    } else if (arg === '--release') {
+      options.release = true;
+    } else if (arg === '--runs') {
+      options.runs = parseRunCount(argv[++index]);
+    } else if (arg.startsWith('--runs=')) {
+      options.runs = parseRunCount(arg.slice('--runs='.length));
     } else if (arg === '--models') {
       options.modelsArg = argv[++index];
     } else if (arg.startsWith('--models=')) {
@@ -353,20 +454,28 @@ function parseCliOptions(argv: string[]): CliOptions {
   return options;
 }
 
+function parseRunCount(value: string | undefined): number {
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 1 || count > 10) throw new Error('--runs must be an integer from 1 to 10.');
+  return count;
+}
+
 function printUsage(): void {
   console.log(`
 Usage: npm run dm:eval -- [options]
 
 Options:
-  --live                Run fixtures against real models instead of stubs
-  --models <list>       Comma-separated model list for --live (default: DM_EVAL_MODELS, then DM_MODEL)
+  --live                Run the conversational corpus against real models
+  --release             Enforce the fixed release matrix, three runs, and a judge
+  --models <list>       Comma-separated model list (default: Luna and Grok release matrix)
+  --runs <count>        Repetitions per model/case (default: 3)
   --judge <target>      Judge for live answers. Targets:
                           auto     cross-family CLI routing: codex-cli judges
                                    anthropic answers, opus-cli judges the rest
                           codex    Codex CLI headless (codex exec) for all answers
                           opus     Claude CLI headless (claude -p --model opus)
                           <id>     a gateway model id (e.g. openai/gpt-5.5)
-  --json-path <path>    Write a JSON report (answers, failures, judge scores)
+  --json-path <path>    Write a sanitized JSON report (no visitor text or tool results)
   --report              Shorthand for --report-dir .dm-evals
   --report-dir <dir>    Write an HTML report + timestamped JSON into <dir>, and
                         diff against the previous run in that dir
@@ -377,9 +486,8 @@ Options:
 Environment:
   AI_GATEWAY_API_KEY    When set, ALL models (including openai/*) route through the Vercel AI Gateway.
   OPENAI_API_KEY        Without a gateway key, reaches openai/* models directly. Also used by RAG search.
-  DM_MODEL              Default live model (full <creator>/<model> id, e.g. anthropic/claude-sonnet-4.6).
-  DM_EVAL_MODELS        Comma-separated live eval model list; --models overrides this.
-                        Legacy fallback only when DM_MODEL is unset: DM_BENCH_MODELS.
+  DM_MODEL              Runtime model setting; ignored by the fixed release command.
+  DM_EVAL_MODELS        Exploratory override only; --models and the release command take precedence.
   DM_JUDGE_CODEX_CMD    Override the codex judge command
                         (default: codex exec --model gpt-5.6-sol --skip-git-repo-check -).
   DM_JUDGE_OPUS_CMD     Override the opus judge command (default: claude -p --model opus).

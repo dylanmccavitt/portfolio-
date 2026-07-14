@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { aggregateBenchmarkRuns, classifyBenchmarkRun, type DMBenchmarkRunRecord, type TimedDMEvent } from '@/lib/dm/benchmark';
-import { createEvalProjectSource, createStubModelForEvalCase, DM_EVAL_CASES } from '@/lib/dm/eval-fixtures';
+import { createEvalProjectSource, createStubModelForUnitEvalCase, DM_UNIT_EVAL_CASES } from '@/lib/dm/eval-fixtures';
 import type { DMStreamEvent } from '@/lib/dm/contract';
 import { parseDMModelSpecs, readModelKeyAvailability } from '@/lib/dm/model-specs';
 import { createDMChatStream } from '@/lib/dm/runtime';
@@ -44,17 +44,17 @@ async function main(): Promise<void> {
   const source = await createEvalProjectSource();
   const runRecords: DMBenchmarkRunRecord[] = [];
 
-  console.log(`[dm:bench] mode=${dryRun ? 'dry (stubbed, NOT valid latency evidence)' : 'live'} iterations=${iterations} cases=${DM_EVAL_CASES.length}`);
+  console.log(`[dm:bench] mode=${dryRun ? 'dry (stubbed, NOT valid latency evidence)' : 'live'} iterations=${iterations} cases=${DM_UNIT_EVAL_CASES.length}`);
   console.log(`[dm:bench] models=${modelSpecs.map((spec) => `${spec.label} via ${spec.provider}`).join(', ')}`);
 
   for (const modelSpec of modelSpecs) {
     for (let iteration = 1; iteration <= iterations; iteration += 1) {
-      for (const testCase of DM_EVAL_CASES) {
+      for (const testCase of DM_UNIT_EVAL_CASES) {
         const sessionStartMs = Date.now();
         const stream = createDMChatStream(
           testCase.request ?? { message: testCase.prompt },
           { provider: modelSpec.provider, model: modelSpec.model },
-          { db: source.db, projectLoader: source.projectLoader, ...(dryRun ? { model: createStubModelForEvalCase(testCase) } : {}) },
+          { db: source.db, projectLoader: source.projectLoader, ...(dryRun ? { model: createStubModelForUnitEvalCase(testCase) } : {}) },
         );
 
         const timed = await readTimedNdjson(stream);
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     generatedAt: new Date().toISOString(),
     dryRun,
     iterations,
-    fixtures: DM_EVAL_CASES.map((testCase) => testCase.name),
+    fixtures: DM_UNIT_EVAL_CASES.map((testCase) => testCase.name),
     models: modelSpecs.map((spec) => spec.label),
     summaries,
     runs: runRecords,

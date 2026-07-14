@@ -17,13 +17,21 @@ export interface DMEvalJudgeScore {
 
 export interface DMEvalRunRecord {
   model: string;
+  caseId: string;
   caseName: string;
+  runNumber: number;
   passed: boolean;
   failure: string | null;
   elapsedMs: number;
+  tools: string[];
+  stepCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  repairCount: number;
+  outcome: string;
   answerText: string;
   blockKinds: string[];
-  factPacket?: import('./contract').ProjectFactPacket;
+  evidenceIds: string[];
   judge?: DMEvalJudgeScore | { error: string };
   judgedBy?: string;
 }
@@ -31,6 +39,7 @@ export interface DMEvalRunRecord {
 export interface DMEvalReport {
   generatedAt: string;
   mode: 'live' | 'offline';
+  scoreKind: 'release' | 'diagnostic' | 'none';
   judge: string | null;
   runs: DMEvalRunRecord[];
 }
@@ -209,7 +218,7 @@ export function diffEvalReports(baseline: DMEvalReport, current: DMEvalReport): 
 }
 
 function runKey(run: DMEvalRunRecord): string {
-  return `${run.model}\u0000${run.caseName}`;
+  return `${run.model}\u0000${run.caseId}\u0000${run.runNumber}`;
 }
 
 function judgeDelta(before: DMEvalRunRecord, after: DMEvalRunRecord): string {
@@ -237,8 +246,8 @@ export interface DMEvalReportHtmlInput {
 export function renderEvalReportHtml({ report, baseline, baselineLabel }: DMEvalReportHtmlInput): string {
   const models = [...new Set(report.runs.map((run) => run.model))];
   const caseNames = [...new Set(report.runs.map((run) => run.caseName))];
-  const runFor = (model: string, caseName: string): DMEvalRunRecord | undefined =>
-    report.runs.find((run) => run.model === model && run.caseName === caseName);
+  const runsFor = (model: string, caseName: string): DMEvalRunRecord[] =>
+    report.runs.filter((run) => run.model === model && run.caseName === caseName);
 
   const triaged = report.runs
     .map((run) => ({ run, triage: triageRun(run) }))
@@ -261,6 +270,7 @@ export function renderEvalReportHtml({ report, baseline, baselineLabel }: DMEval
   <h1>DM eval report</h1>
   <p class="meta">
     <span class="pill ${report.mode === 'live' ? 'pill-live' : 'pill-offline'}">${report.mode}</span>
+    <span>score: ${escapeHtml(report.scoreKind)}</span>
     <span>${escapeHtml(report.generatedAt)}</span>
     <span>judge: ${escapeHtml(report.judge ?? 'none')}</span>
     <span class="${passed === report.runs.length ? 'ok' : 'bad'}">${passed}/${report.runs.length} passed</span>
@@ -269,10 +279,10 @@ export function renderEvalReportHtml({ report, baseline, baselineLabel }: DMEval
 
 ${renderTriageSection(triaged)}
 ${diff ? renderDiffSection(diff, baselineLabel) : ''}
-${renderMatrixSection(models, caseNames, runFor)}
+${renderMatrixSection(models, caseNames, runsFor)}
 ${renderRunDetails(report.runs)}
 
-<footer>Improvement loop: docs/agents/dm-evals.md — add a failing fixture before fixing, re-run offline + live.</footer>
+<footer>Improvement loop: docs/agents/dm-evals.md — add a failing corpus case before fixing, then re-run corpus validation and live proof.</footer>
 </body>
 </html>`;
 }
@@ -335,20 +345,23 @@ function renderDiffSection(diff: DMEvalDiffEntry[], baselineLabel?: string): str
 function renderMatrixSection(
   models: string[],
   caseNames: string[],
-  runFor: (model: string, caseName: string) => DMEvalRunRecord | undefined,
+  runsFor: (model: string, caseName: string) => DMEvalRunRecord[],
 ): string {
   const header = models.map((model) => `<th>${escapeHtml(model)}</th>`).join('');
   const rows = caseNames
     .map((caseName) => {
       const cells = models
         .map((model) => {
-          const run = runFor(model, caseName);
-          if (!run) return '<td class="dim">—</td>';
+          const runs = runsFor(model, caseName);
+          if (runs.length === 0) return '<td class="dim">—</td>';
+          const passed = runs.filter((run) => run.passed).length;
+          const run = runs.at(-1)!;
           const judge =
             run.judge && !('error' in run.judge)
               ? `<span class="dim">g${run.judge.grounded} h${run.judge.honest} u${run.judge.useful} r${run.judge.relevant} d${run.judge.direct} c${run.judge.continuity} n${run.judge.nonRepetition}</span>`
               : '';
-          return `<td class="${run.passed ? 'cell-pass' : 'cell-fail'}">${run.passed ? 'PASS' : 'FAIL'} <span class="dim">${run.elapsedMs}ms</span> ${judge}</td>`;
+          const allPassed = passed === runs.length;
+          return `<td class="${allPassed ? 'cell-pass' : 'cell-fail'}">${passed}/${runs.length} <span class="dim">last ${run.elapsedMs}ms</span> ${judge}</td>`;
         })
         .join('');
       return `<tr><th class="case-name">${escapeHtml(caseName)}</th>${cells}</tr>`;
@@ -371,9 +384,11 @@ function renderRunDetails(runs: DMEvalRunRecord[]): string {
             }</p>`
         : '';
       return `<details${run.passed ? '' : ' open'}>
-<summary><span class="${run.passed ? 'ok' : 'bad'}">${run.passed ? 'PASS' : 'FAIL'}</span> ${escapeHtml(run.caseName)} <span class="dim">${escapeHtml(run.model)} · ${run.elapsedMs}ms</span></summary>
+<summary><span class="${run.passed ? 'ok' : 'bad'}">${run.passed ? 'PASS' : 'FAIL'}</span> ${escapeHtml(run.caseName)} <span class="dim">${escapeHtml(run.model)} · run ${run.runNumber} · ${run.elapsedMs}ms</span></summary>
 ${run.failure ? `<p class="failure">${escapeHtml(run.failure)}</p>` : ''}
 <p class="dim">blocks: ${escapeHtml(run.blockKinds.join(', ') || 'none')}</p>
+<p class="dim">tools: ${escapeHtml(run.tools.join(', ') || 'none')} · steps ${run.stepCount} · tokens ${run.inputTokens ?? 'n/a'}/${run.outputTokens ?? 'n/a'} · repairs ${run.repairCount} · outcome ${escapeHtml(run.outcome)}</p>
+<p class="dim">evidence ids: ${escapeHtml(run.evidenceIds.join(', ') || 'none')}</p>
 ${judge}
 ${run.answerText ? `<pre>${escapeHtml(run.answerText)}</pre>` : '<p class="dim">no model text</p>'}
 </details>`;

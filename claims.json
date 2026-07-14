@@ -42,6 +42,20 @@
       "statement": "ADR 0001's rule that \"all\" is never added to PLAYLIST_SLUGS still holds in catalog.ts",
       "subjectRefs": ["adr/0001-landing-and-entry-ia.md", "src/data/catalog.ts"],
       "check": "node --import tsx -e 'Promise.all([import(\"node:fs\"), import(\"./src/data/catalog.ts\")]).then(([fs, m]) => { const adr = fs.readFileSync(\"adr/0001-landing-and-entry-ia.md\", \"utf8\"); const documented = /Do \\*\\*not\\*\\* add [^\\n]*PLAYLIST_SLUGS/.test(adr); const codeHonors = !Object.hasOwn(m.PLAYLIST_SLUGS, \"all\"); process.exit(documented && codeHonors ? 0 : 1); })'"
+    },
+    {
+      "id": "dm-live-conversational-eval",
+      "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case, and canned unit answers cannot produce a release score",
+      "subjectRefs": [
+        "src/lib/dm/eval-corpus.ts",
+        "src/lib/dm/eval-fixtures.ts",
+        "src/lib/dm/judge.ts",
+        "src/lib/dm/eval-report.ts",
+        "scripts/dm-eval.ts",
+        "tests/dm-eval-corpus.test.ts",
+        "package.json"
+      ],
+      "check": "npm run test:eval-corpus"
     }
   ]
 }
