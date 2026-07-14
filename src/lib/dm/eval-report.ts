@@ -104,7 +104,7 @@ export function triageRun(run: DMEvalRunRecord): DMEvalTriage | null {
         severity: 'blocker',
         classification: 'fabrication',
         nextStep:
-          'DM invented an unpublished project id. Tighten the honesty rules in the system prompt (src/lib/dm/runtime.ts) and confirm project search only returns published records (src/lib/dm/data-tools.ts).',
+          'DM invented an unpublished project id. Tighten the honesty rules in the system prompt and confirm src/lib/dm/public-agent-tools.ts only returns published records.',
       };
     }
     if (run.failure.includes('outside returned project blocks')) {
@@ -112,15 +112,15 @@ export function triageRun(run: DMEvalRunRecord): DMEvalTriage | null {
         severity: 'blocker',
         classification: 'project grounding mismatch',
         nextStep:
-          'DM named a project that was not present in the same-turn project blocks. Tighten the same-turn grounding rules in src/lib/dm/runtime.ts and the fallback/partial result messages in src/lib/dm/data-tools.ts.',
+          'DM named a project that was not returned in the same run. Tighten same-run validation in src/lib/dm/runtime.ts and the bounded results in src/lib/dm/public-agent-tools.ts.',
       };
     }
-    if (run.caseName.startsWith('refusal:')) {
+    if (/private|slack|candidate|visitor/i.test(run.caseName)) {
       return {
         severity: 'fix',
         classification: 'refusal guard',
         nextStep:
-          'The deterministic refusal path did not fire (or called the model/tools). Review the private-data guard in src/lib/dm/runtime.ts.',
+          'The answer crossed or mishandled a private boundary. Review the tool surface and private-data instructions in src/lib/dm/runtime.ts.',
       };
     }
     if (run.failure.includes('did not complete')) {
@@ -128,14 +128,14 @@ export function triageRun(run: DMEvalRunRecord): DMEvalTriage | null {
         severity: 'fix',
         classification: 'stream',
         nextStep:
-          'The NDJSON stream ended without a done event. Check stream teardown and error handling in src/lib/dm/runtime.ts.',
+          'The UIMessage stream ended without a finish chunk. Check stream teardown and error handling in src/lib/dm/runtime.ts.',
       };
     }
     return {
       severity: 'fix',
       classification: 'retrieval / tool gap',
       nextStep:
-        'DM did not produce the expected answer blocks. Classify per the improvement loop: content gap (publish the fact), retrieval gap (src/lib/dm/data-tools.ts or system prompt), or model gap (prompt / DM_MODEL).',
+        'DM did not produce the expected structured answer. Classify per the improvement loop: content gap, public-tool gap, or model/prompt gap.',
     };
   }
 

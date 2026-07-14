@@ -37,10 +37,52 @@
       "statement": "public DM tool modules cannot import Slack, admin, private, candidate, visitor, credential, or secret source modules or query private-source tables",
       "subjectRefs": [
         "src/lib/dm/public-agent-tools.ts",
-        "src/lib/dm/data-tools.ts",
+        "src/lib/dm/runtime.ts",
         "scripts/check-public-dm-tool-boundary.mjs"
       ],
       "check": "node scripts/check-public-dm-tool-boundary.mjs"
+    },
+    {
+      "id": "dm-tool-loop-runtime",
+      "statement": "DM uses one AI SDK ToolLoopAgent over typed public tools and emits validated same-run evidence and artifacts through the standard UIMessage stream",
+      "subjectRefs": [
+        "src/lib/dm/runtime.ts",
+        "src/lib/dm/contract.ts",
+        "src/pages/api/dm/chat.ts",
+        "src/scripts/dm.ts",
+        "tests/dm-runtime.test.ts"
+      ],
+      "check": "npm run test:dm"
+    },
+    {
+      "id": "dm-legacy-scripted-runtime-removed",
+      "statement": "the legacy scripted DM router, planner, request-routed deterministic answer generators, fake trace, canned answer fixtures, and custom NDJSON protocol are absent; model-selected no-evidence conversational, limitation, and follow-up content is restricted to finite enum-selected server-controlled copy materialized only by the validated finalization boundary",
+      "subjectRefs": [
+        "astro.config.mjs",
+        "src/lib/dm/benchmark.ts",
+        "src/lib/dm/client.ts",
+        "src/lib/dm/runtime.ts",
+        "src/lib/dm/contract.ts",
+        "src/lib/dm/eval-corpus.ts",
+        "src/lib/dm/eval-report.ts",
+        "src/lib/dm/eval-source.ts",
+        "src/lib/dm/fit-check.ts",
+        "src/lib/dm/judge.ts",
+        "src/lib/dm/metrics.ts",
+        "src/lib/dm/model-specs.ts",
+        "src/lib/dm/public-agent-tools.ts",
+        "src/lib/dm/rate-limit.ts",
+        "src/lib/dm/response-observer.ts",
+        "src/pages/api/dm/chat.ts",
+        "src/scripts/dm.ts",
+        "scripts/dm-benchmark.ts",
+        "scripts/dm-eval.ts",
+        "scripts/check-dm-scripted-runtime-removed.mjs",
+        "scripts/check-public-dm-tool-boundary.mjs",
+        "tests/dm-scripted-runtime-removal.test.mjs",
+        "package.json"
+      ],
+      "check": "npm run test:dm-removal"
     },
     {
       "id": "filter-slugs",
@@ -71,7 +113,7 @@
       "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case, and canned unit answers cannot produce a release score",
       "subjectRefs": [
         "src/lib/dm/eval-corpus.ts",
-        "src/lib/dm/eval-fixtures.ts",
+        "src/lib/dm/eval-source.ts",
         "src/lib/dm/judge.ts",
         "src/lib/dm/eval-report.ts",
         "scripts/dm-eval.ts",

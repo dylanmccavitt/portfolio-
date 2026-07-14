@@ -1,1197 +1,703 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PGlite } from '@electric-sql/pglite';
+import { simulateReadableStream, type LanguageModel, type UIMessageChunk } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
-import { simulateReadableStream } from 'ai';
-import { applyMigrations, type Queryable } from '../scripts/db';
-import { CATALOG } from '@/data/catalog';
-import { buildCatalogShadowRecords, type CatalogShadowRecord } from '@/lib/db/catalog-shadow';
-import { createPublicDMDataTools, DMToolError } from '@/lib/dm/data-tools';
-import { resetPublicProjectDetailsLoadForTests } from '@/lib/public-projects';
-import {
-  FIT_CHECK_CONTEXT_LIMIT,
-  sanitizeJobDescriptionForFitCheck,
-} from '@/lib/dm/fit-check';
-import { createDMChatStream, readDMRuntimeConfig } from '@/lib/dm/runtime';
-import { type PublicRagSearchOutput } from '@/lib/rag/retrieval';
-import {
-  consumeDMRateLimit,
-  readDMRateLimitConfig,
-  resolveTrustedVercelClientAddress,
-} from '@/lib/dm/rate-limit';
-import {
-  parseStreamLine,
-  resolveEvidence,
-  validateBlock,
-  type ProjectArtifact,
-} from '@/lib/dm/client';
+import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
+import { validateFinalizationResult } from '@/lib/dm/client';
+import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
+import { observeDMResponse } from '@/lib/dm/response-observer';
+import { createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
+import type { DMChatRequest, DMFinalizationResult, DMUIData } from '@/lib/dm/contract';
+import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { createDMPostHandler } from '@/pages/api/dm/chat';
 
-const TEST_CONFIG = { provider: 'openai' as const, model: 'test-model' };
+const config = { provider: 'openai' as const, model: 'openai/test-model' };
 
-test('DM route streams NDJSON text and answer blocks from the AI SDK seam', async () => withPublicProjectDbGate(async () => {
-  const db = await publishedProjectDb();
-  const model = streamingModel(projectDraft('agentic-trader'));
-  const POST = createDMPostHandler({ config: TEST_CONFIG, db, model });
-
-  const response = await POST({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Which projects show trading automation with Robinhood?' }),
-    }),
-  } as never);
-
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('Content-Type'), 'application/x-ndjson; charset=utf-8');
-  assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
-  assert.equal(response.headers.get('X-Public-Project-Source'), 'database');
-  const traceId = response.headers.get('X-DM-Trace-Id');
-  assert.match(traceId ?? '', /^[0-9a-f-]{36}$/i);
-
-  const events = await readNdjson(response.body);
-  const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /agentic-trader/i);
-  assert.match(answerText, /Status:/);
-  assert.deepEqual(
-    events.filter((event) => event.type === 'block').map((event) => event.block?.kind),
-    ['projects'],
-  );
-  const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
-  assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
-  assert.equal(projectBlock?.block?.items?.[0]?.href, '/projects/agentic-trader');
-  assert.equal(typeof projectBlock?.block?.items?.[0]?.summary, 'string');
-  assert.ok(events.some((event) => event.type === 'done'));
-  assert.equal(events.find((event) => event.type === 'ready')?.traceId, traceId);
-}));
-
-test('DM Postgres limiter is atomic, fixed-windowed, versioned, and returns exact retry timing', async () => {
-  const db = await publishedProjectDb();
-  const config = readDMRateLimitConfig({
-    DM_RATE_LIMIT_HMAC_SECRET: 'a'.repeat(32),
-    DM_RATE_LIMIT_KEY_VERSION: 'v2',
-    DM_RATE_LIMIT_MAX_REQUESTS: '2',
-    DM_RATE_LIMIT_WINDOW_SECONDS: '60',
+test('runtime configuration requires an explicit model and provider credential', () => {
+  assert.throws(() => readDMRuntimeConfig({}), /DM_MODEL, OPENAI_API_KEY/);
+  assert.throws(() => readDMRuntimeConfig({ OPENAI_API_KEY: 'configured' }), /DM_MODEL/);
+  assert.deepEqual(readDMRuntimeConfig({ DM_MODEL: 'openai/runtime-model', OPENAI_API_KEY: 'configured' }), {
+    provider: 'openai',
+    model: 'openai/runtime-model',
   });
-  const results = await Promise.all([
-    consumeDMRateLimit(db, config, '203.0.113.10', 121_000),
-    consumeDMRateLimit(db, config, '203.0.113.10', 121_000),
-    consumeDMRateLimit(db, config, '203.0.113.10', 121_000),
+  assert.deepEqual(readDMRuntimeConfig({ DM_MODEL: 'anthropic/runtime-model', AI_GATEWAY_API_KEY: 'configured' }), {
+    provider: 'gateway',
+    model: 'anthropic/runtime-model',
+  });
+});
+
+test('runtime budgets remain bounded', () => {
+  assert.deepEqual(readDMBudgetConfig({}), { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 6 });
+  assert.throws(() => readDMBudgetConfig({ DM_MAX_STEPS: '1' }), /safeguards/);
+  assert.throws(() => readDMBudgetConfig({ DM_REQUEST_DEADLINE_MS: '500000' }), /safeguards/);
+});
+
+test('one ToolLoopAgent run calls public tools and accepts only same-run evidence and artifacts', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Which project shows trading automation?');
+  const model = toolSequenceModel([
+    { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
+      },
+    },
   ]);
-  assert.equal(results.filter((result) => result.allowed).length, 2);
-  assert.equal(results.find((result) => !result.allowed)?.retryAfterSeconds, 59);
-  assert.equal((await consumeDMRateLimit(db, config, '203.0.113.10', 180_000)).allowed, true);
 
-  const rows = await db.query<{ key_version: string; client_hash: string; expires_at: string }>(
-    'SELECT key_version, client_hash, expires_at FROM dm_rate_limit_windows',
-  );
-  assert.equal(rows.rows[0]?.key_version, 'v2');
-  assert.doesNotMatch(rows.rows[0]?.client_hash ?? '', /203\.0\.113\.10|a{32}/);
-});
-
-test('DM route fails closed for limiter config or storage failures and rate limits before model work', async () => {
-  const db = await publishedProjectDb();
-  const model = streamingModel(projectDraft('agentic-trader'));
-  const env = { VERCEL: '1', DM_RATE_LIMIT_HMAC_SECRET: 'b'.repeat(32), DM_RATE_LIMIT_WINDOW_SECONDS: '60' };
-  const post = createDMPostHandler({
-    config: TEST_CONFIG,
-    env,
-    db,
+  const response = createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
     model,
-    clientAddressResolver: () => '2001:db8::1',
-    rateLimitConfig: { ...readDMRateLimitConfig(env), limit: 1 },
-    now: () => 100_000,
   });
-  const first = await post({ request: dmRequest('Show published projects.') } as never);
-  assert.equal(first.status, 200);
-  const second = await post({ request: dmRequest('Show published projects.') } as never);
-  assert.equal(second.status, 429);
-  assert.equal(second.headers.get('Retry-After'), '20');
-  assert.equal(model.doStreamCalls.length, 0, 'deterministic project answer does not need model work');
+  assert.match(response.headers.get('content-type') ?? '', /^text\/event-stream/);
+  const observation = await observeDMResponse(response, request);
 
-  const missingSecret = createDMPostHandler({ config: TEST_CONFIG, env: { VERCEL: '1' }, db, model });
-  const missingSecretResponse = await missingSecret({ request: dmRequest('hello') } as never);
-  assert.equal(missingSecretResponse.status, 503);
-  assert.deepEqual(await missingSecretResponse.json(), {
-    error: { code: 'rate_limit_unavailable', message: 'DM is unavailable right now. Please try again shortly.' },
-  });
-
-  const storageFailure = createDMPostHandler({
-    config: TEST_CONFIG,
-    env,
-    db: { async query() { throw new Error('private storage failure'); } },
-    model: throwingModel(),
-    clientAddressResolver: () => '203.0.113.2',
-  });
-  assert.equal((await storageFailure({ request: dmRequest('hello') } as never)).status, 503);
+  assert.equal(observation.outcome, 'completed');
+  assert.deepEqual(observation.tools, ['searchProjects']);
+  assert.deepEqual(observation.projectIds, ['agentic-trader']);
+  assert.ok(observation.evidenceIds.includes('agentic-trader:identity'));
+  assert.match(observation.answerText, /trading automation/i);
+  assert.equal(observation.result?.status, 'accepted');
 });
 
-test('DM trusts only Vercel forwarded addresses in production', () => {
-  const request = new Request('https://example.test/api/dm/chat', {
-    headers: { 'x-forwarded-for': '203.0.113.1', 'x-vercel-forwarded-for': 'unknown, 2001:db8::5' },
-  });
-  assert.equal(resolveTrustedVercelClientAddress(request, { VERCEL: '1' }), '2001:db8::5');
-  assert.equal(resolveTrustedVercelClientAddress(request, {}), null);
-});
-
-test('a pre-aborted DM stream performs no model or RAG work', async () => {
-  const db = await publishedProjectDb();
-  const controller = new AbortController();
-  controller.abort();
-  let ragCalls = 0;
-  const model = throwingModel();
-  const events = await readNdjson(createDMChatStream(
-    { message: 'Use source evidence about agentic trader.' },
-    TEST_CONFIG,
-    { db, model, signal: controller.signal, ragSearch: async () => { ragCalls += 1; return { citations: [] }; } },
-  ));
-  assert.deepEqual(events, []);
-  assert.equal(model.doStreamCalls.length, 0);
-  assert.equal(ragCalls, 0);
-});
-
-test('DM deadline aborts RAG, emits one sanitized terminal timeout, and never starts the model', async () => {
-  const db = await publishedProjectDb();
-  await insertIndexedPublicRagSource(db);
-  let receivedSignal: AbortSignal | undefined;
-  const events = await readNdjson(createDMChatStream(
-    { message: 'Use source evidence about the agentic-trader trading automation project.' },
-    TEST_CONFIG,
+test('runtime metrics mark the first visible public-tool state before completion', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Which project shows trading automation?');
+  const metricsLines: string[] = [];
+  const model = toolSequenceModel([
+    { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
     {
-      db,
-      model: throwingModel(),
-      budgets: { deadlineMs: 100, maxOutputTokens: 128, maxSteps: 1 },
-      ragSearch: async (_query, _config, options) => {
-        receivedSignal = options.signal;
-        return await new Promise<PublicRagSearchOutput>((_resolve, reject) => {
-          options.signal?.addEventListener('abort', () => reject(options.signal?.reason), { once: true });
-        });
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
       },
     },
-  ));
-  assert.equal(receivedSignal?.aborted, true);
-  assert.deepEqual(events, [{ type: 'error', message: 'DM took too long to answer. Please try again.' }]);
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      return source.projectLoader();
+    },
+    model,
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+  const metrics = parseMetricsRecord(metricsLines);
+
+  assert.equal(observation.outcome, 'completed');
+  assert.equal(metrics.outcome, 'completed');
+  assert.equal(metrics.toolCount, 1);
+  assert.equal(typeof metrics.firstTokenMs, 'number');
+  assert.equal(typeof metrics.completionMs, 'number');
+  assert.ok(
+    (metrics.completionMs as number) - (metrics.firstTokenMs as number) >= 25,
+    `expected visible tool state before completion, got ${metrics.firstTokenMs}ms and ${metrics.completionMs}ms`,
+  );
 });
 
-test('DM data tools expose DB-gated public records and static resume/contact only', async () => withPublicProjectDbGate(async () => {
-  const db = await publishedProjectDb();
-  const tools = createPublicDMDataTools(db);
+test('same-step finalization waits for public evidence and artifacts to settle', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Which project shows trading automation?');
+  const model = toolStepModel([[
+    { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
+      },
+    },
+  ]]);
 
-  // Published DB rows are the complete project source; rows that are not
-  // published and catalog-only ids never surface.
-  const search = await tools.searchProjects({ query: 'trading automation robinhood', limit: 5 });
-  assert.equal(search.projects[0]?.id, 'agentic-trader');
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return source.projectLoader();
+    },
+    model,
+  }), request);
 
-  const noMatch = await tools.searchProjects({ query: 'loom-unpublished-topic', limit: 3 });
-  assert.equal(noMatch.fallbackUsed, false);
-  assert.equal(noMatch.resultStatus, 'empty');
-  assert.deepEqual(noMatch.projects, []);
-  assert.match(noMatch.message, /no published projects matched/i);
-  assert.match(noMatch.message, /do not name or substitute projects/i);
-
-  const emptyFilter = await tools.filterProjects({ area: 'not-a-published-area' });
-  assert.equal(emptyFilter.resultStatus, 'empty');
-  assert.deepEqual(emptyFilter.projects, []);
-  assert.match(emptyFilter.message, /do not name or substitute projects/i);
-
-  const completeRank = await tools.rankProjects({ intent: 'strongest work', limit: 1 });
-  assert.equal(completeRank.resultStatus, 'complete');
-  assert.equal(completeRank.projects.length, 1);
-  assert.match(completeRank.message, /only name or discuss projects in this returned projects array/i);
-
-  const ranked = await tools.rankProjects({ ids: ['agentic-trader'] });
-  assert.deepEqual(ranked.projects.map((project) => project.id), ['agentic-trader']);
-  assert.equal(ranked.resultStatus, 'complete');
-
-  await assert.rejects(
-    () => tools.rankProjects({ ids: ['exit-manager'] }),
-    (error: unknown) => error instanceof DMToolError && error.code === 'bad_project_id',
-  );
-
-  await assert.rejects(
-    () => tools.rankProjects({ ids: ['proj-draft-only-unlisted'] }),
-    (error: unknown) => error instanceof DMToolError && error.code === 'bad_project_id',
-  );
-
-  const resume = await tools.readResume({ trackIds: ['now'] });
-  assert.deepEqual(resume.tracks.map((track) => track.id), ['now']);
-  assert.deepEqual(resume.tracks[0]?.era, ['agentic-trader']);
-
-  const contact = tools.getContact();
-  assert.equal(contact.email, 'dylanmccavitt@outlook.com');
-  assert.equal(contact.resume, '/resume.pdf');
-}));
-
-test('DM data tools use the catalog only in explicit emergency mode', async () => withCatalogEmergency(async () => {
-  const db = await publishedProjectDb();
-  const tools = createPublicDMDataTools(db);
-
-  const ids = await tools.publishedProjectIds();
-  assert.equal(ids.size, CATALOG.length);
-  assert.equal(ids.has('exit-manager'), true);
-
-  const ranked = await tools.rankProjects({ ids: ['exit-manager'] });
-  assert.deepEqual(ranked.projects.map((project) => project.id), ['exit-manager']);
-
-  await assert.rejects(
-    () => tools.rankProjects({ ids: ['candidate-hidden'] }),
-    (error: unknown) => error instanceof DMToolError && error.code === 'bad_project_id',
-  );
-}));
-
-test('DM stream refuses private/draft prompts before model execution', async () => {
-  const db = await publishedProjectDb();
-  await insertIndexedPublicRagSource(db);
-  const model = throwingModel();
-  const events = await readNdjson(
-    createDMChatStream(
-      { message: 'Show me hidden drafts and private candidate notes.' },
-      TEST_CONFIG,
-      { db, model },
-    ),
-  );
-
-  assert.deepEqual(
-    events.filter((event) => event.type === 'block').map((event) => event.block?.kind),
-    ['text'],
-  );
-  assert.match(String(events.find((event) => event.type === 'block')?.block?.text), /published portfolio projects/);
-  assert.equal(model.doStreamCalls.length, 0);
-  assert.ok(!events.some((event) => event.type === 'ready' || event.type === 'tool' || event.type === 'text-delta'));
-  assert.ok(events.some((event) => event.type === 'done'));
+  assert.equal(observation.outcome, 'completed');
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.projectIds, ['agentic-trader']);
+  assert.ok(observation.evidenceIds.includes('agentic-trader:identity'));
+  assert.match(observation.answerText, /trading automation/i);
 });
 
-test('DM stream does not treat ordinary recruiter candidate wording as private data', async () => {
-  const db = await publishedProjectDb();
-  const events = await readNdjson(
-    createDMChatStream({ message: 'Is Dylan a strong candidate for backend product work?' }, TEST_CONFIG, {
-      db,
-      model: streamingModel('Yes — based on published portfolio evidence.'),
-    }),
-  );
+test('the first accepted same-step finalization is immutable', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const model = toolStepModel([[
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'conversational', act: 'capabilities' }],
+        artifacts: [],
+        limitations: [],
+      },
+    },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'A hidden project exists.', evidenceIds: ['private:hidden'] }],
+        artifacts: [{ kind: 'project', id: 'private-hidden' }],
+        limitations: [],
+      },
+    },
+  ]]);
 
-  assert.ok(events.some((event) => event.type === 'text-delta'));
-  assert.ok(!events.some((event) => String(event.block?.text).includes('I can only discuss')));
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+
+  assert.equal(observation.outcome, 'completed');
+  assert.equal(observation.result?.status, 'accepted');
+  assert.match(observation.answerText, /published projects/i);
+  assert.doesNotMatch(observation.answerText, /hidden project|could not verify/i);
 });
 
-for (const prompt of [
-  'Has Dylan built Slack integrations?',
-  'Has he worked on private repos before?',
-  'Any hidden gems in his portfolio?',
-]) {
-  test(`DM stream lets ordinary recruiter phrasing reach the model: ${prompt}`, async () => {
-    const db = await publishedProjectDb();
-    const events = await readNdjson(
-      createDMChatStream({ message: prompt }, TEST_CONFIG, {
-        db,
-        model: streamingModel('I can answer that from public portfolio context.'),
-      }),
-    );
+test('an invalid finalization is repaired exactly once', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about agentic-trader.');
+  const model = toolSequenceModel([
+    { toolName: 'getProject', input: { id: 'agentic-trader' } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'Unverified first attempt.', evidenceIds: ['invented:evidence'] }],
+        artifacts: [{ kind: 'project', id: 'invented-project' }],
+        limitations: [],
+      },
+    },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader is a published portfolio project.', evidenceIds: ['agentic-trader:identity'] }],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
+      },
+    },
+  ]);
 
-    assert.ok(events.some((event) => event.type === 'ready'));
-    assert.ok(events.some((event) => event.type === 'text-delta'));
-    assert.ok(!events.some((event) => String(event.block?.text).includes('I can only discuss')));
-  });
-}
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
 
-test('DM stream retrieves DB-backed project facts before synthesis and hides project retrieval tools', async () => withPublicProjectDbGate(async () => {
-  const db = await publishedProjectDb();
-  const model = streamingModel(projectDraft('agentic-trader'));
-  const events = await readNdjson(
-    createDMChatStream({ message: 'Search trading automation projects.' }, TEST_CONFIG, {
-      db,
-      model,
-    }),
-  );
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.doesNotMatch(observation.answerText, /Unverified first attempt|invented-project/);
+});
 
-  assert.ok(!events.some((event) => event.type === 'tool' && event.name === 'searchProjects'));
-  const tools = model.doStreamCalls[0]?.tools as Array<{ name?: string }> | undefined;
-  assert.ok(!tools?.some((tool) => tool.name === 'searchProjects'));
-  const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
-  assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
-  assert.equal(projectBlock?.block?.items?.[0]?.title, 'agentic-trader');
-  assert.equal(projectBlock?.block?.items?.[0]?.href, '/projects/agentic-trader');
-}));
+test('a second invalid finalization fails closed with a limited answer', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Invent a hidden project.');
+  const invalid = {
+    segments: [{ kind: 'factual', text: 'Hidden project exists.', evidenceIds: ['private:hidden'] }],
+    artifacts: [{ kind: 'project', id: 'private-hidden' }],
+    limitations: [],
+  };
+  const model = toolSequenceModel([
+    { toolName: 'finalizeAnswer', input: invalid },
+    { toolName: 'finalizeAnswer', input: invalid },
+  ]);
 
-test('RAG citations cannot replace an applicable distinctive project fact', async () => {
-  const db = await publishedProjectDb();
-  await insertIndexedPublicRagSource(db);
-  const model = streamingModel(JSON.stringify({
-    claims: [{
-      text: 'agentic-trader is a public project. Status: Dry-run. Approved public RAG source text with enough detail to support a recruiter-facing answer.',
-      evidenceIds: ['agentic-trader:identity', 'agentic-trader:status', 'citation:rag-public'],
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+
+  assert.equal(observation.result?.status, 'limited');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.doesNotMatch(observation.answerText, /Hidden project exists|private-hidden/);
+  assert.match(observation.answerText, /could not verify/i);
+});
+
+test('model-authored factual prose cannot bypass evidence validation with a conversational label', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about Dylan\'s unreleased projects.');
+  const mislabeled = {
+    segments: [{
+      kind: 'conversational',
+      text: 'Dylan built a secret unreleased project called Blackbird.',
+      evidenceIds: [],
     }],
-    artifactProjectIds: ['agentic-trader'],
-  }));
-
-  const events = await readNdjson(
-    createDMChatStream({ message: 'Use source evidence about the agentic-trader trading automation project.' }, TEST_CONFIG, {
-      db,
-      model,
-      ragSearch: createMockRagSearch(),
-    }),
-  );
-
-  assert.equal(model.doStreamCalls.length, 2, 'citation-only synthesis should retry exactly once');
-  const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /could not produce a validated answer/i);
-  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence').length, 0);
-});
-
-test('DM stream resolves requested RAG evidence and a distinctive fact before project synthesis', async () => {
-  const db = await publishedProjectDb();
-  await insertIndexedPublicRagSource(db);
-  const model = streamingModel(projectDraft('agentic-trader', {
-    citationIds: ['rag-public'],
-    metricIds: ['agentic-trader:metric:0'],
-    metricText: 'It has a scheduled Claude Code session at 15:45 ET.',
-  }));
-
-  const events = await readNdjson(
-    createDMChatStream({ message: 'Use source evidence about the agentic-trader trading automation project.' }, TEST_CONFIG, {
-      db,
-      model,
-      ragSearch: createMockRagSearch(),
-    }),
-  );
-
-  assert.ok(!events.some((event) => event.type === 'tool' && event.name === 'searchSources'));
-  assert.ok(!events.some((event) => event.type === 'tool' && event.name === 'searchProjects'));
-  const tools = model.doStreamCalls[0]?.tools as Array<{ name?: string }> | undefined;
-  assert.ok(!tools?.some((tool) => tool.name === 'searchSources'));
-  assert.ok(!tools?.some((tool) => tool.name === 'searchProjects'));
-  const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
-  assert.equal(projectBlock?.block?.items?.[0]?.id, 'agentic-trader');
-  const ragEvidence = events.find((event) => event.type === 'block' && event.block?.ragSources?.length);
-  assert.equal(ragEvidence?.block?.ragSources?.[0]?.ragSourceId, 'rag-public');
-  assert.equal(ragEvidence?.block?.projectIds, undefined);
-  assert.equal(ragEvidence?.block?.projects, undefined);
-  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'projects').length, 1);
-  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence').length, 1);
-  const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /agentic-trader/i);
-  assert.match(answerText, /Approved public RAG source text/);
-  assert.match(answerText, /scheduled Claude Code session at 15:45 ET/);
-  assert.ok(!events.some((event) => event.type === 'block' && /not strong enough to cite/.test(String(event.block?.text))));
-  assert.ok(events.some((event) => event.type === 'done'));
-});
-
-test('deep-dive evidence collapses repeated chunks to one entry per selected citation id', async () => {
-  const db = await publishedProjectDb();
-  await insertIndexedPublicRagSource(db);
-  const model = streamingModel(projectDraft('agentic-trader', {
-    citationIds: ['rag-public'],
-    metricIds: ['agentic-trader:metric:0'],
-    metricText: 'It has a scheduled Claude Code session at 15:45 ET.',
-    citationText: 'Top-ranked approved chunk with enough detail to support a recruiter-facing answer.',
-  }));
-  const chunk = (score: number, text: string) => ({
-    ragSourceId: 'rag-public',
-    projectId: 'agentic-trader',
-    fileId: 'file_public',
-    filename: 'approved-readme.md',
-    score,
-    text,
-  });
-
-  const events = await readNdjson(
-    createDMChatStream({ message: 'Use source evidence about the agentic-trader trading automation project.' }, TEST_CONFIG, {
-      db,
-      model,
-      ragSearch: async () => ({
-        citations: [
-          chunk(0.93, 'Top-ranked approved chunk with enough detail to support a recruiter-facing answer.'),
-          chunk(0.71, 'Second chunk of the same approved source that must not expand the evidence block.'),
-          chunk(0.55, 'Third chunk of the same approved source that must not expand the evidence block.'),
-        ],
-      }),
-    }),
-  );
-
-  const evidenceBlocks = events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence');
-  assert.equal(evidenceBlocks.length, 1);
-  assert.equal(evidenceBlocks[0]?.block?.ragSources?.length, 1);
-  assert.equal(evidenceBlocks[0]?.block?.ragSources?.[0]?.ragSourceId, 'rag-public');
-  assert.equal(evidenceBlocks[0]?.block?.ragSources?.[0]?.score, 0.93);
-  const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /Top-ranked approved chunk/);
-  assert.doesNotMatch(answerText, /must not expand the evidence block/);
-});
-
-test('excluding project cards does not suppress selected approved-source citations', async () => {
-  const db = await publishedProjectDb();
-  await insertIndexedPublicRagSource(db);
-  const events = await readNdjson(createDMChatStream(
-    { message: 'Use source evidence about agentic-trader without showing any project cards.' },
-    TEST_CONFIG,
-    {
-      db,
-      model: streamingModel(projectDraft('agentic-trader', {
-        citationIds: ['rag-public'],
-        metricIds: ['agentic-trader:metric:0'],
-        metricText: 'It has a scheduled Claude Code session at 15:45 ET.',
-      })),
-      ragSearch: createMockRagSearch(),
-    },
-  ));
-  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'projects').length, 0);
-  assert.equal(events.filter((event) => event.type === 'block' && event.block?.kind === 'evidence').length, 1);
-});
-
-test('DM stream accepts project context ids from the explicit emergency catalog source', async () => withCatalogEmergency(async () => {
-  const db = await publishedProjectDb();
-  const events = await readNdjson(
-    createDMChatStream(
-      { message: 'Tell me about this project.', context: { projectIds: ['exit-manager'] } },
-      TEST_CONFIG,
-      { db, model: streamingModel(projectDraft('exit-manager')) },
-    ),
-  );
-
-  assert.ok(events.some((event) => event.type === 'ready'));
-  const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /tastytrade-exit-manager/i);
-  const projectBlock = events.find((event) => event.type === 'block' && event.block?.kind === 'projects');
-  assert.equal(projectBlock?.block?.items?.[0]?.id, 'exit-manager');
-  assert.equal((projectBlock?.block?.items?.[0] as { money?: boolean } | undefined)?.money, true);
-  assert.ok(!events.some((event) => /isn't in my published records yet/i.test(String(event.block?.text))));
-  assert.ok(events.some((event) => event.type === 'done'));
-  assert.ok(!events.some((event) => event.type === 'error'));
-}));
-
-test('DM stream ends after DB-gated unpublished project notice without model text', async () => withPublicProjectDbGate(async () => {
-  const db = await publishedProjectDb();
-  const model = throwingModel();
-  const events = await readNdjson(
-    createDMChatStream(
-      { message: 'Tell me about this project.', context: { projectIds: ['proj-draft-only-unlisted'] } },
-      TEST_CONFIG,
-      { db, model },
-    ),
-  );
-
-  assert.ok(events.some((event) => event.type === 'ready'));
-  assert.ok(
-    events.some(
-      (event) =>
-        event.type === 'block' &&
-        event.block?.kind === 'text' &&
-        /isn't in my published records yet/i.test(String(event.block?.text)),
-    ),
-  );
-  assert.ok(!events.some((event) => event.type === 'text-delta'));
-  assert.ok(events.some((event) => event.type === 'done'));
-  assert.ok(!events.some((event) => event.type === 'error'));
-  assert.equal(model.doStreamCalls.length, 0);
-}));
-
-test('DM stream ends after unknown project notice even when the message asks for contact details', async () => withoutPublicProjectDbGate(async () => {
-  const db = await publishedProjectDb();
-  const model = throwingModel();
-  const events = await readNdjson(
-    createDMChatStream(
-      { message: "What's Dylan's email?", context: { projectIds: ['not-a-public-project'] } },
-      TEST_CONFIG,
-      { db, model },
-    ),
-  );
-
-  assert.ok(events.some((event) => event.type === 'ready'));
-  assert.ok(
-    events.some(
-      (event) =>
-        event.type === 'block' &&
-        event.block?.kind === 'text' &&
-        /isn't in my published records yet/i.test(String(event.block?.text)),
-    ),
-  );
-  assert.ok(!events.some((event) => event.type === 'text-delta'));
-  assert.ok(events.some((event) => event.type === 'done'));
-  assert.ok(!events.some((event) => event.type === 'error'));
-  assert.equal(model.doStreamCalls.length, 0);
-}));
-
-test('DM stream fails closed when project-context validation cannot read the DB', async () => withoutPublicProjectDbGate(async () => {
-  const failingDb = {
-    async query() {
-      throw new Error('select * from private_drafts using secret-token');
-    },
-  } satisfies Queryable;
-  const model = streamingModel('This model output must never be emitted.');
-  const events = await readNdjson(
-    createDMChatStream(
-      { message: 'Tell me about this.', context: { projectIds: ['exit-manager'] } },
-      TEST_CONFIG,
-      { db: failingDb, model },
-    ),
-  );
-
-  assert.deepEqual(events.map((event) => event.type), ['error']);
-  assert.match(String(events[0]?.message), /could not read the public portfolio data/i);
-  assert.equal(model.doStreamCalls.length, 0);
-  assert.ok(!JSON.stringify(events).includes('private_drafts'));
-  assert.ok(!JSON.stringify(events).includes('secret-token'));
-}));
-
-test('DM runtime config selects gateway when AI_GATEWAY_API_KEY is set and falls back to direct OpenAI otherwise', () => {
-  assert.deepEqual(
-    readDMRuntimeConfig({ DM_MODEL: 'openai/gpt-4.1-mini', OPENAI_API_KEY: 'test-key' }),
-    { provider: 'openai', model: 'openai/gpt-4.1-mini' },
-  );
-
-  assert.deepEqual(
-    readDMRuntimeConfig({ DM_MODEL: 'openai/gpt-4.1', AI_GATEWAY_API_KEY: 'gateway-key' }),
-    { provider: 'gateway', model: 'openai/gpt-4.1' },
-  );
-
-  assert.deepEqual(
-    readDMRuntimeConfig({ OPENAI_API_KEY: 'test-key' }),
-    { provider: 'openai', model: 'openai/gpt-4.1' },
-  );
-
-  assert.throws(() => readDMRuntimeConfig({ DM_MODEL: 'openai/gpt-4.1' }), /OPENAI_API_KEY/);
-  assert.throws(() => readDMRuntimeConfig({}), /OPENAI_API_KEY/);
-});
-
-test('DM route masks setup failures and fails closed on project DB failures', async () => withoutPublicProjectDbGate(async () => {
-  const missingConfigPost = createDMPostHandler({ env: {} });
-  const missingConfigResponse = await missingConfigPost({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'hello' }),
-    }),
-  } as never);
-  assert.equal(missingConfigResponse.status, 503);
-  assert.deepEqual(await missingConfigResponse.json(), {
-    error: { code: 'missing_config', message: 'DM is not configured for chat yet.' },
-  });
-
-  const db = await publishedProjectDb();
-  const invalidBudgetPost = createDMPostHandler({
-    config: TEST_CONFIG,
-    db,
-    env: { DM_MAX_STEPS: '100' },
-    model: throwingModel(),
-  });
-  const invalidBudgetResponse = await invalidBudgetPost({ request: dmRequest('hello') } as never);
-  assert.equal(invalidBudgetResponse.status, 503);
-  assert.deepEqual(await invalidBudgetResponse.json(), {
-    error: { code: 'missing_config', message: 'DM is not configured for chat yet.' },
-  });
-
-  const failingDb = {
-    async query() {
-      throw new Error('select * from private_drafts using secret-token');
-    },
-  } satisfies Queryable;
-  const model = streamingModel('This model output must never be emitted.');
-  const failingDbPost = createDMPostHandler({ config: TEST_CONFIG, db: failingDb, model });
-  const failingDbResponse = await failingDbPost({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Which projects show backend work?' }),
-    }),
-  } as never);
-  const events = await readNdjson(failingDbResponse.body);
-
-  assert.equal(failingDbResponse.status, 200);
-  assert.equal(failingDbResponse.headers.get('X-Public-Project-Source'), 'database');
-  assert.deepEqual(events.map((event) => event.type), ['error']);
-  assert.match(String(events[0]?.message), /could not read the public portfolio data/i);
-  assert.equal(model.doStreamCalls.length, 0);
-  assert.ok(!JSON.stringify(events).includes('private_drafts'));
-  assert.ok(!JSON.stringify(events).includes('secret-token'));
-}));
-
-test('DM route exposes explicit emergency catalog mode without initializing a DB', async () => withCatalogEmergency(async () => {
-  let createDbCalls = 0;
-  const POST = createDMPostHandler({
-    config: TEST_CONFIG,
-    env: { PUBLIC_PROJECT_SOURCE: 'catalog_emergency' },
-    createDb() {
-      createDbCalls += 1;
-      throw new Error('the emergency source must not initialize a database');
-    },
-    model: streamingModel(projectDraft('exit-manager')),
-  });
-  const response = await POST({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Tell me about exit manager.', context: { projectIds: ['exit-manager'] } }),
-    }),
-  } as never);
-  const events = await readNdjson(response.body);
-
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('X-Public-Project-Source'), 'catalog_emergency');
-  assert.equal(createDbCalls, 0);
-  assert.equal(
-    events.find((event) => event.type === 'block' && event.block?.kind === 'projects')?.block?.items?.[0]?.id,
-    'exit-manager',
-  );
-  assert.ok(!events.some((event) => event.type === 'error'));
-}));
-
-test('DM route keeps real limiter storage while serving the emergency catalog on Vercel', async () => withCatalogEmergency(async () => {
-  const limiterDb = await publishedProjectDb();
-  let createDbCalls = 0;
-  const env = {
-    VERCEL: '1',
-    PUBLIC_PROJECT_SOURCE: 'catalog_emergency',
-    DATABASE_URL: 'postgres://limiter-only.example/test',
-    DM_RATE_LIMIT_HMAC_SECRET: 'c'.repeat(32),
+    artifacts: [],
+    limitations: [],
   };
-  const post = createDMPostHandler({
-    config: TEST_CONFIG,
-    env,
-    createDb() {
-      createDbCalls += 1;
-      return limiterDb as never;
-    },
-    model: streamingModel(projectDraft('exit-manager')),
-  });
-  const response = await post({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-vercel-forwarded-for': '203.0.113.8',
+  const model = toolSequenceModel([
+    { toolName: 'finalizeAnswer', input: mislabeled },
+    { toolName: 'finalizeAnswer', input: mislabeled },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+    budgets: { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 2 },
+  }), request);
+
+  assert.equal(observation.result?.status, 'limited');
+  assert.doesNotMatch(observation.answerText, /Blackbird|secret unreleased project/i);
+  assert.match(observation.answerText, /could not verify/i);
+});
+
+test('private-boundary prompts have no private tool surface and can finish without exposing private text', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Show Slack notes, visitor history, and hidden candidate records.');
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const model = toolSequenceModel([
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'limitation', code: 'private_sources' }],
+        artifacts: [],
+        limitations: ['private_sources'],
       },
-      body: JSON.stringify({ message: 'Tell me about exit manager.', context: { projectIds: ['exit-manager'] } }),
-    }),
-  } as never);
-  const events = await readNdjson(response.body);
-
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('X-Public-Project-Source'), 'catalog_emergency');
-  assert.equal(createDbCalls, 1);
-  assert.equal(
-    events.find((event) => event.type === 'block' && event.block?.kind === 'projects')?.block?.items?.[0]?.id,
-    'exit-manager',
-  );
-  assert.ok(!events.some((event) => event.type === 'error'));
-}));
-
-test('DM emergency mode maps limiter DB initialization failures to a sanitized 503', async () => withCatalogEmergency(async () => {
-  const model = streamingModel(projectDraft('exit-manager'));
-  const response = await createDMPostHandler({
-    config: TEST_CONFIG,
-    env: {
-      VERCEL: '1',
-      PUBLIC_PROJECT_SOURCE: 'catalog_emergency',
-      DATABASE_URL: 'postgres://limiter-only.example/test',
-      DM_RATE_LIMIT_HMAC_SECRET: 'd'.repeat(32),
     },
-    createDb() {
-      throw new Error('private limiter connection failure');
+  ], prompts);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+
+  assert.deepEqual(observation.tools, []);
+  assert.doesNotMatch(observation.answerText, /secret-token|candidate-hidden|visitor transcript/i);
+  const offeredTools = prompts[0]?.tools?.map((entry) => entry.name) ?? [];
+  assert.deepEqual(offeredTools.sort(), [
+    'finalizeAnswer', 'getContact', 'getProject', 'readResume', 'searchProfile', 'searchProjects', 'searchPublicSources',
+  ].sort());
+});
+
+test('bounded conversation reaches the model while the latest question controls the answer and follow-up', async () => {
+  const source = await createEvalProjectSource();
+  const messages = Array.from({ length: 14 }, (_, index) => ({
+    id: `message-${index}`,
+    role: (index % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+    parts: [{ type: 'text' as const, text: index === 0 ? 'discarded oldest turn' : `prior turn ${index}` }],
+  }));
+  messages.push({ id: 'latest', role: 'user', parts: [{ type: 'text', text: 'What can you help with now?' }] });
+  const request: DMChatRequest = { messages };
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const model = toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+    segments: [{ kind: 'conversational', act: 'capabilities' }],
+    artifacts: [],
+    limitations: [],
+    followUp: 'project_overview',
+  } }], prompts);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+  const prompt = JSON.stringify(prompts[0]?.prompt);
+  assert.match(prompt, /What can you help with now/);
+  assert.doesNotMatch(prompt, /discarded oldest turn/);
+  assert.equal(observation.result?.answer.followUp, 'Would you like a project overview?');
+  assert.deepEqual(observation.tools, []);
+});
+
+test('public tool failure becomes an explicit sanitized limitation', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Which projects are public?');
+  const model = toolSequenceModel([
+    { toolName: 'searchProjects', input: { query: 'public projects' } },
+    { toolName: 'finalizeAnswer', input: {
+      segments: [{ kind: 'limitation', code: 'public_data_unavailable' }],
+      artifacts: [],
+      limitations: ['public_data_unavailable'],
+      followUp: 'try_resume',
+    } },
+  ]);
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: async () => { throw new Error('private database host and query details'); },
+    model,
+  }), request);
+  assert.equal(observation.result?.status, 'accepted');
+  assert.ok(observation.result?.answer.limitations.some((item) => /unavailable/i.test(item)));
+  assert.doesNotMatch(JSON.stringify(observation), /private database host/);
+});
+
+test('the live eval source can produce a same-run approved evidence artifact', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest("Use public source evidence to explain Loom's architecture.");
+  const model = toolSequenceModel([
+    { toolName: 'getProject', input: { id: 'loom' } },
+    { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+    { toolName: 'finalizeAnswer', input: {
+      segments: [{
+        kind: 'factual',
+        text: 'Loom separates planning, bounded implementation, independent review, and verification into explicit delivery phases.',
+        evidenceIds: ['citation:loom-architecture'],
+      }],
+      artifacts: [{ kind: 'project', id: 'loom' }, { kind: 'evidence', id: 'loom-architecture' }],
+      limitations: [],
+    } },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    ragSearch: source.publicSourceSearch,
+    model,
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.tools, ['getProject', 'searchPublicSources']);
+  assert.deepEqual(observation.blockKinds, ['projects:loom', 'evidence']);
+  assert.deepEqual(observation.projectIds, ['loom']);
+  assert.ok(observation.evidenceIds.includes('citation:loom-architecture'));
+  assert.equal(
+    observation.result?.answer.artifacts.find((artifact) => artifact.kind === 'evidence')?.id,
+    'loom-architecture',
+  );
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(source.privateEvidenceMarkers.join('|')));
+});
+
+test('the live eval unavailable-source override exercises a sanitized no-evidence path', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Use public source evidence to explain the architecture of Loom.');
+  const unavailablePublicSourceSearch = createUnavailableEvalPublicSourceSearch();
+  let unavailableOverrideCalled = false;
+  const model = toolSequenceModel([
+    { toolName: 'getProject', input: { id: 'loom' } },
+    { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+    { toolName: 'finalizeAnswer', input: {
+      segments: [{ kind: 'limitation', code: 'public_source_unavailable' }],
+      artifacts: [{ kind: 'project', id: 'loom' }],
+      limitations: ['public_source_unavailable'],
+      followUp: 'project_overview',
+    } },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    ragSearch: async (...args) => {
+      unavailableOverrideCalled = true;
+      return await unavailablePublicSourceSearch(...args);
     },
     model,
-  })({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-vercel-forwarded-for': '203.0.113.9',
-      },
-      body: JSON.stringify({ message: 'Tell me about exit manager.' }),
-    }),
-  } as never);
+  }), request);
 
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), {
-    error: { code: 'rate_limit_unavailable', message: 'DM is unavailable right now. Please try again shortly.' },
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(unavailableOverrideCalled, true);
+  assert.deepEqual(observation.tools, ['getProject', 'searchPublicSources']);
+  assert.deepEqual(observation.blockKinds, ['projects:loom']);
+  assert.deepEqual(observation.evidenceIds, []);
+  assert.match(observation.answerText, /public-source search is unavailable/i);
+  assert.doesNotMatch(JSON.stringify(observation), /simulated eval public source unavailable/);
+});
+
+test('request cancellation is propagated and sanitized', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about public projects.');
+  const controller = new AbortController();
+  controller.abort(new Error('visitor-private-cancel-reason'));
+  const response = createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([]),
+    signal: controller.signal,
   });
-  assert.equal(model.doStreamCalls.length, 0);
-}));
+  const observation = await observeDMResponse(response, request);
+  assert.equal(observation.outcome, 'incomplete');
+  assert.doesNotMatch(JSON.stringify(observation), /visitor-private-cancel-reason/);
+});
 
-test('DM route keeps resume/contact answers available with DB project-read failures', async () => {
-  const failingDb = {
-    async query() {
-      throw new Error('select * from private_drafts using secret-token');
+test('model failures surface only a sanitized UIMessage error', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about projects.');
+  const providerErrorMarker = 'F3_PROVIDER_PRIVATE_PAYLOAD_9bce70';
+  const model = new MockLanguageModelV4({
+    doStream: async () => { throw new Error(providerErrorMarker); },
+  });
+  const serverLogs: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => { serverLogs.push(args); };
+  const observation = await (async () => {
+    try {
+      return await observeDMResponse(createDMChatResponse(request, config, {
+        db: source.db,
+        projectLoader: source.projectLoader,
+        model,
+      }), request);
+    } finally {
+      console.error = originalConsoleError;
+    }
+  })();
+  const serializedLogs = serverLogs
+    .map((args) => args.map((value) => value instanceof Error ? `${value.name}: ${value.message}` : JSON.stringify(value)).join(' '))
+    .join('\n');
+  assert.equal(observation.outcome, 'error');
+  assert.equal(observation.result, null);
+  assert.match(observation.errors.join(' '), /could not answer that safely/i);
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(providerErrorMarker));
+  assert.match(serializedLogs, /\[dm\].*stream failure.*Error/);
+  assert.doesNotMatch(serializedLogs, new RegExp(providerErrorMarker));
+});
+
+test('the endpoint rate-limits before parsing the request or calling the model', async () => {
+  const model = toolSequenceModel([{ toolName: 'finalizeAnswer', input: {} }]) as MockLanguageModelV4;
+  const db = {
+    async query<Row = unknown>(sql: string) {
+      return { rows: (sql.includes('RETURNING count') ? [{ count: 2 }] : []) as Row[] };
     },
-  } satisfies Queryable;
-  const model = streamingModel('candidate-hidden 9999 https://private.example');
-  const events = await readNdjson(
-    createDMChatStream({ message: "Can you share Dylan's resume background and contact details?" }, TEST_CONFIG, {
-      db: failingDb,
-      model,
-    }),
-  );
-
-  assert.ok(events.some((event) => event.type === 'ready'));
-  assert.ok(events.some((event) => event.type === 'text-delta' && /public resume highlights and contact details/.test(event.delta ?? '')));
-  assert.equal(model.doStreamCalls.length, 0);
-  assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'resume'));
-  assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'contact'));
-  assert.ok(events.some((event) => event.type === 'done'));
-  assert.ok(!events.some((event) => event.type === 'error'));
-});
-
-test('fit-check sanitizes and bounds pasted job descriptions', () => {
-  const pasted = [
-    'Contact recruiter@example.com or visit https://jobs.example.test/private.',
-    'Call +1 (212) 555-0199 for details.',
-    'We need a software engineer with backend systems, automation, AI tools, product judgment, reliability, testing, and clear communication.',
-    'Extra context '.repeat(900),
-  ].join('\n\n');
-
-  const sanitized = sanitizeJobDescriptionForFitCheck(pasted);
-
-  assert.ok(sanitized.jobDescription.length <= FIT_CHECK_CONTEXT_LIMIT);
-  assert.equal(sanitized.truncated, true);
-  assert.equal(sanitized.originalLength, pasted.length);
-  assert.ok(!sanitized.jobDescription.includes('recruiter@example.com'));
-  assert.ok(!sanitized.jobDescription.includes('https://jobs.example.test/private'));
-  assert.ok(!sanitized.jobDescription.includes('(212) 555-0199'));
-});
-
-test('evidence block validation accepts canonical ids and rejects unsafe shapes', () => {
-  assert.deepEqual(validateBlock({ kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] }), {
-    kind: 'evidence',
-    projectIds: ['agentic-trader'],
-    resumeTrackIds: ['now'],
-  });
-  assert.equal(validateBlock({ kind: 'evidence' }), null);
-  assert.equal(validateBlock({ kind: 'evidence', projectIds: ['agentic-trader', 42] }), null);
-  assert.deepEqual(
-    validateBlock({
-      kind: 'evidence',
-      projectIds: ['a', 'b', 'c', 'd', 'e'],
-      resumeTrackIds: ['one', 'two', 'three', 'four'],
-    }),
-    {
-      kind: 'evidence',
-      projectIds: ['a', 'b', 'c', 'd'],
-      resumeTrackIds: ['one', 'two', 'three'],
-    },
-  );
-
-  const ragSource = {
-    ragSourceId: 'rag-public',
-    projectId: 'agentic-trader',
-    fileId: 'file_public',
-    filename: 'approved-readme.md',
-    score: 0.91,
-    text: 'Approved public source text cited by DM.',
   };
-  assert.deepEqual(validateBlock({ kind: 'evidence', ragSources: [ragSource] }), {
-    kind: 'evidence',
-    ragSources: [ragSource],
-  });
-  assert.equal(validateBlock({ kind: 'evidence', ragSources: [{ ragSourceId: 'rag-public', projectId: 'agentic-trader' }] }), null);
-  assert.equal(validateBlock({ kind: 'evidence', ragSources: 'rag-public' }), null);
-
-  assert.deepEqual(
-    parseStreamLine(
-      JSON.stringify({
-        type: 'block',
-        block: { kind: 'evidence', ragSources: [ragSource] },
-      }),
-    ),
-    {
-      type: 'block',
-      block: { kind: 'evidence', ragSources: [ragSource] },
-    },
-  );
-
-  const event = parseStreamLine(
-    JSON.stringify({
-      type: 'block',
-      block: { kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
-    }),
-  );
-  assert.deepEqual(event, {
-    type: 'block',
-    block: { kind: 'evidence', projectIds: ['agentic-trader'], resumeTrackIds: ['now'] },
-  });
-  assert.equal(
-    parseStreamLine(JSON.stringify({ type: 'block', block: { kind: 'evidence', projectIds: [42] } })),
-    null,
-  );
-});
-
-test('rag evidence rejects citations without non-empty text', () => {
-  const citationWithoutText = {
-    ragSourceId: 'rag-public',
-    projectId: 'agentic-trader',
-    fileId: 'file_public',
-    filename: 'approved-readme.md',
-    score: 0.91,
-  };
-  const invalidCases = [
-    { name: 'missing text', citation: citationWithoutText },
-    { name: 'empty text', citation: { ...citationWithoutText, text: '' } },
-    { name: 'blank text', citation: { ...citationWithoutText, text: ' \n\t ' } },
-  ];
-
-  for (const { name, citation } of invalidCases) {
-    const block = { kind: 'evidence', ragSources: [citation] };
-    assert.equal(validateBlock(block), null, name);
-    assert.equal(parseStreamLine(JSON.stringify({ type: 'block', block })), null, name);
-  }
-});
-
-test('evidence resolution never hydrates project ids from the legacy catalog', () => {
-  const previousWarn = console.warn;
-  console.warn = () => undefined;
-
-  try {
-    const resolved = resolveEvidence({
-      kind: 'evidence',
-      projectIds: ['agentic-trader', 'missing-project'],
-      resumeTrackIds: ['now', 'missing-track'],
-    });
-
-    assert.deepEqual(
-      resolved.projects.map((project) => project.id),
-      [],
-    );
-    assert.deepEqual(
-      resolved.tracks.map((track) => track.id),
-      ['now'],
-    );
-  } finally {
-    console.warn = previousWarn;
-  }
-});
-
-test('streamed project artifacts satisfy active public-source ids absent from the client catalog', () => {
-  const artifact: ProjectArtifact = {
-    id: 'db-only-project',
-    title: 'DB-only Project',
-    area: CATALOG[0]!.area,
-    status: ['done', 'Published'],
-    year: 2026,
-    activity: 'Published from DB',
-    line: 'A project that exists only in the DB read model.',
-    href: '/projects/db-only-project',
-  };
-  const previousWarn = console.warn;
-  const warnings: unknown[] = [];
-  console.warn = (...args: unknown[]) => warnings.push(args);
-
-  try {
-    assert.equal(validateBlock({ kind: 'projects', ids: [artifact.id] }), null);
-    assert.equal(
-      validateBlock({ kind: 'projects', ids: ['different-project'], items: [artifact] }),
-      null,
-    );
-    assert.deepEqual(validateBlock({ kind: 'projects', ids: [artifact.id], items: [artifact] }), {
-      kind: 'projects',
-      ids: [artifact.id],
-      items: [artifact],
-    });
-
-    const resolved = resolveEvidence({
-      kind: 'evidence',
-      projectIds: [artifact.id],
-      projects: [artifact],
-    });
-
-    assert.deepEqual(resolved.projects, [artifact]);
-    assert.deepEqual(warnings, []);
-  } finally {
-    console.warn = previousWarn;
-  }
-});
-
-test('DM route validates fit-check pasted context safely', async () => {
-  const db = await publishedProjectDb();
-  const post = createDMPostHandler({
-    config: TEST_CONFIG,
+  const handler = createDMPostHandler({
+    config,
     db,
-    model: streamingModel(projectDraft('agentic-trader')),
+    model,
+    clientAddressResolver: () => '203.0.113.8',
+    rateLimitConfig: { hmacSecret: 'x'.repeat(32), keyVersion: 'v1', limit: 1, windowSeconds: 60 },
+    now: () => 60_000,
   });
-
-  const tooShort = await post({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Fit-check this job description.',
-        context: {
-          fitCheck: {
-            kind: 'job-description',
-            jobDescription: 'short',
-            originalLength: 5,
-            truncated: false,
-          },
-        },
-      }),
-    }),
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', { method: 'POST', body: 'not-json' }),
   } as never);
-  assert.equal(tooShort.status, 400);
-  assert.match(JSON.stringify(await tooShort.json()), /at least/);
-
-  const valid = await post({
-    request: new Request('https://example.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Fit-check this job description.',
-        context: {
-          fitCheck: {
-            kind: 'job-description',
-            jobDescription:
-              'Software engineer role needing backend services, automation, AI tooling, testing, reliability, product judgment, customer-facing shipping, and communication. '.repeat(3),
-            originalLength: 450,
-            truncated: false,
-          },
-        },
-      }),
-    }),
-  } as never);
-  const events = await readNdjson(valid.body);
-
-  assert.equal(valid.status, 200);
-  assert.ok(events.some((event) => event.type === 'ready'));
-  const answerText = events.filter((event) => event.type === 'text-delta').map((event) => event.delta).join('');
-  assert.match(answerText, /agentic-trader/i);
-  assert.match(answerText, /Status:/);
-  assert.ok(events.some((event) => event.type === 'block' && event.block?.kind === 'resume'));
-  assert.ok(!events.some((event) => event.type === 'error'));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Retry-After'), '60');
+  assert.equal(model.doStreamCalls.length, 0);
 });
 
-
-const PUBLIC_PROJECT_ENV_KEYS = [
-  'PUBLIC_PROJECT_PAGES_FROM_DB',
-  'PORTFOLIO_PUBLIC_PROJECTS_FROM_DB',
-  'PUBLIC_PROJECT_SOURCE',
-  'CI',
-  'VERCEL',
-  'VERCEL_ENV',
-  'VERCEL_REGION',
-  'DATABASE_URL',
-  'POSTGRES_URL',
-  'PORTFOLIO_DATABASE_URL',
-  'PORTFOLIO_POSTGRES_URL',
-] as const;
-
-async function withPublicProjectDbGate<T>(run: () => T | Promise<T>): Promise<T> {
-  return withPublicProjectEnvironment({ PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }, run);
-}
-
-async function withoutPublicProjectDbGate<T>(run: () => T | Promise<T>): Promise<T> {
-  return withPublicProjectEnvironment({}, run);
-}
-
-async function withCatalogEmergency<T>(run: () => T | Promise<T>): Promise<T> {
-  return withPublicProjectEnvironment({ PUBLIC_PROJECT_SOURCE: 'catalog_emergency' }, run);
-}
-
-async function withPublicProjectEnvironment<T>(
-  values: Partial<Record<(typeof PUBLIC_PROJECT_ENV_KEYS)[number], string>>,
-  run: () => T | Promise<T>,
-): Promise<T> {
-  const previous = new Map(PUBLIC_PROJECT_ENV_KEYS.map((key) => [key, process.env[key]]));
-  resetPublicProjectDetailsLoadForTests();
-
-  for (const key of PUBLIC_PROJECT_ENV_KEYS) delete process.env[key];
-  for (const [key, value] of Object.entries(values)) process.env[key] = value;
-
-  try {
-    return await run();
-  } finally {
-    for (const key of PUBLIC_PROJECT_ENV_KEYS) {
-      const previousValue = previous.get(key);
-      if (previousValue === undefined) delete process.env[key];
-      else process.env[key] = previousValue;
-    }
-    resetPublicProjectDetailsLoadForTests();
-  }
-}
-
-async function publishedProjectDb(): Promise<Queryable> {
-  const db = new PGlite() as Queryable;
-  await applyMigrations(db);
-
-  const [published, draft, shadow] = buildCatalogShadowRecords(CATALOG.slice(0, 3));
-  assert.ok(published && draft && shadow, 'expected at least three catalog records');
-
-  await insertProjectRecord(db, {
-    ...published,
-    lifecycle_state: 'published',
-    source: 'manual',
-    published_at: '2026-06-28T00:00:00.000Z',
+test('the endpoint accepts bounded UIMessage input and returns the standard typed stream', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const handler = createDMPostHandler({
+    config,
+    db: source.db,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      segments: [{ kind: 'conversational', act: 'capabilities' }],
+      artifacts: [],
+      limitations: [],
+    } }]),
   });
-  await insertProjectRecord(db, { ...draft, lifecycle_state: 'draft_only', source: 'github_discovery' });
-  await insertProjectRecord(db, {
-    ...draft,
-    id: 'proj-draft-only-unlisted',
-    slug: 'proj-draft-only-unlisted',
-    lifecycle_state: 'draft_only',
-    source: 'github_discovery',
-  });
-  await insertProjectRecord(db, shadow);
-  await db.query(
-    `INSERT INTO project_candidates (id, source_kind, source_ref, lifecycle_state)
-     VALUES ('candidate-hidden', 'github_repo', 'https://example.test/private', 'detected')`,
-  );
-
-  return db;
-}
-
-async function insertIndexedPublicRagSource(db: Queryable): Promise<void> {
-  await db.query(
-    `INSERT INTO evidence_sources (id, project_id, source_type, source_ref, privacy_state, extracted_text, claim_map)
-     VALUES ('ev-public-rag', 'agentic-trader', 'readme', 'test:public-rag', 'safe_public', $1, '{}'::jsonb)`,
-    ['Approved public RAG source text with enough detail to support a recruiter-facing answer.'],
-  );
-  await db.query(
-    `INSERT INTO rag_sources (
-       id, project_id, evidence_source_id, eligibility_state, openai_file_id, vector_store_id, last_synced_at
-     ) VALUES (
-       'rag-public', 'agentic-trader', 'ev-public-rag', 'indexed', 'file_public', 'vs_public', $1
-     )`,
-    [new Date().toISOString()],
-  );
-}
-
-async function insertProjectRecord(db: Queryable, record: CatalogShadowRecord): Promise<void> {
-  await db.query(
-    `INSERT INTO projects (
-       id, slug, title, tagline, area, year, lifecycle_state, activity, summary,
-       details, metrics, links, media, source, published_at, archived_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9,
-       $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16
-     )`,
-    [
-      record.id,
-      record.slug,
-      record.title,
-      record.tagline,
-      record.area,
-      record.year,
-      record.lifecycle_state,
-      record.activity,
-      record.summary,
-      JSON.stringify(record.details),
-      JSON.stringify(record.metrics),
-      JSON.stringify(record.links),
-      JSON.stringify(record.media),
-      record.source,
-      record.published_at,
-      record.archived_at,
-    ],
-  );
-}
-
-function createMockRagSearch(): (query: string) => Promise<PublicRagSearchOutput> {
-  return async (query) => {
-    if (query.includes('weak')) {
-      return { citations: [] };
-    }
-    return {
-      citations: [
-        {
-          ragSourceId: 'rag-public',
-          projectId: 'agentic-trader',
-          fileId: 'file_public',
-          filename: 'approved-readme.md',
-          score: 0.91,
-          text: 'Approved public RAG source text with enough detail to support a recruiter-facing answer.',
-        },
-      ],
-    };
-  };
-}
-
-function streamingModel(text: string): MockLanguageModelV4 {
-  return new MockLanguageModelV4({
-    doStream: async () => ({
-      stream: simulateReadableStream({
-        chunks: [
-          { type: 'stream-start', warnings: [] },
-          { type: 'response-metadata', id: 'id-0', modelId: 'mock-model-id', timestamp: new Date(0) },
-          { type: 'text-start', id: 'text-1' },
-          { type: 'text-delta', id: 'text-1', delta: text },
-          { type: 'text-end', id: 'text-1' },
-          {
-            type: 'finish',
-            finishReason: { unified: 'stop', raw: 'stop' },
-            usage: {
-              inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
-              outputTokens: { total: 8, text: 8, reasoning: undefined },
-            },
-          },
-        ],
-      }),
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
     }),
+  } as never);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /^text\/event-stream/);
+  assert.equal(response.headers.get('X-Public-Project-Source'), 'database');
+  const observation = await observeDMResponse(response, request);
+  assert.equal(observation.outcome, 'completed');
+  assert.match(observation.answerText, /published projects/);
+});
+
+test('the endpoint never puts unvalidated model text chunks on the wire', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const sentinel = 'UNVALIDATED_MODEL_TEXT_SENTINEL';
+  const handler = createDMPostHandler({
+    config,
+    db: source.db,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      segments: [{ kind: 'conversational', act: 'capabilities' }],
+      artifacts: [],
+      limitations: [],
+    }, prose: sentinel }]),
   });
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    }),
+  } as never);
+  const observation = await observeDMResponse(response.clone(), request);
+  const body = await response.text();
+  const chunks = observation.timedChunks.map(({ chunk }) => chunk);
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(body, new RegExp(sentinel));
+  assert.match(body, /data-dm-answer/);
+  assert.match(body, /published projects/);
+  assert.equal(chunks.filter(isFinalizationInputStart).length, 1);
+  assert.equal(chunks.some(isFinalizationInputAvailable), false);
+  assert.equal(fallbackFinalizationResult(chunks)?.status, 'accepted');
+});
+
+test('the endpoint never puts invalid finalization prose on the wire', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const sentinel = 'UNVALIDATED_MODEL_PROSE_SENTINEL';
+  const invalidFinalization = {
+    segments: [{ kind: 'factual', text: sentinel, evidenceIds: ['invented:evidence'] }],
+    artifacts: [],
+    limitations: [],
+  };
+  const handler = createDMPostHandler({
+    config,
+    db: source.db,
+    model: streamedToolSequenceModel([
+      { toolName: 'finalizeAnswer', input: invalidFinalization },
+      { toolName: 'finalizeAnswer', input: invalidFinalization },
+    ]),
+  });
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    }),
+  } as never);
+  const observation = await observeDMResponse(response.clone(), request);
+  const body = await response.text();
+  const chunks = observation.timedChunks.map(({ chunk }) => chunk);
+  const finalizationToolCallIds = new Set(chunks.filter(isFinalizationInputStart).map((chunk) => chunk.toolCallId));
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(body, new RegExp(sentinel));
+  assert.match(body, /data-dm-answer/);
+  assert.equal(finalizationToolCallIds.size, 2);
+  assert.equal(chunks.some(isFinalizationInputAvailable), false);
+  assert.equal(
+    chunks.some((chunk) => chunk.type === 'tool-input-delta' && finalizationToolCallIds.has(chunk.toolCallId)),
+    false,
+  );
+  assert.equal(fallbackFinalizationResult(chunks)?.status, 'limited');
+  assert.equal(observation.result?.status, 'limited');
+  assert.match(observation.answerText, /could not verify/i);
+});
+
+function isFinalizationInputStart(
+  chunk: UIMessageChunk<unknown, DMUIData>,
+): chunk is Extract<UIMessageChunk<unknown, DMUIData>, { type: 'tool-input-start' }> {
+  return chunk.type === 'tool-input-start' && chunk.toolName === 'finalizeAnswer';
 }
 
-function throwingModel(): MockLanguageModelV4 {
+function isFinalizationInputAvailable(chunk: UIMessageChunk<unknown, DMUIData>): boolean {
+  return chunk.type === 'tool-input-available' && chunk.toolName === 'finalizeAnswer';
+}
+
+function fallbackFinalizationResult(
+  chunks: UIMessageChunk<unknown, DMUIData>[],
+): Exclude<DMFinalizationResult, { status: 'rejected' }> | null {
+  const toolCalls = new Map<string, string>();
+  let finalizationResult: Exclude<DMFinalizationResult, { status: 'rejected' }> | null = null;
+  for (const chunk of chunks) {
+    if (chunk.type === 'tool-input-start' || chunk.type === 'tool-input-available') {
+      toolCalls.set(chunk.toolCallId, chunk.toolName);
+      continue;
+    }
+    if (chunk.type !== 'tool-output-available' || toolCalls.get(chunk.toolCallId) !== 'finalizeAnswer') continue;
+    const result = validateFinalizationResult(chunk.output);
+    if (result && result.status !== 'rejected') finalizationResult = result;
+  }
+  return finalizationResult;
+}
+
+function chatRequest(text: string): DMChatRequest {
+  return { messages: [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text }] }] };
+}
+
+function parseMetricsRecord(lines: string[]): DMMetricsRecord {
+  assert.equal(lines.length, 1);
+  const prefix = '[dm-metrics] ';
+  assert.ok(lines[0].startsWith(prefix));
+  return JSON.parse(lines[0].slice(prefix.length)) as DMMetricsRecord;
+}
+
+type MockToolCall = { toolName: string; input: unknown; prose?: string };
+
+function toolSequenceModel(
+  calls: MockToolCall[],
+  observedPrompts: LanguageModelV4CallOptions[] = [],
+): LanguageModel {
+  return toolStepModel(calls.map((call) => [call]), observedPrompts);
+}
+
+function streamedToolSequenceModel(calls: MockToolCall[]): LanguageModel {
+  let index = 0;
   return new MockLanguageModelV4({
     doStream: async () => {
-      throw new Error('model should not be called');
+      const call = calls[index++];
+      if (!call) throw new Error('mock model received an unexpected extra step');
+      const id = `streamed-call-${index}`;
+      const input = JSON.stringify(call.input);
+      const splitAt = Math.max(1, Math.floor(input.length / 2));
+      return {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start' as const, warnings: [] },
+            { type: 'response-metadata' as const, id: `streamed-response-${index}`, modelId: 'mock-streamed-tool-loop', timestamp: new Date(0) },
+            { type: 'tool-input-start' as const, id, toolName: call.toolName },
+            { type: 'tool-input-delta' as const, id, delta: input.slice(0, splitAt) },
+            { type: 'tool-input-delta' as const, id, delta: input.slice(splitAt) },
+            { type: 'tool-input-end' as const, id },
+            { type: 'tool-call' as const, toolCallId: id, toolName: call.toolName, input },
+            {
+              type: 'finish' as const,
+              finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' },
+              usage: {
+                inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 8, text: 8, reasoning: undefined },
+              },
+            },
+          ],
+        }),
+      };
     },
   });
 }
 
-function projectDraft(
-  projectId: string,
-  references: {
-    metricIds?: string[];
-    linkIds?: string[];
-    citationIds?: string[];
-    metricText?: string;
-    citationText?: string;
-  } = {},
-): string {
-  const citationIds = references.citationIds ?? [];
-  const identity: Record<string, { title: string; status: string }> = {
-    'agentic-trader': { title: 'agentic-trader', status: 'Dry-run' },
-    'exit-manager': { title: 'tastytrade-exit-manager', status: 'Live' },
-  };
-  const project = identity[projectId] ?? { title: projectId, status: 'Published' };
-  return JSON.stringify({
-    claims: [{
-      text: `${project.title} is a public project. Status: ${project.status}.${references.metricText ? ` ${references.metricText}` : ''}${citationIds.length > 0 ? ` ${references.citationText ?? 'Approved public RAG source text with enough detail to support a recruiter-facing answer.'}` : ''}`,
-      evidenceIds: [
-        `${projectId}:identity`,
-        `${projectId}:status`,
-        ...(references.metricIds ?? []),
-        ...(references.linkIds ?? []),
-        ...citationIds.map((id) => `citation:${id}`),
-      ],
-    }],
-    artifactProjectIds: [projectId],
+function toolStepModel(
+  steps: MockToolCall[][],
+  observedPrompts: LanguageModelV4CallOptions[] = [],
+): LanguageModel {
+  let index = 0;
+  return new MockLanguageModelV4({
+    doStream: async (options) => {
+      observedPrompts.push(options);
+      const calls = steps[index++];
+      if (!calls) throw new Error('mock model received an unexpected extra step');
+      return {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start' as const, warnings: [] },
+            { type: 'response-metadata' as const, id: `response-${index}`, modelId: 'mock-tool-loop', timestamp: new Date(0) },
+            ...calls.flatMap((call, callIndex) => {
+              const id = `call-${index}-${callIndex + 1}`;
+              const textId = `text-${index}-${callIndex + 1}`;
+              return [
+                ...(call.prose ? [
+                  { type: 'text-start' as const, id: textId },
+                  { type: 'text-delta' as const, id: textId, delta: call.prose },
+                  { type: 'text-end' as const, id: textId },
+                ] : []),
+                { type: 'tool-call' as const, toolCallId: id, toolName: call.toolName, input: JSON.stringify(call.input) },
+              ];
+            }),
+            {
+              type: 'finish' as const,
+              finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' },
+              usage: {
+                inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 8, text: 8, reasoning: undefined },
+              },
+            },
+          ],
+        }),
+      };
+    },
   });
-}
-
-type JsonEvent = {
-  type?: string;
-  name?: string;
-  block?: {
-    kind?: string;
-    text?: string;
-    projectIds?: string[];
-    items?: Array<{ id?: string; title?: string; href?: string; summary?: string }>;
-    projects?: Array<{ id?: string; title?: string; href?: string }>;
-    ragSources?: Array<{ ragSourceId?: string; projectId?: string; score?: number }>;
-  };
-  delta?: string;
-  message?: string;
-  traceId?: string;
-};
-
-function dmRequest(message: string): Request {
-  return new Request('https://example.test/api/dm/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  });
-}
-
-async function readNdjson(stream: ReadableStream<Uint8Array> | null): Promise<JsonEvent[]> {
-  assert.ok(stream, 'expected a response body stream');
-  const text = await new Response(stream).text();
-  return text
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as JsonEvent);
 }

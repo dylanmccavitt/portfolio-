@@ -1,9 +1,10 @@
-import type { DMStreamEvent } from './contract';
+import type { UIMessageChunk } from 'ai';
+import type { DMUIData } from './contract';
 
 export type DMBenchmarkFailureClass = 'OK' | 'EVAL_FAILED' | 'MODEL_CALL_FAILED' | 'STREAM_ERROR' | 'PARTIAL_STREAM';
 
 export interface TimedDMEvent {
-  event: DMStreamEvent;
+  event: UIMessageChunk<unknown, DMUIData>;
   elapsedMs: number;
 }
 
@@ -55,17 +56,21 @@ export interface DMBenchmarkModelSummary {
 }
 
 export function classifyBenchmarkRun(input: DMBenchmarkClassificationInput): DMBenchmarkClassification {
-  const firstToken = input.events.find((entry) => entry.event.type === 'text-delta' || entry.event.type === 'block');
+  const firstToken = input.events.find((entry) => entry.event.type === 'data-dm-answer');
   const firstTokenMs = firstToken ? clampMs(firstToken.elapsedMs) : null;
   const completionMs = clampMs(input.completionMs);
-  const toolCount = input.events.filter((entry) => entry.event.type === 'tool').length;
+  const toolCount = new Set(input.events.flatMap((entry) =>
+    entry.event.type === 'tool-input-start' && entry.event.toolName !== 'finalizeAnswer'
+      ? [entry.event.toolCallId]
+      : [],
+  )).size;
   const errorEvents = input.events
     .map((entry) => entry.event)
-    .filter((event): event is Extract<DMStreamEvent, { type: 'error' }> => event.type === 'error');
+    .filter((event): event is Extract<UIMessageChunk, { type: 'error' }> => event.type === 'error');
   const errorCount = errorEvents.length;
-  const hasDone = input.events.some((entry) => entry.event.type === 'done');
-  const errorMessage = errorEvents.length > 0 ? errorEvents.map((event) => event.message).join(' | ') : null;
-  const modelExercised = input.events.some((entry) => entry.event.type === 'ready');
+  const hasDone = input.events.some((entry) => entry.event.type === 'finish');
+  const errorMessage = errorEvents.length > 0 ? errorEvents.map((event) => event.errorText).join(' | ') : null;
+  const modelExercised = input.events.some((entry) => entry.event.type === 'start');
 
   let failureClass: DMBenchmarkFailureClass;
   let validLatency = false;
@@ -81,7 +86,7 @@ export function classifyBenchmarkRun(input: DMBenchmarkClassificationInput): DMB
     }
   } else if (!hasDone || firstTokenMs === null || !Number.isFinite(input.completionMs)) {
     failureClass = 'PARTIAL_STREAM';
-    failureDetail = !hasDone ? 'stream closed without done event' : 'missing first-token or completion timing';
+    failureDetail = !hasDone ? 'stream closed without finish chunk' : 'missing structured answer or completion timing';
   } else if (input.evalFailure) {
     failureClass = 'EVAL_FAILED';
     validLatency = true;

@@ -1,5 +1,4 @@
 import type { ProjectLink, ProjectMetric, ProjectSeek, ProjectShot, ProjectStackEntry, ProjectStatus } from '@/data/catalog';
-import type { ProjectSummary } from '@/lib/dm/contract';
 import {
   adaptLegacyProjectDetails,
   adaptLegacyProjectDetailEntries,
@@ -42,8 +41,22 @@ export interface ProjectSeoReadModel {
   sitemapPath: string;
 }
 
-export interface DmProjectArtifactReadModel extends ProjectSummary {
+export interface DmProjectArtifactReadModel {
   kind: 'project';
+  id: string;
+  title: string;
+  area: ProjectArea;
+  status: ProjectStatus;
+  year: number;
+  activity: string;
+  line: string;
+  wip: boolean;
+  money: boolean;
+  links: ProjectLink[];
+  metrics: ProjectMetric[];
+  about: string[];
+  notes: string[];
+  stack: ProjectStackEntry[];
   href: string;
   source: string;
 }

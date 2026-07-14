@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { aggregateBenchmarkRuns, classifyBenchmarkRun, median, percentile, type DMBenchmarkRunRecord, type TimedDMEvent } from '@/lib/dm/benchmark';
 import { parseDMEvalModelSpecs, parseDMModelSpec, parseDMModelSpecs } from '@/lib/dm/model-specs';
@@ -34,7 +35,7 @@ test('model specs fall back to direct OpenAI when only OPENAI_API_KEY is set', (
   assert.throws(() => parseDMModelSpec('anthropic/claude-sonnet-4.6', keys), /AI_GATEWAY_API_KEY/);
 });
 
-test('model spec lists dedupe and support dry-mode parsing without keys', () => {
+test('model spec lists dedupe explicit ids before command-level credential validation', () => {
   const keys = { hasGatewayKey: false, hasOpenaiKey: false };
   const specs = parseDMModelSpecs('anthropic/claude-sonnet-4.6, anthropic/claude-sonnet-4.6, openai/gpt-4.1', keys, []);
 
@@ -45,6 +46,23 @@ test('model spec lists dedupe and support dry-mode parsing without keys', () => 
   assert.equal(specs[0]?.provider, 'gateway');
   assert.throws(() => parseDMModelSpecs(undefined, keys, []), /No models configured/);
   assert.throws(() => parseDMModelSpec('anthropic/', keys), /creator.*model|<creator>\/<model>/);
+});
+
+test('benchmark operator guidance is live-only and names the current eval source', async () => {
+  const [benchmarkDoc, evalDoc, benchmarkCli, modelSpecs] = await Promise.all([
+    readFile(new URL('../docs/agents/dm-latency-benchmark.md', import.meta.url), 'utf8'),
+    readFile(new URL('../docs/agents/dm-evals.md', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/dm-benchmark.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/dm/model-specs.ts', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(benchmarkDoc, /credential-gated live latency\/eval harness/);
+  assert.doesNotMatch(benchmarkDoc, /dry[- ]mode|dry plumbing|stubbed models/i);
+  assert.match(evalDoc, /src\/lib\/dm\/eval-source\.ts/);
+  assert.doesNotMatch(evalDoc, /src\/lib\/dm\/eval-fixtures\.ts/);
+  assert.match(benchmarkCli, /At least one provider key is required/);
+  assert.doesNotMatch(benchmarkCli, /dry[- ]mode|stubbed models|plumbing check/i);
+  assert.doesNotMatch(modelSpecs, /dry[- ]mode/i);
 });
 
 test('eval model specs prefer cli models, then DM_EVAL_MODELS, then DM_MODEL', () => {
@@ -75,8 +93,8 @@ test('eval model specs prefer cli models, then DM_EVAL_MODELS, then DM_MODEL', (
 
 test('benchmark classification marks no-token errors as MODEL_CALL_FAILED invalid latency', () => {
   const events: TimedDMEvent[] = [
-    { elapsedMs: 2, event: { type: 'ready', agent: 'DM', provider: 'openai', trace: emptyTrace() } },
-    { elapsedMs: 5, event: { type: 'error', message: 'DM is unavailable right now.' } },
+    { elapsedMs: 2, event: { type: 'start' } },
+    { elapsedMs: 5, event: { type: 'error', errorText: 'DM is unavailable right now.' } },
   ];
   const result = classifyBenchmarkRun({ events, completionMs: 8, evalFailure: 'missing refusal text block' });
 
@@ -89,9 +107,9 @@ test('benchmark classification marks no-token errors as MODEL_CALL_FAILED invali
 
 test('benchmark classification keeps eval failures latency-valid when stream completed', () => {
   const events: TimedDMEvent[] = [
-    { elapsedMs: 1, event: { type: 'ready', agent: 'DM', provider: 'openai', trace: emptyTrace() } },
-    { elapsedMs: 9, event: { type: 'text-delta', delta: 'public answer token' } },
-    { elapsedMs: 12, event: { type: 'done', answer: [], trace: emptyTrace() } },
+    { elapsedMs: 1, event: { type: 'start' } },
+    { elapsedMs: 9, event: answerChunk() },
+    { elapsedMs: 12, event: { type: 'finish' } },
   ];
   const result = classifyBenchmarkRun({ events, completionMs: 15, evalFailure: 'missing projects answer block' });
 
@@ -102,26 +120,17 @@ test('benchmark classification keeps eval failures latency-valid when stream com
   assert.equal(result.evalPassed, false);
 });
 
-test('benchmark classification marks deterministic refusal paths as non-model', () => {
+test('benchmark classification requires the model-backed standard stream', () => {
   const events: TimedDMEvent[] = [
-    {
-      elapsedMs: 2,
-      event: {
-        type: 'block',
-        index: 0,
-        block: {
-          kind: 'text',
-          text: 'I can only discuss published portfolio projects, public resume facts, and contact details.',
-        },
-      },
-    },
-    { elapsedMs: 4, event: { type: 'done', answer: [], trace: emptyTrace() } },
+    { elapsedMs: 1, event: { type: 'start' } },
+    { elapsedMs: 2, event: answerChunk() },
+    { elapsedMs: 4, event: { type: 'finish' } },
   ];
   const result = classifyBenchmarkRun({ events, completionMs: 5, evalFailure: null });
 
   assert.equal(result.failureClass, 'OK');
   assert.equal(result.validLatency, true);
-  assert.equal(result.modelExercised, false);
+  assert.equal(result.modelExercised, true);
   assert.equal(result.firstTokenMs, 2);
 });
 
@@ -202,6 +211,13 @@ function runRecord(overrides: Partial<DMBenchmarkRunRecord>): DMBenchmarkRunReco
   };
 }
 
-function emptyTrace() {
-  return { mode: 'vercel-ai-sdk' as const, agent: 'DM' as const, items: [] };
+function answerChunk(): TimedDMEvent['event'] {
+  return {
+    type: 'data-dm-answer',
+    data: {
+      status: 'accepted',
+      repairAttempted: false,
+      answer: { segments: [{ text: 'Public answer.', evidenceIds: [], evidence: [] }], artifacts: [], limitations: [] },
+    },
+  };
 }

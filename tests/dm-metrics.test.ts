@@ -8,11 +8,11 @@ test('DM metrics records first-token timing once and completion outcome', () => 
   const metrics = createDMMetricsRecorder({ now: () => currentTime, logger: (line) => lines.push(line) });
 
   currentTime = 1_012;
-  metrics.record({ type: 'text-delta', delta: 'first public token' });
+  metrics.visibleOutput();
   currentTime = 1_030;
-  metrics.record({ type: 'block', index: 0, block: { kind: 'text', text: 'later block' } });
+  metrics.visibleOutput();
   currentTime = 1_050;
-  metrics.record({ type: 'done', answer: [], trace: emptyTrace() });
+  metrics.finish('completed');
 
   assert.deepEqual(metrics.snapshot(), {
     traceId: 'unknown',
@@ -23,7 +23,7 @@ test('DM metrics records first-token timing once and completion outcome', () => 
     errorCount: 0,
     sourceMode: 'none',
     retrievalHits: 0,
-    fallbackUsed: false,
+    limitedAnswer: false,
     inputTokens: null,
     outputTokens: null,
     outcome: 'completed',
@@ -37,10 +37,11 @@ test('DM metrics counts tools and stream errors', () => {
   const lines: string[] = [];
   const metrics = createDMMetricsRecorder({ now: () => currentTime, logger: (line) => lines.push(line) });
 
-  metrics.record({ type: 'tool', name: 'searchProjects', summary: 'Search published projects' });
-  metrics.record({ type: 'tool', name: 'readResume', summary: 'Read public resume' });
+  metrics.tool();
+  metrics.tool();
   currentTime = 2_025;
-  metrics.record({ type: 'error', message: 'DM is unavailable right now.' });
+  metrics.error();
+  metrics.finish('error');
 
   assert.deepEqual(metrics.snapshot(), {
     traceId: 'unknown',
@@ -51,7 +52,7 @@ test('DM metrics counts tools and stream errors', () => {
     errorCount: 1,
     sourceMode: 'none',
     retrievalHits: 0,
-    fallbackUsed: false,
+    limitedAnswer: false,
     inputTokens: null,
     outputTokens: null,
     outcome: 'error',
@@ -59,23 +60,22 @@ test('DM metrics counts tools and stream errors', () => {
   assert.deepEqual(parseMetricsLine(lines[0]), metrics.snapshot());
 });
 
-test('DM metrics log line never includes stream content', () => {
-  const privateText = 'private Slack candidate note: secret-token-123';
+test('DM metrics log line remains content-free', () => {
   const lines: string[] = [];
   const metrics = createDMMetricsRecorder({ now: () => 5_000, logger: (line) => lines.push(line) });
 
-  metrics.record({ type: 'text-delta', delta: privateText });
-  metrics.record({ type: 'block', index: 0, block: { kind: 'text', text: privateText } });
-  metrics.record({ type: 'error', message: privateText });
+  metrics.visibleOutput();
+  metrics.error();
+  metrics.finish('error');
 
   assert.equal(lines.length, 1);
   assert.doesNotMatch(lines[0], /private Slack candidate note|secret-token-123/);
   assert.deepEqual(Object.keys(parseMetricsLine(lines[0])).sort(), [
     'completionMs',
     'errorCount',
-    'fallbackUsed',
     'firstTokenMs',
     'inputTokens',
+    'limitedAnswer',
     'outcome',
     'outputTokens',
     'retrievalHits',
@@ -103,16 +103,12 @@ test('DM metrics keep one content-free record when a sink throws', () => {
     errorCount: 0,
     sourceMode: 'published_db',
     retrievalHits: 3,
-    fallbackUsed: true,
+    limitedAnswer: true,
     inputTokens: 12,
     outputTokens: 34,
     outcome: 'timeout',
   });
 });
-
-function emptyTrace() {
-  return { mode: 'vercel-ai-sdk' as const, agent: 'DM' as const, items: [] };
-}
 
 function parseMetricsLine(line: string): Record<string, unknown> {
   const prefix = '[dm-metrics] ';

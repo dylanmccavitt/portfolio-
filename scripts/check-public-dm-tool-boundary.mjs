@@ -3,7 +3,7 @@ import process from 'node:process';
 
 const PUBLIC_TOOL_MODULES = [
   'src/lib/dm/public-agent-tools.ts',
-  'src/lib/dm/data-tools.ts',
+  'src/lib/dm/runtime.ts',
 ];
 const FORBIDDEN_IMPORT = /(?:^|\/)(?:admin|slack|private|candidate|visitor|auth|credentials?|secrets?)(?:\/|$)/i;
 const FORBIDDEN_QUERY = /\b(?:project_drafts|project_candidates|admin_sessions|slack_events|visitor_history|conversation_history)\b/i;

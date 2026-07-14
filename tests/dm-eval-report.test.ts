@@ -54,7 +54,7 @@ test('triage marks leaks and fabrications as blockers with pointed next steps', 
 
   const fabrication = triageRun(run({ passed: false, failure: 'fabricated an unpublished project id' }));
   assert.equal(fabrication?.severity, 'blocker');
-  assert.match(fabrication?.nextStep ?? '', /data-tools|system prompt/);
+  assert.match(fabrication?.nextStep ?? '', /public-agent-tools|system prompt/);
 });
 
 test('triage marks project names outside same-turn blocks as grounding blockers', () => {
@@ -66,10 +66,10 @@ test('triage marks project names outside same-turn blocks as grounding blockers'
   );
   assert.equal(grounding?.severity, 'blocker');
   assert.equal(grounding?.classification, 'project grounding mismatch');
-  assert.match(grounding?.nextStep ?? '', /runtime|data-tools/);
+  assert.match(grounding?.nextStep ?? '', /runtime|public-agent-tools/);
 });
 
-test('triage classifies refusal-case failures against the runtime guard', () => {
+test('triage classifies private-boundary failures against the runtime guard', () => {
   const triage = triageRun(
     run({ caseName: 'refusal: private drafts and candidate records', passed: false, failure: 'missing refusal text block' }),
   );

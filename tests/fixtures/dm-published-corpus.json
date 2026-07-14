@@ -159,5 +159,15 @@
       "notes": [],
       "stack": []
     }
+  ],
+  "publicSources": [
+    {
+      "id": "loom-architecture",
+      "projectId": "loom",
+      "filename": "loom-architecture.md",
+      "privacyState": "safe_public",
+      "approvalState": "approved",
+      "text": "Loom's public architecture separates planning, bounded implementation, independent review, and verification into explicit delivery phases. Each phase hands off reviewable evidence before the next phase begins."
+    }
   ]
 }

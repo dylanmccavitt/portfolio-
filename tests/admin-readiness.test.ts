@@ -11,6 +11,7 @@ const RAG_KEY = 'readiness-test-openai-key';
 const LIMITER_SECRET = 'l'.repeat(32);
 const READY_ENV = {
   DM_READINESS_TOKEN: TOKEN,
+  DM_MODEL: 'openai/readiness-test-model',
   OPENAI_API_KEY: RAG_KEY,
   DM_RATE_LIMIT_HMAC_SECRET: LIMITER_SECRET,
   PUBLIC_PROJECT_SOURCE: 'database',

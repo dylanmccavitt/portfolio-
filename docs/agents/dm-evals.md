@@ -31,10 +31,12 @@ models but does not change `DM_MODEL` or any environment configuration.
 
 ## No offline release scores
 
-Deterministic mocked responses in `src/lib/dm/eval-fixtures.ts` are named and
-used as unit/benchmark fixtures only. The release runner does not import their
-`modelText` or `answerPlan` fields. `npm run dm:eval` exits after corpus
-validation and explicitly states that it produced no release-quality score.
+Sanitized benchmark/eval inputs are assembled by
+`src/lib/dm/eval-source.ts` from checked-in published-project and approved
+public-source records. That source supplies input records and public-source
+behavior only; it does not provide model answers or release scores.
+`npm run dm:eval` exits after corpus validation and explicitly states that it
+produced no release-quality score.
 
 Only `npm run dm:eval:release` may label output as a release score. It refuses
 to run unless live mode, the exact two-model matrix, three runs, and a judge are
