@@ -17,6 +17,7 @@
     "test:admin": "node --import tsx --test tests/admin-auth.test.ts tests/admin-publish.test.ts tests/admin-readiness.test.ts && node --import tsx --test tests/admin-rag-sources.test.ts",
     "test:release": "node --import tsx --test tests/release-gates.test.ts",
     "test:dm": "node --import tsx --test tests/dm-runtime.test.ts tests/dm-grounding.test.ts",
+    "test:dm-tools": "node --import tsx --test tests/dm-public-agent-tools.test.ts",
     "test:metrics": "node --import tsx --test tests/dm-metrics.test.ts",
     "test:rag": "node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts",
     "test:outbox": "node --import tsx --test tests/outbox-worker.test.ts",

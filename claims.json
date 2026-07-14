@@ -20,6 +20,29 @@
       "check": "npm run test:dm"
     },
     {
+      "id": "dm-public-tool-boundary",
+      "statement": "typed public DM tools return only published project records, approved public sources, canonical resume and contact facts, and run-local returned evidence",
+      "subjectRefs": [
+        "src/lib/dm/public-agent-tools.ts",
+        "src/lib/public-projects.ts",
+        "src/lib/rag/retrieval.ts",
+        "src/lib/rag/ingestion.ts",
+        "src/data/resume.ts",
+        "tests/dm-public-agent-tools.test.ts"
+      ],
+      "check": "npm run test:dm-tools"
+    },
+    {
+      "id": "dm-public-tool-import-boundary",
+      "statement": "public DM tool modules cannot import Slack, admin, private, candidate, visitor, credential, or secret source modules or query private-source tables",
+      "subjectRefs": [
+        "src/lib/dm/public-agent-tools.ts",
+        "src/lib/dm/data-tools.ts",
+        "scripts/check-public-dm-tool-boundary.mjs"
+      ],
+      "check": "node scripts/check-public-dm-tool-boundary.mjs"
+    },
+    {
       "id": "filter-slugs",
       "statement": "PLAYLIST_SLUGS defines exactly 6 library filter slugs backing /library/[filter]",
       "subjectRefs": ["src/data/catalog.ts", "src/pages/library/[filter].astro"],
