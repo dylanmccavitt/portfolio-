@@ -55,8 +55,8 @@
       "check": "npm run test:dm"
     },
     {
-      "id": "dm-removed-scripted-runtime",
-      "statement": "the scripted DM router, planner, deterministic answer paths, fake trace, canned answer fixtures, and custom NDJSON protocol are absent",
+      "id": "dm-legacy-scripted-runtime-removed",
+      "statement": "the legacy scripted DM router, planner, request-routed deterministic answer generators, fake trace, canned answer fixtures, and custom NDJSON protocol are absent; model-selected no-evidence conversational, limitation, and follow-up content is restricted to finite enum-selected server-controlled copy materialized only by the validated finalization boundary",
       "subjectRefs": [
         "astro.config.mjs",
         "src/lib/dm/benchmark.ts",

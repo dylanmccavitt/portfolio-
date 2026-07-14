@@ -149,29 +149,36 @@ type ConversationalAct = z.infer<typeof ConversationalActSchema>;
 type LimitationCode = z.infer<typeof LimitationCodeSchema>;
 type FollowUpCode = z.infer<typeof FollowUpCodeSchema>;
 
-// Security boundary: only factual segments retain model-authored prose. These
-// codes materialize the complete no-evidence surface without a scripted router.
-const CONVERSATIONAL_TEXT: Record<ConversationalAct, string> = {
-  greeting: "Hi — I'm DM, Dylan's public portfolio guide.",
-  capabilities: "I can help with Dylan's published projects, public resume, and contact details.",
-  acknowledgement: 'Got it.',
-  clarify_reference: 'Could you clarify which published project or resume entry you mean?',
-  explain_process: 'I answer using published portfolio records, the public resume, contact details, and approved public sources.',
-};
-const LIMITATION_TEXT: Record<LimitationCode, string> = {
-  private_sources: 'I can only use published public portfolio sources.',
-  personal_unknown: 'I could not find a published public answer to that personal question.',
-  public_data_unavailable: 'The published project source is unavailable for this answer.',
-  public_source_unavailable: 'Approved public-source search is unavailable for this answer.',
-  unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and approved public sources.",
-  ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
-};
-const FOLLOW_UP_TEXT: Record<FollowUpCode, string> = {
-  project_overview: 'Would you like a project overview?',
-  specify_project: 'Would you like to name a specific published project?',
-  try_resume: 'Would you like to try the public resume instead?',
-  contact_dylan: 'Would you like Dylan\'s public contact details?',
-  refine_question: 'Would you like to narrow the question?',
+// Security boundary: only factual segments retain model-authored prose. The
+// model can select these finite enum values only through finalizeAnswer; the
+// server materializes the copy after the structured answer validates.
+const FINALIZATION_ENUM_COPY = {
+  conversational: {
+    greeting: "Hi — I'm DM, Dylan's public portfolio guide.",
+    capabilities: "I can help with Dylan's published projects, public resume, and contact details.",
+    acknowledgement: 'Got it.',
+    clarify_reference: 'Could you clarify which published project or resume entry you mean?',
+    explain_process: 'I answer using published portfolio records, the public resume, contact details, and approved public sources.',
+  },
+  limitation: {
+    private_sources: 'I can only use published public portfolio sources.',
+    personal_unknown: 'I could not find a published public answer to that personal question.',
+    public_data_unavailable: 'The published project source is unavailable for this answer.',
+    public_source_unavailable: 'Approved public-source search is unavailable for this answer.',
+    unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and approved public sources.",
+    ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
+  },
+  followUp: {
+    project_overview: 'Would you like a project overview?',
+    specify_project: 'Would you like to name a specific published project?',
+    try_resume: 'Would you like to try the public resume instead?',
+    contact_dylan: 'Would you like Dylan\'s public contact details?',
+    refine_question: 'Would you like to narrow the question?',
+  },
+} satisfies {
+  conversational: Record<ConversationalAct, string>;
+  limitation: Record<LimitationCode, string>;
+  followUp: Record<FollowUpCode, string>;
 };
 
 const AnswerSegmentInputSchema = z.discriminatedUnion('kind', [
@@ -580,15 +587,15 @@ function validateFinalAnswer(
     }
     return {
       text: segment.kind === 'conversational'
-        ? CONVERSATIONAL_TEXT[segment.act]
-        : LIMITATION_TEXT[segment.code],
+        ? FINALIZATION_ENUM_COPY.conversational[segment.act]
+        : FINALIZATION_ENUM_COPY.limitation[segment.code],
       evidenceIds: [],
       evidence: [],
     };
   });
   const segmentTexts = new Set(segments.map((segment) => segment.text));
   const limitations = [...new Set([
-    ...input.limitations.map((code) => LIMITATION_TEXT[code]),
+    ...input.limitations.map((code) => FINALIZATION_ENUM_COPY.limitation[code]),
     ...[...artifacts.limitations].map(humanLimitation).filter((item): item is string => Boolean(item)),
   ])].filter((limitation) => !segmentTexts.has(limitation));
   return {
@@ -597,7 +604,7 @@ function validateFinalAnswer(
       segments,
       artifacts: input.artifacts.flatMap((reference) => resolveArtifact(reference, artifacts)),
       limitations,
-      ...(input.followUp ? { followUp: FOLLOW_UP_TEXT[input.followUp] } : {}),
+      ...(input.followUp ? { followUp: FINALIZATION_ENUM_COPY.followUp[input.followUp] } : {}),
     },
   };
 }
