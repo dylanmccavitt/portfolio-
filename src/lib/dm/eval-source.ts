@@ -7,6 +7,7 @@ import {
   type ProjectDetailReadModel,
   type ProjectReadQueryable,
 } from '@/lib/db/project-reads';
+import type { PublicRagSearchConfig, PublicRagSearchOutput } from '@/lib/rag/retrieval';
 
 const CorpusEvidenceSchema = z.strictObject({
   privacyState: z.enum(['safe_public', 'private_allowed_for_draft']),
@@ -32,11 +33,30 @@ const CorpusProjectSchema = z.strictObject({
   stack: z.array(z.strictObject({ label: z.string(), value: z.string() })),
   evidence: z.array(CorpusEvidenceSchema).default([]),
 });
-const CorpusSchema = z.strictObject({ version: z.literal(1), projects: z.array(CorpusProjectSchema) });
+const CorpusPublicSourceSchema = z.strictObject({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  filename: z.string().min(1),
+  privacyState: z.literal('safe_public'),
+  approvalState: z.literal('approved'),
+  text: z.string().min(32),
+});
+const CorpusSchema = z.strictObject({
+  version: z.literal(1),
+  projects: z.array(CorpusProjectSchema),
+  publicSources: z.array(CorpusPublicSourceSchema),
+});
+
+export type EvalPublicSourceSearch = (
+  query: string,
+  config: PublicRagSearchConfig,
+  options: { apiKey: string; signal?: AbortSignal },
+) => Promise<PublicRagSearchOutput>;
 
 export interface EvalProjectSource {
   db: ProjectReadQueryable;
   projectLoader: () => Promise<ProjectDetailReadModel[]>;
+  publicSourceSearch: EvalPublicSourceSearch;
   publishedIds: string[];
   controlIds: string[];
   privateEvidenceMarkers: string[];
@@ -49,8 +69,9 @@ export async function createEvalProjectSource(): Promise<EvalProjectSource> {
   const controls = corpus.projects.filter((project) => project.lifecycleState !== 'published');
   const models = published.map(corpusProjectModel);
   return {
-    db: memoryProjectDb(),
+    db: memoryProjectDb(corpus.publicSources),
     projectLoader: async () => models,
+    publicSourceSearch: memoryPublicSourceSearch(corpus.publicSources),
     publishedIds: published.map((project) => project.id).sort(),
     controlIds: controls.map((project) => project.id).sort(),
     privateEvidenceMarkers: corpus.projects.flatMap((project) =>
@@ -59,12 +80,66 @@ export async function createEvalProjectSource(): Promise<EvalProjectSource> {
   };
 }
 
-function memoryProjectDb(): ProjectReadQueryable {
+export function createUnavailableEvalPublicSourceSearch(): EvalPublicSourceSearch {
+  return async (_query, _config, options) => {
+    throwIfAborted(options.signal);
+    throw new Error('simulated eval public source unavailable');
+  };
+}
+
+function memoryProjectDb(publicSources: z.infer<typeof CorpusPublicSourceSchema>[]): ProjectReadQueryable {
+  const searchableRows = publicSources.map((source) => ({
+    id: source.id,
+    project_id: source.projectId,
+    vector_store_id: `vs-eval-${source.id}`,
+    openai_file_id: `file-eval-${source.id}`,
+  }));
   return {
-    async query<Row = unknown>() {
-      return { rows: [] as Row[] };
+    async query<Row = unknown>(sql: string) {
+      const rows = sql.includes('FROM rag_sources r') ? searchableRows : [];
+      return { rows: rows as Row[] };
     },
   };
+}
+
+function memoryPublicSourceSearch(
+  publicSources: z.infer<typeof CorpusPublicSourceSchema>[],
+): EvalPublicSourceSearch {
+  return async (query, config, options) => {
+    throwIfAborted(options.signal);
+    const allowedById = new Map(config.sources.map((source) => [source.id, source]));
+    const citations = publicSources
+      .flatMap((source) => {
+        const indexed = allowedById.get(source.id);
+        if (!indexed || indexed.project_id !== source.projectId) return [];
+        const score = publicSourceScore(source, query);
+        if (score < config.scoreThreshold) return [];
+        return [{
+          ragSourceId: source.id,
+          projectId: source.projectId,
+          fileId: indexed.openai_file_id,
+          filename: source.filename,
+          score,
+          text: source.text,
+        }];
+      })
+      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+      .slice(0, config.tool.maxNumResults);
+    throwIfAborted(options.signal);
+    return { citations };
+  };
+}
+
+function publicSourceScore(source: z.infer<typeof CorpusPublicSourceSchema>, query: string): number {
+  const terms = [...new Set(query.toLowerCase().match(/[a-z0-9]+/g) ?? [])]
+    .filter((term) => term.length >= 3);
+  if (terms.length === 0) return 0;
+  const haystack = `${source.projectId} ${source.filename} ${source.text}`.toLowerCase();
+  return terms.filter((term) => haystack.includes(term)).length / terms.length;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw signal.reason ?? new DOMException('Eval public-source search aborted.', 'AbortError');
 }
 
 function corpusProjectModel(project: z.infer<typeof CorpusProjectSchema>): ProjectDetailReadModel {

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { simulateReadableStream, type LanguageModel } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
-import { createEvalProjectSource } from '@/lib/dm/eval-source';
+import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
 import { observeDMResponse } from '@/lib/dm/response-observer';
 import { createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
 import type { DMChatRequest } from '@/lib/dm/contract';
@@ -292,6 +292,77 @@ test('public tool failure becomes an explicit sanitized limitation', async () =>
   assert.equal(observation.result?.status, 'accepted');
   assert.ok(observation.result?.answer.limitations.some((item) => /unavailable/i.test(item)));
   assert.doesNotMatch(JSON.stringify(observation), /private database host/);
+});
+
+test('the live eval source can produce a same-run approved evidence artifact', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest("Use public source evidence to explain Loom's architecture.");
+  const model = toolSequenceModel([
+    { toolName: 'getProject', input: { id: 'loom' } },
+    { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+    { toolName: 'finalizeAnswer', input: {
+      segments: [{
+        kind: 'factual',
+        text: 'Loom separates planning, bounded implementation, independent review, and verification into explicit delivery phases.',
+        evidenceIds: ['citation:loom-architecture'],
+      }],
+      artifacts: [{ kind: 'project', id: 'loom' }, { kind: 'evidence', id: 'loom-architecture' }],
+      limitations: [],
+    } },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    ragSearch: source.publicSourceSearch,
+    model,
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.tools, ['getProject', 'searchPublicSources']);
+  assert.deepEqual(observation.blockKinds, ['projects:loom', 'evidence']);
+  assert.deepEqual(observation.projectIds, ['loom']);
+  assert.ok(observation.evidenceIds.includes('citation:loom-architecture'));
+  assert.equal(
+    observation.result?.answer.artifacts.find((artifact) => artifact.kind === 'evidence')?.id,
+    'loom-architecture',
+  );
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(source.privateEvidenceMarkers.join('|')));
+});
+
+test('the live eval unavailable-source override exercises a sanitized no-evidence path', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Use public source evidence to explain the architecture of Loom.');
+  const unavailablePublicSourceSearch = createUnavailableEvalPublicSourceSearch();
+  let unavailableOverrideCalled = false;
+  const model = toolSequenceModel([
+    { toolName: 'getProject', input: { id: 'loom' } },
+    { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+    { toolName: 'finalizeAnswer', input: {
+      segments: [{ kind: 'limitation', code: 'public_source_unavailable' }],
+      artifacts: [{ kind: 'project', id: 'loom' }],
+      limitations: ['public_source_unavailable'],
+      followUp: 'project_overview',
+    } },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    ragSearch: async (...args) => {
+      unavailableOverrideCalled = true;
+      return await unavailablePublicSourceSearch(...args);
+    },
+    model,
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(unavailableOverrideCalled, true);
+  assert.deepEqual(observation.tools, ['getProject', 'searchPublicSources']);
+  assert.deepEqual(observation.blockKinds, ['projects:loom']);
+  assert.deepEqual(observation.evidenceIds, []);
+  assert.match(observation.answerText, /public-source search is unavailable/i);
+  assert.doesNotMatch(JSON.stringify(observation), /simulated eval public source unavailable/);
 });
 
 test('request cancellation is propagated and sanitized', async () => {
