@@ -61,6 +61,71 @@ test('one ToolLoopAgent run calls public tools and accepts only same-run evidenc
   assert.equal(observation.result?.status, 'accepted');
 });
 
+test('same-step finalization waits for public evidence and artifacts to settle', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Which project shows trading automation?');
+  const model = toolStepModel([[
+    { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
+      },
+    },
+  ]]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return source.projectLoader();
+    },
+    model,
+  }), request);
+
+  assert.equal(observation.outcome, 'completed');
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.projectIds, ['agentic-trader']);
+  assert.ok(observation.evidenceIds.includes('agentic-trader:identity'));
+  assert.match(observation.answerText, /trading automation/i);
+});
+
+test('the first accepted same-step finalization is immutable', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const model = toolStepModel([[
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'conversational', act: 'capabilities' }],
+        artifacts: [],
+        limitations: [],
+      },
+    },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'A hidden project exists.', evidenceIds: ['private:hidden'] }],
+        artifacts: [{ kind: 'project', id: 'private-hidden' }],
+        limitations: [],
+      },
+    },
+  ]]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+
+  assert.equal(observation.outcome, 'completed');
+  assert.equal(observation.result?.status, 'accepted');
+  assert.match(observation.answerText, /published projects/i);
+  assert.doesNotMatch(observation.answerText, /hidden project|could not verify/i);
+});
+
 test('an invalid finalization is repaired exactly once', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('Tell me about agentic-trader.');
@@ -359,29 +424,42 @@ function chatRequest(text: string): DMChatRequest {
   return { messages: [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text }] }] };
 }
 
+type MockToolCall = { toolName: string; input: unknown; prose?: string };
+
 function toolSequenceModel(
-  calls: Array<{ toolName: string; input: unknown; prose?: string }>,
+  calls: MockToolCall[],
+  observedPrompts: LanguageModelV4CallOptions[] = [],
+): LanguageModel {
+  return toolStepModel(calls.map((call) => [call]), observedPrompts);
+}
+
+function toolStepModel(
+  steps: MockToolCall[][],
   observedPrompts: LanguageModelV4CallOptions[] = [],
 ): LanguageModel {
   let index = 0;
   return new MockLanguageModelV4({
     doStream: async (options) => {
       observedPrompts.push(options);
-      const call = calls[index++];
-      if (!call) throw new Error('mock model received an unexpected extra step');
-      const id = `call-${index}`;
-      const textId = `text-${index}`;
+      const calls = steps[index++];
+      if (!calls) throw new Error('mock model received an unexpected extra step');
       return {
         stream: simulateReadableStream({
           chunks: [
             { type: 'stream-start' as const, warnings: [] },
             { type: 'response-metadata' as const, id: `response-${index}`, modelId: 'mock-tool-loop', timestamp: new Date(0) },
-            ...(call.prose ? [
-              { type: 'text-start' as const, id: textId },
-              { type: 'text-delta' as const, id: textId, delta: call.prose },
-              { type: 'text-end' as const, id: textId },
-            ] : []),
-            { type: 'tool-call' as const, toolCallId: id, toolName: call.toolName, input: JSON.stringify(call.input) },
+            ...calls.flatMap((call, callIndex) => {
+              const id = `call-${index}-${callIndex + 1}`;
+              const textId = `text-${index}-${callIndex + 1}`;
+              return [
+                ...(call.prose ? [
+                  { type: 'text-start' as const, id: textId },
+                  { type: 'text-delta' as const, id: textId, delta: call.prose },
+                  { type: 'text-end' as const, id: textId },
+                ] : []),
+                { type: 'tool-call' as const, toolCallId: id, toolName: call.toolName, input: JSON.stringify(call.input) },
+              ];
+            }),
             {
               type: 'finish' as const,
               finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' },

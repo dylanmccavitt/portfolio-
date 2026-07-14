@@ -216,6 +216,11 @@ interface RunArtifacts {
   limitations: Set<string>;
 }
 
+interface PublicToolGate {
+  run<T>(operation: () => Promise<T>): Promise<T>;
+  waitForIdle(): Promise<void>;
+}
+
 export function createDMChatResponse(
   request: DMChatRequest,
   config: DMRuntimeConfig,
@@ -236,19 +241,22 @@ export function createDMChatResponse(
     ragApiKey: deps.env?.OPENAI_API_KEY?.trim() ?? process.env.OPENAI_API_KEY?.trim(),
   });
   const artifacts = emptyArtifacts();
+  const publicToolGate = createPublicToolGate();
   let finalizationAttempts = 0;
   let finalizationResult: Exclude<DMFinalizationResult, { status: 'rejected' }> | null = null;
   let finalized = false;
   let inputTokens = 0;
   let outputTokens = 0;
 
-  const publicTools = createRuntimePublicTools(publicRun, artifacts, metrics);
+  const publicTools = createRuntimePublicTools(publicRun, artifacts, metrics, publicToolGate);
   const agentTools = {
     ...publicTools,
     finalizeAnswer: tool({
       description: 'Submit the complete structured visitor answer. Use exactly once after gathering any needed public evidence; retry once only when rejected.',
       inputSchema: FinalAnswerInputSchema,
       execute: async (input: FinalAnswerInput) => {
+        await publicToolGate.waitForIdle();
+        if (finalizationResult) return finalizationResult;
         finalizationAttempts += 1;
         const validation = validateFinalAnswer(input, publicRun, artifacts);
         if (validation.ok) {
@@ -394,73 +402,94 @@ function createRuntimePublicTools(
   run: PublicAgentToolRun,
   artifacts: RunArtifacts,
   metrics: ReturnType<typeof createDMMetricsRecorder>,
+  gate: PublicToolGate,
 ) {
   return {
     searchProjects: tool({
       description: run.searchProjects.description,
       inputSchema: run.searchProjects.inputSchema,
-      execute: async (input, { abortSignal }) => {
+      execute: (input, { abortSignal }) => gate.run(async () => {
         metrics.tool();
         const result = await run.searchProjects(input, { abortSignal });
         for (const project of result.projects) artifacts.projects.set(project.id, project);
         rememberLimitations(artifacts, result.limitations);
         return result;
-      },
+      }),
     }),
     getProject: tool({
       description: run.getProject.description,
       inputSchema: run.getProject.inputSchema,
-      execute: async (input, { abortSignal }) => {
+      execute: (input, { abortSignal }) => gate.run(async () => {
         metrics.tool();
         const result = await run.getProject(input, { abortSignal });
         if (result.project) artifacts.projects.set(result.project.id, result.project);
         rememberLimitations(artifacts, result.limitations);
         return result;
-      },
+      }),
     }),
     readResume: tool({
       description: run.readResume.description,
       inputSchema: run.readResume.inputSchema,
-      execute: async (input, { abortSignal }) => {
+      execute: (input, { abortSignal }) => gate.run(async () => {
         metrics.tool();
         const result = await run.readResume(input, { abortSignal });
         for (const track of result.tracks) artifacts.resumeTracks.set(track.id, track);
         rememberLimitations(artifacts, result.limitations);
         return result;
-      },
+      }),
     }),
     getContact: tool({
       description: run.getContact.description,
       inputSchema: run.getContact.inputSchema,
-      execute: async (input, { abortSignal }) => {
+      execute: (input, { abortSignal }) => gate.run(async () => {
         metrics.tool();
         const result = await run.getContact(input, { abortSignal });
         artifacts.contact = result.contact;
         rememberLimitations(artifacts, result.limitations);
         return result;
-      },
+      }),
     }),
     searchPublicSources: tool({
       description: run.searchPublicSources.description,
       inputSchema: run.searchPublicSources.inputSchema,
-      execute: async (input, { abortSignal }) => {
+      execute: (input, { abortSignal }) => gate.run(async () => {
         metrics.tool();
         const result = await run.searchPublicSources(input, { abortSignal });
         for (const source of result.sources) artifacts.sources.set(source.id, source);
         rememberLimitations(artifacts, result.limitations);
         return result;
-      },
+      }),
     }),
     searchProfile: tool({
       description: run.searchProfile.description,
       inputSchema: run.searchProfile.inputSchema,
-      execute: async (input, { abortSignal }) => {
+      execute: (input, { abortSignal }) => gate.run(async () => {
         metrics.tool();
         const result = await run.searchProfile(input, { abortSignal });
         rememberLimitations(artifacts, result.limitations);
         return result;
-      },
+      }),
     }),
+  };
+}
+
+function createPublicToolGate(): PublicToolGate {
+  const pending = new Set<Promise<unknown>>();
+  return {
+    run<T>(operation: () => Promise<T>): Promise<T> {
+      const promise = operation();
+      pending.add(promise);
+      void promise.then(
+        () => pending.delete(promise),
+        () => pending.delete(promise),
+      );
+      return promise;
+    },
+    async waitForIdle(): Promise<void> {
+      // Yield once so every tool call from the current model step can register.
+      await Promise.resolve();
+      while (pending.size > 0) await Promise.allSettled([...pending]);
+    },
   };
 }
 
