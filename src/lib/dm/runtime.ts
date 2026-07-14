@@ -117,11 +117,77 @@ export function createDMModel(config: DMRuntimeConfig): LanguageModel {
     : openai(config.model.replace(/^openai\//, ''));
 }
 
-const AnswerSegmentInputSchema = z.strictObject({
-  kind: z.enum(['factual', 'conversational', 'limitation']),
-  text: z.string().trim().min(1).max(1_200),
-  evidenceIds: z.array(z.string().trim().min(1).max(240)).max(16),
-});
+const CONVERSATIONAL_ACTS = [
+  'greeting',
+  'capabilities',
+  'acknowledgement',
+  'clarify_reference',
+  'explain_process',
+] as const;
+const LIMITATION_CODES = [
+  'private_sources',
+  'personal_unknown',
+  'public_data_unavailable',
+  'public_source_unavailable',
+  'unsupported_request',
+  'ambiguous_reference',
+] as const;
+const FOLLOW_UP_CODES = [
+  'project_overview',
+  'specify_project',
+  'try_resume',
+  'contact_dylan',
+  'refine_question',
+] as const;
+
+const ConversationalActSchema = z.enum(CONVERSATIONAL_ACTS);
+const LimitationCodeSchema = z.enum(LIMITATION_CODES);
+const FollowUpCodeSchema = z.enum(FOLLOW_UP_CODES);
+
+type ConversationalAct = z.infer<typeof ConversationalActSchema>;
+type LimitationCode = z.infer<typeof LimitationCodeSchema>;
+type FollowUpCode = z.infer<typeof FollowUpCodeSchema>;
+
+// Security boundary: only factual segments retain model-authored prose. These
+// codes materialize the complete no-evidence surface without a scripted router.
+const CONVERSATIONAL_TEXT: Record<ConversationalAct, string> = {
+  greeting: "Hi — I'm DM, Dylan's public portfolio guide.",
+  capabilities: "I can help with Dylan's published projects, public resume, and contact details.",
+  acknowledgement: 'Got it.',
+  clarify_reference: 'Could you clarify which published project or resume entry you mean?',
+  explain_process: 'I answer using published portfolio records, the public resume, contact details, and approved public sources.',
+};
+const LIMITATION_TEXT: Record<LimitationCode, string> = {
+  private_sources: 'I can only use published public portfolio sources.',
+  personal_unknown: 'I could not find a published public answer to that personal question.',
+  public_data_unavailable: 'The published project source is unavailable for this answer.',
+  public_source_unavailable: 'Approved public-source search is unavailable for this answer.',
+  unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and approved public sources.",
+  ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
+};
+const FOLLOW_UP_TEXT: Record<FollowUpCode, string> = {
+  project_overview: 'Would you like a project overview?',
+  specify_project: 'Would you like to name a specific published project?',
+  try_resume: 'Would you like to try the public resume instead?',
+  contact_dylan: 'Would you like Dylan\'s public contact details?',
+  refine_question: 'Would you like to narrow the question?',
+};
+
+const AnswerSegmentInputSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('factual'),
+    text: z.string().trim().min(1).max(1_200),
+    evidenceIds: z.array(z.string().trim().min(1).max(240)).min(1).max(16),
+  }),
+  z.strictObject({
+    kind: z.literal('conversational'),
+    act: ConversationalActSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('limitation'),
+    code: LimitationCodeSchema,
+  }),
+]);
 
 const ArtifactReferenceSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('project'), id: z.string().trim().min(1).max(200) }),
@@ -134,8 +200,8 @@ const ArtifactReferenceSchema = z.discriminatedUnion('kind', [
 const FinalAnswerInputSchema = z.strictObject({
   segments: z.array(AnswerSegmentInputSchema).min(1).max(5),
   artifacts: z.array(ArtifactReferenceSchema).max(5),
-  limitations: z.array(z.string().trim().min(1).max(320)).max(4),
-  followUp: z.string().trim().min(1).max(240).optional(),
+  limitations: z.array(LimitationCodeSchema).max(4),
+  followUp: FollowUpCodeSchema.optional(),
 });
 
 type FinalAnswerInput = z.infer<typeof FinalAnswerInputSchema>;
@@ -375,9 +441,7 @@ function validateFinalAnswer(
 ): { ok: true; answer: DMValidatedAnswer } | { ok: false; errors: string[] } {
   const errors: string[] = [];
   for (const [index, segment] of input.segments.entries()) {
-    if (segment.kind === 'factual' && segment.evidenceIds.length === 0) {
-      errors.push(`segment ${index + 1} is factual but cites no evidence`);
-    }
+    if (segment.kind !== 'factual') continue;
     const unknown = segment.evidenceIds.filter((id) => !run.evidenceLedger.has(id));
     if (unknown.length > 0) errors.push(`segment ${index + 1} cites evidence not returned in this run`);
   }
@@ -386,22 +450,34 @@ function validateFinalAnswer(
   }
   if (errors.length > 0) return { ok: false, errors: [...new Set(errors)].slice(0, 5) };
 
-  const segments = input.segments.map((segment) => ({
-    text: segment.text,
-    evidenceIds: [...new Set(segment.evidenceIds)],
-    evidence: run.evidenceLedger.resolve(segment.evidenceIds),
-  }));
+  const segments = input.segments.map((segment) => {
+    if (segment.kind === 'factual') {
+      return {
+        text: segment.text,
+        evidenceIds: [...new Set(segment.evidenceIds)],
+        evidence: run.evidenceLedger.resolve(segment.evidenceIds),
+      };
+    }
+    return {
+      text: segment.kind === 'conversational'
+        ? CONVERSATIONAL_TEXT[segment.act]
+        : LIMITATION_TEXT[segment.code],
+      evidenceIds: [],
+      evidence: [],
+    };
+  });
+  const segmentTexts = new Set(segments.map((segment) => segment.text));
   const limitations = [...new Set([
-    ...input.limitations,
+    ...input.limitations.map((code) => LIMITATION_TEXT[code]),
     ...[...artifacts.limitations].map(humanLimitation).filter((item): item is string => Boolean(item)),
-  ])];
+  ])].filter((limitation) => !segmentTexts.has(limitation));
   return {
     ok: true,
     answer: {
       segments,
       artifacts: input.artifacts.flatMap((reference) => resolveArtifact(reference, artifacts)),
       limitations,
-      ...(input.followUp ? { followUp: input.followUp } : {}),
+      ...(input.followUp ? { followUp: FOLLOW_UP_TEXT[input.followUp] } : {}),
     },
   };
 }
@@ -588,6 +664,7 @@ const DM_SYSTEM_INSTRUCTIONS = [
   'Unknown personal details require searchProfile and an honest limitation when its public result is empty.',
   'Never claim access to Slack, admin drafts, candidate evidence, private notes, visitor history, credentials, hidden projects, or unpublished records. Those sources and tools do not exist here.',
   'Every factual segment passed to finalizeAnswer must cite one or more evidenceIds returned by public tools in this same run.',
+  'Only factual segments accept free text. For no-evidence output, select a server-controlled conversational act, limitation code, and optional follow-up code; never place arbitrary prose in those fields.',
   'Artifact references must use artifact ids returned by tools in this same run. Do not copy or invent artifact payloads.',
   'Call finalizeAnswer with the complete visitor answer. Do not emit visitor-facing prose outside finalizeAnswer.',
   'If finalizeAnswer rejects the structure, repair it exactly once using the rejection errors. Never retry it more than once.',

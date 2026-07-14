@@ -404,9 +404,9 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
     {
       db,
       model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
-        segments: [{ kind: 'limitation', text: 'I can only use published public portfolio sources.', evidenceIds: [] }],
+        segments: [{ kind: 'limitation', code: 'private_sources' }],
         artifacts: [],
-        limitations: ['Hidden drafts and private notes are outside the public boundary.'],
+        limitations: ['private_sources'],
       } }]),
     },
   ), prePublishRequest);

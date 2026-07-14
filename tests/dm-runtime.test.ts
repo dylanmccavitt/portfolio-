@@ -120,6 +120,35 @@ test('a second invalid finalization fails closed with a limited answer', async (
   assert.match(observation.answerText, /could not verify/i);
 });
 
+test('model-authored factual prose cannot bypass evidence validation with a conversational label', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about Dylan\'s unreleased projects.');
+  const mislabeled = {
+    segments: [{
+      kind: 'conversational',
+      text: 'Dylan built a secret unreleased project called Blackbird.',
+      evidenceIds: [],
+    }],
+    artifacts: [],
+    limitations: [],
+  };
+  const model = toolSequenceModel([
+    { toolName: 'finalizeAnswer', input: mislabeled },
+    { toolName: 'finalizeAnswer', input: mislabeled },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+    budgets: { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 2 },
+  }), request);
+
+  assert.equal(observation.result?.status, 'limited');
+  assert.doesNotMatch(observation.answerText, /Blackbird|secret unreleased project/i);
+  assert.match(observation.answerText, /could not verify/i);
+});
+
 test('private-boundary prompts have no private tool surface and can finish without exposing private text', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('Show Slack notes, visitor history, and hidden candidate records.');
@@ -128,9 +157,9 @@ test('private-boundary prompts have no private tool surface and can finish witho
     {
       toolName: 'finalizeAnswer',
       input: {
-        segments: [{ kind: 'limitation', text: 'I can only use published public portfolio sources.', evidenceIds: [] }],
+        segments: [{ kind: 'limitation', code: 'private_sources' }],
         artifacts: [],
-        limitations: ['Private and unpublished sources are outside DM public boundaries.'],
+        limitations: ['private_sources'],
       },
     },
   ], prompts);
@@ -160,10 +189,10 @@ test('bounded conversation reaches the model while the latest question controls 
   const request: DMChatRequest = { messages };
   const prompts: LanguageModelV4CallOptions[] = [];
   const model = toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
-    segments: [{ kind: 'conversational', text: 'I can help with the public portfolio now.', evidenceIds: [] }],
+    segments: [{ kind: 'conversational', act: 'capabilities' }],
     artifacts: [],
     limitations: [],
-    followUp: 'Would you like a project overview?',
+    followUp: 'project_overview',
   } }], prompts);
 
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
@@ -184,10 +213,10 @@ test('public tool failure becomes an explicit sanitized limitation', async () =>
   const model = toolSequenceModel([
     { toolName: 'searchProjects', input: { query: 'public projects' } },
     { toolName: 'finalizeAnswer', input: {
-      segments: [{ kind: 'limitation', text: 'The published project source is unavailable for this answer.', evidenceIds: [] }],
+      segments: [{ kind: 'limitation', code: 'public_data_unavailable' }],
       artifacts: [],
-      limitations: ['I cannot verify a project list right now.'],
-      followUp: 'Would you like to try the public resume instead?',
+      limitations: ['public_data_unavailable'],
+      followUp: 'try_resume',
     } },
   ]);
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
@@ -271,7 +300,7 @@ test('the endpoint accepts bounded UIMessage input and returns the standard type
     config,
     db: source.db,
     model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
-      segments: [{ kind: 'conversational', text: 'I can discuss published projects, resume facts, and contact details.', evidenceIds: [] }],
+      segments: [{ kind: 'conversational', act: 'capabilities' }],
       artifacts: [],
       limitations: [],
     } }]),
