@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { aggregateBenchmarkRuns, classifyBenchmarkRun, median, percentile, type DMBenchmarkRunRecord, type TimedDMEvent } from '@/lib/dm/benchmark';
 import { parseDMEvalModelSpecs, parseDMModelSpec, parseDMModelSpecs } from '@/lib/dm/model-specs';
@@ -34,7 +35,7 @@ test('model specs fall back to direct OpenAI when only OPENAI_API_KEY is set', (
   assert.throws(() => parseDMModelSpec('anthropic/claude-sonnet-4.6', keys), /AI_GATEWAY_API_KEY/);
 });
 
-test('model spec lists dedupe and support dry-mode parsing without keys', () => {
+test('model spec lists dedupe explicit ids before command-level credential validation', () => {
   const keys = { hasGatewayKey: false, hasOpenaiKey: false };
   const specs = parseDMModelSpecs('anthropic/claude-sonnet-4.6, anthropic/claude-sonnet-4.6, openai/gpt-4.1', keys, []);
 
@@ -45,6 +46,23 @@ test('model spec lists dedupe and support dry-mode parsing without keys', () => 
   assert.equal(specs[0]?.provider, 'gateway');
   assert.throws(() => parseDMModelSpecs(undefined, keys, []), /No models configured/);
   assert.throws(() => parseDMModelSpec('anthropic/', keys), /creator.*model|<creator>\/<model>/);
+});
+
+test('benchmark operator guidance is live-only and names the current eval source', async () => {
+  const [benchmarkDoc, evalDoc, benchmarkCli, modelSpecs] = await Promise.all([
+    readFile(new URL('../docs/agents/dm-latency-benchmark.md', import.meta.url), 'utf8'),
+    readFile(new URL('../docs/agents/dm-evals.md', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/dm-benchmark.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/dm/model-specs.ts', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(benchmarkDoc, /credential-gated live latency\/eval harness/);
+  assert.doesNotMatch(benchmarkDoc, /dry[- ]mode|dry plumbing|stubbed models/i);
+  assert.match(evalDoc, /src\/lib\/dm\/eval-source\.ts/);
+  assert.doesNotMatch(evalDoc, /src\/lib\/dm\/eval-fixtures\.ts/);
+  assert.match(benchmarkCli, /At least one provider key is required/);
+  assert.doesNotMatch(benchmarkCli, /dry[- ]mode|stubbed models|plumbing check/i);
+  assert.doesNotMatch(modelSpecs, /dry[- ]mode/i);
 });
 
 test('eval model specs prefer cli models, then DM_EVAL_MODELS, then DM_MODEL', () => {

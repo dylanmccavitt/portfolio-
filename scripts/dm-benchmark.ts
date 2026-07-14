@@ -248,7 +248,7 @@ Environment:
   DM_BENCH_ITERATIONS   Iteration count override
   AI_GATEWAY_API_KEY    When set, ALL models (including openai/*) route through the Vercel AI Gateway.
   OPENAI_API_KEY        Without a gateway key, reaches openai/* models directly. Also used by RAG search.
-                        With neither key set, the run uses dry mode (stubbed models, plumbing check only).
+                        At least one provider key is required; no scripted benchmark fallback is available.
 `);
 }
 

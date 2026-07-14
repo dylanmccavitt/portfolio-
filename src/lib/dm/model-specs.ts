@@ -41,7 +41,8 @@ export function formatMissingLiveModelKeysError(
 
 /**
  * Resolve one model id to a provider route.
- * Gateway key → all models via gateway; OpenAI key only → openai/* direct; no keys → dry-mode parse.
+ * Gateway key → all models via gateway; OpenAI key only → openai/* direct.
+ * Live command entry points enforce credentials; absent keys support syntax-only validation.
  */
 export function parseDMModelSpec(value: string, keys: DMModelKeyAvailability): DMModelSpec {
   const trimmed = value.trim();
