@@ -9,6 +9,7 @@ import {
   tool,
   type LanguageModel,
   type ModelMessage,
+  type StreamTextOnErrorCallback,
   type UIMessageChunk,
 } from 'ai';
 import { z } from 'zod';
@@ -296,14 +297,20 @@ export function createDMChatResponse(
       try {
         throwIfAborted(abort.signal);
         metrics.modelStarted();
-        const result = await agent.stream({
+        // AI SDK 7 forwards streamText options here but omits onError from the
+        // public AgentStreamParameters type.
+        const agentStreamOptions = {
           messages: modelMessages(request),
           abortSignal: abort.signal,
+          onError({ error }) {
+            console.error('[dm] provider stream failure', safeLogError(error));
+          },
           onStepEnd(step) {
             inputTokens += step.usage.inputTokens ?? 0;
             outputTokens += step.usage.outputTokens ?? 0;
           },
-        });
+        } satisfies Parameters<typeof agent.stream>[0] & { onError: StreamTextOnErrorCallback };
+        const result = await agent.stream(agentStreamOptions);
         const uiStream = toUIMessageStream({
           stream: result.stream,
           tools: agentTools,

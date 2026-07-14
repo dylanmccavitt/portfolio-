@@ -248,11 +248,13 @@ test('request cancellation is propagated and sanitized', async () => {
 test('model failures surface only a sanitized UIMessage error', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('Tell me about projects.');
+  const providerErrorMarker = 'F3_PROVIDER_PRIVATE_PAYLOAD_9bce70';
   const model = new MockLanguageModelV4({
-    doStream: async () => { throw new Error('provider-secret-request-body'); },
+    doStream: async () => { throw new Error(providerErrorMarker); },
   });
+  const serverLogs: unknown[][] = [];
   const originalConsoleError = console.error;
-  console.error = () => {};
+  console.error = (...args: unknown[]) => { serverLogs.push(args); };
   const observation = await (async () => {
     try {
       return await observeDMResponse(createDMChatResponse(request, config, {
@@ -264,10 +266,15 @@ test('model failures surface only a sanitized UIMessage error', async () => {
       console.error = originalConsoleError;
     }
   })();
+  const serializedLogs = serverLogs
+    .map((args) => args.map((value) => value instanceof Error ? `${value.name}: ${value.message}` : JSON.stringify(value)).join(' '))
+    .join('\n');
   assert.equal(observation.outcome, 'error');
   assert.equal(observation.result, null);
   assert.match(observation.errors.join(' '), /could not answer that safely/i);
-  assert.doesNotMatch(JSON.stringify(observation), /provider-secret-request-body/);
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(providerErrorMarker));
+  assert.match(serializedLogs, /\[dm\].*stream failure.*Error/);
+  assert.doesNotMatch(serializedLogs, new RegExp(providerErrorMarker));
 });
 
 test('the endpoint rate-limits before parsing the request or calling the model', async () => {
