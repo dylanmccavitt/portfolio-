@@ -768,19 +768,26 @@ function requestsOneProject(tokens: string[]): boolean {
   const cardContext = tokens.some((token) => token === 'card' || token === 'cards' || token === 'artifact' || token === 'artifacts');
   const explicitOne = tokens.some((token) => token === 'one' || token === '1' || token === 'single' || token === 'sole');
   if (projectContext && cardContext && explicitOne) return true;
+  const rankedSelection = includesTokenSequence(tokens, ['most', 'impressive'])
+    || tokens.some((token) => ['best', 'strongest', 'top', 'favorite'].includes(token));
+  const singularSelectionGrammar = tokens.some((token) => (
+    ['is', 'has', 'shows', 'demonstrates', 'does', 'ranks'].includes(token)
+  ));
+  const selectsFromProjects = tokens.includes('projects')
+    && tokens.includes('which')
+    && (tokens.includes('of') || tokens.includes('among'))
+    && singularSelectionGrammar;
+  if (selectsFromProjects && rankedSelection) return true;
   const singularProject = tokens.includes('project') && !tokens.includes('projects');
   if (!singularProject) return false;
   if (tokens.includes('card') || tokens.includes('artifact')) return true;
   if (explicitOne) return true;
-  if (includesTokenSequence(tokens, ['most', 'impressive'])) return true;
-  return tokens.some((token) => ['best', 'strongest', 'top', 'favorite'].includes(token));
+  return rankedSelection;
 }
 
 function requestsProjectSet(tokens: string[]): boolean {
   if (tokens.includes('project') && tokens.includes('set')) return true;
-  if (!tokens.includes('projects')) return false;
-  if (tokens.some((token) => ['list', 'overview', 'all', 'broad'].includes(token))) return true;
-  return tokens.includes('which') && tokens.some((token) => ['live', 'done', 'shipped', 'public', 'available'].includes(token));
+  return tokens.includes('projects');
 }
 
 function includesTokenSequence(tokens: string[], sequence: string[]): boolean {
