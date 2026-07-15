@@ -116,11 +116,27 @@
         "src/lib/dm/eval-source.ts",
         "src/lib/dm/judge.ts",
         "src/lib/dm/eval-report.ts",
+        "src/lib/dm/release-qualification.ts",
         "scripts/dm-eval.ts",
         "tests/dm-eval-corpus.test.ts",
         "package.json"
       ],
       "check": "npm run test:eval-corpus"
+    },
+    {
+      "id": "dm-model-selection-release-gate",
+      "statement": "DM model selection fails closed unless one candidate satisfies complete three-run stability, corpus, privacy, grounding, fabrication, critical-score, follow-up, blinded-preference, and required tie-break evidence without changing runtime configuration",
+      "subjectRefs": [
+        "docs/agents/dm-evals.md",
+        "src/lib/dm/eval-corpus.ts",
+        "src/lib/dm/judge.ts",
+        "src/lib/dm/eval-report.ts",
+        "src/lib/dm/release-qualification.ts",
+        "scripts/dm-eval.ts",
+        "tests/dm-release-qualification.test.ts",
+        "package.json"
+      ],
+      "check": "npm run test:eval-report"
     }
   ]
 }

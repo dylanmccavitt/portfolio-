@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { generateText, type LanguageModel } from 'ai';
+import { gateway, generateText, type LanguageModel } from 'ai';
 import {
   DM_LIVE_EVAL_CORPUS,
   DM_RELEASE_MODELS,
@@ -38,6 +38,14 @@ import {
   type DMJudgeConfig,
   type DMJudgePayload,
 } from '@/lib/dm/judge';
+import {
+  assertDMReleaseInvocation,
+  readBoundedProviderCost,
+  selectDMReleaseWinner,
+  validateDMReleaseReport,
+  validateDMReleaseSelectionEvidence,
+  type DMReleaseSelectionEvidence,
+} from '@/lib/dm/release-qualification';
 import { createDMChatResponse, createDMModel } from '@/lib/dm/runtime';
 
 interface CliOptions {
@@ -49,6 +57,9 @@ interface CliOptions {
   jsonPath?: string;
   reportDir?: string;
   baselinePath?: string;
+  selectionEvidencePath?: string;
+  releaseReportPath?: string;
+  captureRelease: boolean;
   help: boolean;
 }
 
@@ -62,6 +73,7 @@ async function main(): Promise<void> {
     printUsage();
     return;
   }
+  assertDMReleaseInvocation(options);
 
   validateDMLiveEvalCorpus();
   if (!options.live) {
@@ -70,6 +82,26 @@ async function main(): Promise<void> {
     }
     console.log(`[dm:eval] offline corpus validation passed: ${DM_LIVE_EVAL_CORPUS.length} conversational cases`);
     console.log('[dm:eval] no models were called and no release-quality score was produced');
+    return;
+  }
+
+  let selectionEvidence: DMReleaseSelectionEvidence | null = null;
+  if (options.release) {
+    if (options.selectionEvidencePath) {
+      selectionEvidence = validateDMReleaseSelectionEvidence(JSON.parse(await readFile(options.selectionEvidencePath, 'utf8')));
+    }
+  }
+
+  if (options.releaseReportPath) {
+    const report = validateDMReleaseReport(JSON.parse(await readFile(options.releaseReportPath, 'utf8')));
+    report.releaseDecision = selectDMReleaseWinner(report, selectionEvidence);
+    printReleaseDecision(report);
+    if (options.jsonPath) {
+      await mkdir(dirname(options.jsonPath), { recursive: true });
+      await writeFile(options.jsonPath, JSON.stringify(report, null, 2));
+    }
+    if (options.reportDir) await writeReportDir(options.reportDir, report, options.baselinePath);
+    if (report.releaseDecision.status !== 'winner') process.exitCode = 1;
     return;
   }
 
@@ -95,7 +127,7 @@ async function main(): Promise<void> {
     for (const testCase of DM_LIVE_EVAL_CORPUS) {
       for (let runNumber = 1; runNumber <= options.runs; runNumber += 1) {
         let metrics: DMMetricsRecord | undefined;
-        const telemetry = { modelCalls: 0 };
+        const telemetry = { modelCalls: 0, generationIds: new Set<string>() };
         const model = instrumentModel(createDMModel({ provider: spec.provider, model: spec.model }), telemetry);
         const started = performance.now();
         const request = requestForEvalCase(testCase);
@@ -140,6 +172,13 @@ async function main(): Promise<void> {
           answerText,
           blockKinds,
           evidenceIds: observation.evidenceIds,
+          source: testCase.source,
+          categories: [...testCase.categories],
+          critical: testCase.critical,
+          followUpApplicable: testCase.expectations.followUp !== 'not-useful',
+          costUsd: options.release
+            ? await readSameRunProviderCost(spec.provider, telemetry.generationIds)
+            : null,
         };
 
         if (judgeConfig) {
@@ -165,6 +204,10 @@ async function main(): Promise<void> {
     judge: judgeConfig ? describeJudgeConfig(judgeConfig) : null,
     runs: records,
   };
+  if (options.release) {
+    report.releaseDecision = selectDMReleaseWinner(report, selectionEvidence);
+    printReleaseDecision(report);
+  }
 
   printTriage(records);
 
@@ -178,7 +221,22 @@ async function main(): Promise<void> {
     await writeReportDir(options.reportDir, report, options.baselinePath);
   }
 
-  if (records.some((record) => !record.passed)) process.exitCode = 1;
+  const failed = options.release
+    ? report.releaseDecision?.status !== 'winner'
+    : records.some((record) => !record.passed);
+  if (failed) process.exitCode = 1;
+}
+
+function printReleaseDecision(report: DMEvalReport): void {
+  const decision = report.releaseDecision;
+  if (!decision) return;
+  console.log('');
+  console.log(`[dm:eval] release decision=${decision.status} winner=${decision.winnerModel ?? 'none'}`);
+  console.log(`[dm:eval] ${decision.reason}`);
+  for (const aggregate of decision.aggregates) {
+    console.log(`[dm:eval] candidate digest [${aggregate.model}] ${aggregate.candidateRunSha256}`);
+    console.log(`[dm:eval] qualification [${aggregate.model}] ${aggregate.qualified ? 'QUALIFIED' : 'DISQUALIFIED'}: ${aggregate.disqualifications.join('; ') || 'all gates passed'}`);
+  }
 }
 
 function printTriage(records: EvalRunRecord[]): void {
@@ -298,19 +356,49 @@ function parseMetricsLine(line: string): DMMetricsRecord | null {
   }
 }
 
-function instrumentModel(model: LanguageModel, telemetry: { modelCalls: number }): LanguageModel {
+function instrumentModel(model: LanguageModel, telemetry: { modelCalls: number; generationIds: Set<string> }): LanguageModel {
   return new Proxy(model as object, {
     get(target, property) {
       const value = Reflect.get(target, property, target);
       if (property === 'doStream' && typeof value === 'function') {
-        return (...args: unknown[]) => {
+        return async (...args: unknown[]) => {
           telemetry.modelCalls += 1;
-          return Reflect.apply(value, target, args);
+          const result = await Reflect.apply(value, target, args) as { stream?: ReadableStream<unknown> };
+          if (!result?.stream) return result;
+          const stream = result.stream.pipeThrough(new TransformStream<unknown, unknown>({
+            transform(part, controller) {
+              const generationId = readGatewayGenerationId(part);
+              if (generationId) telemetry.generationIds.add(generationId);
+              controller.enqueue(part);
+            },
+          }));
+          return { ...result, stream };
         };
       }
       return typeof value === 'function' ? value.bind(target) : value;
     },
   }) as LanguageModel;
+}
+
+function readGatewayGenerationId(part: unknown): string | null {
+  if (!part || typeof part !== 'object') return null;
+  const providerMetadata = (part as { providerMetadata?: unknown }).providerMetadata;
+  if (!providerMetadata || typeof providerMetadata !== 'object') return null;
+  const gatewayMetadata = (providerMetadata as Record<string, unknown>).gateway;
+  if (!gatewayMetadata || typeof gatewayMetadata !== 'object') return null;
+  const generationId = (gatewayMetadata as Record<string, unknown>).generationId;
+  return typeof generationId === 'string' && generationId.length > 0 ? generationId : null;
+}
+
+async function readSameRunProviderCost(provider: string, generationIds: Set<string>): Promise<number | null> {
+  if (provider !== 'gateway' || generationIds.size === 0) return null;
+  // Gateway generation metadata can lag stream completion briefly. Retry only
+  // unresolved ids within a finite budget; exhaustion remains explicit null
+  // evidence and fails closed if selection reaches the cost tie-break.
+  return readBoundedProviderCost(
+    [...generationIds],
+    (id) => gateway.getGenerationInfo({ id }),
+  );
 }
 
 async function judgeAnswer(
@@ -348,7 +436,7 @@ async function judgeAnswer(
 }
 
 function parseCliOptions(argv: string[]): CliOptions {
-  const options: CliOptions = { live: false, release: false, runs: DM_RELEASE_RUNS_PER_CASE, help: false };
+  const options: CliOptions = { live: false, release: false, captureRelease: false, runs: DM_RELEASE_RUNS_PER_CASE, help: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (!arg) continue;
@@ -358,6 +446,8 @@ function parseCliOptions(argv: string[]): CliOptions {
       options.live = true;
     } else if (arg === '--release') {
       options.release = true;
+    } else if (arg === '--capture-release') {
+      options.captureRelease = true;
     } else if (arg === '--runs') {
       options.runs = parseRunCount(argv[++index]);
     } else if (arg.startsWith('--runs=')) {
@@ -384,6 +474,14 @@ function parseCliOptions(argv: string[]): CliOptions {
       options.baselinePath = argv[++index];
     } else if (arg.startsWith('--baseline=')) {
       options.baselinePath = arg.slice('--baseline='.length);
+    } else if (arg === '--selection-evidence') {
+      options.selectionEvidencePath = argv[++index];
+    } else if (arg.startsWith('--selection-evidence=')) {
+      options.selectionEvidencePath = arg.slice('--selection-evidence='.length);
+    } else if (arg === '--release-report') {
+      options.releaseReportPath = argv[++index];
+    } else if (arg.startsWith('--release-report=')) {
+      options.releaseReportPath = arg.slice('--release-report='.length);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -404,6 +502,8 @@ Usage: npm run dm:eval -- [options]
 Options:
   --live                Run the conversational corpus against real models
   --release             Enforce the fixed release matrix, three runs, and a judge
+  --capture-release     Run the fixed matrix and emit an explicit no-winner
+                        capture with exact candidate digests for blinded review
   --models <list>       Comma-separated model list (default: Luna and Grok release matrix)
   --runs <count>        Repetitions per model/case (default: 3)
   --judge <target>      Judge for live answers. Targets:
@@ -418,6 +518,14 @@ Options:
                         diff against the previous run in that dir
   --baseline <path>     Diff against a specific JSON report instead of the
                         previous run in the report dir
+  --selection-evidence <path>
+                        Required with --release-report. Versioned sanitized
+                        baseline id, hashes, and ten exact-candidate-digest-bound
+                        blinded comparisons per model. Contains no prompts,
+                        histories, answers, tool results, credentials, or judge prose.
+  --release-report <path>
+                        Qualify an exact captured release JSON against digest-bound
+                        selection evidence without calling a provider again.
   --help                Show this help
 
 Environment:
