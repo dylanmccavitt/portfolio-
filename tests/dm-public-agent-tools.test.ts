@@ -161,6 +161,7 @@ test('approved public-source search composes with project tools and rechecks eve
   const sources = await run.searchPublicSources({ query: 'public evidence', projectIds: [projects.projects[0]!.id] });
   assert.equal(sources.status, 'partial');
   assert.deepEqual(sources.sources.map((source) => source.id), ['rag-public']);
+  assert.deepEqual(sources.artifactIds, ['rag-public']);
   assert.equal('fileId' in (sources.sources[0] ?? {}), false);
   assert.doesNotMatch(JSON.stringify(sources), /candidate-hidden|private\.md|file-private/);
   assert.equal(run.evidenceLedger.has('citation:rag-public'), true);

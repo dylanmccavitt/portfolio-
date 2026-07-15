@@ -448,7 +448,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
         query: input.query,
         sources: records,
         evidence,
-        artifactIds: [],
+        artifactIds: records.map((record) => record.id),
         limitations: output.citations.length > records.length || records.length === limit ? ['result_limit_or_boundary_filter'] : [],
       });
     },
