@@ -151,6 +151,7 @@ const LIMITATION_CODES = [
 ] as const;
 const FOLLOW_UP_CODES = [
   'project_overview',
+  'project_deep_dive',
   'specify_project',
   'try_resume',
   'contact_dylan',
@@ -196,6 +197,7 @@ const FINALIZATION_ENUM_COPY = {
   limitation: SERVER_LIMITATION_COPY,
   followUp: {
     project_overview: 'Would you like a project overview?',
+    project_deep_dive: 'Would you like a deeper look at the published project evidence behind this answer?',
     specify_project: 'Would you like to name a specific published project?',
     try_resume: 'Would you like to try the public resume instead?',
     contact_dylan: 'Would you like Dylan\'s public contact details?',
@@ -312,7 +314,7 @@ export function createDMChatResponse(
   const agentTools = {
     ...publicTools,
     finalizeAnswer: tool({
-      description: 'Submit the complete structured visitor answer and its requested artifact intent only after every successful source in a requested composition pair is cited, each explicitly requested same-run artifact is included, and distinctive evidenceQuotes preserve exact returned wording with natural capitalization allowed in factual prose. Stable project ids already known from page context require getProject evidence before finalization; searchProjects is discovery-only for unresolved titles. Empty and unavailable public-tool results require their matching finite limitation code. The server validates explicit zero, one-project, and project-set requests; use exactly once after gathering any needed public evidence and retry once only when rejected.',
+      description: 'Submit the complete structured visitor answer and its requested artifact intent only after every successful source in a requested composition pair is cited, each explicitly requested same-run artifact is included, and distinctive evidenceQuotes preserve exact returned wording with natural capitalization allowed in factual prose. Stable project ids already known from page context require getProject evidence before finalization; searchProjects is discovery-only for unresolved titles. Empty and unavailable public-tool results require their matching finite limitation code and, when a common safe next action exists, one matching followUp code. Closed project filters contribute no follow-up action but do not veto a safe action for another requested aspect. Privacy, unsupported, greeting, and grounded resume/contact answers omit followUp; ambiguous references use specify_project; same-run cited project evidence is the only grounding for an optional project_deep_dive. The server validates explicit zero, one-project, and project-set requests; use exactly once after gathering any needed public evidence and retry once only when rejected.',
       inputSchema: FinalAnswerInputSchema,
       execute: async (input: FinalAnswerInput) => {
         await publicToolGate.waitForIdle();
@@ -665,7 +667,7 @@ function validateFinalAnswer(
     return { ok: false, errors: ['artifact intent must match the current request and cannot change during repair'] };
   }
   const errors: string[] = [];
-  errors.push(...limitationOutcomeErrors(input, artifacts));
+  errors.push(...limitationOutcomeErrors(input, artifacts, run));
   const artifactReferences = deduplicateArtifactReferences(input.artifacts);
   for (const [index, segment] of input.segments.entries()) {
     if (segment.kind !== 'factual') continue;
@@ -731,7 +733,19 @@ const TOOL_OUTCOME_LIMITATION_CODES = new Set<LimitationCode>([
   'public_source_unavailable',
 ]);
 
-function limitationOutcomeErrors(input: FinalAnswerInput, artifacts: RunArtifacts): string[] {
+const SAFE_FOLLOW_UPS_BY_LIMITATION: Record<LimitationCode, readonly FollowUpCode[]> = {
+  private_sources: [],
+  personal_unknown: ['contact_dylan'],
+  no_matching_published_projects: ['project_overview', 'refine_question'],
+  no_matching_published_project_filters: [],
+  no_matching_approved_public_sources: ['project_overview', 'refine_question'],
+  public_data_unavailable: ['try_resume', 'contact_dylan'],
+  public_source_unavailable: ['project_overview', 'refine_question'],
+  unsupported_request: [],
+  ambiguous_reference: ['specify_project'],
+};
+
+function limitationOutcomeErrors(input: FinalAnswerInput, artifacts: RunArtifacts, run: PublicAgentToolRun): string[] {
   const required = requiredOutcomeLimitations(artifacts);
   const selected = new Set<LimitationCode>([
     ...input.limitations,
@@ -748,13 +762,11 @@ function limitationOutcomeErrors(input: FinalAnswerInput, artifacts: RunArtifact
     }
   }
 
-  if (input.followUp && required.has('no_matching_published_project_filters')) {
-    errors.push('a closed project-filter result does not need a follow-up');
-  } else if (input.followUp && required.size > 0) {
-    const allowed = allowedOutcomeFollowUps(required);
-    if (!allowed.has(input.followUp)) {
-      errors.push(`follow-up ${input.followUp} is not useful for the public tool outcome`);
-    }
+  const allowed = allowedFollowUps(input, artifacts, run, required, selected);
+  if (input.followUp && !allowed.has(input.followUp)) {
+    errors.push(`follow-up ${input.followUp} is not useful for the validated answer state`);
+  } else if (!input.followUp && (required.size > 0 ? allowed.size > 0 : selected.has('ambiguous_reference'))) {
+    errors.push('the validated answer state requires one safe follow-up');
   }
   return errors;
 }
@@ -807,22 +819,56 @@ function requiredOutcomeLimitations(artifacts: RunArtifacts): Set<LimitationCode
   return required;
 }
 
+function allowedFollowUps(
+  input: FinalAnswerInput,
+  artifacts: RunArtifacts,
+  run: PublicAgentToolRun,
+  required: ReadonlySet<LimitationCode>,
+  selected: ReadonlySet<LimitationCode>,
+): Set<FollowUpCode> {
+  if (required.size > 0) {
+    return allowedOutcomeFollowUps(new Set([...required, ...selected].filter((code) =>
+      TOOL_OUTCOME_LIMITATION_CODES.has(code))));
+  }
+  if (selected.has('private_sources') || selected.has('unsupported_request')) return new Set();
+  if (selected.has('ambiguous_reference')) return new Set(SAFE_FOLLOW_UPS_BY_LIMITATION.ambiguous_reference);
+
+  if (input.segments.some((segment) => segment.kind === 'conversational' && segment.act === 'greeting')) {
+    return new Set();
+  }
+  if (groundedProjectFollowUps(input, run)) return new Set(['project_deep_dive']);
+  if (artifacts.projects.size > 0) return new Set();
+  if (artifacts.resumeTracks.size > 0 || artifacts.contact !== null || artifacts.sources.size > 0) {
+    return new Set();
+  }
+  if (input.segments.some((segment) => segment.kind === 'conversational' && segment.act === 'capabilities')) {
+    return new Set(['project_overview']);
+  }
+  return new Set();
+}
+
+function groundedProjectFollowUps(
+  input: FinalAnswerInput,
+  run: PublicAgentToolRun,
+): boolean {
+  const citedProjectIds = new Set(
+    input.segments
+      .filter((segment): segment is Extract<FinalAnswerInput['segments'][number], { kind: 'factual' }> => segment.kind === 'factual')
+      .flatMap((segment) => run.evidenceLedger.resolve(segment.evidenceIds))
+      .filter((evidence) => evidence.source === 'project')
+      .map((evidence) => evidence.recordId),
+  );
+  return citedProjectIds.size > 0;
+}
+
 function allowedOutcomeFollowUps(required: ReadonlySet<LimitationCode>): Set<FollowUpCode> {
-  const allowed = new Set<FollowUpCode>();
-  if (required.has('no_matching_published_projects')) {
-    allowed.add('project_overview');
-    allowed.add('refine_question');
-  }
-  if (required.has('public_data_unavailable')) {
-    allowed.add('try_resume');
-    allowed.add('contact_dylan');
-  }
-  if (required.has('no_matching_approved_public_sources') || required.has('public_source_unavailable')) {
-    allowed.add('project_overview');
-    allowed.add('refine_question');
-  }
-  if (required.has('personal_unknown')) allowed.add('contact_dylan');
-  return allowed;
+  const choices = [...required]
+    .map((code) => SAFE_FOLLOW_UPS_BY_LIMITATION[code])
+    // A closed filter is a complete answer for its own aspect. It contributes
+    // no action, but must not veto a safe action for another requested aspect.
+    .filter((followUps) => followUps.length > 0);
+  if (choices.length === 0) return new Set();
+  return new Set(FOLLOW_UP_CODES.filter((followUp) => choices.every((allowed) => allowed.includes(followUp))));
 }
 
 function compositionCoverageErrors(input: FinalAnswerInput, run: PublicAgentToolRun): string[] {
@@ -1449,9 +1495,10 @@ const DM_SYSTEM_INSTRUCTIONS = [
   'For an aspect-only follow-up on a previously discussed project, cite getProject evidence but omit the repeated project artifact unless the visitor explicitly asks to see its card. A correction to a different project may include that new project artifact.',
   'For a link-only follow-up, use links artifacts and omit project artifacts.',
   'For comparisons and interpretations, gather evidence for every project or resume fact you discuss and distinguish supported inference from fact.',
-  'Use project area, status, or year filters when the latest question asks about that exact aspect. If the filtered search is empty, state the filter limitation and omit a follow-up when that fully answers the question.',
+  'Use project area, status, or year filters when the latest question asks about that exact aspect. If the filtered search is empty, state the filter limitation and omit a follow-up for that aspect; preserve a safe follow-up for any other requested aspect.',
   'When searchProjects, searchPublicSources, or searchProfile returns empty or unavailable, select the matching finite limitation code. Do not turn an empty result into an unavailable-source claim or expose internal error details.',
-  'For ambiguous references, ask one clarifying follow-up without guessing. Otherwise include at most one follow-up, only when it materially helps.',
+  'For an empty or unavailable public outcome, include one finite follow-up only when the validated outcome set has a common safe action; if there is no common action, omit it. Never offer a privacy or unsupported redirect, a greeting follow-up, or a project follow-up after a grounded resume/contact answer. For grounded project evidence, project_deep_dive is optional and must be backed by same-run cited project evidence; do not repeat project_overview after that project answer.',
+  'For ambiguous references, use exactly one non-repetitive specify_project follow-up without guessing. Otherwise include at most one follow-up, only when it materially helps.',
   'Unknown personal details require searchProfile and an honest limitation when its public result is empty.',
   'Never claim access to Slack, admin drafts, candidate evidence, private notes, visitor history, credentials, hidden projects, or unpublished records. Those sources and tools do not exist here.',
   'Every factual segment passed to finalizeAnswer must cite one or more evidenceIds returned by public tools in this same run.',
