@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { simulateReadableStream, type LanguageModel, type UIMessageChunk } from 'ai';
+import { RetryError, simulateReadableStream, type LanguageModel, type UIMessageChunk } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import { validateFinalizationResult } from '@/lib/dm/client';
@@ -12,7 +12,7 @@ import {
 } from '@/lib/dm/eval-corpus';
 import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
 import { observeDMResponse } from '@/lib/dm/response-observer';
-import { createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
+import { classifyDMStreamError, createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
 import type { DMChatRequest, DMFinalizationResult, DMUIData } from '@/lib/dm/contract';
 import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { createDMPostHandler } from '@/pages/api/dm/chat';
@@ -100,6 +100,7 @@ test('runtime metrics mark the first visible public-tool state before completion
 
   assert.equal(observation.outcome, 'completed');
   assert.equal(metrics.outcome, 'completed');
+  assert.equal(metrics.errorCategory, null);
   assert.equal(metrics.toolCount, 1);
   assert.equal(typeof metrics.firstTokenMs, 'number');
   assert.equal(typeof metrics.completionMs, 'number');
@@ -201,16 +202,19 @@ test('an invalid finalization is repaired exactly once', async () => {
       },
     },
   ]);
+  const metricsLines: string[] = [];
 
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
     db: source.db,
     projectLoader: source.projectLoader,
     model,
+    metricsLogger: (line) => metricsLines.push(line),
   }), request);
 
   assert.equal(observation.result?.status, 'accepted');
   assert.equal(observation.result?.repairAttempted, true);
   assert.doesNotMatch(observation.answerText, /Unverified first attempt|invented-project/);
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, null);
 });
 
 test('a second invalid finalization fails closed with a limited answer', async () => {
@@ -226,17 +230,20 @@ test('a second invalid finalization fails closed with a limited answer', async (
     { toolName: 'finalizeAnswer', input: invalid },
     { toolName: 'finalizeAnswer', input: invalid },
   ]);
+  const metricsLines: string[] = [];
 
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
     db: source.db,
     projectLoader: source.projectLoader,
     model,
+    metricsLogger: (line) => metricsLines.push(line),
   }), request);
 
   assert.equal(observation.result?.status, 'limited');
   assert.equal(observation.result?.repairAttempted, true);
   assert.doesNotMatch(observation.answerText, /Hidden project exists|private-hidden/);
   assert.match(observation.answerText, /could not verify/i);
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
 });
 
 test('schema-invalid finalization input consumes the single repair budget', async () => {
@@ -253,17 +260,20 @@ test('schema-invalid finalization input consumes the single repair budget', asyn
     { toolName: 'finalizeAnswer', input: invalid },
     { toolName: 'finalizeAnswer', input: invalid },
   ], prompts);
+  const metricsLines: string[] = [];
 
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
     db: source.db,
     projectLoader: source.projectLoader,
     model,
+    metricsLogger: (line) => metricsLines.push(line),
     budgets: { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 4 },
   }), request);
 
   assert.equal(observation.result?.status, 'limited');
   assert.equal(observation.result?.repairAttempted, true);
   assert.equal(prompts.length, 2);
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
 });
 
 test('finalization enforces zero, one, and bounded project artifact cardinality', async (t) => {
@@ -2004,15 +2014,18 @@ test('request cancellation is propagated and sanitized', async () => {
   const request = chatRequest('Tell me about public projects.');
   const controller = new AbortController();
   controller.abort(new Error('visitor-private-cancel-reason'));
+  const metricsLines: string[] = [];
   const response = createDMChatResponse(request, config, {
     db: source.db,
     projectLoader: source.projectLoader,
     model: toolSequenceModel([]),
     signal: controller.signal,
+    metricsLogger: (line) => metricsLines.push(line),
   });
   const observation = await observeDMResponse(response, request);
   assert.equal(observation.outcome, 'incomplete');
   assert.doesNotMatch(JSON.stringify(observation), /visitor-private-cancel-reason/);
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'aborted');
 });
 
 test('model failures surface only a sanitized UIMessage error', async () => {
@@ -2022,6 +2035,7 @@ test('model failures surface only a sanitized UIMessage error', async () => {
   const model = new MockLanguageModelV4({
     doStream: async () => { throw new Error(providerErrorMarker); },
   });
+  const metricsLines: string[] = [];
   const serverLogs: unknown[][] = [];
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => { serverLogs.push(args); };
@@ -2031,6 +2045,7 @@ test('model failures surface only a sanitized UIMessage error', async () => {
         db: source.db,
         projectLoader: source.projectLoader,
         model,
+        metricsLogger: (line) => metricsLines.push(line),
       }), request);
     } finally {
       console.error = originalConsoleError;
@@ -2043,8 +2058,101 @@ test('model failures surface only a sanitized UIMessage error', async () => {
   assert.equal(observation.result, null);
   assert.match(observation.errors.join(' '), /could not answer that safely/i);
   assert.doesNotMatch(JSON.stringify(observation), new RegExp(providerErrorMarker));
-  assert.match(serializedLogs, /\[dm\].*stream failure.*Error/);
+  assert.match(serializedLogs, /\[dm\].*stream failure.*provider_failure/);
   assert.doesNotMatch(serializedLogs, new RegExp(providerErrorMarker));
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'provider_failure');
+});
+
+test('exhausted AI retry failures classify as provider-neutral and remain sanitized', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about projects.');
+  const providerErrorMarker = 'F3_RETRY_PRIVATE_PAYLOAD_4a8c11';
+  const retryError = new RetryError({
+    message: providerErrorMarker,
+    reason: 'maxRetriesExceeded',
+    errors: [new Error(providerErrorMarker)],
+  });
+  const metricsLines: string[] = [];
+  const logs: unknown[][] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => { logs.push(args); };
+  const observation = await (async () => {
+    try {
+      return await observeDMResponse(createDMChatResponse(request, config, {
+        db: source.db,
+        projectLoader: source.projectLoader,
+        model: new MockLanguageModelV4({ doStream: async () => { throw retryError; } }),
+        metricsLogger: (line) => metricsLines.push(line),
+      }), request);
+    } finally {
+      console.error = originalConsoleError;
+    }
+  })();
+  assert.equal(observation.outcome, 'error');
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'provider_retry_exhausted');
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(providerErrorMarker));
+  assert.doesNotMatch(JSON.stringify(logs), new RegExp(providerErrorMarker));
+});
+
+test('provider retry abort reasons do not impersonate local request cancellation', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about projects.');
+  const providerErrorMarker = 'F3_PROVIDER_ABORT_PRIVATE_PAYLOAD_5b9e31';
+  const retryError = new RetryError({
+    message: providerErrorMarker,
+    reason: 'abort',
+    errors: [new Error(providerErrorMarker)],
+  });
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: new MockLanguageModelV4({ doStream: async () => { throw retryError; } }),
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+  assert.equal(observation.outcome, 'error');
+  assert.equal(classifyDMStreamError(retryError), 'provider_failure');
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'provider_failure');
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(providerErrorMarker));
+});
+
+test('provider TimeoutError names do not impersonate the local deadline', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about projects.');
+  const providerError = new Error('provider timeout payload marker');
+  providerError.name = 'TimeoutError';
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: new MockLanguageModelV4({ doStream: async () => { throw providerError; } }),
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+  assert.equal(observation.outcome, 'error');
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'provider_failure');
+  assert.equal(classifyDMStreamError(providerError), 'provider_failure');
+});
+
+test('deadline aborts classify as timeout without retaining the abort reason', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about projects.');
+  const abortReasonMarker = 'F3_TIMEOUT_PRIVATE_REASON_7c9d22';
+  const metricsLines: string[] = [];
+  const model = new MockLanguageModelV4({
+    doStream: async ({ abortSignal }) => await new Promise((_, reject) => {
+      if (abortSignal?.aborted) reject(new Error(abortReasonMarker));
+      abortSignal?.addEventListener('abort', () => reject(new Error(abortReasonMarker)), { once: true });
+    }),
+  });
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+    budgets: { deadlineMs: 5, maxOutputTokens: 1_200, maxSteps: 2 },
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(abortReasonMarker));
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'timeout');
 });
 
 test('the endpoint rate-limits before parsing the request or calling the model', async () => {

@@ -139,9 +139,9 @@ export async function runCliJudge(
   judge: DMCliJudge,
   prompt: string,
   timeoutMs = 180_000,
-): Promise<DMEvalJudgeScore | { error: string }> {
+): Promise<DMEvalJudgeScore | { errorCategory: 'judge_failure' }> {
   const [command, ...args] = judge.command;
-  if (!command) return { error: `${judge.label}: empty judge command` };
+  if (!command) return { errorCategory: 'judge_failure' };
 
   const output = await new Promise<{ ok: boolean; text: string }>((resolve) => {
     // A detached POSIX child becomes the leader of a new process group. Codex
@@ -152,7 +152,6 @@ export async function runCliJudge(
       detached: process.platform !== 'win32',
     });
     let stdout = '';
-    let stderr = '';
     let settled = false;
     let terminated = false;
     const terminateChild = () => {
@@ -190,7 +189,7 @@ export async function runCliJudge(
     };
     const timer = setTimeout(() => {
       terminateChild();
-      settle({ ok: false, text: `timed out after ${timeoutMs}ms` });
+      settle({ ok: false, text: '' });
     }, timeoutMs);
 
     process.once('SIGINT', onSigint);
@@ -198,18 +197,18 @@ export async function runCliJudge(
     process.once('exit', onExit);
 
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
-    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    child.stderr.resume();
     // The CLI may exit without reading stdin; an unhandled EPIPE would crash the runner.
     child.stdin.on('error', () => {});
-    child.on('error', (error) => settle({ ok: false, text: error.message }));
+    child.on('error', () => settle({ ok: false, text: '' }));
     child.on('close', (code) => {
       if (code === 0) settle({ ok: true, text: stdout });
-      else settle({ ok: false, text: stderr.trim().slice(-300) || `exit code ${code}` });
+      else settle({ ok: false, text: '' });
     });
     child.stdin.end(prompt);
   });
 
-  if (!output.ok) return { error: `${judge.label}: ${output.text}` };
+  if (!output.ok) return { errorCategory: 'judge_failure' };
   return extractJudgeScore(output.text);
 }
 
@@ -230,7 +229,7 @@ function terminateProcessTree(child: ReturnType<typeof spawn>): void {
  * objects from the end of the output and take the last one that parses as a
  * score. Falls back to a greedy match for fenced/pretty-printed replies.
  */
-export function extractJudgeScore(text: string): DMEvalJudgeScore | { error: string } {
+export function extractJudgeScore(text: string): DMEvalJudgeScore | { errorCategory: 'judge_failure' } {
   const flatObjects = text.match(/\{[^{}]*\}/g) ?? [];
   for (let index = flatObjects.length - 1; index >= 0; index -= 1) {
     const candidate = flatObjects[index];
@@ -243,7 +242,7 @@ export function extractJudgeScore(text: string): DMEvalJudgeScore | { error: str
     const parsed = tryParseScore(greedy[0]);
     if (parsed) return parsed;
   }
-  return { error: `judge reply had no score JSON: ...${text.slice(-160)}` };
+  return { errorCategory: 'judge_failure' };
 }
 
 function tryParseScore(candidate: string): DMEvalJudgeScore | null {

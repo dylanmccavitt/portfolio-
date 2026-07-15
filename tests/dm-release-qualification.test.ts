@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DM_LIVE_EVAL_CORPUS, DM_RELEASE_MODELS } from '@/lib/dm/eval-corpus';
-import type { DMEvalJudgeScore, DMEvalReport, DMEvalRunRecord } from '@/lib/dm/eval-report';
+import { renderEvalReportHtml, type DMEvalJudgeScore, type DMEvalReport, type DMEvalRunRecord } from '@/lib/dm/eval-report';
 import {
   assertDMReleaseInvocation,
   computeDMReleaseCandidateDigest,
@@ -91,6 +91,98 @@ test('aggregate release qualification selects a fully qualifying winner without 
     assert.equal(aggregate.groundingFailures, 0);
     assert.equal(aggregate.fabricationFailures, 0);
   }
+});
+
+test('runtime and judge categories propagate through sanitized aggregates and candidate digests', () => {
+  const report = releaseReport(() => 5);
+  const runtimeRun = report.runs[0]!;
+  runtimeRun.passed = false;
+  runtimeRun.failure = 'run outcome was error';
+  runtimeRun.failureReasons = ['run-incomplete'];
+  runtimeRun.outcome = 'error';
+  runtimeRun.runtimeErrorCategory = 'provider_retry_exhausted';
+  const judgeRun = report.runs[1]!;
+  judgeRun.passed = false;
+  judgeRun.failure = 'judge error: unavailable';
+  judgeRun.failureReasons = ['judge-error'];
+  judgeRun.judge = { errorCategory: 'judge_failure' };
+
+  const digest = computeDMReleaseCandidateDigest(report, runtimeRun.model);
+  const decision = selectDMReleaseWinner(report, selectionEvidence(report));
+  const aggregate = decision.aggregates.find((item) => item.model === runtimeRun.model)!;
+  assert.equal(aggregate.runtimeErrorCounts.provider_retry_exhausted, 1);
+  assert.equal(aggregate.judgeFailureCount, 1);
+  assert.equal(aggregate.runtimeErrorCounts.provider_failure, 0);
+  assert.doesNotMatch(JSON.stringify(report), /provider payload|judge unavailable/);
+
+  const changed = structuredClone(report);
+  changed.runs[0]!.runtimeErrorCategory = 'provider_failure';
+  assert.notEqual(computeDMReleaseCandidateDigest(changed, runtimeRun.model), digest);
+  const judgeChanged = structuredClone(report);
+  judgeChanged.runs[2]!.judge = { errorCategory: 'judge_failure' };
+  assert.notEqual(computeDMReleaseCandidateDigest(judgeChanged, runtimeRun.model), digest);
+
+  report.releaseDecision = decision;
+  assert.doesNotThrow(() => validateDMReleaseReport(report));
+  const html = renderEvalReportHtml({ report });
+  assert.match(html, /provider_retry_exhausted=1/);
+  assert.match(html, /judge failures/);
+});
+
+test('release replay rejects inconsistent runtime outcome, category, and pass evidence', () => {
+  const cases = [
+    (run: DMEvalRunRecord) => {
+      run.passed = false;
+      run.failure = 'run outcome was error';
+      run.failureReasons = ['run-incomplete'];
+      run.outcome = 'error';
+    },
+    (run: DMEvalRunRecord) => {
+      run.passed = false;
+      run.failure = 'run outcome was timeout';
+      run.failureReasons = ['run-incomplete'];
+      run.runtimeErrorCategory = 'provider_failure';
+      run.outcome = 'timeout';
+    },
+    (run: DMEvalRunRecord) => {
+      run.runtimeErrorCategory = 'provider_retry_exhausted';
+    },
+    (run: DMEvalRunRecord) => {
+      run.passed = false;
+      run.failure = 'run outcome was incomplete';
+      run.failureReasons = ['run-incomplete'];
+      run.outcome = 'incomplete';
+    },
+  ];
+  for (const mutate of cases) {
+    const report = releaseReport(() => 5);
+    const run = report.runs[0]!;
+    mutate(run);
+    assert.throws(
+      () => validateDMReleaseReport(report),
+      /inconsistent runtime error category evidence/,
+    );
+  }
+
+  const rateLimited = releaseReport(() => 5);
+  const run = rateLimited.runs[0]!;
+  run.passed = false;
+  run.failure = 'run outcome was rate_limited';
+  run.failureReasons = ['run-incomplete'];
+  run.outcome = 'rate_limited';
+  assert.doesNotThrow(() => validateDMReleaseReport(rateLimited));
+});
+
+test('unknown runtime categories fail closed before release qualification', () => {
+  const report = releaseReport(() => 5);
+  const malformed = structuredClone(report);
+  malformed.runs[0]!.runtimeErrorCategory = 'untrusted_category' as never;
+
+  assert.throws(() => validateDMReleaseReport(malformed), /invalid sanitized result fields/);
+  const aggregate = selectDMReleaseWinner(malformed, selectionEvidence(report)).aggregates
+    .find((item) => item.model === malformed.runs[0]!.model)!;
+  assert.equal(aggregate.qualified, false);
+  assert.match(aggregate.disqualifications.join('\n'), /invalid runtime error category evidence/);
 });
 
 test('privacy quality failures remain failed runs without becoming confirmed private-evidence counts', () => {
@@ -230,7 +322,7 @@ test('release qualification fails closed on missing critical, follow-up, and bli
 test('release qualification rejects a missing question-comprehension score on a non-critical run', () => {
   const report = releaseReport((model) => model === DM_RELEASE_MODELS[0] ? 5 : 4);
   const run = report.runs.find((item) => item.model === DM_RELEASE_MODELS[0] && item.critical === false);
-  assert.ok(run?.judge && !('error' in run.judge));
+  assert.ok(run?.judge && !('errorCategory' in run.judge));
   delete (run.judge as Partial<DMEvalJudgeScore>).questionComprehension;
 
   const decision = selectDMReleaseWinner(report, selectionEvidence(report));
@@ -318,7 +410,16 @@ test('captured release report validation rejects raw or unknown fields before re
   assert.throws(
     () => validateDMReleaseReport({
       ...report,
-      runs: report.runs.map((run, index) => index === 0 && run.judge && !('error' in run.judge)
+      runs: report.runs.map((run, index) => index === 0
+        ? { ...run, judge: { error: 'raw judge failure marker' } }
+        : run),
+    }),
+    /forbidden or unknown fields/,
+  );
+  assert.throws(
+    () => validateDMReleaseReport({
+      ...report,
+      runs: report.runs.map((run, index) => index === 0 && run.judge && !('errorCategory' in run.judge)
         ? { ...run, judge: { ...run.judge, rawAnswer: 'private answer' } }
         : run),
     }),
@@ -380,7 +481,7 @@ test('captured release report re-applies the live judge gate before qualificatio
   const report = releaseReport(() => 5);
   const malformed = structuredClone(report);
   const run = malformed.runs.find((candidate) => candidate.critical === false);
-  assert.ok(run?.judge && !('error' in run.judge));
+  assert.ok(run?.judge && !('errorCategory' in run.judge));
   run.judge.questionComprehension = 0;
 
   assert.throws(
@@ -416,6 +517,7 @@ function releaseReport(usefulnessFor: (model: string) => number): DMEvalReport {
           outputTokens: 25,
           repairCount: 0,
           outcome: 'completed',
+          runtimeErrorCategory: null,
           answerText: '',
           blockKinds: [],
           evidenceIds: [],
