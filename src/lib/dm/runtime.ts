@@ -23,8 +23,10 @@ import {
   type PublicContactRecord,
   type PublicEvidenceSource,
   type PublicProjectToolRecord,
+  type PublicProfileSourceEntry,
   type PublicResumeTrackRecord,
   type PublicSourceRecord,
+  type PublicToolStatus,
 } from './public-agent-tools';
 import type {
   DMAnswerArtifact,
@@ -59,6 +61,7 @@ export interface DMRuntimeDeps {
   model?: LanguageModel;
   env?: DMRuntimeEnv;
   projectLoader?: () => Promise<ProjectDetailReadModel[]>;
+  profileLoader?: () => Promise<PublicProfileSourceEntry[]>;
   ragSearch?: (
     query: string,
     config: PublicRagSearchConfig,
@@ -129,6 +132,9 @@ const CONVERSATIONAL_ACTS = [
 const LIMITATION_CODES = [
   'private_sources',
   'personal_unknown',
+  'no_matching_published_projects',
+  'no_matching_published_project_filters',
+  'no_matching_approved_public_sources',
   'public_data_unavailable',
   'public_source_unavailable',
   'unsupported_request',
@@ -154,6 +160,18 @@ type ArtifactIntent = z.infer<typeof ArtifactIntentSchema>;
 
 const MAX_PROJECT_SET_ARTIFACTS = 4;
 
+const SERVER_LIMITATION_COPY = {
+  private_sources: 'I can only use published public portfolio sources.',
+  personal_unknown: 'I could not find a published public answer to that personal question.',
+  no_matching_published_projects: 'I found no matching published project evidence for that question.',
+  no_matching_published_project_filters: 'No published projects matched the requested filters.',
+  no_matching_approved_public_sources: 'I found no matching approved public-source evidence for that question.',
+  public_data_unavailable: 'The published project source is unavailable for this answer.',
+  public_source_unavailable: 'Approved public-source search is unavailable for this answer.',
+  unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and approved public sources.",
+  ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
+} satisfies Record<LimitationCode, string>;
+
 // Security boundary: only factual segments retain model-authored prose. The
 // model can select these finite enum values only through finalizeAnswer; the
 // server materializes the copy after the structured answer validates.
@@ -165,14 +183,7 @@ const FINALIZATION_ENUM_COPY = {
     clarify_reference: 'Could you clarify which published project or resume entry you mean?',
     explain_process: 'I answer using published portfolio records, the public resume, contact details, and approved public sources.',
   },
-  limitation: {
-    private_sources: 'I can only use published public portfolio sources.',
-    personal_unknown: 'I could not find a published public answer to that personal question.',
-    public_data_unavailable: 'The published project source is unavailable for this answer.',
-    public_source_unavailable: 'Approved public-source search is unavailable for this answer.',
-    unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and approved public sources.",
-    ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
-  },
+  limitation: SERVER_LIMITATION_COPY,
   followUp: {
     project_overview: 'Would you like a project overview?',
     specify_project: 'Would you like to name a specific published project?',
@@ -239,10 +250,16 @@ interface RunArtifacts {
   contact: PublicContactRecord | null;
   sources: Map<string, PublicSourceRecord>;
   limitations: Set<string>;
+  outcomes: Map<LimitationTrackedTool, PublicToolStatus>;
+  outcomeLimitations: Map<LimitationTrackedTool, string[]>;
+  outcomeOrdinals: Map<LimitationTrackedTool, number>;
+  nextOutcomeOrdinal: number;
   requestedArtifactIntent: ArtifactIntent | null;
   boundArtifactIntent: ArtifactIntent | null;
   projectLookupCompleted: boolean;
 }
+
+type LimitationTrackedTool = 'searchProjects' | 'getProject' | 'searchPublicSources' | 'searchProfile';
 
 interface PublicToolGate {
   run<T>(operation: () => Promise<T>): Promise<T>;
@@ -265,6 +282,7 @@ export function createDMChatResponse(
     db: deps.db,
     env: deps.env,
     ...(deps.projectLoader ? { loadProjects: deps.projectLoader } : {}),
+    ...(deps.profileLoader ? { loadProfileEntries: deps.profileLoader } : {}),
     ...(deps.ragSearch ? { ragSearch: deps.ragSearch } : {}),
     ragApiKey: deps.env?.OPENAI_API_KEY?.trim() ?? process.env.OPENAI_API_KEY?.trim(),
   });
@@ -280,7 +298,7 @@ export function createDMChatResponse(
   const agentTools = {
     ...publicTools,
     finalizeAnswer: tool({
-      description: 'Submit the complete structured visitor answer and its requested artifact intent only after every successful source in a requested composition pair is cited, each same-run artifact allowed by that intent is included, and distinctive evidenceQuotes preserve exact returned wording with natural capitalization allowed in factual prose. The server validates explicit zero, one-project, and project-set requests; use exactly once after gathering any needed public evidence and retry once only when rejected.',
+      description: 'Submit the complete structured visitor answer and its requested artifact intent only after every successful source in a requested composition pair is cited, each same-run artifact allowed by that intent is included, and distinctive evidenceQuotes preserve exact returned wording with natural capitalization allowed in factual prose. Empty and unavailable public-tool results require their matching finite limitation code. The server validates explicit zero, one-project, and project-set requests; use exactly once after gathering any needed public evidence and retry once only when rejected.',
       inputSchema: FinalAnswerInputSchema,
       execute: async (input: FinalAnswerInput) => {
         await publicToolGate.waitForIdle();
@@ -505,26 +523,32 @@ function createRuntimePublicTools(
     searchProjects: tool({
       description: run.searchProjects.description,
       inputSchema: run.searchProjects.inputSchema,
-      execute: (input, { abortSignal }) => gate.run(async () => {
-        metrics.tool();
-        const result = await run.searchProjects(input, { abortSignal });
-        artifacts.projectLookupCompleted = true;
-        for (const project of result.projects) artifacts.projects.set(project.id, project);
-        rememberLimitations(artifacts, result.limitations);
-        return result;
-      }),
+      execute: (input, { abortSignal }) => {
+        const outcomeOrdinal = reserveToolOutcome(artifacts);
+        return gate.run(async () => {
+          metrics.tool();
+          const result = await run.searchProjects(input, { abortSignal });
+          artifacts.projectLookupCompleted = true;
+          for (const project of result.projects) artifacts.projects.set(project.id, project);
+          rememberToolOutcome(artifacts, 'searchProjects', outcomeOrdinal, result.status, result.limitations);
+          return result;
+        });
+      },
     }),
     getProject: tool({
       description: run.getProject.description,
       inputSchema: run.getProject.inputSchema,
-      execute: (input, { abortSignal }) => gate.run(async () => {
-        metrics.tool();
-        const result = await run.getProject(input, { abortSignal });
-        artifacts.projectLookupCompleted = true;
-        if (result.project) artifacts.projects.set(result.project.id, result.project);
-        rememberLimitations(artifacts, result.limitations);
-        return result;
-      }),
+      execute: (input, { abortSignal }) => {
+        const outcomeOrdinal = reserveToolOutcome(artifacts);
+        return gate.run(async () => {
+          metrics.tool();
+          const result = await run.getProject(input, { abortSignal });
+          artifacts.projectLookupCompleted = true;
+          if (result.project) artifacts.projects.set(result.project.id, result.project);
+          rememberToolOutcome(artifacts, 'getProject', outcomeOrdinal, result.status, result.limitations);
+          return result;
+        });
+      },
     }),
     readResume: tool({
       description: run.readResume.description,
@@ -551,23 +575,29 @@ function createRuntimePublicTools(
     searchPublicSources: tool({
       description: run.searchPublicSources.description,
       inputSchema: run.searchPublicSources.inputSchema,
-      execute: (input, { abortSignal }) => gate.run(async () => {
-        metrics.tool();
-        const result = await run.searchPublicSources(input, { abortSignal });
-        for (const source of result.sources) artifacts.sources.set(source.id, source);
-        rememberLimitations(artifacts, result.limitations);
-        return result;
-      }),
+      execute: (input, { abortSignal }) => {
+        const outcomeOrdinal = reserveToolOutcome(artifacts);
+        return gate.run(async () => {
+          metrics.tool();
+          const result = await run.searchPublicSources(input, { abortSignal });
+          for (const source of result.sources) artifacts.sources.set(source.id, source);
+          rememberToolOutcome(artifacts, 'searchPublicSources', outcomeOrdinal, result.status, result.limitations);
+          return result;
+        });
+      },
     }),
     searchProfile: tool({
       description: run.searchProfile.description,
       inputSchema: run.searchProfile.inputSchema,
-      execute: (input, { abortSignal }) => gate.run(async () => {
-        metrics.tool();
-        const result = await run.searchProfile(input, { abortSignal });
-        rememberLimitations(artifacts, result.limitations);
-        return result;
-      }),
+      execute: (input, { abortSignal }) => {
+        const outcomeOrdinal = reserveToolOutcome(artifacts);
+        return gate.run(async () => {
+          metrics.tool();
+          const result = await run.searchProfile(input, { abortSignal });
+          rememberToolOutcome(artifacts, 'searchProfile', outcomeOrdinal, result.status, result.limitations);
+          return result;
+        });
+      },
     }),
   };
 }
@@ -604,6 +634,7 @@ function validateFinalAnswer(
     return { ok: false, errors: ['artifact intent must match the current request and cannot change during repair'] };
   }
   const errors: string[] = [];
+  errors.push(...limitationOutcomeErrors(input, artifacts));
   const artifactReferences = deduplicateArtifactReferences(input.artifacts);
   for (const [index, segment] of input.segments.entries()) {
     if (segment.kind !== 'factual') continue;
@@ -645,7 +676,7 @@ function validateFinalAnswer(
   const segmentTexts = new Set(segments.map((segment) => segment.text));
   const limitations = [...new Set([
     ...input.limitations.map((code) => FINALIZATION_ENUM_COPY.limitation[code]),
-    ...[...artifacts.limitations].map(humanLimitation).filter((item): item is string => Boolean(item)),
+    ...effectiveLimitations(artifacts).map(humanLimitation).filter((item): item is string => Boolean(item)),
   ])].filter((limitation) => !segmentTexts.has(limitation));
   return {
     ok: true,
@@ -656,6 +687,43 @@ function validateFinalAnswer(
       ...(input.followUp ? { followUp: FINALIZATION_ENUM_COPY.followUp[input.followUp] } : {}),
     },
   };
+}
+
+const TOOL_OUTCOME_LIMITATION_CODES = new Set<LimitationCode>([
+  'personal_unknown',
+  'no_matching_published_projects',
+  'no_matching_published_project_filters',
+  'no_matching_approved_public_sources',
+  'public_data_unavailable',
+  'public_source_unavailable',
+]);
+
+function limitationOutcomeErrors(input: FinalAnswerInput, artifacts: RunArtifacts): string[] {
+  const required = requiredOutcomeLimitations(artifacts);
+  const selected = new Set<LimitationCode>([
+    ...input.limitations,
+    ...input.segments.flatMap((segment) => segment.kind === 'limitation' ? [segment.code] : []),
+  ]);
+  const errors: string[] = [];
+
+  for (const code of required) {
+    if (!selected.has(code)) errors.push(`public tool outcome requires limitation code ${code}`);
+  }
+  for (const code of selected) {
+    if (TOOL_OUTCOME_LIMITATION_CODES.has(code) && !required.has(code)) {
+      errors.push(`limitation code ${code} does not match the public tool outcome`);
+    }
+  }
+
+  if (input.followUp && required.has('no_matching_published_project_filters')) {
+    errors.push('a closed project-filter result does not need a follow-up');
+  } else if (input.followUp && required.size > 0) {
+    const allowed = allowedOutcomeFollowUps(required);
+    if (!allowed.has(input.followUp)) {
+      errors.push(`follow-up ${input.followUp} is not useful for the public tool outcome`);
+    }
+  }
+  return errors;
 }
 
 function evidenceQuoteErrors(
@@ -678,6 +746,50 @@ function evidenceQuoteErrors(
     }
   }
   return errors;
+}
+
+function requiredOutcomeLimitations(artifacts: RunArtifacts): Set<LimitationCode> {
+  const required = new Set<LimitationCode>();
+  const projectSearch = artifacts.outcomes.get('searchProjects');
+  if (projectSearch === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'searchProjects')) {
+    required.add((artifacts.outcomeLimitations.get('searchProjects') ?? []).includes('no_matching_published_project_filters')
+      ? 'no_matching_published_project_filters'
+      : 'no_matching_published_projects');
+  } else if (projectSearch === 'unavailable') {
+    required.add('public_data_unavailable');
+  }
+
+  const projectRead = artifacts.outcomes.get('getProject');
+  if (projectRead === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'getProject')) {
+    required.add('no_matching_published_projects');
+  } else if (projectRead === 'unavailable') required.add('public_data_unavailable');
+
+  const publicSourceSearch = artifacts.outcomes.get('searchPublicSources');
+  if (publicSourceSearch === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'searchPublicSources')) {
+    required.add('no_matching_approved_public_sources');
+  } else if (publicSourceSearch === 'unavailable') required.add('public_source_unavailable');
+
+  const profileSearch = artifacts.outcomes.get('searchProfile');
+  if (profileSearch === 'empty' || profileSearch === 'unavailable') required.add('personal_unknown');
+  return required;
+}
+
+function allowedOutcomeFollowUps(required: ReadonlySet<LimitationCode>): Set<FollowUpCode> {
+  const allowed = new Set<FollowUpCode>();
+  if (required.has('no_matching_published_projects')) {
+    allowed.add('project_overview');
+    allowed.add('refine_question');
+  }
+  if (required.has('public_data_unavailable')) {
+    allowed.add('try_resume');
+    allowed.add('contact_dylan');
+  }
+  if (required.has('no_matching_approved_public_sources') || required.has('public_source_unavailable')) {
+    allowed.add('project_overview');
+    allowed.add('refine_question');
+  }
+  if (required.has('personal_unknown')) allowed.add('contact_dylan');
+  return allowed;
 }
 
 function compositionCoverageErrors(input: FinalAnswerInput, run: PublicAgentToolRun): string[] {
@@ -795,6 +907,10 @@ function emptyArtifacts(requestedArtifactIntent: ArtifactIntent | null = null): 
     contact: null,
     sources: new Map(),
     limitations: new Set(),
+    outcomes: new Map(),
+    outcomeLimitations: new Map(),
+    outcomeOrdinals: new Map(),
+    nextOutcomeOrdinal: 0,
     requestedArtifactIntent,
     boundArtifactIntent: requestedArtifactIntent,
     projectLookupCompleted: false,
@@ -947,15 +1063,59 @@ function rememberLimitations(artifacts: RunArtifacts, limitations: string[]): vo
   for (const limitation of limitations) artifacts.limitations.add(limitation);
 }
 
+function rememberToolOutcome(
+  artifacts: RunArtifacts,
+  toolName: LimitationTrackedTool,
+  outcomeOrdinal: number,
+  status: PublicToolStatus,
+  limitations: string[],
+): void {
+  if (outcomeOrdinal < (artifacts.outcomeOrdinals.get(toolName) ?? 0)) return;
+  artifacts.outcomeOrdinals.set(toolName, outcomeOrdinal);
+  artifacts.outcomes.set(toolName, status);
+  artifacts.outcomeLimitations.set(toolName, [...limitations]);
+}
+
+function reserveToolOutcome(artifacts: RunArtifacts): number {
+  artifacts.nextOutcomeOrdinal += 1;
+  return artifacts.nextOutcomeOrdinal;
+}
+
+function effectiveLimitations(artifacts: RunArtifacts): string[] {
+  return [
+    ...artifacts.limitations,
+    ...[...artifacts.outcomeLimitations.entries()].flatMap(([toolName, limitations]) =>
+      emptyOutcomeHasRetainedArtifacts(artifacts, toolName) ? [] : limitations),
+  ];
+}
+
+function emptyOutcomeHasRetainedArtifacts(
+  artifacts: RunArtifacts,
+  toolName: LimitationTrackedTool,
+): boolean {
+  if (artifacts.outcomes.get(toolName) !== 'empty') return false;
+  if (toolName === 'searchProjects' || toolName === 'getProject') return artifacts.projects.size > 0;
+  if (toolName === 'searchPublicSources') return artifacts.sources.size > 0;
+  return false;
+}
+
 function humanLimitation(code: string): string | null {
   switch (code) {
     case 'public_data_unavailable':
+      return serverLimitation('public_data_unavailable');
     case 'published_project_links_unavailable':
       return 'Some published portfolio data was unavailable for this answer.';
+    case 'public_source_unavailable':
     case 'public_source_config_unavailable':
-      return 'Approved public-source search was unavailable for this answer.';
+      return serverLimitation('public_source_unavailable');
+    case 'no_matching_published_projects':
+      return serverLimitation('no_matching_published_projects');
+    case 'no_matching_published_project_filters':
+      return serverLimitation('no_matching_published_project_filters');
+    case 'no_matching_approved_public_sources':
+      return serverLimitation('no_matching_approved_public_sources');
     case 'profile_source_not_available':
-      return 'DM does not yet have a published public profile source for that personal detail.';
+      return serverLimitation('personal_unknown');
     case 'timeout':
       return 'A public source took too long to respond.';
     case 'cancelled':
@@ -968,6 +1128,10 @@ function humanLimitation(code: string): string | null {
     default:
       return null;
   }
+}
+
+function serverLimitation(code: LimitationCode): string {
+  return SERVER_LIMITATION_COPY[code];
 }
 
 function limitedResult(repairAttempted: boolean): Extract<DMFinalizationResult, { status: 'limited' }> {
@@ -1102,6 +1266,8 @@ const DM_SYSTEM_INSTRUCTIONS = [
   'For an aspect-only follow-up on a previously discussed project, cite getProject evidence but omit the repeated project artifact unless the visitor explicitly asks to see its card. A correction to a different project may include that new project artifact.',
   'For a link-only follow-up, use links artifacts and omit project artifacts.',
   'For comparisons and interpretations, gather evidence for every project or resume fact you discuss and distinguish supported inference from fact.',
+  'Use project area, status, or year filters when the latest question asks about that exact aspect. If the filtered search is empty, state the filter limitation and omit a follow-up when that fully answers the question.',
+  'When searchProjects, searchPublicSources, or searchProfile returns empty or unavailable, select the matching finite limitation code. Do not turn an empty result into an unavailable-source claim or expose internal error details.',
   'For ambiguous references, ask one clarifying follow-up without guessing. Otherwise include at most one follow-up, only when it materially helps.',
   'Unknown personal details require searchProfile and an honest limitation when its public result is empty.',
   'Never claim access to Slack, admin drafts, candidate evidence, private notes, visitor history, credentials, hidden projects, or unpublished records. Those sources and tools do not exist here.',

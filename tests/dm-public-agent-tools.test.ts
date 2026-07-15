@@ -198,6 +198,50 @@ test('approved public-source search composes with project tools and rechecks eve
   assert.deepEqual(unavailable.limitations, ['public_source_config_unavailable']);
 });
 
+test('empty and failed searches return source-specific safe limitation categories', async () => {
+  const projectSearch = createPublicAgentTools({
+    db: unusedDb(),
+    loadProjects: async () => [project],
+  });
+  const unmatched = await projectSearch.searchProjects({ query: 'quantum cryptography' });
+  assert.equal(unmatched.status, 'empty');
+  assert.deepEqual(unmatched.limitations, ['no_matching_published_projects']);
+
+  const filtered = await projectSearch.searchProjects({
+    query: 'projects',
+    filters: { status: 'in progress' },
+  });
+  assert.equal(filtered.status, 'empty');
+  assert.deepEqual(filtered.limitations, ['no_matching_published_project_filters']);
+
+  const queryMissWithMatchingFilters = await projectSearch.searchProjects({
+    query: 'quantum cryptography',
+    filters: { status: project.status[0] },
+  });
+  assert.equal(queryMissWithMatchingFilters.status, 'empty');
+  assert.deepEqual(queryMissWithMatchingFilters.limitations, ['no_matching_published_projects']);
+
+  const emptyPublicSources = createPublicAgentTools({
+    db: unusedDb(),
+    loadProjects: async () => [project],
+    createRagConfig: async () => null,
+  });
+  const noEvidence = await emptyPublicSources.searchPublicSources({ query: 'architecture evidence' });
+  assert.equal(noEvidence.status, 'empty');
+  assert.deepEqual(noEvidence.limitations, ['no_matching_approved_public_sources']);
+
+  const publicSourceFailure = createPublicAgentTools({
+    db: unusedDb(),
+    loadProjects: async () => [project],
+    createRagConfig: async () => publicRagConfig(),
+    ragSearch: async () => { throw new Error('private retrieval implementation details'); },
+  });
+  const unavailable = await publicSourceFailure.searchPublicSources({ query: 'architecture evidence' });
+  assert.equal(unavailable.status, 'unavailable');
+  assert.deepEqual(unavailable.limitations, ['public_source_unavailable']);
+  assert.doesNotMatch(JSON.stringify(unavailable), /private retrieval implementation details/);
+});
+
 test('profile search is honestly empty before #194 and filters a later adapter to published public entries', async () => {
   const empty = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [project] });
   const unavailableProfile = await empty.searchProfile({ query: 'leadership' });
@@ -220,13 +264,27 @@ test('profile search is honestly empty before #194 and filters a later adapter t
   assert.deepEqual(profile.profiles.map((entry) => entry.id), ['public-one']);
   assert.equal(profile.profiles[0]?.href, undefined);
   assert.doesNotMatch(JSON.stringify(profile), /draft-one|private-one/);
+
+  const failed = createPublicAgentTools({
+    db: unusedDb(),
+    loadProjects: async () => [project],
+    loadProfileEntries: async () => { throw new Error('private profile adapter details'); },
+  });
+  const failedProfile = await failed.searchProfile({ query: 'leadership' });
+  assert.equal(failedProfile.status, 'unavailable');
+  assert.deepEqual(failedProfile.limitations, ['profile_source_not_available']);
+  assert.doesNotMatch(JSON.stringify(failedProfile), /private profile adapter details|public_data_unavailable/);
 });
 
 test('empty, partial, error, cancellation, and timeout outcomes are explicit and sanitized', async () => {
   const many = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [project, renamedProject()] });
   assert.equal((await many.searchProjects({ query: 'project', limit: 1 })).status, 'partial');
-  assert.equal((await many.searchProjects({ query: 'definitely-not-present' })).status, 'empty');
-  assert.equal((await many.getProject({ id: 'candidate-hidden' })).status, 'empty');
+  const empty = await many.searchProjects({ query: 'definitely-not-present' });
+  assert.equal(empty.status, 'empty');
+  assert.deepEqual(empty.limitations, ['no_matching_published_projects']);
+  const missingProject = await many.getProject({ id: 'candidate-hidden' });
+  assert.equal(missingProject.status, 'empty');
+  assert.deepEqual(missingProject.limitations, ['no_matching_published_projects']);
 
   const failed = createPublicAgentTools({
     db: unusedDb(),

@@ -408,10 +408,10 @@ test('finalization enforces zero, one, and bounded project artifact cardinality'
     const model = toolSequenceModel([
       { toolName: 'getProject', input: { id: 'missing-project' } },
       { toolName: 'finalizeAnswer', input: {
-        segments: [{ kind: 'conversational', act: 'acknowledgement' }],
+        segments: [{ kind: 'limitation', code: 'no_matching_published_projects' }],
         artifactIntent: 'one_project',
         artifacts: [],
-        limitations: [],
+        limitations: ['no_matching_published_projects'],
       } },
     ]);
     const observation = await observeDMResponse(createDMChatResponse(request, config, {
@@ -780,6 +780,307 @@ test('bounded conversation reaches the model while the latest question controls 
   assert.deepEqual(observation.tools, []);
 });
 
+test('empty public project results require the matching bounded limitation and a purposeful optional follow-up', async (t) => {
+  const source = await createEvalProjectSource();
+
+  await t.test('mf-unmatched-quantum repairs an unavailable claim into an honest no-match result', async () => {
+    const testCase = evalCase('mf-unmatched-quantum');
+    const observation = await observeDMResponse(createDMChatResponse(requestForEvalCase(testCase), config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'searchProjects', input: { query: 'quantum cryptography' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'public_data_unavailable' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['public_data_unavailable'],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'no_matching_published_projects' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['no_matching_published_projects'],
+          followUp: 'project_overview',
+        } },
+      ]),
+    }), requestForEvalCase(testCase));
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.projectIds, []);
+    assert.deepEqual(observation.evidenceIds, []);
+    assert.match(observation.answerText, /no matching published project evidence/i);
+    assert.equal(observation.result?.answer.followUp, 'Would you like a project overview?');
+  });
+
+  await t.test('mf-empty-in-progress answers the closed filter question without a follow-up', async () => {
+    const testCase = evalCase('mf-empty-in-progress');
+    const request = requestForEvalCase(testCase);
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'searchProjects', input: { query: 'projects', filters: { status: 'in progress' } } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'no_matching_published_project_filters' }],
+          artifactIntent: 'project_set',
+          artifacts: [],
+          limitations: ['no_matching_published_project_filters'],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.deepEqual(observation.projectIds, []);
+    assert.deepEqual(observation.evidenceIds, []);
+    assert.match(observation.answerText, /no published projects matched the requested filters/i);
+    assert.equal(observation.result?.answer.followUp, undefined);
+  });
+
+  await t.test('an empty direct project read requires the published-project no-match limitation', async () => {
+    const request = chatRequest('Tell me about the hidden-candidate project.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'candidate-hidden' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'conversational', act: 'capabilities' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'no_matching_published_projects' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['no_matching_published_projects'],
+          followUp: 'project_overview',
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.projectIds, []);
+    assert.deepEqual(observation.evidenceIds, []);
+    assert.match(observation.answerText, /no matching published project evidence/i);
+  });
+
+  await t.test('a tool-specific limitation is rejected when no matching tool outcome exists', async () => {
+    const request = chatRequest('What can you help with?');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'public_data_unavailable' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['public_data_unavailable'],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'conversational', act: 'capabilities' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.doesNotMatch(observation.answerText, /unavailable|no matching/i);
+  });
+});
+
+test('concurrent repeated public-source calls retain the latest invoked outcome', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest("Use public source evidence to explain Loom's architecture.");
+  const model = toolStepModel([
+    [{ toolName: 'getProject', input: { id: 'loom' } }],
+    [
+      { toolName: 'searchPublicSources', input: { query: 'slow unmatched phrase', projectIds: ['loom'] } },
+      { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+    ],
+    [{ toolName: 'finalizeAnswer', input: {
+      segments: [
+        {
+          kind: 'factual',
+          text: 'The published project slug is Loom.',
+          evidenceIds: ['loom:slug'],
+          evidenceQuotes: [{ evidenceId: 'loom:slug', quote: 'loom' }],
+        },
+        {
+          kind: 'factual',
+          text: 'The approved public source describes delivery phases.',
+          evidenceIds: ['citation:loom-architecture'],
+          evidenceQuotes: [{ evidenceId: 'citation:loom-architecture', quote: 'delivery phases' }],
+        },
+      ],
+      artifactIntent: 'one_project',
+      artifacts: [{ kind: 'project', id: 'loom' }, { kind: 'evidence', id: 'loom-architecture' }],
+      limitations: [],
+    } }],
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    ragSearch: async (query, ragConfig, options) => {
+      if (query === 'slow unmatched phrase') {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return { citations: [] };
+      }
+      return await source.publicSourceSearch(query, ragConfig, options);
+    },
+    model,
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, false);
+  assert.ok(observation.evidenceIds.includes('citation:loom-architecture'));
+  assert.doesNotMatch(observation.answerText, /no matching|unavailable/i);
+});
+
+test('mixed project-tool outcomes omit irrelevant no-match limitations when a project artifact was retained', async (t) => {
+  const source = await createEvalProjectSource();
+  const acceptedProjectAnswer = {
+    segments: [{
+      kind: 'factual',
+      text: 'Loom is a published portfolio project.',
+      evidenceIds: ['loom:identity'],
+    }],
+    artifactIntent: 'one_project',
+    artifacts: [{ kind: 'project', id: 'loom' }],
+    limitations: [],
+  };
+  const contradictoryRepair = {
+    ...acceptedProjectAnswer,
+    segments: [
+      ...acceptedProjectAnswer.segments,
+      { kind: 'limitation', code: 'no_matching_published_projects' },
+    ],
+    limitations: ['no_matching_published_projects'],
+  };
+
+  await t.test('search hit followed by direct-project miss keeps the retained project answer', async () => {
+    const request = chatRequest('Tell me about Loom, not the hidden candidate project.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'searchProjects', input: { query: 'Loom' } },
+        { toolName: 'getProject', input: { id: 'candidate-hidden' } },
+        { toolName: 'finalizeAnswer', input: acceptedProjectAnswer },
+        { toolName: 'finalizeAnswer', input: contradictoryRepair },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.deepEqual(observation.projectIds, ['loom']);
+    assert.doesNotMatch(observation.answerText, /no matching published project/i);
+  });
+
+  await t.test('direct-project hit followed by search miss keeps the retained project answer', async () => {
+    const request = chatRequest('Tell me about Loom even if an unrelated search has no match.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'searchProjects', input: { query: 'quantum cryptography' } },
+        { toolName: 'finalizeAnswer', input: acceptedProjectAnswer },
+        { toolName: 'finalizeAnswer', input: contradictoryRepair },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.deepEqual(observation.projectIds, ['loom']);
+    assert.doesNotMatch(observation.answerText, /no matching published project/i);
+  });
+});
+
+test('retained public-source evidence suppresses later empty no-match copy but not unavailability', async (t) => {
+  const source = await createEvalProjectSource();
+  const factualSegment = {
+    project: {
+      kind: 'factual',
+      text: 'The published project slug is Loom.',
+      evidenceIds: ['loom:slug'],
+      evidenceQuotes: [{ evidenceId: 'loom:slug', quote: 'loom' }],
+    },
+    source: {
+      kind: 'factual',
+      text: 'The approved public source describes delivery phases.',
+      evidenceIds: ['citation:loom-architecture'],
+      evidenceQuotes: [{ evidenceId: 'citation:loom-architecture', quote: 'delivery phases' }],
+    },
+  };
+  const artifacts = [{ kind: 'project', id: 'loom' }, { kind: 'evidence', id: 'loom-architecture' }];
+
+  await t.test('a later empty source search does not contradict retained approved evidence', async () => {
+    const request = chatRequest("Use Loom's approved public architecture evidence.");
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      ragSearch: source.publicSourceSearch,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+        { toolName: 'searchPublicSources', input: { query: 'quantum cryptography', projectIds: ['loom'] } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [factualSegment.project, factualSegment.source],
+          artifactIntent: 'one_project',
+          artifacts,
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.ok(observation.evidenceIds.includes('citation:loom-architecture'));
+    assert.doesNotMatch(observation.answerText, /no matching approved public-source evidence/i);
+  });
+
+  await t.test('a later unavailable source search remains explicit despite retained approved evidence', async () => {
+    const request = chatRequest("Use Loom's approved evidence and report a later source failure honestly.");
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      ragSearch: async (query, ragConfig, options) => {
+        if (query === 'unavailable follow-up source') throw new Error('private retrieval failure detail');
+        return await source.publicSourceSearch(query, ragConfig, options);
+      },
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+        { toolName: 'searchPublicSources', input: { query: 'unavailable follow-up source', projectIds: ['loom'] } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [
+            factualSegment.project,
+            factualSegment.source,
+            { kind: 'limitation', code: 'public_source_unavailable' },
+          ],
+          artifactIntent: 'one_project',
+          artifacts,
+          limitations: ['public_source_unavailable'],
+          followUp: 'project_overview',
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.match(observation.answerText, /public-source search is unavailable/i);
+    assert.doesNotMatch(JSON.stringify(observation), /private retrieval failure detail/);
+  });
+});
+
 test('latest-turn project references use direct reads and scoped follow-up artifacts', async (t) => {
   const source = await createEvalProjectSource();
   const scenarios: Array<{ id: string; calls: MockToolCall[] }> = [
@@ -949,12 +1250,12 @@ test('a title-only project name can use search before later direct coreference',
 
 test('public tool failure becomes an explicit sanitized limitation', async () => {
   const source = await createEvalProjectSource();
-  const request = chatRequest('Which projects are public?');
+  const request = requestForEvalCase(evalCase('derived-project-tool-unavailable'));
   const model = toolSequenceModel([
     { toolName: 'searchProjects', input: { query: 'public projects' } },
     { toolName: 'finalizeAnswer', input: {
       segments: [{ kind: 'limitation', code: 'public_data_unavailable' }],
-      artifactIntent: 'project_set',
+      artifactIntent: 'one_project',
       artifacts: [],
       limitations: ['public_data_unavailable'],
       followUp: 'try_resume',
@@ -966,7 +1267,8 @@ test('public tool failure becomes an explicit sanitized limitation', async () =>
     model,
   }), request);
   assert.equal(observation.result?.status, 'accepted');
-  assert.ok(observation.result?.answer.limitations.some((item) => /unavailable/i.test(item)));
+  assert.match(observation.answerText, /published project source is unavailable/i);
+  assert.deepEqual(observation.result?.answer.limitations, []);
   assert.doesNotMatch(JSON.stringify(observation), /private database host/);
 });
 
@@ -1235,7 +1537,7 @@ test('selected evidence stays exact at the source boundary and permits natural p
 
 test('the live eval unavailable-source override exercises a sanitized no-evidence path', async () => {
   const source = await createEvalProjectSource();
-  const request = chatRequest('Use public source evidence to explain the architecture of Loom.');
+  const request = requestForEvalCase(evalCase('derived-public-source-tool-unavailable'));
   const unavailablePublicSourceSearch = createUnavailableEvalPublicSourceSearch();
   let unavailableOverrideCalled = false;
   const model = toolSequenceModel([
@@ -1271,6 +1573,79 @@ test('the live eval unavailable-source override exercises a sanitized no-evidenc
   assert.equal(observation.result?.answer.artifacts.some((artifact) => artifact.kind === 'evidence'), false);
   assert.match(observation.answerText, /public-source search is unavailable/i);
   assert.doesNotMatch(JSON.stringify(observation), /simulated eval public source unavailable/);
+});
+
+test('unsupported and personal-unknown controls keep finite public limitations and useful redirects', async (t) => {
+  const source = await createEvalProjectSource();
+
+  await t.test('unsupported weather stays outside the public tool surface', async () => {
+    const testCase = evalCase('mf-weather-fresh');
+    const request = requestForEvalCase(testCase);
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'limitation', code: 'unsupported_request' }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: ['unsupported_request'],
+        followUp: 'project_overview',
+      } }]),
+    }), request);
+
+    assert.deepEqual(observation.tools, []);
+    assert.deepEqual(observation.projectIds, []);
+    assert.equal(observation.result?.answer.followUp, 'Would you like a project overview?');
+  });
+
+  await t.test('personal unknown uses the public profile boundary and a contact redirect', async () => {
+    const testCase = evalCase('derived-personal-unknown-hobby');
+    const request = requestForEvalCase(testCase);
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'searchProfile', input: { query: 'favorite weekend hobby' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'personal_unknown' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['personal_unknown'],
+          followUp: 'contact_dylan',
+        } },
+      ]),
+    }), request);
+
+    assert.deepEqual(observation.tools, ['searchProfile']);
+    assert.deepEqual(observation.projectIds, []);
+    assert.deepEqual(observation.evidenceIds, []);
+    assert.equal(observation.result?.answer.followUp, "Would you like Dylan's public contact details?");
+  });
+
+  await t.test('profile adapter failure stays within the personal public-source boundary', async () => {
+    const testCase = evalCase('derived-personal-unknown-hobby');
+    const request = requestForEvalCase(testCase);
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      profileLoader: async () => { throw new Error('private profile adapter details'); },
+      model: toolSequenceModel([
+        { toolName: 'searchProfile', input: { query: 'favorite weekend hobby' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'limitation', code: 'personal_unknown' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['personal_unknown'],
+          followUp: 'contact_dylan',
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.match(observation.answerText, /published public answer to that personal question/i);
+    assert.doesNotMatch(observation.answerText, /published project source is unavailable/i);
+    assert.doesNotMatch(JSON.stringify(observation), /private profile adapter details|public_data_unavailable/);
+  });
 });
 
 test('request cancellation is propagated and sanitized', async () => {
@@ -1489,6 +1864,12 @@ function parseMetricsRecord(lines: string[]): DMMetricsRecord {
 }
 
 type MockToolCall = { toolName: string; input: unknown; prose?: string };
+
+function evalCase(id: string) {
+  const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === id);
+  assert.ok(testCase, `missing eval case ${id}`);
+  return testCase;
+}
 
 function toolSequenceModel(
   calls: MockToolCall[],
