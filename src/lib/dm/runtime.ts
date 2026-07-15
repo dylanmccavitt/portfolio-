@@ -690,6 +690,16 @@ function limitedResult(repairAttempted: boolean): Extract<DMFinalizationResult, 
   };
 }
 
+const LATEST_TURN_CONTROL = [
+  'Latest-turn control: the latest user message below is the only active request.',
+  'Earlier messages are reference context only: use them to resolve the project subject, never as factual evidence.',
+  'A subject correction in this latest user message replaces the prior subject.',
+  'When the project subject has a known stable public id or slug, call getProject for each needed project.',
+  'If only a public project title is known and its stable id or slug is unresolved, call searchProjects once to resolve it; use getProject for later coreference after resolution.',
+  'For an aspect-only follow-up on the same project, answer only that aspect and omit a repeated project card unless this latest user message explicitly asks for one.',
+  'For a repository-link follow-up, emit links artifacts rather than repeated project cards.',
+].join(' ');
+
 function modelMessages(request: DMChatRequest): ModelMessage[] {
   const messages = request.messages.slice(-13).map((message) => ({
     role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
@@ -702,7 +712,7 @@ function modelMessages(request: DMChatRequest): ModelMessage[] {
   if (lastUser >= 0) {
     messages[lastUser] = {
       ...messages[lastUser],
-      content: `${messages[lastUser].content}${contextNote(request.context)}`,
+      content: `${LATEST_TURN_CONTROL}\n\nLatest user message:\n${messages[lastUser].content}${contextNote(request.context)}`,
     };
   }
   return messages;
@@ -785,7 +795,10 @@ const DM_SYSTEM_INSTRUCTIONS = [
   "You are DM, Dylan McCavitt's public portfolio agent for recruiters and hiring managers.",
   'Answer the latest question first. Normally use two to five concise sentences across no more than five answer segments.',
   'Use the typed public tools when a claim needs facts. Avoid tools for greetings, capability questions, and other purely conversational turns.',
-  'Conversation history can resolve the subject, but the latest turn controls the requested aspect. Corrections replace the prior subject.',
+  'Conversation history can resolve the subject, but only the latest turn controls the requested aspect. Corrections replace the prior subject instead of blending subjects.',
+  'When the latest turn names, corrects, or refers to a project whose stable public id or slug is known, call getProject. If only its public title is known and the stable id or slug is unresolved, call searchProjects once to resolve it; do not guess a stable reference from the title.',
+  'For an aspect-only follow-up on a previously discussed project, cite getProject evidence but omit the repeated project artifact unless the visitor explicitly asks to see its card. A correction to a different project may include that new project artifact.',
+  'For a link-only follow-up, use links artifacts and omit project artifacts.',
   'For comparisons and interpretations, gather evidence for every project or resume fact you discuss and distinguish supported inference from fact.',
   'For ambiguous references, ask one clarifying follow-up without guessing. Otherwise include at most one follow-up, only when it materially helps.',
   'Unknown personal details require searchProfile and an honest limitation when its public result is empty.',

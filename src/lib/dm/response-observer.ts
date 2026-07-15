@@ -78,5 +78,5 @@ function describeArtifact(artifact: DMAnswerArtifact): string {
   if (artifact.kind === 'resume') return `resume:${artifact.id}`;
   if (artifact.kind === 'contact') return 'contact';
   if (artifact.kind === 'evidence') return 'evidence';
-  return 'links';
+  return `links:${artifact.projectId}`;
 }

@@ -42,6 +42,7 @@ export interface DMEvalExpectations {
     required: DMEvalArtifactKind[];
     forbidden: DMEvalArtifactKind[];
     projectIds: string[];
+    linkProjectIds: string[];
     maxProjectCards?: number;
   };
   limitation: DMEvalLimitation;
@@ -98,6 +99,7 @@ function evalCase(input: CaseInput): DMLiveEvalCase {
         required: input.expectations?.artifacts?.required ?? [],
         forbidden: input.expectations?.artifacts?.forbidden ?? [],
         projectIds: input.expectations?.artifacts?.projectIds ?? [],
+        linkProjectIds: input.expectations?.artifacts?.linkProjectIds ?? [],
         maxProjectCards: input.expectations?.artifacts?.maxProjectCards,
       },
       limitation: input.expectations?.limitation ?? 'none',
@@ -126,13 +128,13 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
     id: 'mf-loom-coreference', name: 'Project coreference uses the referenced subject', source: 'maintainer-failure', categories: ['factual', 'multi-turn'],
     prompt: 'What about its architecture?',
     history: [{ role: 'user', content: 'Tell me about Loom.' }, { role: 'assistant', content: 'Loom coordinates reviewed delivery work.' }],
-    expectations: { requiredTools: ['getProject'], evidence: { requiredText: ['Loom'] }, artifacts: { forbidden: ['projects'], maxProjectCards: 0 } },
+    expectations: { requiredTools: ['getProject'], forbiddenTools: ['searchProjects'], evidence: { requiredText: ['Loom', 'reviewed publish path'] }, artifacts: { forbidden: ['projects'], maxProjectCards: 0 } },
   }),
   evalCase({
     id: 'mf-evalgate-stack-followup', name: 'Latest stack follow-up answers the requested aspect', source: 'maintainer-failure', categories: ['factual', 'multi-turn'],
     prompt: 'What language is it built with?',
     history: [{ role: 'user', content: 'Tell me about Evalgate.' }, { role: 'assistant', content: 'Evalgate tests grounded agent behavior before release.' }],
-    expectations: { requiredTools: ['getProject'], evidence: { requiredText: ['TypeScript'] }, artifacts: { forbidden: ['projects'], maxProjectCards: 0 } },
+    expectations: { requiredTools: ['getProject'], forbiddenTools: ['searchProjects'], evidence: { requiredText: ['TypeScript'] }, artifacts: { forbidden: ['projects'], maxProjectCards: 0 } },
   }),
   evalCase({
     id: 'mf-one-project-card', name: 'One-card request emits one matching project', source: 'maintainer-failure', categories: ['factual'],
@@ -234,7 +236,7 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
     id: 'derived-correction-subject', name: 'Correction replaces the prior subject', source: 'derived', categories: ['correction', 'multi-turn'],
     prompt: 'Sorry, I meant Slurmlet, not Loom. What does it do?',
     history: [{ role: 'user', content: 'Tell me about Loom.' }, { role: 'assistant', content: 'Loom coordinates reviewed delivery work.' }],
-    expectations: { requiredTools: ['getProject'], evidence: { requiredText: ['Slurmlet'], forbiddenText: ['Loom coordinates'] }, artifacts: { projectIds: ['slurmlet'], maxProjectCards: 1 } },
+    expectations: { requiredTools: ['getProject'], forbiddenTools: ['searchProjects'], evidence: { requiredText: ['Slurmlet'], forbiddenText: ['Loom coordinates'] }, artifacts: { projectIds: ['slurmlet'], maxProjectCards: 1 } },
   }),
   evalCase({
     id: 'derived-ambiguous-clarification', name: 'Ambiguous reference asks one clarifying question', source: 'derived', categories: ['clarification', 'multi-turn'],
@@ -268,7 +270,7 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
     id: 'derived-latest-question-after-comparison', name: 'Latest question wins after a comparison', source: 'derived', categories: ['factual', 'multi-turn'],
     prompt: 'Which one has a public repository link?',
     history: [{ role: 'user', content: 'Compare Loom and agentic-trader.' }, { role: 'assistant', content: 'They solve different workflow problems.' }],
-    expectations: { requiredTools: ['getProject'], artifacts: { required: ['links'] }, followUp: 'not-useful' },
+    expectations: { requiredTools: ['getProject'], forbiddenTools: ['searchProjects'], evidence: { requiredText: ['Loom', 'agentic-trader'] }, artifacts: { required: ['links'], forbidden: ['projects'], linkProjectIds: ['loom', 'agentic-trader'], maxProjectCards: 0 }, followUp: 'not-useful' },
   }),
 ];
 
@@ -308,6 +310,10 @@ export function evaluateDMEvalObservation(testCase: DMLiveEvalCase, observation:
   }
   for (const projectId of testCase.expectations.artifacts.projectIds) {
     if (!observation.projectIds.includes(projectId)) return `required project artifact was not emitted: ${projectId}`;
+  }
+  const linkProjectIds = observation.blockKinds.flatMap((kind) => kind.startsWith('links:') ? [kind.slice('links:'.length)] : []);
+  for (const projectId of testCase.expectations.artifacts.linkProjectIds) {
+    if (!linkProjectIds.includes(projectId)) return `required link artifact was not emitted for project: ${projectId}`;
   }
   const maxCards = testCase.expectations.artifacts.maxProjectCards;
   if (maxCards !== undefined && observation.projectIds.length > maxCards) {

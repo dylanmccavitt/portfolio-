@@ -65,6 +65,7 @@ test('release corpus is declarative and contains no canned model output or answe
     assert.ok(Array.isArray(item.expectations.evidence.forbiddenText));
     assert.ok(Array.isArray(item.expectations.artifacts.required));
     assert.ok(Array.isArray(item.expectations.artifacts.forbidden));
+    assert.ok(Array.isArray(item.expectations.artifacts.linkProjectIds));
     assert.ok(item.expectations.limitation);
     assert.ok(item.expectations.followUp);
   }
@@ -112,6 +113,25 @@ test('deterministic observation checks enforce tools, evidence, artifacts, and f
   assert.match(evaluateDMEvalObservation(clarification, {
     answerText: 'I need the project name.', tools: [], blockKinds: [], projectIds: [], outcome: 'completed',
   }) ?? '', /clarifying follow-up/);
+
+  const architecture = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-loom-coreference')!;
+  assert.match(evaluateDMEvalObservation(architecture, {
+    answerText: 'Loom is a published project.', tools: ['getProject'], blockKinds: [], projectIds: [], outcome: 'completed',
+  }) ?? '', /required evidence/);
+
+  const comparisonLink = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'derived-latest-question-after-comparison')!;
+  const bothLinks = {
+    answerText: 'Both Loom and agentic-trader have public repository links.',
+    tools: ['getProject'],
+    blockKinds: ['links:loom', 'links:agentic-trader'],
+    projectIds: [],
+    outcome: 'completed',
+  };
+  assert.equal(evaluateDMEvalObservation(comparisonLink, bothLinks), null);
+  assert.match(evaluateDMEvalObservation(comparisonLink, {
+    ...bothLinks,
+    blockKinds: ['links:loom'],
+  }) ?? '', /required link artifact.*agentic-trader/);
 });
 
 test('multi-turn cases preserve history but send the latest question separately', () => {
@@ -123,6 +143,35 @@ test('multi-turn cases preserve history but send the latest question separately'
   assert.equal(latestPart?.type === 'text' ? latestPart.text : '', testCase.prompt);
   assert.equal(request.messages.length, testCase.history.length + 1);
   assert.equal(priorPart?.type === 'text' ? priorPart.text.includes('Loom') : false, true);
+});
+
+test('latest-turn project-reference cases require direct reads and scoped artifacts', () => {
+  const cases = [
+    'mf-loom-coreference',
+    'mf-evalgate-stack-followup',
+    'derived-correction-subject',
+    'derived-latest-question-after-comparison',
+  ].map((id) => {
+    const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === id);
+    assert.ok(testCase, `missing ${id}`);
+    return testCase;
+  });
+
+  for (const testCase of cases) {
+    assert.ok(testCase.expectations.requiredTools.includes('getProject'), testCase.id);
+    assert.ok(testCase.expectations.forbiddenTools.includes('searchProjects'), testCase.id);
+  }
+
+  for (const id of ['mf-loom-coreference', 'mf-evalgate-stack-followup', 'derived-latest-question-after-comparison']) {
+    const testCase = cases.find((item) => item.id === id)!;
+    assert.ok(testCase.expectations.artifacts.forbidden.includes('projects'), id);
+    assert.equal(testCase.expectations.artifacts.maxProjectCards, 0, id);
+  }
+
+  const correction = cases.find((item) => item.id === 'derived-correction-subject')!;
+  assert.deepEqual(correction.expectations.artifacts.projectIds, ['slurmlet']);
+  const comparison = cases.find((item) => item.id === 'derived-latest-question-after-comparison')!;
+  assert.deepEqual(comparison.expectations.artifacts.linkProjectIds, ['loom', 'agentic-trader']);
 });
 
 test('release command is fixed to Luna and Grok, three runs, live mode, and no stub import', async () => {

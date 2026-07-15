@@ -4,6 +4,11 @@ import { simulateReadableStream, type LanguageModel, type UIMessageChunk } from 
 import { MockLanguageModelV4 } from 'ai/test';
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import { validateFinalizationResult } from '@/lib/dm/client';
+import {
+  DM_LIVE_EVAL_CORPUS,
+  evaluateDMEvalObservation,
+  requestForEvalCase,
+} from '@/lib/dm/eval-corpus';
 import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
 import { observeDMResponse } from '@/lib/dm/response-observer';
 import { createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
@@ -310,6 +315,167 @@ test('bounded conversation reaches the model while the latest question controls 
   assert.doesNotMatch(prompt, /discarded oldest turn/);
   assert.equal(observation.result?.answer.followUp, 'Would you like a project overview?');
   assert.deepEqual(observation.tools, []);
+});
+
+test('latest-turn project references use direct reads and scoped follow-up artifacts', async (t) => {
+  const source = await createEvalProjectSource();
+  const scenarios: Array<{ id: string; calls: MockToolCall[] }> = [
+    {
+      id: 'mf-loom-coreference',
+      calls: [
+        { toolName: 'getProject', input: { slug: 'loom' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'Loom uses a reviewed publish path represented by its published database record.',
+            evidenceIds: ['loom:identity', 'loom:about:0', 'loom:stack:0'],
+          }],
+          artifacts: [],
+          limitations: [],
+        } },
+      ],
+    },
+    {
+      id: 'mf-evalgate-stack-followup',
+      calls: [
+        { toolName: 'getProject', input: { id: 'evalgate' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'Evalgate is built with TypeScript.',
+            evidenceIds: ['evalgate:identity', 'evalgate:stack:0'],
+          }],
+          artifacts: [],
+          limitations: [],
+        } },
+      ],
+    },
+    {
+      id: 'derived-correction-subject',
+      calls: [
+        { toolName: 'getProject', input: { slug: 'slurmlet' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'Slurmlet is a developer tool for repeatable, inspectable compute workflows.',
+            evidenceIds: ['slurmlet:identity', 'slurmlet:summary'],
+          }],
+          artifacts: [{ kind: 'project', id: 'slurmlet' }],
+          limitations: [],
+        } },
+      ],
+    },
+    {
+      id: 'derived-latest-question-after-comparison',
+      calls: [
+        { toolName: 'getProject', input: { slug: 'loom' } },
+        { toolName: 'getProject', input: { id: 'agentic-trader' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'Both Loom and agentic-trader have public repository links.',
+            evidenceIds: ['loom:link:0', 'agentic-trader:link:0'],
+          }],
+          artifacts: [{ kind: 'links', id: 'loom' }, { kind: 'links', id: 'agentic-trader' }],
+          limitations: [],
+        } },
+      ],
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.id, async () => {
+      const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === scenario.id);
+      assert.ok(testCase, `missing eval case ${scenario.id}`);
+      const request = requestForEvalCase(testCase);
+      const observation = await observeDMResponse(createDMChatResponse(request, config, {
+        db: source.db,
+        projectLoader: source.projectLoader,
+        model: toolSequenceModel(scenario.calls),
+      }), request);
+
+      assert.equal(evaluateDMEvalObservation(testCase, observation), null);
+      assert.deepEqual(observation.tools, ['getProject']);
+    });
+  }
+});
+
+test('the latest-turn control and tool descriptions distinguish direct reads from broad search', async () => {
+  const source = await createEvalProjectSource();
+  const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-loom-coreference');
+  assert.ok(testCase);
+  const request = requestForEvalCase(testCase);
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'loom' } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'factual', text: 'Loom uses a reviewed publish path.', evidenceIds: ['loom:identity', 'loom:about:0'] }],
+        artifacts: [],
+        limitations: [],
+      } },
+    ], prompts),
+  }), request);
+
+  assert.equal(observation.outcome, 'completed');
+  const prompt = JSON.stringify(prompts[0]?.prompt);
+  assert.match(prompt, /latest user message below is the only active request/i);
+  assert.match(prompt, /Earlier messages are reference context only/i);
+  assert.match(prompt, /only a public project title is known.*searchProjects once/i);
+  assert.ok(prompt.lastIndexOf(testCase.prompt) > prompt.lastIndexOf('Latest-turn control'));
+
+  const getProject = prompts[0]?.tools?.find((entry) => entry.name === 'getProject');
+  const searchProjects = prompts[0]?.tools?.find((entry) => entry.name === 'searchProjects');
+  const getProjectDescription = getProject && 'description' in getProject ? getProject.description ?? '' : '';
+  const searchProjectsDescription = searchProjects && 'description' in searchProjects ? searchProjects.description ?? '' : '';
+  assert.match(getProjectDescription, /stable public id or slug is known/i);
+  assert.match(getProjectDescription, /only a public title is known.*searchProjects first/i);
+  assert.match(searchProjectsDescription, /title-only project name.*stable public id or slug is unknown/i);
+});
+
+test('a title-only project name can use search before later direct coreference', async () => {
+  const source = await createEvalProjectSource();
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+  const titleOnlyProject = {
+    ...template,
+    id: 'nhf',
+    slug: 'nhf',
+    title: 'No Hard Feelings',
+    line: 'A low-maintenance public band site.',
+    summary: 'A public band site whose title differs from its stable project id.',
+    dmArtifact: {
+      ...template.dmArtifact,
+      id: 'nhf',
+      title: 'No Hard Feelings',
+      href: '/projects/nhf',
+      line: 'A low-maintenance public band site.',
+    },
+  };
+  const request = chatRequest('Tell me about No Hard Feelings.');
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: async () => [titleOnlyProject],
+    model: toolSequenceModel([
+      { toolName: 'searchProjects', input: { query: 'No Hard Feelings', limit: 1 } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{
+          kind: 'factual',
+          text: 'No Hard Feelings is a low-maintenance public band site.',
+          evidenceIds: ['nhf:identity', 'nhf:summary'],
+        }],
+        artifacts: [{ kind: 'project', id: 'nhf' }],
+        limitations: [],
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.outcome, 'completed');
+  assert.deepEqual(observation.tools, ['searchProjects']);
+  assert.deepEqual(observation.projectIds, ['nhf']);
+  assert.ok(observation.evidenceIds.includes('nhf:identity'));
 });
 
 test('public tool failure becomes an explicit sanitized limitation', async () => {

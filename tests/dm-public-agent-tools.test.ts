@@ -72,6 +72,20 @@ test('project, resume, and contact tools return sanitized public records with st
   assert.ok(contact.evidenceIds.includes('contact:email'));
 });
 
+test('title-only project names can use search when their stable id or slug is unknown', async () => {
+  const titleOnlyProject = publishedCatalogProject('nhf');
+  const run = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [titleOnlyProject] });
+
+  const unresolvedDirectRead = await run.getProject({ id: 'No Hard Feelings' });
+  assert.equal(unresolvedDirectRead.status, 'empty');
+
+  const resolvedByTitle = await run.searchProjects({ query: 'No Hard Feelings', limit: 1 });
+  assert.equal(resolvedByTitle.status, 'complete');
+  assert.deepEqual(resolvedByTitle.projects.map((item) => item.id), ['nhf']);
+  assert.ok(resolvedByTitle.evidenceIds.includes('nhf:identity'));
+  assert.deepEqual(resolvedByTitle.artifactIds, ['nhf']);
+});
+
 test('the run-local ledger records only evidence returned by tools in that run', async () => {
   const run = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [project] });
   assert.deepEqual(run.evidenceLedger.snapshot(), []);
@@ -243,7 +257,11 @@ test('resume remains available with an explicit partial status when project cros
 });
 
 function publishedProject(): ProjectDetailReadModel {
-  const [record] = buildCatalogShadowRecords(CATALOG.slice(0, 1));
+  return publishedCatalogProject(CATALOG[0]!.id);
+}
+
+function publishedCatalogProject(id: string): ProjectDetailReadModel {
+  const record = buildCatalogShadowRecords(CATALOG).find((candidate) => candidate.id === id);
   assert.ok(record);
   return projectRecordToReadModels({
     ...record,
