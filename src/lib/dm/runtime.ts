@@ -694,7 +694,8 @@ const LATEST_TURN_CONTROL = [
   'Latest-turn control: the latest user message below is the only active request.',
   'Earlier messages are reference context only: use them to resolve the project subject, never as factual evidence.',
   'A subject correction in this latest user message replaces the prior subject.',
-  'When the project subject is already identified, call getProject for each needed project and do not call searchProjects.',
+  'When the project subject has a known stable public id or slug, call getProject for each needed project.',
+  'If only a public project title is known and its stable id or slug is unresolved, call searchProjects once to resolve it; use getProject for later coreference after resolution.',
   'For an aspect-only follow-up on the same project, answer only that aspect and omit a repeated project card unless this latest user message explicitly asks for one.',
   'For a repository-link follow-up, emit links artifacts rather than repeated project cards.',
 ].join(' ');
@@ -795,7 +796,7 @@ const DM_SYSTEM_INSTRUCTIONS = [
   'Answer the latest question first. Normally use two to five concise sentences across no more than five answer segments.',
   'Use the typed public tools when a claim needs facts. Avoid tools for greetings, capability questions, and other purely conversational turns.',
   'Conversation history can resolve the subject, but only the latest turn controls the requested aspect. Corrections replace the prior subject instead of blending subjects.',
-  'When the latest turn names, corrects, or refers to an already identified project, call getProject by its stable id or slug. Use searchProjects only to discover a project when no specific subject is known.',
+  'When the latest turn names, corrects, or refers to a project whose stable public id or slug is known, call getProject. If only its public title is known and the stable id or slug is unresolved, call searchProjects once to resolve it; do not guess a stable reference from the title.',
   'For an aspect-only follow-up on a previously discussed project, cite getProject evidence but omit the repeated project artifact unless the visitor explicitly asks to see its card. A correction to a different project may include that new project artifact.',
   'For a link-only follow-up, use links artifacts and omit project artifacts.',
   'For comparisons and interpretations, gather evidence for every project or resume fact you discuss and distinguish supported inference from fact.',

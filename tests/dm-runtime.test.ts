@@ -423,14 +423,59 @@ test('the latest-turn control and tool descriptions distinguish direct reads fro
   const prompt = JSON.stringify(prompts[0]?.prompt);
   assert.match(prompt, /latest user message below is the only active request/i);
   assert.match(prompt, /Earlier messages are reference context only/i);
+  assert.match(prompt, /only a public project title is known.*searchProjects once/i);
   assert.ok(prompt.lastIndexOf(testCase.prompt) > prompt.lastIndexOf('Latest-turn control'));
 
   const getProject = prompts[0]?.tools?.find((entry) => entry.name === 'getProject');
   const searchProjects = prompts[0]?.tools?.find((entry) => entry.name === 'searchProjects');
   const getProjectDescription = getProject && 'description' in getProject ? getProject.description ?? '' : '';
   const searchProjectsDescription = searchProjects && 'description' in searchProjects ? searchProjects.description ?? '' : '';
-  assert.match(getProjectDescription, /corrections.*follow-up references/i);
-  assert.match(searchProjectsDescription, /has not already identified/i);
+  assert.match(getProjectDescription, /stable public id or slug is known/i);
+  assert.match(getProjectDescription, /only a public title is known.*searchProjects first/i);
+  assert.match(searchProjectsDescription, /title-only project name.*stable public id or slug is unknown/i);
+});
+
+test('a title-only project name can use search before later direct coreference', async () => {
+  const source = await createEvalProjectSource();
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+  const titleOnlyProject = {
+    ...template,
+    id: 'nhf',
+    slug: 'nhf',
+    title: 'No Hard Feelings',
+    line: 'A low-maintenance public band site.',
+    summary: 'A public band site whose title differs from its stable project id.',
+    dmArtifact: {
+      ...template.dmArtifact,
+      id: 'nhf',
+      title: 'No Hard Feelings',
+      href: '/projects/nhf',
+      line: 'A low-maintenance public band site.',
+    },
+  };
+  const request = chatRequest('Tell me about No Hard Feelings.');
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: async () => [titleOnlyProject],
+    model: toolSequenceModel([
+      { toolName: 'searchProjects', input: { query: 'No Hard Feelings', limit: 1 } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{
+          kind: 'factual',
+          text: 'No Hard Feelings is a low-maintenance public band site.',
+          evidenceIds: ['nhf:identity', 'nhf:summary'],
+        }],
+        artifacts: [{ kind: 'project', id: 'nhf' }],
+        limitations: [],
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.outcome, 'completed');
+  assert.deepEqual(observation.tools, ['searchProjects']);
+  assert.deepEqual(observation.projectIds, ['nhf']);
+  assert.ok(observation.evidenceIds.includes('nhf:identity'));
 });
 
 test('public tool failure becomes an explicit sanitized limitation', async () => {

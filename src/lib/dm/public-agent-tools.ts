@@ -266,7 +266,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   };
 
   const searchProjects = createTool(
-    'Search published portfolio projects only when the visitor has not already identified a specific project. Do not use broad search for an explicit project name, a correction, or a follow-up reference resolved from conversation history; use getProject instead.',
+    'Search published portfolio projects when discovering by topic or resolving a title-only project name whose stable public id or slug is unknown. Once a stable id or slug is resolved, use getProject for later corrections and follow-up references.',
     SearchProjectsInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
@@ -293,7 +293,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   );
 
   const getProject = createTool(
-    'Directly read one already-identified published portfolio project by its stable public id or slug. Use this for explicit project names, subject corrections, and follow-up references resolved from conversation history; call it once per resolved project instead of using broad search.',
+    'Directly read one already-identified published portfolio project when its stable public id or slug is known. Use this for resolved subject corrections and follow-up references; if only a public title is known and its stable id or slug is unresolved, call searchProjects first.',
     GetProjectInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
