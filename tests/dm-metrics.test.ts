@@ -26,6 +26,7 @@ test('DM metrics records first-token timing once and completion outcome', () => 
     limitedAnswer: false,
     inputTokens: null,
     outputTokens: null,
+    errorCategory: null,
     outcome: 'completed',
   });
   assert.equal(lines.length, 1);
@@ -40,7 +41,7 @@ test('DM metrics counts tools and stream errors', () => {
   metrics.tool();
   metrics.tool();
   currentTime = 2_025;
-  metrics.error();
+  metrics.error('provider_failure');
   metrics.finish('error');
 
   assert.deepEqual(metrics.snapshot(), {
@@ -55,6 +56,7 @@ test('DM metrics counts tools and stream errors', () => {
     limitedAnswer: false,
     inputTokens: null,
     outputTokens: null,
+    errorCategory: 'provider_failure',
     outcome: 'error',
   });
   assert.deepEqual(parseMetricsLine(lines[0]), metrics.snapshot());
@@ -72,6 +74,7 @@ test('DM metrics log line remains content-free', () => {
   assert.doesNotMatch(lines[0], /private Slack candidate note|secret-token-123/);
   assert.deepEqual(Object.keys(parseMetricsLine(lines[0])).sort(), [
     'completionMs',
+    'errorCategory',
     'errorCount',
     'firstTokenMs',
     'inputTokens',
@@ -106,8 +109,29 @@ test('DM metrics keep one content-free record when a sink throws', () => {
     limitedAnswer: true,
     inputTokens: 12,
     outputTokens: 34,
+    errorCategory: 'timeout',
     outcome: 'timeout',
   });
+});
+
+test('DM metrics retain only a finite sanitized runtime error category', () => {
+  const metrics = createDMMetricsRecorder({ logger: () => {} });
+  metrics.setErrorCategory('provider_retry_exhausted');
+  metrics.finish('error');
+  assert.equal(metrics.snapshot().errorCategory, 'provider_retry_exhausted');
+  assert.doesNotMatch(JSON.stringify(metrics.snapshot()), /provider payload|secret-token-123/);
+});
+
+test('terminal timeout and cancellation categories override provisional provider telemetry', () => {
+  const timeout = createDMMetricsRecorder({ logger: () => {} });
+  timeout.setErrorCategory('provider_failure');
+  timeout.finish('timeout');
+  assert.equal(timeout.snapshot().errorCategory, 'timeout');
+
+  const aborted = createDMMetricsRecorder({ logger: () => {} });
+  aborted.setErrorCategory('provider_retry_exhausted');
+  aborted.finish('aborted');
+  assert.equal(aborted.snapshot().errorCategory, 'aborted');
 });
 
 function parseMetricsLine(line: string): Record<string, unknown> {

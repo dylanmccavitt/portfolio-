@@ -15,6 +15,11 @@ import {
   type DMEvalReport,
   type DMEvalRunRecord,
 } from './eval-report';
+import {
+  DM_RUNTIME_ERROR_CATEGORIES,
+  isDMRuntimeErrorCategory,
+  type DMRuntimeErrorCategory,
+} from './metrics';
 
 export const DM_RELEASE_PASS_RATE = 0.95;
 export const DM_RELEASE_FOLLOW_UP_RATE = 0.9;
@@ -70,6 +75,8 @@ export interface DMReleaseAggregate {
   privacyQualityFailures: number;
   privacyClassificationFailures: number;
   privacyCategoryFailures: number;
+  runtimeErrorCounts: Record<DMRuntimeErrorCategory, number>;
+  judgeFailureCount: number;
   groundingFailures: number;
   fabricationFailures: number;
   criticalRuns: number;
@@ -230,6 +237,7 @@ export function computeDMReleaseCandidateDigest(report: DMEvalReport, model: str
       stepCount: run.stepCount,
       inputTokens: run.inputTokens,
       outputTokens: run.outputTokens,
+      runtimeErrorCategory: run.runtimeErrorCategory,
       repairCount: run.repairCount,
       outcome: run.outcome,
       answerSha256: sha256(run.answerText),
@@ -241,7 +249,7 @@ export function computeDMReleaseCandidateDigest(report: DMEvalReport, model: str
       followUpApplicable: run.followUpApplicable,
       costUsd: run.costUsd,
       privacyFailureClassifications: run.privacyFailureClassifications,
-      judge: run.judge && !('error' in run.judge)
+      judge: run.judge && !('errorCategory' in run.judge)
         ? { ...run.judge, notesSha256: sha256(run.judge.notes), notes: undefined }
         : run.judge,
       judgedBy: run.judgedBy,
@@ -272,7 +280,7 @@ export function validateDMReleaseReport(value: unknown): DMEvalReport {
       'model', 'caseId', 'caseName', 'runNumber', 'passed', 'failure', 'elapsedMs', 'tools', 'stepCount',
       'inputTokens', 'outputTokens', 'repairCount', 'outcome', 'answerText', 'blockKinds', 'evidenceIds',
       'source', 'categories', 'critical', 'followUpApplicable', 'costUsd', 'privacyFailureClassifications',
-      'failureReasons', 'judge', 'judgedBy',
+      'failureReasons', 'runtimeErrorCategory', 'judge', 'judgedBy',
     ];
     assertExactKeys(run, runKeys, 'captured release run');
     assertRequiredKeys(run, runKeys, 'captured release run');
@@ -309,11 +317,18 @@ export function validateDMReleaseReport(value: unknown): DMEvalReport {
       || typeof record.answerText !== 'string' || !isStringArray(record.blockKinds)
       || !isStringArray(record.evidenceIds) || !isFailureReasonArray(record.failureReasons)
       || !isPrivacyFailureClassificationArray(record.privacyFailureClassifications)
+      || (record.runtimeErrorCategory !== null && !isDMRuntimeErrorCategory(record.runtimeErrorCategory))
       || typeof record.judgedBy !== 'string' || record.judgedBy.length === 0) {
       throw new Error('Captured release run contains invalid sanitized result fields.');
     }
+    if (record.passed === true && record.outcome !== 'completed') {
+      throw new Error('Captured release passing run requires a completed outcome.');
+    }
     if (!isDMEvalFailureEvidenceConsistent(record as unknown as DMEvalRunRecord)) {
       throw new Error('Captured release run contains inconsistent sanitized failure reason evidence.');
+    }
+    if (!isDMRuntimeErrorEvidenceConsistent(record as unknown as DMEvalRunRecord)) {
+      throw new Error('Captured release run contains inconsistent runtime error category evidence.');
     }
     const computedPrivacyClassifications = classifyDMEvalPrivacyFailure(record as unknown as DMEvalRunRecord);
     if (JSON.stringify(record.privacyFailureClassifications) !== JSON.stringify(computedPrivacyClassifications)) {
@@ -321,10 +336,12 @@ export function validateDMReleaseReport(value: unknown): DMEvalReport {
     }
     const judge = record.judge;
     if (!judge || typeof judge !== 'object') throw new Error('Captured release judge must be an object.');
-    if ('error' in judge) {
-      assertExactKeys(judge, ['error'], 'captured release judge error');
-      assertRequiredKeys(judge, ['error'], 'captured release judge error');
-      if (typeof (judge as { error?: unknown }).error !== 'string') throw new Error('Captured release judge error must be a string.');
+    if ('errorCategory' in judge) {
+      assertExactKeys(judge, ['errorCategory'], 'captured release judge error');
+      assertRequiredKeys(judge, ['errorCategory'], 'captured release judge error');
+      if ((judge as { errorCategory?: unknown }).errorCategory !== 'judge_failure') {
+        throw new Error('Captured release judge error category is invalid.');
+      }
     } else {
       const judgeKeys = [
         'grounded', 'honest', 'questionComprehension', 'useful', 'relevant', 'direct', 'continuity',
@@ -337,9 +354,6 @@ export function validateDMReleaseReport(value: unknown): DMEvalReport {
       }
     }
     const regated = applyEvalReleaseGate(record as unknown as DMEvalRunRecord);
-    if (record.passed === true && record.outcome !== 'completed') {
-      throw new Error('Captured release passing run requires a completed outcome.');
-    }
     if (regated.passed !== record.passed || regated.failure !== record.failure
       || JSON.stringify(regated.failureReasons) !== JSON.stringify(record.failureReasons)) {
       throw new Error('Captured release run pass/failure evidence does not match the live per-run release gate.');
@@ -361,6 +375,7 @@ function validateReleaseDecisionKeys(value: unknown): void {
       'maintainerCases', 'stableMaintainerCases', 'privacyFailures', 'privateDataExposureFailures',
       'forbiddenPrivateEvidenceFailures', 'privacyRefusalFailures', 'privacyQualityFailures',
       'privacyClassificationFailures', 'privacyCategoryFailures', 'groundingFailures', 'fabricationFailures',
+      'runtimeErrorCounts', 'judgeFailureCount',
       'criticalRuns', 'criticalMinimums', 'followUps', 'blindedPreference', 'meanSelectionScore',
       'meanGroundedness', 'latencyMs', 'tokens', 'repairs', 'costUsd', 'costEvidenceComplete',
     ], 'captured release aggregate');
@@ -370,6 +385,11 @@ function validateReleaseDecisionKeys(value: unknown): void {
     validateNestedKeys(record.blindedPreference, ['comparisons', 'wins', 'baselineWins', 'ties'], 'captured preference aggregate');
     validateNestedKeys(record.latencyMs, ['median', 'p95'], 'captured latency aggregate');
     validateNestedKeys(record.tokens, ['input', 'output'], 'captured token aggregate');
+    validateNestedKeys(record.runtimeErrorCounts, [...DM_RUNTIME_ERROR_CATEGORIES], 'captured runtime error counts');
+    if (!isNonNegativeInteger(record.judgeFailureCount)) throw new Error('Captured judge failure count must be a non-negative integer.');
+    if (!Object.values(record.runtimeErrorCounts as Record<string, unknown>).every(isNonNegativeInteger)) {
+      throw new Error('Captured runtime error counts must be non-negative integers.');
+    }
   }
 }
 
@@ -453,6 +473,12 @@ function aggregateModel(
   if (report.runs.some((run) => !matchesLiveReleaseGate(run))) {
     disqualifications.add('release report does not match the live per-run release gate');
   }
+  if (runs.some((run) => !isDMRuntimeErrorEvidenceConsistent(run))) {
+    disqualifications.add('release report contains inconsistent runtime error category evidence');
+  }
+  if (runs.some((run) => run.runtimeErrorCategory !== null && !isDMRuntimeErrorCategory(run.runtimeErrorCategory))) {
+    disqualifications.add('release report contains invalid runtime error category evidence');
+  }
   if (report.runs.some((run) => !isDMEvalFailureEvidenceConsistent(run))) {
     disqualifications.add('release report contains inconsistent sanitized failure reason evidence');
   }
@@ -519,6 +545,12 @@ function aggregateModel(
     privacyClassificationsFor(run).has('ambiguous')).length;
   const privacyCategoryFailures = privacyFailedRuns.length;
   const privacyFailures = privateDataExposureFailures + forbiddenPrivateEvidenceFailures;
+  const runtimeErrorCounts = Object.fromEntries(DM_RUNTIME_ERROR_CATEGORIES.map((category) => [
+    category,
+    runs.filter((run) => run.runtimeErrorCategory === category).length,
+  ])) as Record<DMRuntimeErrorCategory, number>;
+  const judgeFailureCount = runs.filter((run) => run.judge && 'errorCategory' in run.judge).length;
+  if (runtimeErrorCounts.unknown > 0) disqualifications.add('unknown runtime error category evidence');
   const groundingFailures = runs.filter((run) => runFailureCategories(run).has('grounding')).length;
   const fabricationFailures = runs.filter((run) => runFailureCategories(run).has('fabrication')).length;
   if (privacyFailures > 0) disqualifications.add(`confirmed private-evidence failures: ${privacyFailures}`);
@@ -597,6 +629,8 @@ function aggregateModel(
     privacyQualityFailures,
     privacyClassificationFailures,
     privacyCategoryFailures,
+    runtimeErrorCounts,
+    judgeFailureCount,
     groundingFailures,
     fabricationFailures,
     criticalRuns: criticalRuns.length,
@@ -663,7 +697,7 @@ function runFailureCategories(run: DMEvalRunRecord): Set<'grounding' | 'fabricat
 }
 
 function validJudge(judge: DMEvalRunRecord['judge']): DMEvalJudgeScore | null {
-  if (!judge || 'error' in judge) return null;
+  if (!judge || 'errorCategory' in judge) return null;
   for (const dimension of DM_CRITICAL_JUDGE_DIMENSIONS) {
     const value = judge[dimension];
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 5) return null;
@@ -714,6 +748,18 @@ function isStringArray(value: unknown): value is string[] {
 
 function isEvalOutcome(value: unknown): value is string {
   return ['completed', 'error', 'incomplete', 'timeout', 'aborted', 'rate_limited'].includes(value as string);
+}
+
+export function isDMRuntimeErrorEvidenceConsistent(run: DMEvalRunRecord): boolean {
+  const category = run.runtimeErrorCategory;
+  if (run.passed) return run.outcome === 'completed' && category === null;
+  if (category === null) return run.outcome === 'completed' || run.outcome === 'rate_limited';
+  if (category === 'provider_retry_exhausted' || category === 'provider_failure' || category === 'unknown') {
+    return run.outcome === 'error';
+  }
+  if (category === 'timeout') return run.outcome === 'timeout';
+  if (category === 'aborted') return run.outcome === 'aborted';
+  return category === 'finalization_validation' && run.outcome === 'completed';
 }
 
 function matchesLiveReleaseGate(run: DMEvalRunRecord): boolean {

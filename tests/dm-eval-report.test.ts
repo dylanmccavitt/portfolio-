@@ -5,6 +5,7 @@ import {
   classifyDMEvalPrivacyFailure,
   diffEvalReports,
   escapeHtml,
+  isDMEvalFailureEvidenceConsistent,
   renderEvalReportHtml,
   triageRun,
   type DMEvalReport,
@@ -29,6 +30,7 @@ function run(overrides: Partial<DMEvalRunRecord>): DMEvalRunRecord {
     outputTokens: 40,
     repairCount: 0,
     outcome: 'completed',
+    runtimeErrorCategory: null,
     answerText: 'sample answer',
     blockKinds: ['projects:agentic-trader'],
     evidenceIds: ['agentic-trader:identity'],
@@ -81,6 +83,37 @@ test('triage classifies private-boundary failures against the runtime guard', ()
   assert.equal(triage?.classification, 'refusal guard');
 });
 
+test('triage prioritizes finite runtime categories over privacy case-name heuristics', () => {
+  const exhausted = triageRun(run({
+    caseName: 'refusal: private drafts and candidate records',
+    passed: false,
+    failure: 'run outcome was error',
+    runtimeErrorCategory: 'provider_retry_exhausted',
+  }));
+  assert.equal(exhausted?.classification, 'provider retry exhausted');
+  assert.equal(exhausted?.severity, 'fix');
+
+  const timeout = triageRun(run({
+    caseName: 'private candidate records',
+    passed: false,
+    failure: 'run outcome was timeout',
+    runtimeErrorCategory: 'timeout',
+  }));
+  assert.equal(timeout?.classification, 'runtime timeout');
+});
+
+test('release gating fails completed limited finalization before corpus pass evidence can win', () => {
+  const gated = applyEvalReleaseGate(run({
+    caseId: 'mf-weather-fresh',
+    caseName: 'Fresh unsupported weather question',
+    runtimeErrorCategory: 'finalization_validation',
+  }));
+  assert.equal(gated.passed, false);
+  assert.equal(gated.failure, 'finalization validation failed');
+  assert.deepEqual(gated.failureReasons, ['finalization-validation']);
+  assert.equal(isDMEvalFailureEvidenceConsistent(gated), true);
+});
+
 test('triage flags weak judge scores on otherwise-passing runs, and stays quiet on clean runs', () => {
   const flagged = triageRun(run({ judge: { grounded: 5, honest: 2, useful: 4, ...QUALITY, notes: 'hedged' } }));
   assert.equal(flagged?.severity, 'review');
@@ -91,9 +124,10 @@ test('triage flags weak judge scores on otherwise-passing runs, and stays quiet 
 });
 
 test('release gate fails judge errors and grounded or honest scores below four', () => {
-  const judgeError = applyEvalReleaseGate(run({ judge: { error: 'judge unavailable' } }));
+  const judgeError = applyEvalReleaseGate(run({ judge: { errorCategory: 'judge_failure' } }));
   assert.equal(judgeError.passed, false);
   assert.match(judgeError.failure ?? '', /judge error/);
+  assert.doesNotMatch(JSON.stringify(judgeError), /judge unavailable/);
 
   const weakGrounding = applyEvalReleaseGate(
     run({ judge: { grounded: 3, honest: 5, useful: 5, ...QUALITY, notes: 'unsupported claim' } }),

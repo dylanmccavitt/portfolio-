@@ -125,13 +125,13 @@ test('score extraction takes the last valid JSON object out of noisy CLI output'
   assert.deepEqual(extractJudgeScore(noisy), { grounded: 5, honest: 4, questionComprehension: 5, useful: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null, notes: 'Concrete and correct.' });
 
   const outOfRange = extractJudgeScore('{"grounded": 9, "honest": -2, "questionComprehension": 5, "useful": 3, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5, "followUpUseful": null}');
-  assert.ok('error' in outOfRange);
+  assert.ok('errorCategory' in outOfRange);
 
   const fractional = extractJudgeScore('{"grounded": 3.6, "honest": 5, "questionComprehension": 5, "useful": 4, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5, "followUpUseful": null}');
-  assert.ok('error' in fractional);
+  assert.ok('errorCategory' in fractional);
 
   const missing = extractJudgeScore('no scores here');
-  assert.ok('error' in missing);
+  assert.ok('errorCategory' in missing);
 });
 
 test('runCliJudge captures scores from a real subprocess and reports failures', async () => {
@@ -145,11 +145,11 @@ test('runCliJudge captures scores from a real subprocess and reports failures', 
 
   const failing: DMCliJudge = { kind: 'cli', label: 'fail-cli', command: ['node', '-e', 'process.exit(3)'] };
   const failed = await runCliJudge(failing, 'prompt');
-  assert.ok('error' in failed && failed.error.includes('exit code 3'));
+  assert.deepEqual(failed, { errorCategory: 'judge_failure' });
 
   const missing: DMCliJudge = { kind: 'cli', label: 'missing-cli', command: ['definitely-not-a-real-binary-xyz'] };
   const notFound = await runCliJudge(missing, 'prompt');
-  assert.ok('error' in notFound);
+  assert.deepEqual(notFound, { errorCategory: 'judge_failure' });
   assert.deepEqual(parentCleanupListenerCounts(), listenerCounts, 'completed judges must remove parent cleanup listeners');
 });
 
@@ -175,11 +175,11 @@ test('runCliJudge timeout kills the spawned process group before report writing 
     };
 
     const timedOut = await runCliJudge(hanging, 'prompt', 500);
-    assert.ok('error' in timedOut && timedOut.error.includes('timed out after 500ms'));
+    assert.deepEqual(timedOut, { errorCategory: 'judge_failure' });
 
     descendantPid = Number(await readFile(descendantPidPath, 'utf8'));
     await writeFile(reportPath, JSON.stringify({ judge: timedOut }));
-    assert.match(await readFile(reportPath, 'utf8'), /timed out after 500ms/);
+    assert.match(await readFile(reportPath, 'utf8'), /"errorCategory":"judge_failure"/);
     assert.equal(await waitForProcessExit(descendantPid), true, `descendant ${descendantPid} survived judge timeout`);
   } finally {
     if (descendantPid && isProcessRunning(descendantPid)) process.kill(descendantPid, 'SIGKILL');

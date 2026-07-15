@@ -189,6 +189,7 @@ async function main(): Promise<void> {
             ? await readSameRunProviderCost(spec.provider, telemetry.generationIds)
             : null,
           privacyFailureClassifications: [],
+          runtimeErrorCategory: metrics?.errorCategory ?? null,
         };
 
         if (judgeConfig) {
@@ -248,6 +249,7 @@ function printReleaseDecision(report: DMEvalReport): void {
     console.log(`[dm:eval] candidate digest [${aggregate.model}] ${aggregate.candidateRunSha256}`);
     console.log(`[dm:eval] qualification [${aggregate.model}] ${aggregate.qualified ? 'QUALIFIED' : 'DISQUALIFIED'}: ${aggregate.disqualifications.join('; ') || 'all gates passed'}`);
     console.log(`[dm:eval] privacy [${aggregate.model}] private-data exposure=${aggregate.privateDataExposureFailures}; forbidden private evidence=${aggregate.forbiddenPrivateEvidenceFailures}; refusal contract=${aggregate.privacyRefusalFailures}; quality-only=${aggregate.privacyQualityFailures}/${aggregate.privacyCategoryFailures}; ambiguous/missing classification=${aggregate.privacyClassificationFailures}`);
+    console.log(`[dm:eval] runtime [${aggregate.model}] ${formatRuntimeErrorCounts(aggregate.runtimeErrorCounts)}; judge failures=${aggregate.judgeFailureCount}`);
   }
 }
 
@@ -260,7 +262,7 @@ function printTriage(records: EvalRunRecord[]): void {
   console.log('[dm:eval] what to fix next:');
   for (const { record, triage } of triaged) {
     if (!triage) continue;
-    console.log(`  [${triage.severity}] ${triage.classification} — ${record.caseName} (${record.model})`);
+    console.log(`  [${triage.severity}] ${triage.classification} — ${record.caseName} (${record.model}) runtime=${record.runtimeErrorCategory ?? 'none'}`);
     console.log(`    ${triage.nextStep}`);
   }
 }
@@ -326,12 +328,13 @@ async function findPreviousRun(reportDir: string): Promise<{ label: string; repo
 function formatRunLine(record: EvalRunRecord): string {
   const status = record.passed ? 'PASS' : 'FAIL';
   const judge = record.judge
-    ? 'error' in record.judge
+    ? 'errorCategory' in record.judge
       ? ' | judge=error'
       : ` | judge g/h/u=${record.judge.grounded}/${record.judge.honest}/${record.judge.useful}`
     : '';
+  const runtime = record.runtimeErrorCategory ? ` | runtime=${record.runtimeErrorCategory}` : '';
   const failure = record.failure ? ` - ${record.failure}` : '';
-  return `${status} [${record.model}] ${record.caseName} run ${record.runNumber} (${record.elapsedMs}ms)${judge}${failure}`;
+  return `${status} [${record.model}] ${record.caseName} run ${record.runNumber} (${record.elapsedMs}ms)${judge}${runtime}${failure}`;
 }
 
 function summarize(records: EvalRunRecord[]): string[] {
@@ -341,7 +344,7 @@ function summarize(records: EvalRunRecord[]): string[] {
     const passed = runs.filter((record) => record.passed).length;
     const scored = runs.flatMap((record) => {
       const judge = record.judge;
-      if (!judge || 'error' in judge) return [];
+      if (!judge || 'errorCategory' in judge) return [];
       return [judge];
     });
     const judgePart = scored.length
@@ -349,8 +352,19 @@ function summarize(records: EvalRunRecord[]): string[] {
           scored.map((s) => s.useful),
         )}`
       : '';
-    return `LIVE SUMMARY [${model}] ${passed}/${runs.length} passed (${Math.round((passed / runs.length) * 100)}%)${judgePart}`;
+    const runtimeCounts = Object.entries(Object.groupBy(runs, (run) => run.runtimeErrorCategory ?? 'none'))
+      .map(([category, grouped]) => `${category}=${grouped.length}`)
+      .join(', ');
+    const judgeFailures = runs.filter((run) => run.judge && 'errorCategory' in run.judge).length;
+    return `LIVE SUMMARY [${model}] ${passed}/${runs.length} passed (${Math.round((passed / runs.length) * 100)}%)${judgePart} | runtime ${runtimeCounts}; judge failures=${judgeFailures}`;
   });
+}
+
+function formatRuntimeErrorCounts(counts: Record<string, number>): string {
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([category, count]) => `${category}=${count}`)
+    .join(', ') || 'none';
 }
 
 function mean(values: number[]): string {
@@ -418,7 +432,7 @@ async function judgeAnswer(
   answeringModelId: string,
   testCase: DMLiveEvalCase,
   record: EvalRunRecord,
-): Promise<JudgeScore | { error: string }> {
+): Promise<JudgeScore | { errorCategory: 'judge_failure' }> {
   const judge = judgeForAnsweringModel(config, answeringModelId);
   record.judgedBy = describeJudge(judge);
   const payload: DMJudgePayload = {
@@ -442,8 +456,8 @@ async function judgeAnswer(
       prompt: buildJudgePayloadJson(payload),
     });
     return extractJudgeScore(text);
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+  } catch {
+    return { errorCategory: 'judge_failure' };
   }
 }
 

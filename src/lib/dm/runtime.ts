@@ -4,7 +4,11 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   gateway,
+  InvalidToolInputError,
   isStepCount,
+  NoSuchToolError,
+  RetryError,
+  ToolCallRepairError,
   toUIMessageStream,
   tool,
   type LanguageModel,
@@ -16,7 +20,12 @@ import { z } from 'zod';
 import type { ProjectDetailReadModel, ProjectReadQueryable } from '@/lib/db/project-reads';
 import type { PublicProjectEnv } from '@/lib/public-projects';
 import type { PublicRagSearchConfig, PublicRagSearchOutput } from '@/lib/rag/retrieval';
-import { createDMMetricsRecorder, shouldRecordDMMetrics, type DMSourceMode } from './metrics';
+import {
+  createDMMetricsRecorder,
+  shouldRecordDMMetrics,
+  type DMRuntimeErrorCategory,
+  type DMSourceMode,
+} from './metrics';
 import {
   createPublicAgentTools,
   type PublicAgentToolRun,
@@ -353,11 +362,14 @@ export function createDMChatResponse(
   const stream = createUIMessageStream({
     originalMessages: request.messages,
     onError(error) {
-      if (abort.signal.aborted) return abort.timedOut()
-        ? 'DM took too long to answer. Please try again.'
-        : 'DM stopped this answer.';
-      console.error('[dm] tool-loop stream failure', safeLogError(error));
-      metrics.error();
+      if (abort.signal.aborted) {
+        metrics.setErrorCategory(abort.timedOut() ? 'timeout' : 'aborted');
+        return abort.timedOut()
+          ? 'DM took too long to answer. Please try again.'
+          : 'DM stopped this answer.';
+      }
+      metrics.error('unknown');
+      console.error('[dm] tool-loop stream failure', safeLogError(error, 'unknown'));
       return safeErrorMessage(error);
     },
     async execute({ writer }) {
@@ -370,7 +382,9 @@ export function createDMChatResponse(
           messages: modelMessages(request),
           abortSignal: abort.signal,
           onError({ error }) {
-            console.error('[dm] provider stream failure', safeLogError(error));
+            const category = classifyDMStreamError(error);
+            if (category !== 'unknown') metrics.setErrorCategory(category);
+            console.error('[dm] provider stream failure', safeLogError(error, category));
           },
           onStepEnd(step) {
             inputTokens += step.usage.inputTokens ?? 0;
@@ -384,7 +398,9 @@ export function createDMChatResponse(
           sendReasoning: false,
           sendSources: false,
           sendFinish: false,
-          onError: (error) => safeErrorMessage(error),
+          onError: (error) => {
+            return safeErrorMessage(error);
+          },
         });
         let streamFailed = false;
         const finalizationToolCalls = new Set<string>();
@@ -407,17 +423,23 @@ export function createDMChatResponse(
           if (isVisitorVisibleAgentStreamChunk(chunk, finalizationToolCalls)) metrics.visibleOutput();
           if (chunk.type === 'error') {
             streamFailed = true;
-            metrics.error();
           }
         }
 
         if (abort.signal.aborted) {
+          metrics.setErrorCategory(abort.timedOut() ? 'timeout' : 'aborted');
           metrics.finish(abort.timedOut() ? 'timeout' : 'aborted');
           return;
         }
-        if (streamFailed) return;
+        if (streamFailed) {
+          metrics.error('unknown');
+          return;
+        }
 
         finalizationResult ??= limitedResult(finalizationAttempts > 0);
+        if (finalizationResult.status === 'limited' && finalizationAttempts > 0) {
+          metrics.setErrorCategory('finalization_validation');
+        }
         const evidence = publicRun.evidenceLedger.snapshot();
         metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, finalizationResult.status === 'limited');
         metrics.setUsage(inputTokens, outputTokens);
@@ -427,12 +449,13 @@ export function createDMChatResponse(
         metrics.finish('completed');
       } catch (error) {
         if (abort.signal.aborted) {
+          metrics.setErrorCategory(abort.timedOut() ? 'timeout' : 'aborted');
           metrics.finish(abort.timedOut() ? 'timeout' : 'aborted');
           if (abort.timedOut()) writer.write({ type: 'error', errorText: 'DM took too long to answer. Please try again.' });
           return;
         }
-        console.error('[dm] tool-loop failure', safeLogError(error));
-        metrics.error();
+        console.error('[dm] tool-loop failure', safeLogError(error, 'unknown'));
+        metrics.error('unknown');
         writer.write({ type: 'error', errorText: safeErrorMessage(error) });
       } finally {
         abort.dispose();
@@ -1358,11 +1381,21 @@ function safeErrorMessage(error: unknown): string {
   return 'DM could not answer that safely. Try a portfolio, resume, or contact question.';
 }
 
-function safeLogError(error: unknown): Record<string, unknown> {
-  if (error instanceof DMAgentError) return { name: error.name, code: error.code };
-  if (error instanceof DMRuntimeConfigError) return { name: error.name, missing: error.missing };
-  if (error instanceof Error) return { name: error.name };
-  return { name: typeof error };
+export function classifyDMStreamError(error: unknown): DMRuntimeErrorCategory {
+  if (RetryError.isInstance(error)) {
+    if (error.reason === 'maxRetriesExceeded') return 'provider_retry_exhausted';
+    return 'provider_failure';
+  }
+  if (InvalidToolInputError.isInstance(error) || NoSuchToolError.isInstance(error) || ToolCallRepairError.isInstance(error)) {
+    return 'unknown';
+  }
+  return 'provider_failure';
+}
+
+function safeLogError(error: unknown, category: DMRuntimeErrorCategory): Record<string, unknown> {
+  if (error instanceof DMAgentError) return { category, code: error.code };
+  if (error instanceof DMRuntimeConfigError) return { category, missing: error.missing };
+  return { category };
 }
 
 function readBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {

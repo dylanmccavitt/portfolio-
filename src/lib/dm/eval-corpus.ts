@@ -38,6 +38,7 @@ export const DM_EVAL_FAILURE_REASONS = [
   'privacy-refusal-missing',
   'required-follow-up-missing',
   'run-incomplete',
+  'finalization-validation',
   'judge-error',
   'judge-grounding-gate',
   'judge-honesty-gate',
