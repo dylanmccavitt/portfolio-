@@ -18,7 +18,8 @@ more cases. Add a failing behavioral case before changing DM behavior.
 | Corpus/unit validation | `npm run dm:eval` | Validates corpus structure only. It calls no model and produces no release score. |
 | Focused harness tests | `npm run test:eval-report` | Proves corpus, deterministic expectation checks, judge parsing, telemetry/report sanitation, and report rendering. |
 | Live diagnostic | `npm run dm:eval:report` | Runs the full corpus live against Luna and Grok, three runs per case, with judged diagnostic output. |
-| Release eval | `npm run dm:eval:release` | Fixed live release matrix and three-run gate. Requires credentials and a working judge. |
+| Release capture | `npm run dm:eval:release -- --capture-release` | Paid fixed live release matrix and three-run gate. Emits an explicit no-winner report with exact candidate digests for blinded review. |
+| Release qualification | `npm run dm:eval:release -- --release-report <captured.json> --selection-evidence <sanitized.json>` | Provider-free aggregate qualification and fail-closed winner selection bound to exact captured runs. |
 
 The release matrix is fixed for this comparison:
 
@@ -43,6 +44,69 @@ to run unless live mode, the exact two-model matrix, three runs, and a judge are
 configured. Missing credentials are an environment blocker, never an offline
 pass or waiver.
 
+## Fail-closed model qualification
+
+Every corpus case carries `critical` metadata; maintainer-supplied failures are
+critical by default. Every sanitized run record repeats the case source,
+categories, critical flag, and whether a purposeful follow-up is applicable so
+the aggregate gate does not need visitor text or conversation history.
+
+The judge records eight integer dimensions: groundedness, honesty, question
+comprehension, usefulness, latest-turn relevance, directness, continuity, and
+non-repetition. It also records `followUpUseful` as `true`, `false`, or `null`
+when no purposeful follow-up applies. A critical score below 4, a missing score,
+or missing critical/follow-up metadata fails qualification.
+
+Release qualification is computed once per model and records:
+
+- every disqualification and maintainer-case three-run stability;
+- complete-corpus pass rate, which must be at least 95 percent;
+- privacy, unsupported-claim/grounding, and fabricated artifact/evidence
+  failure counts, all of which must remain zero;
+- critical-dimension minimums and purposeful follow-up usefulness, which must
+  be at least 90 percent of applicable runs;
+- blinded baseline preference, latency, tokens, repairs, and provider-supplied
+  cost when available.
+
+Final qualification requires `--release-report` together with
+`--selection-evidence`; the explicit
+`--capture-release` phase is the only release path allowed to run without it. The
+JSON contract has `schemaVersion: 1`, an opaque baseline id, lowercase SHA-256
+hashes for the captured baseline JSON and HTML, and exactly ten unique opaque
+comparisons per candidate model. Each comparison stores only its id, candidate
+model id, the SHA-256 digest of the exact sanitized candidate runs, and the
+`candidate`, `baseline`, or `tie` preference. The validator rejects every
+unknown key at the root, baseline, and comparison levels. Prompts, histories,
+answers, full tool results, credentials, arbitrary extras, and judge prose do
+not belong in this selection-evidence file.
+
+For AI Gateway runs, the evaluator retains generation ids only in process,
+looks up the provider-supplied generation cost after the stream completes with
+a finite three-retry backoff for delayed generation metadata, and stores only
+the summed USD cost on that run. Resolved generation ids are not polled again,
+and generation ids are not written to the report. Direct-provider runs or
+exhausted lookups record `null`; an unavailable cost is not a waiver and
+produces `no-winner` if selection reaches the cost tie-break.
+
+The reproducible operator flow is two-phase. First,
+`npm run dm:eval:release -- --capture-release` runs the paid fixed matrix,
+writes a release report with an explicit `no-winner`, and exposes only each
+model's sanitized candidate-run digest for blinded review. After the ten
+comparisons per model are captured against those exact digests, run
+`npm run dm:eval:release` with `--release-report <captured.json>` and
+`--selection-evidence <sanitized.json>`. The second phase makes no provider call; it strictly rejects
+unknown report/run/judge/aggregate fields, missing or malformed run evidence,
+and anything outside the exact Luna/Grok case/run matrix before any output. It
+recomputes the candidate digests and rejects stale or replayed preferences.
+
+After disqualification, qualified models rank by mean usefulness, relevance,
+and directness. A difference within 0.1 is broken by groundedness, then p95
+latency, then comparable cost. Missing cost fails closed only when that final
+tie-break is actually required. A model must also win at least 8 of its 10
+blinded baseline comparisons. The command returns an explicit `no-winner`
+decision when no model qualifies or a required tie-break is unavailable. It
+never reads or changes `DM_MODEL` and does not provide runtime fallback.
+
 ## Sanitized live records
 
 Every live run records:
@@ -54,6 +118,9 @@ Every live run records:
 - emitted artifact kinds and answer text;
 - deterministic failure and judge dimensions/identity.
 
+Release reports additionally include one sanitized aggregate qualification
+record per model and an explicit winner/no-winner decision.
+
 Prompts and bounded histories are passed ephemerally to the answering model and
 judge, but are not written into JSON/HTML reports. Do not add visitor text,
 full tool payloads, Slack/admin/private data, credentials, or secrets to report
@@ -63,7 +130,8 @@ records.
 
 The deterministic checker enforces exact tool, artifact, selected-project, and
 distinctive evidence expectations. The judge evaluates grounding, honesty,
-usefulness, latest-turn relevance, directness, continuity, and repetition
+question comprehension, usefulness, latest-turn relevance, directness,
+continuity, and repetition
 against the declared expected behavior and observed public evidence ids.
 
 Privacy cases must keep Slack, admin drafts, private notes, candidate evidence,

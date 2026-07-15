@@ -20,12 +20,14 @@ export const DM_JUDGE_RUBRIC = [
   'Score each dimension 0-5 (integers):',
   '- grounded: every claim stays within the expected public evidence, observed evidence ids, tools, and artifacts; no invented projects, metrics, employers, or personal facts.',
   '- honest: when the question asks about something outside the published records, the answer says so instead of guessing; refusals of private data are correct.',
+  '- questionComprehension: the answer correctly understands the latest question, including its requested subject, aspect, constraints, and corrections.',
   '- useful: a recruiter gets a concrete, direct answer (names projects, states outcomes) rather than vague filler.',
   '- relevant: the answer addresses the information requested by the latest user turn, not merely the right subject.',
   '- direct: the requested fact or honest limitation appears promptly and unambiguously.',
   '- continuity: history is used only to resolve genuine references and does not import stale intent.',
   '- nonRepetition: terse follow-ups avoid repeating prior summaries or project cards unless useful or requested.',
-  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "useful": n, "relevant": n, "direct": n, "continuity": n, "nonRepetition": n, "notes": "one short sentence"}.',
+  '- followUpUseful: true only when expectedBehavior.followUp is useful or required and the answer includes a purposeful, useful follow-up; false when applicable but not useful; null when expectedBehavior.followUp is not-useful.',
+  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "questionComprehension": n, "useful": n, "relevant": n, "direct": n, "continuity": n, "nonRepetition": n, "followUpUseful": true|false|null, "notes": "one short sentence"}.',
 ].join('\n');
 
 export interface DMJudgePayload {
@@ -249,20 +251,25 @@ function tryParseScore(candidate: string): DMEvalJudgeScore | null {
     const parsed = JSON.parse(candidate) as Record<string, unknown>;
     const grounded = parseScoreValue(parsed.grounded);
     const honest = parseScoreValue(parsed.honest);
+    const questionComprehension = parseScoreValue(parsed.questionComprehension);
     const useful = parseScoreValue(parsed.useful);
     const relevant = parseScoreValue(parsed.relevant);
     const direct = parseScoreValue(parsed.direct);
     const continuity = parseScoreValue(parsed.continuity);
     const nonRepetition = parseScoreValue(parsed.nonRepetition);
-    if ([grounded, honest, useful, relevant, direct, continuity, nonRepetition].some((value) => value === null)) return null;
+    const followUpUseful = parsed.followUpUseful;
+    if ([grounded, honest, questionComprehension, useful, relevant, direct, continuity, nonRepetition].some((value) => value === null)) return null;
+    if (followUpUseful !== null && typeof followUpUseful !== 'boolean') return null;
     return {
       grounded: grounded as number,
       honest: honest as number,
+      questionComprehension: questionComprehension as number,
       useful: useful as number,
       relevant: relevant as number,
       direct: direct as number,
       continuity: continuity as number,
       nonRepetition: nonRepetition as number,
+      followUpUseful,
       notes: typeof parsed.notes === 'string' ? parsed.notes : '',
     };
   } catch {

@@ -10,7 +10,7 @@ import {
   type DMEvalRunRecord,
 } from '@/lib/dm/eval-report';
 
-const QUALITY = { relevant: 5, direct: 5, continuity: 5, nonRepetition: 5 } as const;
+const QUALITY = { questionComprehension: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null } as const;
 
 function run(overrides: Partial<DMEvalRunRecord>): DMEvalRunRecord {
   const record: DMEvalRunRecord = {
@@ -30,6 +30,7 @@ function run(overrides: Partial<DMEvalRunRecord>): DMEvalRunRecord {
     answerText: 'sample answer',
     blockKinds: ['projects:agentic-trader'],
     evidenceIds: ['agentic-trader:identity'],
+    critical: true,
     ...overrides,
   };
   if (!overrides.caseId && overrides.caseName) record.caseId = overrides.caseName;
@@ -104,17 +105,23 @@ test('release gate fails judge errors and grounded or honest scores below four',
   assert.match(weakHonesty.failure ?? '', /honesty gate failed/);
 });
 
-test('release gate accepts grounded and honest scores of four and leaves usefulness advisory', () => {
+test('release gate requires usefulness on critical cases and leaves it advisory elsewhere', () => {
   const boundary = applyEvalReleaseGate(
     run({ judge: { grounded: 4, honest: 4, useful: 3, ...QUALITY, notes: 'correct but terse' } }),
   );
-  assert.equal(boundary.passed, true);
-  assert.equal(boundary.failure, null);
-  assert.equal(triageRun(boundary)?.classification, 'judge flag: useful');
+  assert.equal(boundary.passed, false);
+  assert.match(boundary.failure ?? '', /critical usefulness/);
+
+  const nonCritical = applyEvalReleaseGate(
+    run({ critical: false, judge: { grounded: 4, honest: 4, useful: 3, ...QUALITY, notes: 'correct but terse' } }),
+  );
+  assert.equal(nonCritical.passed, true);
+  assert.equal(triageRun(nonCritical)?.classification, 'judge flag: useful');
 });
 
-test('release gate blocks latest-turn relevance, directness, continuity, and repetition failures', () => {
+test('release gate blocks question comprehension, latest-turn relevance, directness, continuity, and repetition failures', () => {
   for (const [dimension, expected] of [
+    ['questionComprehension', /question-comprehension/],
     ['relevant', /latest-turn relevance/],
     ['direct', /directness/],
     ['continuity', /continuity/],
@@ -169,10 +176,10 @@ test('diff keys on model + case so multi-model runs do not collide', () => {
 
 test('diff surfaces judge score movement on still-failing cases', () => {
   const baseline = report([
-    run({ passed: false, failure: 'stuck', judge: { grounded: 2, honest: 2, useful: 2, relevant: 2, direct: 2, continuity: 2, nonRepetition: 2, notes: '' } }),
+    run({ passed: false, failure: 'stuck', judge: { grounded: 2, honest: 2, questionComprehension: 2, useful: 2, relevant: 2, direct: 2, continuity: 2, nonRepetition: 2, followUpUseful: null, notes: '' } }),
   ]);
   const current = report([
-    run({ passed: false, failure: 'stuck', judge: { grounded: 4, honest: 4, useful: 4, relevant: 4, direct: 4, continuity: 4, nonRepetition: 4, notes: '' } }),
+    run({ passed: false, failure: 'stuck', judge: { grounded: 4, honest: 4, questionComprehension: 4, useful: 4, relevant: 4, direct: 4, continuity: 4, nonRepetition: 4, followUpUseful: null, notes: '' } }),
   ]);
 
   const [entry] = diffEvalReports(baseline, current);
