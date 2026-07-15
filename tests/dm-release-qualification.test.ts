@@ -3,12 +3,76 @@ import test from 'node:test';
 import { DM_LIVE_EVAL_CORPUS, DM_RELEASE_MODELS } from '@/lib/dm/eval-corpus';
 import type { DMEvalJudgeScore, DMEvalReport, DMEvalRunRecord } from '@/lib/dm/eval-report';
 import {
+  assertDMReleaseInvocation,
   computeDMReleaseCandidateDigest,
+  readBoundedProviderCost,
   selectDMReleaseWinner,
   validateDMReleaseReport,
   validateDMReleaseSelectionEvidence,
   type DMReleaseSelectionEvidence,
 } from '@/lib/dm/release-qualification';
+
+test('release selection evidence requires replaying an exact captured report', () => {
+  assert.throws(
+    () => assertDMReleaseInvocation({
+      release: true,
+      captureRelease: false,
+      selectionEvidencePath: 'selection.json',
+    }),
+    /--selection-evidence requires --release-report/,
+  );
+  assert.doesNotThrow(() => assertDMReleaseInvocation({
+    release: true,
+    captureRelease: false,
+    selectionEvidencePath: 'selection.json',
+    releaseReportPath: 'captured.json',
+  }));
+  assert.doesNotThrow(() => assertDMReleaseInvocation({
+    release: true,
+    captureRelease: true,
+  }));
+});
+
+test('provider cost lookup retries unresolved generation ids and sums same-run costs', async () => {
+  const calls = new Map<string, number>();
+  const waits: number[] = [];
+  const cost = await readBoundedProviderCost(
+    ['generation-a', 'generation-b'],
+    async (generationId) => {
+      calls.set(generationId, (calls.get(generationId) ?? 0) + 1);
+      if (generationId === 'generation-b' && calls.get(generationId) === 1) throw new Error('not ready');
+      return { totalCost: generationId === 'generation-a' ? 0.02 : 0.03 };
+    },
+    {
+      retryDelaysMs: [5, 15],
+      wait: async (delayMs) => { waits.push(delayMs); },
+    },
+  );
+
+  assert.equal(cost, 0.05);
+  assert.deepEqual(Object.fromEntries(calls), { 'generation-a': 1, 'generation-b': 2 });
+  assert.deepEqual(waits, [5]);
+});
+
+test('provider cost lookup exhausts its finite retry budget and fails closed', async () => {
+  let calls = 0;
+  const waits: number[] = [];
+  const cost = await readBoundedProviderCost(
+    ['generation-a'],
+    async () => {
+      calls += 1;
+      return { totalCost: calls === 1 ? undefined : Number.NaN };
+    },
+    {
+      retryDelaysMs: [5, 15],
+      wait: async (delayMs) => { waits.push(delayMs); },
+    },
+  );
+
+  assert.equal(cost, null);
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [5, 15]);
+});
 
 test('aggregate release qualification selects a fully qualifying winner without a provider call', () => {
   const report = releaseReport((model) => model === DM_RELEASE_MODELS[0] ? 5 : 4);
@@ -98,6 +162,22 @@ test('sanitized baseline contract requires exactly ten opaque comparisons per mo
   assert.throws(
     () => validateDMReleaseSelectionEvidence({ ...valid, baseline: { ...valid.baseline, jsonSha256: 'not-a-hash' } }),
     /SHA-256/,
+  );
+  assert.throws(
+    () => validateDMReleaseSelectionEvidence({
+      ...valid,
+      baseline: { jsonSha256: valid.baseline.jsonSha256, htmlSha256: valid.baseline.htmlSha256 },
+    }),
+    /opaque baseline id/,
+  );
+  assert.throws(
+    () => validateDMReleaseSelectionEvidence({
+      ...valid,
+      comparisons: valid.comparisons.map((comparison, index) => index === 0
+        ? { ...comparison, id: null }
+        : comparison),
+    }),
+    /unique valid comparisons/,
   );
   assert.throws(
     () => validateDMReleaseSelectionEvidence({ ...valid, visitorPrompt: 'private prompt' }),

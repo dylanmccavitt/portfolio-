@@ -148,6 +148,7 @@ test('release command is fixed to Luna and Grok, three runs, live mode, and no s
   assert.match(runner, /--selection-evidence/);
   assert.match(runner, /--capture-release/);
   assert.match(runner, /--release-report/);
+  assert.match(runner, /assertDMReleaseInvocation\(options\)/);
   assert.match(runner, /gateway\.getGenerationInfo/);
   assert.doesNotMatch(runner, /process\.env\.DM_MODEL\s*=/);
   assert.match(runner, /options\.release\s*\?\s*report\.releaseDecision\?\.status !== 'winner'/);

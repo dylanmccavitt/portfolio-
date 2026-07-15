@@ -88,6 +88,73 @@ export interface DMReleaseDecision {
   aggregates: DMReleaseAggregate[];
 }
 
+export interface DMReleaseInvocation {
+  release: boolean;
+  captureRelease: boolean;
+  selectionEvidencePath?: string;
+  releaseReportPath?: string;
+}
+
+interface DMProviderCostRetryOptions {
+  retryDelaysMs?: readonly number[];
+  wait?: (delayMs: number) => Promise<void>;
+}
+
+const DM_PROVIDER_COST_RETRY_DELAYS_MS = [100, 300, 900] as const;
+
+export function assertDMReleaseInvocation(options: DMReleaseInvocation): void {
+  if (options.captureRelease && !options.release) throw new Error('--capture-release requires --release.');
+  if (options.releaseReportPath && !options.release) throw new Error('--release-report requires --release.');
+  if (options.selectionEvidencePath && !options.releaseReportPath) {
+    throw new Error('--selection-evidence requires --release-report so preferences are bound to an exact captured run.');
+  }
+  if (options.captureRelease && options.releaseReportPath) {
+    throw new Error('--capture-release and --release-report are mutually exclusive.');
+  }
+  if (options.captureRelease && options.selectionEvidencePath) {
+    throw new Error('--capture-release cannot accept final selection evidence. Capture first, then qualify the exact report.');
+  }
+  if (options.releaseReportPath && !options.selectionEvidencePath) {
+    throw new Error('--release-report requires --selection-evidence with the sanitized captured-baseline comparison contract.');
+  }
+  if (options.release && !options.captureRelease && !options.releaseReportPath) {
+    throw new Error('Release eval requires either --capture-release or --release-report with --selection-evidence.');
+  }
+}
+
+export async function readBoundedProviderCost(
+  generationIds: readonly string[],
+  lookup: (generationId: string) => Promise<{ totalCost?: unknown }>,
+  options: DMProviderCostRetryOptions = {},
+): Promise<number | null> {
+  const pending = new Set(generationIds);
+  if (pending.size === 0) return null;
+  const costs = new Map<string, number>();
+  const retryDelaysMs = options.retryDelaysMs ?? DM_PROVIDER_COST_RETRY_DELAYS_MS;
+  const wait = options.wait ?? ((delayMs: number) => new Promise((resolve) => setTimeout(resolve, delayMs)));
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    const results = await Promise.all([...pending].map(async (generationId) => {
+      try {
+        const generation = await lookup(generationId);
+        return { generationId, cost: generation.totalCost };
+      } catch {
+        return { generationId, cost: null };
+      }
+    }));
+    for (const result of results) {
+      if (isFiniteNonNegative(result.cost)) {
+        costs.set(result.generationId, result.cost);
+        pending.delete(result.generationId);
+      }
+    }
+    if (pending.size === 0) return [...costs.values()].reduce((sum, cost) => sum + cost, 0);
+    const retryDelayMs = retryDelaysMs[attempt];
+    if (retryDelayMs !== undefined) await wait(retryDelayMs);
+  }
+  return null;
+}
+
 export function validateDMReleaseSelectionEvidence(value: unknown): DMReleaseSelectionEvidence {
   if (!value || typeof value !== 'object') throw new Error('Release selection evidence must be an object.');
   assertExactKeys(value, ['schemaVersion', 'baseline', 'comparisons'], 'release selection evidence');
@@ -494,8 +561,8 @@ function isSha256(value: string): boolean {
   return /^[a-f0-9]{64}$/.test(value);
 }
 
-function isOpaqueId(value: string): boolean {
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+function isOpaqueId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 }
 
 function sha256(value: string): string {

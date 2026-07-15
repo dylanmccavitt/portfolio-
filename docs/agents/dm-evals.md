@@ -18,7 +18,8 @@ more cases. Add a failing behavioral case before changing DM behavior.
 | Corpus/unit validation | `npm run dm:eval` | Validates corpus structure only. It calls no model and produces no release score. |
 | Focused harness tests | `npm run test:eval-report` | Proves corpus, deterministic expectation checks, judge parsing, telemetry/report sanitation, and report rendering. |
 | Live diagnostic | `npm run dm:eval:report` | Runs the full corpus live against Luna and Grok, three runs per case, with judged diagnostic output. |
-| Release eval | `npm run dm:eval:release -- --selection-evidence <sanitized.json>` | Fixed live release matrix, three-run gate, aggregate qualification, and fail-closed winner selection. Requires credentials, a working judge, and the versioned blinded-baseline contract. |
+| Release capture | `npm run dm:eval:release -- --capture-release` | Paid fixed live release matrix and three-run gate. Emits an explicit no-winner report with exact candidate digests for blinded review. |
+| Release qualification | `npm run dm:eval:release -- --release-report <captured.json> --selection-evidence <sanitized.json>` | Provider-free aggregate qualification and fail-closed winner selection bound to exact captured runs. |
 
 The release matrix is fixed for this comparison:
 
@@ -67,7 +68,8 @@ Release qualification is computed once per model and records:
 - blinded baseline preference, latency, tokens, repairs, and provider-supplied
   cost when available.
 
-Final qualification requires `--selection-evidence`; the explicit
+Final qualification requires `--release-report` together with
+`--selection-evidence`; the explicit
 `--capture-release` phase is the only release path allowed to run without it. The
 JSON contract has `schemaVersion: 1`, an opaque baseline id, lowercase SHA-256
 hashes for the captured baseline JSON and HTML, and exactly ten unique opaque
@@ -79,11 +81,12 @@ answers, full tool results, credentials, arbitrary extras, and judge prose do
 not belong in this selection-evidence file.
 
 For AI Gateway runs, the evaluator retains generation ids only in process,
-looks up the provider-supplied generation cost after the stream completes, and
-stores only the summed USD cost on that run. Generation ids are not written to
-the report. Direct-provider runs or failed lookups record `null`; an unavailable
-cost is not a waiver and produces `no-winner` if selection reaches the cost
-tie-break.
+looks up the provider-supplied generation cost after the stream completes with
+a finite three-retry backoff for delayed generation metadata, and stores only
+the summed USD cost on that run. Resolved generation ids are not polled again,
+and generation ids are not written to the report. Direct-provider runs or
+exhausted lookups record `null`; an unavailable cost is not a waiver and
+produces `no-winner` if selection reaches the cost tie-break.
 
 The reproducible operator flow is two-phase. First,
 `npm run dm:eval:release -- --capture-release` runs the paid fixed matrix,

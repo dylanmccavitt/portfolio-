@@ -39,6 +39,8 @@ import {
   type DMJudgePayload,
 } from '@/lib/dm/judge';
 import {
+  assertDMReleaseInvocation,
+  readBoundedProviderCost,
   selectDMReleaseWinner,
   validateDMReleaseReport,
   validateDMReleaseSelectionEvidence,
@@ -71,7 +73,7 @@ async function main(): Promise<void> {
     printUsage();
     return;
   }
-  if (options.captureRelease && !options.release) throw new Error('--capture-release requires --release.');
+  assertDMReleaseInvocation(options);
 
   validateDMLiveEvalCorpus();
   if (!options.live) {
@@ -85,19 +87,12 @@ async function main(): Promise<void> {
 
   let selectionEvidence: DMReleaseSelectionEvidence | null = null;
   if (options.release) {
-    if (options.captureRelease && options.selectionEvidencePath) {
-      throw new Error('--capture-release cannot accept final selection evidence. Capture first, then qualify the exact report.');
-    }
-    if (!options.captureRelease && !options.selectionEvidencePath) {
-      throw new Error('Release eval requires --selection-evidence with the sanitized captured-baseline comparison contract.');
-    }
     if (options.selectionEvidencePath) {
       selectionEvidence = validateDMReleaseSelectionEvidence(JSON.parse(await readFile(options.selectionEvidencePath, 'utf8')));
     }
   }
 
   if (options.releaseReportPath) {
-    if (!options.release) throw new Error('--release-report requires --release.');
     const report = validateDMReleaseReport(JSON.parse(await readFile(options.releaseReportPath, 'utf8')));
     report.releaseDecision = selectDMReleaseWinner(report, selectionEvidence);
     printReleaseDecision(report);
@@ -397,17 +392,13 @@ function readGatewayGenerationId(part: unknown): string | null {
 
 async function readSameRunProviderCost(provider: string, generationIds: Set<string>): Promise<number | null> {
   if (provider !== 'gateway' || generationIds.size === 0) return null;
-  try {
-    const generations = await Promise.all([...generationIds].map((id) => gateway.getGenerationInfo({ id })));
-    const costs = generations.map((generation) => generation.totalCost);
-    return costs.every((cost) => typeof cost === 'number' && Number.isFinite(cost) && cost >= 0)
-      ? costs.reduce((sum, cost) => sum + cost, 0)
-      : null;
-  } catch {
-    // Cost is a release tie-break only. Missing provider cost remains explicit
-    // null evidence and fails closed if selection reaches that tie-break.
-    return null;
-  }
+  // Gateway generation metadata can lag stream completion briefly. Retry only
+  // unresolved ids within a finite budget; exhaustion remains explicit null
+  // evidence and fails closed if selection reaches the cost tie-break.
+  return readBoundedProviderCost(
+    [...generationIds],
+    (id) => gateway.getGenerationInfo({ id }),
+  );
 }
 
 async function judgeAnswer(
@@ -528,10 +519,10 @@ Options:
   --baseline <path>     Diff against a specific JSON report instead of the
                         previous run in the report dir
   --selection-evidence <path>
-                        Required for --release. Versioned sanitized baseline id,
-                        hashes, and ten exact-candidate-digest-bound blinded
-                        comparisons per model. Contains no prompts, histories,
-                        answers, tool results, credentials, or judge prose.
+                        Required with --release-report. Versioned sanitized
+                        baseline id, hashes, and ten exact-candidate-digest-bound
+                        blinded comparisons per model. Contains no prompts,
+                        histories, answers, tool results, credentials, or judge prose.
   --release-report <path>
                         Qualify an exact captured release JSON against digest-bound
                         selection evidence without calling a provider again.
