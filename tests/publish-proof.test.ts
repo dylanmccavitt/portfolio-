@@ -405,6 +405,7 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
       db,
       model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
         segments: [{ kind: 'limitation', code: 'private_sources' }],
+        artifactIntent: 'none',
         artifacts: [],
         limitations: ['private_sources'],
       } }]),
@@ -544,6 +545,7 @@ test('fixture-based publish proof gate covers scan to public DM/RAG path', async
           text: 'Publish Proof Published Project is available from the published portfolio source.',
           evidenceIds: [`${publishedProjectId}:identity`],
         }],
+        artifactIntent: 'one_project',
         artifacts: [{ kind: 'project', id: publishedProjectId }],
         limitations: [],
       } },
