@@ -98,7 +98,7 @@ test('CLI judge prompt carries the rubric and the payload', () => {
       requiredTools: ['getProject'],
       forbiddenTools: [],
       evidence: { requiredText: ['Loom'], forbiddenText: [] },
-      artifacts: { required: ['projects'], forbidden: [], projectIds: ['loom'] },
+      artifacts: { required: ['projects'], forbidden: [], projectIds: ['loom'], linkProjectIds: [] },
       limitation: 'none',
       followUp: 'not-useful',
     },
