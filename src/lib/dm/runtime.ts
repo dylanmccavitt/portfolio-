@@ -677,7 +677,7 @@ function limitationOutcomeErrors(input: FinalAnswerInput, artifacts: RunArtifact
 function requiredOutcomeLimitations(artifacts: RunArtifacts): Set<LimitationCode> {
   const required = new Set<LimitationCode>();
   const projectSearch = artifacts.outcomes.get('searchProjects');
-  if (projectSearch === 'empty') {
+  if (projectSearch === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'searchProjects')) {
     required.add((artifacts.outcomeLimitations.get('searchProjects') ?? []).includes('no_matching_published_project_filters')
       ? 'no_matching_published_project_filters'
       : 'no_matching_published_projects');
@@ -686,12 +686,14 @@ function requiredOutcomeLimitations(artifacts: RunArtifacts): Set<LimitationCode
   }
 
   const projectRead = artifacts.outcomes.get('getProject');
-  if (projectRead === 'empty') required.add('no_matching_published_projects');
-  else if (projectRead === 'unavailable') required.add('public_data_unavailable');
+  if (projectRead === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'getProject')) {
+    required.add('no_matching_published_projects');
+  } else if (projectRead === 'unavailable') required.add('public_data_unavailable');
 
   const publicSourceSearch = artifacts.outcomes.get('searchPublicSources');
-  if (publicSourceSearch === 'empty') required.add('no_matching_approved_public_sources');
-  else if (publicSourceSearch === 'unavailable') required.add('public_source_unavailable');
+  if (publicSourceSearch === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'searchPublicSources')) {
+    required.add('no_matching_approved_public_sources');
+  } else if (publicSourceSearch === 'unavailable') required.add('public_source_unavailable');
 
   const profileSearch = artifacts.outcomes.get('searchProfile');
   if (profileSearch === 'empty' || profileSearch === 'unavailable') required.add('personal_unknown');
@@ -782,8 +784,19 @@ function reserveToolOutcome(artifacts: RunArtifacts): number {
 function effectiveLimitations(artifacts: RunArtifacts): string[] {
   return [
     ...artifacts.limitations,
-    ...[...artifacts.outcomeLimitations.values()].flat(),
+    ...[...artifacts.outcomeLimitations.entries()].flatMap(([toolName, limitations]) =>
+      emptyOutcomeHasRetainedArtifacts(artifacts, toolName) ? [] : limitations),
   ];
+}
+
+function emptyOutcomeHasRetainedArtifacts(
+  artifacts: RunArtifacts,
+  toolName: LimitationTrackedTool,
+): boolean {
+  if (artifacts.outcomes.get(toolName) !== 'empty') return false;
+  if (toolName === 'searchProjects' || toolName === 'getProject') return artifacts.projects.size > 0;
+  if (toolName === 'searchPublicSources') return artifacts.sources.size > 0;
+  return false;
 }
 
 function humanLimitation(code: string): string | null {

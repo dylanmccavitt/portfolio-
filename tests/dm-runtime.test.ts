@@ -460,6 +460,123 @@ test('concurrent repeated public-source calls retain the latest invoked outcome'
   assert.doesNotMatch(observation.answerText, /no matching|unavailable/i);
 });
 
+test('mixed project-tool outcomes omit irrelevant no-match limitations when a project artifact was retained', async (t) => {
+  const source = await createEvalProjectSource();
+  const acceptedProjectAnswer = {
+    segments: [{
+      kind: 'factual',
+      text: 'Loom is a published portfolio project.',
+      evidenceIds: ['loom:identity'],
+    }],
+    artifacts: [{ kind: 'project', id: 'loom' }],
+    limitations: [],
+  };
+  const contradictoryRepair = {
+    ...acceptedProjectAnswer,
+    segments: [
+      ...acceptedProjectAnswer.segments,
+      { kind: 'limitation', code: 'no_matching_published_projects' },
+    ],
+    limitations: ['no_matching_published_projects'],
+  };
+
+  await t.test('search hit followed by direct-project miss keeps the retained project answer', async () => {
+    const request = chatRequest('Tell me about Loom, not the hidden candidate project.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'searchProjects', input: { query: 'Loom' } },
+        { toolName: 'getProject', input: { id: 'candidate-hidden' } },
+        { toolName: 'finalizeAnswer', input: acceptedProjectAnswer },
+        { toolName: 'finalizeAnswer', input: contradictoryRepair },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.deepEqual(observation.projectIds, ['loom']);
+    assert.doesNotMatch(observation.answerText, /no matching published project/i);
+  });
+
+  await t.test('direct-project hit followed by search miss keeps the retained project answer', async () => {
+    const request = chatRequest('Tell me about Loom even if an unrelated search has no match.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'searchProjects', input: { query: 'quantum cryptography' } },
+        { toolName: 'finalizeAnswer', input: acceptedProjectAnswer },
+        { toolName: 'finalizeAnswer', input: contradictoryRepair },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.deepEqual(observation.projectIds, ['loom']);
+    assert.doesNotMatch(observation.answerText, /no matching published project/i);
+  });
+});
+
+test('retained public-source evidence suppresses later empty no-match copy but not unavailability', async (t) => {
+  const source = await createEvalProjectSource();
+  const factualSegment = {
+    kind: 'factual',
+    text: 'Loom separates planning, bounded implementation, independent review, and verification into explicit delivery phases.',
+    evidenceIds: ['citation:loom-architecture'],
+  };
+  const artifacts = [{ kind: 'project', id: 'loom' }, { kind: 'evidence', id: 'loom-architecture' }];
+
+  await t.test('a later empty source search does not contradict retained approved evidence', async () => {
+    const request = chatRequest("Use Loom's approved public architecture evidence.");
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      ragSearch: source.publicSourceSearch,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+        { toolName: 'searchPublicSources', input: { query: 'quantum cryptography', projectIds: ['loom'] } },
+        { toolName: 'finalizeAnswer', input: { segments: [factualSegment], artifacts, limitations: [] } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.ok(observation.evidenceIds.includes('citation:loom-architecture'));
+    assert.doesNotMatch(observation.answerText, /no matching approved public-source evidence/i);
+  });
+
+  await t.test('a later unavailable source search remains explicit despite retained approved evidence', async () => {
+    const request = chatRequest("Use Loom's approved evidence and report a later source failure honestly.");
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      ragSearch: async (query, ragConfig, options) => {
+        if (query === 'unavailable follow-up source') throw new Error('private retrieval failure detail');
+        return await source.publicSourceSearch(query, ragConfig, options);
+      },
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'searchPublicSources', input: { query: 'Loom public architecture evidence', projectIds: ['loom'] } },
+        { toolName: 'searchPublicSources', input: { query: 'unavailable follow-up source', projectIds: ['loom'] } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [factualSegment, { kind: 'limitation', code: 'public_source_unavailable' }],
+          artifacts,
+          limitations: ['public_source_unavailable'],
+          followUp: 'project_overview',
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.match(observation.answerText, /public-source search is unavailable/i);
+    assert.doesNotMatch(JSON.stringify(observation), /private retrieval failure detail/);
+  });
+});
+
 test('public tool failure becomes an explicit sanitized limitation', async () => {
   const source = await createEvalProjectSource();
   const request = requestForEvalCase(evalCase('derived-project-tool-unavailable'));
