@@ -4,6 +4,7 @@ import { simulateReadableStream, type LanguageModel, type UIMessageChunk } from 
 import { MockLanguageModelV4 } from 'ai/test';
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import { validateFinalizationResult } from '@/lib/dm/client';
+import { RESUME } from '@/data/resume';
 import {
   DM_LIVE_EVAL_CORPUS,
   evaluateDMEvalObservation,
@@ -1267,6 +1268,52 @@ test('stable project ids named in the latest turn fail closed after search-only 
   assert.deepEqual(observation.tools, ['searchProjects', 'getProject']);
 });
 
+test('successful direct reads canonicalize disjoint ids and slugs', async (t) => {
+  const source = await createEvalProjectSource();
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+  const project = {
+    ...template,
+    id: 'proj42',
+    slug: 'wonderful-app',
+    title: 'Wonderful App',
+    dmArtifact: {
+      ...template.dmArtifact,
+      id: 'proj42',
+      title: 'Wonderful App',
+      href: '/projects/wonderful-app',
+    },
+  };
+
+  for (const [label, input] of [
+    ['slug input', { slug: 'wonderful-app' }],
+    ['id input', { id: 'proj42' }],
+  ] as const) {
+    await t.test(label, async () => {
+      const request = chatRequest('Tell me about wonderful-app.');
+      const observation = await observeDMResponse(createDMChatResponse(request, config, {
+        db: source.db,
+        projectLoader: async () => [project],
+        model: toolSequenceModel([
+          { toolName: 'getProject', input },
+          { toolName: 'finalizeAnswer', input: {
+            segments: [{ kind: 'factual', text: 'Wonderful App is a published project.', evidenceIds: ['proj42:identity'] }],
+            artifactIntent: 'none',
+            artifacts: [],
+            limitations: [],
+          } },
+        ]),
+      }), request);
+
+      assert.equal(observation.result?.status, 'accepted');
+      assert.equal(observation.result?.repairAttempted, false);
+      assert.deepEqual(observation.tools, ['getProject']);
+      assert.deepEqual(observation.projectIds, []);
+      assert.ok(observation.evidenceIds.includes('proj42:identity'));
+    });
+  }
+});
+
 test('a title-only project name can use search before later direct coreference', async () => {
   const source = await createEvalProjectSource();
   const template = (await source.projectLoader())[0];
@@ -1554,6 +1601,68 @@ test('explicit resume, contact, and link artifacts cannot be dropped after same-
     assert.equal(observation.result?.repairAttempted, true);
     assert.deepEqual(observation.blockKinds, ['links:loom-stable', 'links:trader-stable']);
   });
+});
+
+test('full public resume artifacts fit the bounded finalization envelope', async () => {
+  const source = await createEvalProjectSource();
+  const resumeIds = RESUME.tracks.map((track) => track.id);
+  const request = chatRequest('Return the full public resume artifact.');
+  const finalAnswer = {
+    segments: [{
+      kind: 'factual' as const,
+      text: 'The public resume includes the canonical career tracks.',
+      evidenceIds: ['resume:syracuse:identity'],
+    }],
+    artifactIntent: 'non_project' as const,
+    limitations: [] as [],
+  };
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'readResume', input: {} },
+      { toolName: 'finalizeAnswer', input: { ...finalAnswer, artifacts: [] } },
+      { toolName: 'finalizeAnswer', input: {
+        ...finalAnswer,
+        artifacts: resumeIds.map((id) => ({ kind: 'resume' as const, id })),
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.deepEqual(observation.blockKinds, resumeIds.map((id) => `resume:${id}`));
+  assert.equal(observation.result?.answer.artifacts.filter((artifact) => artifact.kind === 'resume').length, resumeIds.length);
+});
+
+test('link artifact cardinality follows the latest turn only', async () => {
+  const source = await createEvalProjectSource();
+  const request: DMChatRequest = {
+    ...chatRequest('Return only the public repository link for Loom.'),
+    messages: [
+      { id: 'turn-1', role: 'user', parts: [{ type: 'text', text: 'Compare Loom and agentic-trader.' }] },
+      { id: 'turn-2', role: 'assistant', parts: [{ type: 'text', text: 'Both are published projects.' }] },
+      { id: 'turn-3', role: 'user', parts: [{ type: 'text', text: 'Return only the public repository link for Loom.' }] },
+    ],
+  };
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'loom' } },
+      { toolName: 'getProject', input: { id: 'agentic-trader' } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'factual', text: 'Loom has a public repository link.', evidenceIds: ['loom:link:0'] }],
+        artifactIntent: 'non_project',
+        artifacts: [{ kind: 'links', id: 'loom' }],
+        limitations: [],
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, false);
+  assert.deepEqual(observation.blockKinds, ['links:loom']);
 });
 
 test('the live eval source can produce a same-run approved evidence artifact', async () => {

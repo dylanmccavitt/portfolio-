@@ -159,6 +159,7 @@ type FollowUpCode = z.infer<typeof FollowUpCodeSchema>;
 type ArtifactIntent = z.infer<typeof ArtifactIntentSchema>;
 
 const MAX_PROJECT_SET_ARTIFACTS = 4;
+const MAX_FINALIZATION_ARTIFACTS = 8;
 
 const SERVER_LIMITATION_COPY = {
   private_sources: 'I can only use published public portfolio sources.',
@@ -228,7 +229,7 @@ const ArtifactReferenceSchema = z.discriminatedUnion('kind', [
 const FinalAnswerInputSchema = z.strictObject({
   segments: z.array(AnswerSegmentInputSchema).min(1).max(5),
   artifactIntent: ArtifactIntentSchema,
-  artifacts: z.array(ArtifactReferenceSchema).max(5),
+  artifacts: z.array(ArtifactReferenceSchema).max(MAX_FINALIZATION_ARTIFACTS),
   limitations: z.array(LimitationCodeSchema).max(4),
   followUp: FollowUpCodeSchema.optional(),
 });
@@ -259,7 +260,6 @@ interface RunArtifacts {
   knownProjectIds: Set<string>;
   directProjectReads: Set<string>;
   latestTurnText: string;
-  userRequestText: string;
   boundArtifactIntent: ArtifactIntent | null;
   projectLookupCompleted: boolean;
 }
@@ -549,8 +549,10 @@ function createRuntimePublicTools(
           metrics.tool();
           const result = await run.getProject(input, { abortSignal });
           artifacts.projectLookupCompleted = true;
-          rememberDirectProjectRead(artifacts, input, result.project?.id);
-          if (result.project) artifacts.projects.set(result.project.id, result.project);
+          if (result.project) {
+            artifacts.projects.set(result.project.id, result.project);
+            artifacts.directProjectReads.add(result.project.id);
+          }
           rememberToolOutcome(artifacts, 'getProject', outcomeOrdinal, result.status, result.limitations);
           return result;
         });
@@ -939,7 +941,7 @@ function requestedArtifactErrors(input: FinalAnswerInput, artifacts: RunArtifact
   }
   if (requiredKinds.includes('links')) {
     const explicitlyNamedProjectIds = [...artifacts.projects.values()]
-      .filter((project) => mentionsRequestedProject(artifacts.userRequestText, project))
+      .filter((project) => mentionsRequestedProject(artifacts.latestTurnText, project))
       .map((project) => project.id);
     if (explicitlyNamedProjectIds.length > 0) {
       for (const projectId of explicitlyNamedProjectIds) {
@@ -1010,7 +1012,6 @@ interface ArtifactRequirements {
   kinds: Set<ArtifactReference['kind']>;
   knownProjectIds: Set<string>;
   latestTurnText: string;
-  userRequestText: string;
 }
 
 function emptyArtifacts(requirements: ArtifactRequirements): RunArtifacts {
@@ -1029,7 +1030,6 @@ function emptyArtifacts(requirements: ArtifactRequirements): RunArtifacts {
     knownProjectIds: requirements.knownProjectIds,
     directProjectReads: new Set(),
     latestTurnText: requirements.latestTurnText,
-    userRequestText: requirements.userRequestText,
     boundArtifactIntent: requirements.intent,
     projectLookupCompleted: false,
   };
@@ -1041,12 +1041,6 @@ function requestedArtifactRequirements(request: DMChatRequest): ArtifactRequirem
     .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
     .map((part) => part.text)
     .join(' ') ?? '';
-  const userRequestText = request.messages
-    .filter((message) => message.role === 'user')
-    .flatMap((message) => message.parts
-      .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
-      .map((part) => part.text))
-    .join(' ');
   const tokens = artifactIntentTokens(text);
 
   // This policy sets only the artifact envelope. Tool choice, project
@@ -1078,7 +1072,6 @@ function requestedArtifactRequirements(request: DMChatRequest): ArtifactRequirem
     kinds,
     knownProjectIds: new Set((request.context?.projectIds ?? []).map((id) => id.trim()).filter(Boolean)),
     latestTurnText: text,
-    userRequestText,
   };
 }
 
@@ -1086,26 +1079,6 @@ function requestsArtifactToken(tokens: string[], candidates: string[]): boolean 
   return tokens.some((token, index) => candidates.includes(token)
     && artifactDirectiveNegator(tokens, index) === null
     && !artifactPostNominalNegator(tokens, index));
-}
-
-function rememberDirectProjectRead(
-  artifacts: RunArtifacts,
-  input: { id?: string; slug?: string },
-  resultProjectId: string | undefined,
-): void {
-  if (!resultProjectId) return;
-  const returnedProject = [...artifacts.projects.values()].find((project) =>
-    input.id === project.id || input.id === project.slug || input.slug === project.id || input.slug === project.slug);
-  for (const reference of [input.id, input.slug, resultProjectId]) {
-    const normalized = reference?.trim();
-    if (!normalized) continue;
-    if (artifacts.knownProjectIds.has(normalized)
-      || mentionsStableProjectReference(artifacts.latestTurnText, normalized)
-      || returnedProject?.id === normalized
-      || returnedProject?.slug === normalized) {
-      artifacts.directProjectReads.add(returnedProject?.id ?? normalized);
-    }
-  }
 }
 
 function artifactIntentTokens(value: string): string[] {
