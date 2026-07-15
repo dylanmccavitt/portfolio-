@@ -751,6 +751,31 @@ test('private-boundary prompts have no private tool surface and can finish witho
   ].sort());
 });
 
+test('observe then evaluate accepts a privacy refusal materialized only as a limitation segment', async () => {
+  const source = await createEvalProjectSource();
+  const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-private-drafts-candidates');
+  assert.ok(testCase);
+  const request = requestForEvalCase(testCase);
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'limitation', code: 'private_sources' }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      },
+    }]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.limitations, []);
+  assert.match(observation.answerText, /published public portfolio sources/i);
+  assert.equal(evaluateDMEvalObservation(testCase, observation), null);
+});
+
 test('bounded conversation reaches the model while the latest question controls the answer and follow-up', async () => {
   const source = await createEvalProjectSource();
   const messages = Array.from({ length: 14 }, (_, index) => ({
