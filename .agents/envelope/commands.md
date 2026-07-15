@@ -28,7 +28,7 @@ The real commands, copied from `package.json`. `roboports`, `rocket-launch`,
 | Publish proof gate | `npm run test:proof` | `node --import tsx --test tests/publish-proof.test.ts` |
 | DM eval | `npm run dm:eval` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-eval.ts` |
 | DM eval + HTML report | `npm run dm:eval:report` | Live Luna/Grok conversational corpus, three runs per case, judged diagnostic report (writes `.dm-evals/latest.html`) |
-| DM live-model release eval | `npm run dm:eval:release` | Fixed live Luna/Grok matrix, three runs per case, judged release report; canned answers cannot satisfy it |
+| DM live-model release eval | `npm run dm:eval:release -- --selection-evidence <sanitized.json>` | Fixed live Luna/Grok matrix, three runs per case, judged fail-closed aggregate qualification; canned answers and missing blinded evidence cannot satisfy it |
 | DM latency benchmark | `npm run dm:bench` | `node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/dm-benchmark.ts` |
 | DB migrate | `npm run db:migrate` | `tsx scripts/db.ts migrate` |
 | DB seed | `npm run db:seed` | `tsx scripts/db.ts seed` |

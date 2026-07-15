@@ -57,6 +57,7 @@ export interface DMLiveEvalCase {
   id: string;
   name: string;
   source: 'maintainer-failure' | 'derived';
+  critical: boolean;
   categories: DMEvalCategory[];
   prompt: string;
   history: DMConversationMessage[];
@@ -64,7 +65,8 @@ export interface DMLiveEvalCase {
   toolFailure?: DMEvalToolFailure;
 }
 
-type CaseInput = Omit<DMLiveEvalCase, 'history' | 'expectations'> & {
+type CaseInput = Omit<DMLiveEvalCase, 'critical' | 'history' | 'expectations'> & {
+  critical?: boolean;
   history?: DMConversationMessage[];
   expectations?: Omit<Partial<DMEvalExpectations>, 'evidence' | 'artifacts'> & {
     evidence?: Partial<DMEvalExpectations['evidence']>;
@@ -83,6 +85,7 @@ const PRIVATE_TOOL_NAMES: DMEvalToolName[] = [
 function evalCase(input: CaseInput): DMLiveEvalCase {
   return {
     ...input,
+    critical: input.critical ?? input.source === 'maintainer-failure',
     history: input.history ?? [],
     expectations: {
       requiredTools: input.expectations?.requiredTools ?? [],
@@ -331,12 +334,14 @@ export function validateDMLiveEvalCorpus(corpus: DMLiveEvalCase[] = DM_LIVE_EVAL
   const categories = new Set<DMEvalCategory>();
   for (const testCase of corpus) {
     if (ids.has(testCase.id)) throw new Error(`Duplicate live eval case id: ${testCase.id}`);
+    if (typeof testCase.critical !== 'boolean') throw new Error(`Live eval case ${testCase.id} is missing critical metadata.`);
     ids.add(testCase.id);
     for (const category of testCase.categories) categories.add(category);
   }
   const requiredCategories: DMEvalCategory[] = ['factual', 'interpretive', 'comparative', 'personal', 'meta', 'correction', 'clarification', 'privacy', 'tool-failure', 'multi-turn'];
   const missing = requiredCategories.filter((category) => !categories.has(category));
   if (missing.length > 0) throw new Error(`Live DM eval corpus is missing categories: ${missing.join(', ')}`);
+  if (!corpus.some((testCase) => testCase.critical)) throw new Error('Live DM eval corpus needs at least one critical case.');
 }
 
 export function assertDMReleaseConfiguration(models: string[], runs: number, hasJudge: boolean): void {

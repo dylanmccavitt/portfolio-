@@ -4,14 +4,19 @@
  * report. Consumed by scripts/dm-eval.ts; no runtime/site code imports this.
  */
 
+import type { DMEvalCategory } from './eval-corpus';
+import type { DMReleaseDecision } from './release-qualification';
+
 export interface DMEvalJudgeScore {
   grounded: number;
   honest: number;
+  questionComprehension: number;
   useful: number;
   relevant: number;
   direct: number;
   continuity: number;
   nonRepetition: number;
+  followUpUseful: boolean | null;
   notes: string;
 }
 
@@ -32,6 +37,11 @@ export interface DMEvalRunRecord {
   answerText: string;
   blockKinds: string[];
   evidenceIds: string[];
+  source?: 'maintainer-failure' | 'derived';
+  categories?: DMEvalCategory[];
+  critical?: boolean;
+  followUpApplicable?: boolean;
+  costUsd?: number | null;
   judge?: DMEvalJudgeScore | { error: string };
   judgedBy?: string;
 }
@@ -42,6 +52,7 @@ export interface DMEvalReport {
   scoreKind: 'release' | 'diagnostic' | 'none';
   judge: string | null;
   runs: DMEvalRunRecord[];
+  releaseDecision?: DMReleaseDecision;
 }
 
 export type DMEvalTriageSeverity = 'blocker' | 'fix' | 'review';
@@ -63,6 +74,8 @@ export function applyEvalReleaseGate(run: DMEvalRunRecord): DMEvalRunRecord {
     if ('error' in judge) failure = `judge error: ${judge.error}`;
     else if (judge.grounded < 4) failure = `judge grounding gate failed: grounded=${judge.grounded} (minimum 4)`;
     else if (judge.honest < 4) failure = `judge honesty gate failed: honest=${judge.honest} (minimum 4)`;
+    else if (judge.questionComprehension < 4) failure = `judge question-comprehension gate failed: questionComprehension=${judge.questionComprehension} (minimum 4)`;
+    else if (run.critical === true && judge.useful < 4) failure = `judge critical usefulness gate failed: useful=${judge.useful} (minimum 4)`;
     else if (judge.relevant < 4) failure = `judge latest-turn relevance gate failed: relevant=${judge.relevant} (minimum 4)`;
     else if (judge.direct < 4) failure = `judge directness gate failed: direct=${judge.direct} (minimum 4)`;
     else if (judge.continuity < 4) failure = `judge continuity gate failed: continuity=${judge.continuity} (minimum 4)`;
@@ -84,7 +97,7 @@ export function triageRun(run: DMEvalRunRecord): DMEvalTriage | null {
         nextStep: 'The release-quality judge failed. Restore the configured judge and re-run the complete live judged eval before merge.',
       };
     }
-    if (/^judge (?:grounding|honesty|latest-turn relevance|directness|continuity|non-repetition) gate failed:/.test(run.failure)) {
+    if (/^judge (?:grounding|honesty|question-comprehension|critical usefulness|latest-turn relevance|directness|continuity|non-repetition) gate failed:/.test(run.failure)) {
       return {
         severity: 'blocker',
         classification: 'judge release gate',
@@ -141,7 +154,7 @@ export function triageRun(run: DMEvalRunRecord): DMEvalTriage | null {
 
   const judge = run.judge;
   if (judge && !('error' in judge)) {
-    const weak = (['grounded', 'honest', 'useful', 'relevant', 'direct', 'continuity', 'nonRepetition'] as const).filter(
+    const weak = (['grounded', 'honest', 'questionComprehension', 'useful', 'relevant', 'direct', 'continuity', 'nonRepetition'] as const).filter(
       (dimension) => judge[dimension] <= JUDGE_FLAG_THRESHOLD,
     );
     if (weak.length > 0) {
@@ -233,7 +246,7 @@ function judgeDelta(before: DMEvalRunRecord, after: DMEvalRunRecord): string {
 }
 
 function judgeMean(judge: DMEvalJudgeScore): number {
-  return (judge.grounded + judge.honest + judge.useful + judge.relevant + judge.direct + judge.continuity + judge.nonRepetition) / 7;
+  return (judge.grounded + judge.honest + judge.questionComprehension + judge.useful + judge.relevant + judge.direct + judge.continuity + judge.nonRepetition) / 8;
 }
 
 export interface DMEvalReportHtmlInput {
@@ -278,6 +291,7 @@ export function renderEvalReportHtml({ report, baseline, baselineLabel }: DMEval
 </header>
 
 ${renderTriageSection(triaged)}
+${report.releaseDecision ? renderReleaseDecision(report.releaseDecision) : ''}
 ${diff ? renderDiffSection(diff, baselineLabel) : ''}
 ${renderMatrixSection(models, caseNames, runsFor)}
 ${renderRunDetails(report.runs)}
@@ -285,6 +299,23 @@ ${renderRunDetails(report.runs)}
 <footer>Improvement loop: docs/agents/dm-evals.md — add a failing corpus case before fixing, then re-run corpus validation and live proof.</footer>
 </body>
 </html>`;
+}
+
+function renderReleaseDecision(decision: DMReleaseDecision): string {
+  const rows = decision.aggregates.map((aggregate) => `<tr>
+  <td>${escapeHtml(aggregate.model)}</td>
+  <td class="${aggregate.qualified ? 'ok' : 'bad'}">${aggregate.qualified ? 'qualified' : 'disqualified'}</td>
+  <td>${aggregate.passedRuns}/${aggregate.totalRuns} (${(aggregate.passRate * 100).toFixed(1)}%)</td>
+  <td>${aggregate.stableMaintainerCases}/${aggregate.maintainerCases}</td>
+  <td>${aggregate.blindedPreference.wins}/${aggregate.blindedPreference.comparisons}</td>
+  <td>${aggregate.followUps.useful}/${aggregate.followUps.applicable}</td>
+  <td>${aggregate.costUsd ?? 'n/a'}</td>
+  <td>${escapeHtml(aggregate.disqualifications.join('; ') || 'none')}</td>
+</tr>`).join('\n');
+  return `<section><h2>Release qualification</h2>
+<p class="${decision.status === 'winner' ? 'ok' : 'bad'}">${escapeHtml(decision.status)}${decision.winnerModel ? `: ${escapeHtml(decision.winnerModel)}` : ''} — ${escapeHtml(decision.reason)}</p>
+<table><thead><tr><th>model</th><th>status</th><th>corpus</th><th>maintainer stability</th><th>blinded preference</th><th>follow-ups</th><th>cost USD</th><th>disqualifications</th></tr></thead><tbody>${rows}</tbody></table>
+</section>`;
 }
 
 function severityRank(severity: DMEvalTriageSeverity): number {
@@ -358,7 +389,7 @@ function renderMatrixSection(
           const run = runs.at(-1)!;
           const judge =
             run.judge && !('error' in run.judge)
-              ? `<span class="dim">g${run.judge.grounded} h${run.judge.honest} u${run.judge.useful} r${run.judge.relevant} d${run.judge.direct} c${run.judge.continuity} n${run.judge.nonRepetition}</span>`
+              ? `<span class="dim">g${run.judge.grounded} h${run.judge.honest} q${run.judge.questionComprehension} u${run.judge.useful} r${run.judge.relevant} d${run.judge.direct} c${run.judge.continuity} n${run.judge.nonRepetition}</span>`
               : '';
           const allPassed = passed === runs.length;
           return `<td class="${allPassed ? 'cell-pass' : 'cell-fail'}">${passed}/${runs.length} <span class="dim">last ${run.elapsedMs}ms</span> ${judge}</td>`;
@@ -379,7 +410,7 @@ function renderRunDetails(runs: DMEvalRunRecord[]): string {
       const judge = run.judge
         ? 'error' in run.judge
           ? `<p class="failure">judge${judgeName} error: ${escapeHtml(run.judge.error)}</p>`
-          : `<p>judge${judgeName}: grounded ${run.judge.grounded}, honest ${run.judge.honest}, useful ${run.judge.useful}, relevant ${run.judge.relevant}, direct ${run.judge.direct}, continuity ${run.judge.continuity}, non-repetition ${run.judge.nonRepetition}${
+          : `<p>judge${judgeName}: grounded ${run.judge.grounded}, honest ${run.judge.honest}, question comprehension ${run.judge.questionComprehension}, useful ${run.judge.useful}, relevant ${run.judge.relevant}, direct ${run.judge.direct}, continuity ${run.judge.continuity}, non-repetition ${run.judge.nonRepetition}, follow-up ${run.judge.followUpUseful === null ? 'n/a' : run.judge.followUpUseful ? 'useful' : 'not useful'}${
               run.judge.notes ? ` — ${escapeHtml(run.judge.notes)}` : ''
             }</p>`
         : '';

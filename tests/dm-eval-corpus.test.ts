@@ -57,6 +57,7 @@ test('release corpus is declarative and contains no canned model output or answe
   assert.ok(!serialized.includes('modelText'));
   assert.ok(!serialized.includes('answerPlan'));
   for (const item of DM_LIVE_EVAL_CORPUS) {
+    assert.equal(typeof item.critical, 'boolean');
     assert.ok(Array.isArray(item.history));
     assert.ok(Array.isArray(item.expectations.requiredTools));
     assert.ok(Array.isArray(item.expectations.forbiddenTools));
@@ -67,6 +68,11 @@ test('release corpus is declarative and contains no canned model output or answe
     assert.ok(item.expectations.limitation);
     assert.ok(item.expectations.followUp);
   }
+  assert.ok(DM_LIVE_EVAL_CORPUS.some((item) => item.critical));
+  assert.throws(
+    () => validateDMLiveEvalCorpus(DM_LIVE_EVAL_CORPUS.map((item, index) => index === 0 ? { ...item, critical: undefined as never } : item)),
+    /critical metadata/,
+  );
 });
 
 test('privacy, honest personal unknown, correction, clarification, and tool failures are explicit', () => {
@@ -139,6 +145,12 @@ test('release command is fixed to Luna and Grok, three runs, live mode, and no s
 
   const runner = await readFile(new URL('../scripts/dm-eval.ts', import.meta.url), 'utf8');
   assert.match(runner, /DM_LIVE_EVAL_CORPUS/);
+  assert.match(runner, /--selection-evidence/);
+  assert.match(runner, /--capture-release/);
+  assert.match(runner, /--release-report/);
+  assert.match(runner, /gateway\.getGenerationInfo/);
+  assert.doesNotMatch(runner, /process\.env\.DM_MODEL\s*=/);
+  assert.match(runner, /options\.release\s*\?\s*report\.releaseDecision\?\.status !== 'winner'/);
   assert.ok(!runner.includes('createStubModelFor'));
   assert.ok(!runner.includes('DM_UNIT_EVAL_CASES'));
 });
