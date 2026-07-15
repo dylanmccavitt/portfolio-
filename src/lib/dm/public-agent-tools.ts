@@ -266,7 +266,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   };
 
   const searchProjects = createTool(
-    'Search published portfolio projects when discovering by topic or resolving a title-only project name whose stable public id or slug is unknown. Use the area, status, or year filter for a question about that exact published-project aspect. Once a stable id or slug is resolved, use getProject for later corrections and follow-up references.',
+    'Search published portfolio projects only when discovering by topic or resolving a title-only project name whose stable public id or slug is unknown. Never use this broad search to rediscover a stable id or slug already present in the latest turn, page context, or an earlier returned project record; use getProject for that direct read. Use the area, status, or year filter for a question about that exact published-project aspect.',
     SearchProjectsInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
@@ -297,7 +297,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   );
 
   const getProject = createTool(
-    'Directly read one already-identified published portfolio project when its stable public id or slug is known. Use this for resolved subject corrections and follow-up references; if only a public title is known and its stable id or slug is unresolved, call searchProjects first. When the visitor explicitly asks for approved public-source evidence about that project, also call searchPublicSources with the returned project id; project metadata is not a substitute for the requested source evidence.',
+    'Directly read one already-identified published portfolio project when its stable public id or slug is known. Use this for resolved subject corrections and follow-up references, including ids supplied by page context; a search result is not a substitute for this direct read. If only a public title is known and its stable id or slug is unresolved, call searchProjects first, once. When the visitor explicitly asks for approved public-source evidence about that project, also call searchPublicSources with the returned project id; project metadata is not a substitute for the requested source evidence.',
     GetProjectInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();

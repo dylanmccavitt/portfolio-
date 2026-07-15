@@ -965,7 +965,7 @@ test('mixed project-tool outcomes omit irrelevant no-match limitations when a pr
     limitations: ['no_matching_published_projects'],
   };
 
-  await t.test('search hit followed by direct-project miss keeps the retained project answer', async () => {
+  await t.test('search hit followed by unrelated direct-project miss fails closed for a stable latest reference', async () => {
     const request = chatRequest('Tell me about Loom, not the hidden candidate project.');
     const observation = await observeDMResponse(createDMChatResponse(request, config, {
       db: source.db,
@@ -978,10 +978,9 @@ test('mixed project-tool outcomes omit irrelevant no-match limitations when a pr
       ]),
     }), request);
 
-    assert.equal(observation.result?.status, 'accepted');
-    assert.equal(observation.result?.repairAttempted, false);
-    assert.deepEqual(observation.projectIds, ['loom']);
-    assert.doesNotMatch(observation.answerText, /no matching published project/i);
+    assert.equal(observation.result?.status, 'limited');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.projectIds, []);
   });
 
   await t.test('direct-project hit followed by search miss keeps the retained project answer', async () => {
@@ -1204,6 +1203,70 @@ test('the latest-turn control and tool descriptions distinguish direct reads fro
   assert.match(searchProjectsDescription, /title-only project name.*stable public id or slug is unknown/i);
 });
 
+test('stable page-context project references fail closed after search-only evidence and recover with a direct read', async () => {
+  const source = await createEvalProjectSource();
+  const request: DMChatRequest = {
+    ...chatRequest('What about its architecture?'),
+    context: { projectIds: ['loom'] },
+  };
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'searchProjects', input: { query: 'Loom', limit: 1 } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'factual', text: 'Loom is a published project.', evidenceIds: ['loom:identity'] }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      } },
+      { toolName: 'getProject', input: { id: 'loom' } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'factual', text: 'Loom uses a reviewed publish path.', evidenceIds: ['loom:identity', 'loom:about:0'] }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      } },
+    ], prompts),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.deepEqual(observation.tools, ['searchProjects', 'getProject']);
+  assert.match(JSON.stringify(prompts[0]?.prompt), /stable public project ids already resolved.*getProject directly.*never use searchProjects/i);
+  assert.doesNotMatch(observation.answerText, /could not verify/i);
+});
+
+test('stable project ids named in the latest turn fail closed after search-only evidence', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about loom architecture.');
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'searchProjects', input: { query: 'loom', limit: 1 } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'factual', text: 'Loom uses a reviewed publish path.', evidenceIds: ['loom:identity'] }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      } },
+      { toolName: 'getProject', input: { id: 'loom' } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'factual', text: 'Loom uses a reviewed publish path.', evidenceIds: ['loom:identity', 'loom:about:0'] }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.deepEqual(observation.tools, ['searchProjects', 'getProject']);
+});
+
 test('a title-only project name can use search before later direct coreference', async () => {
   const source = await createEvalProjectSource();
   const template = (await source.projectLoader())[0];
@@ -1337,6 +1400,160 @@ test('mixed resume and contact composition repairs a dropped same-run source', a
   assert.match(prompt, /getProject and searchPublicSources/);
   const finalizer = prompts[0]?.tools?.find((entry) => entry.name === 'finalizeAnswer');
   assert.match(finalizer && 'description' in finalizer ? finalizer.description ?? '' : '', /evidenceQuotes/);
+});
+
+test('explicit resume, contact, and link artifacts cannot be dropped after same-run tools return them', async (t) => {
+  const source = await createEvalProjectSource();
+
+  await t.test('resume artifact', async () => {
+    const request = chatRequest('Return a public résumé artifact.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'readResume', input: { trackIds: ['stevens'] } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Stevens Institute of Technology is in the public resume.', evidenceIds: ['resume:stevens:identity'] }],
+          artifactIntent: 'non_project',
+          artifacts: [],
+          limitations: [],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Stevens Institute of Technology is in the public resume.', evidenceIds: ['resume:stevens:identity'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'resume', id: 'stevens' }],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.blockKinds, ['resume:stevens']);
+  });
+
+  await t.test('contact artifact', async () => {
+    const request = chatRequest('Return a public contact artifact.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getContact', input: {} },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Dylan can be contacted publicly.', evidenceIds: ['contact:email'] }],
+          artifactIntent: 'non_project',
+          artifacts: [],
+          limitations: [],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Dylan can be contacted publicly.', evidenceIds: ['contact:email'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'contact', id: 'contact' }],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.blockKinds, ['contact']);
+  });
+
+  await t.test('link artifact', async () => {
+    const request = chatRequest('Return the public repository link.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Loom has a public repository link.', evidenceIds: ['loom:link:0'] }],
+          artifactIntent: 'non_project',
+          artifacts: [],
+          limitations: [],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Loom has a public repository link.', evidenceIds: ['loom:link:0'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'links', id: 'loom' }],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.blockKinds, ['links:loom']);
+  });
+
+  await t.test('one link artifact is required for each explicitly named project', async () => {
+    const request = chatRequest('Return only the public links for Loom and agentic-trader.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'getProject', input: { id: 'agentic-trader' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Loom and agentic-trader have public repository links.', evidenceIds: ['loom:link:0', 'agentic-trader:link:0'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'links', id: 'loom' }],
+          limitations: [],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Loom and agentic-trader have public repository links.', evidenceIds: ['loom:link:0', 'agentic-trader:link:0'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'links', id: 'loom' }, { kind: 'links', id: 'agentic-trader' }],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.blockKinds, ['links:loom', 'links:agentic-trader']);
+  });
+
+  await t.test('title-only multi-project requests retain link cardinality after search resolution', async () => {
+    const sourceProjects = await source.projectLoader();
+    const titleOnlyProjects = sourceProjects.slice(0, 2).map((project, index) => {
+      const id = index === 0 ? 'loom-stable' : 'trader-stable';
+      const title = index === 0 ? 'Loom' : 'Agentic Trader';
+      return {
+        ...project,
+        id,
+        slug: id,
+        title,
+        href: `/projects/${id}`,
+        seo: { ...project.seo, title: `${title} · Dylan McCavitt`, ogImage: `/og/projects/${id}.png`, sitemapPath: `/projects/${id}/` },
+        dmArtifact: { ...project.dmArtifact, id, title, href: `/projects/${id}` },
+      };
+    });
+    const request = chatRequest('Return only the public links for Loom and Agentic Trader.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: async () => titleOnlyProjects,
+      model: toolSequenceModel([
+        { toolName: 'searchProjects', input: { query: 'Loom Agentic Trader', limit: 2 } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Loom and Agentic Trader have public repository links.', evidenceIds: ['loom-stable:link:0', 'trader-stable:link:0'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'links', id: 'loom-stable' }],
+          limitations: [],
+        } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{ kind: 'factual', text: 'Loom and Agentic Trader have public repository links.', evidenceIds: ['loom-stable:link:0', 'trader-stable:link:0'] }],
+          artifactIntent: 'non_project',
+          artifacts: [{ kind: 'links', id: 'loom-stable' }, { kind: 'links', id: 'trader-stable' }],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.blockKinds, ['links:loom-stable', 'links:trader-stable']);
+  });
 });
 
 test('the live eval source can produce a same-run approved evidence artifact', async () => {

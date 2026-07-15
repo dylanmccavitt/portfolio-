@@ -154,7 +154,7 @@ test('deterministic observation checks enforce tools, evidence, artifacts, and f
   const projectCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-trading-automation')!;
   const passing = {
     answerText: 'agentic-trader is the published project that demonstrates brokerage workflow automation.',
-    tools: ['searchProjects'],
+    tools: ['getProject', 'searchProjects'],
     blockKinds: ['projects:agentic-trader'],
     projectIds: ['agentic-trader'],
     outcome: 'completed',
@@ -187,6 +187,35 @@ test('deterministic observation checks enforce tools, evidence, artifacts, and f
     ...bothLinks,
     blockKinds: ['links:loom'],
   }) ?? '', /required link artifact.*agentic-trader/);
+});
+
+test('fresh #196 direct-tool and required-artifact failures stay deterministic', () => {
+  const directRead = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-loom-coreference')!;
+  assert.match(evaluateDMEvalObservation(directRead, {
+    answerText: 'Loom uses a reviewed publish path.',
+    tools: ['getProject', 'searchProjects'],
+    blockKinds: [],
+    projectIds: [],
+    outcome: 'completed',
+  }) ?? '', /forbidden tool/);
+
+  const recruiter = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-recruiter-resume-contact')!;
+  assert.match(evaluateDMEvalObservation(recruiter, {
+    answerText: 'Stevens Institute of Technology is part of the public background.',
+    tools: ['readResume', 'getContact'],
+    blockKinds: ['resume:stevens'],
+    projectIds: [],
+    outcome: 'completed',
+  }) ?? '', /required artifact was not emitted: contact/);
+
+  const evidence = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-loom-evidence-deep-dive')!;
+  assert.match(evaluateDMEvalObservation(evidence, {
+    answerText: 'Loom architecture is grounded in approved public source evidence.',
+    tools: ['getProject', 'searchPublicSources'],
+    blockKinds: ['projects:loom'],
+    projectIds: ['loom'],
+    outcome: 'completed',
+  }) ?? '', /required artifact was not emitted: evidence/);
 });
 
 test('multi-turn cases preserve history but send the latest question separately', () => {
