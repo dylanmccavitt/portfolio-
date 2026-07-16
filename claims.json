@@ -79,8 +79,8 @@
       "check": "npm run test:dm"
     },
     {
-      "id": "dm-legacy-scripted-runtime-removed",
-      "statement": "the legacy scripted DM router, planner, request-routed deterministic answer generators, fake trace, canned answer fixtures, and custom NDJSON protocol are absent; model-selected no-evidence conversational, limitation, and follow-up content is restricted to finite enum-selected server-controlled copy materialized only by the validated finalization boundary",
+      "id": "dm-finalization-contract-boundary",
+      "statement": "the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 accepts bounded model-authored markdown and filters evidence and artifact metadata to records returned in the current run before the single terminal answer boundary",
       "subjectRefs": [
         "astro.config.mjs",
         "src/lib/dm/benchmark.ts",

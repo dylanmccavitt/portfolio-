@@ -19,6 +19,7 @@ import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { createDMPostHandler } from '@/pages/api/dm/chat';
 
 const config = { provider: 'openai' as const, model: 'openai/test-model' };
+const v2Config = { ...config, contract: 'v2' as const };
 
 test('runtime configuration requires an explicit model and provider credential', () => {
   assert.throws(() => readDMRuntimeConfig({}), /DM_MODEL, OPENAI_API_KEY/);
@@ -26,17 +27,156 @@ test('runtime configuration requires an explicit model and provider credential',
   assert.deepEqual(readDMRuntimeConfig({ DM_MODEL: 'openai/runtime-model', OPENAI_API_KEY: 'configured' }), {
     provider: 'openai',
     model: 'openai/runtime-model',
+    contract: 'v1',
   });
-  assert.deepEqual(readDMRuntimeConfig({ DM_MODEL: 'anthropic/runtime-model', AI_GATEWAY_API_KEY: 'configured' }), {
+  assert.deepEqual(readDMRuntimeConfig({ DM_MODEL: 'anthropic/runtime-model', AI_GATEWAY_API_KEY: 'configured', DM_CONTRACT: 'v1' }), {
     provider: 'gateway',
     model: 'anthropic/runtime-model',
+    contract: 'v1',
   });
+  assert.deepEqual(readDMRuntimeConfig({ DM_MODEL: 'anthropic/runtime-model', AI_GATEWAY_API_KEY: 'configured', DM_CONTRACT: 'v2' }), {
+    provider: 'gateway',
+    model: 'anthropic/runtime-model',
+    contract: 'v2',
+  });
+  assert.throws(
+    () => readDMRuntimeConfig({ DM_MODEL: 'openai/runtime-model', OPENAI_API_KEY: 'configured', DM_CONTRACT: 'future' }),
+    /DM_CONTRACT/,
+  );
+});
+
+test('the endpoint fails closed on an invalid nonempty contract selector', async () => {
+  const handler = createDMPostHandler({
+    env: {
+      DM_MODEL: 'openai/runtime-model',
+      OPENAI_API_KEY: 'configured',
+      DM_CONTRACT: 'future',
+    },
+  });
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', {
+      method: 'POST',
+      body: JSON.stringify(chatRequest('Hello')),
+    }),
+  } as never);
+  const body = await response.json() as { error?: { code?: string; message?: string } };
+
+  assert.equal(response.status, 503);
+  assert.equal(body.error?.code, 'missing_config');
+  assert.equal(body.error?.message, 'DM is not configured for chat yet.');
+  assert.doesNotMatch(JSON.stringify(body), /future|DM_CONTRACT/);
 });
 
 test('runtime budgets remain bounded', () => {
   assert.deepEqual(readDMBudgetConfig({}), { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 6 });
   assert.throws(() => readDMBudgetConfig({ DM_MAX_STEPS: '1' }), /safeguards/);
   assert.throws(() => readDMBudgetConfig({ DM_REQUEST_DEADLINE_MS: '500000' }), /safeguards/);
+});
+
+test('v2 accepts bounded model-authored markdown and follow-up text', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: '**I can walk you through Dylan’s published work and background.**',
+      evidenceIds: [],
+      artifacts: [],
+      followUp: 'Which part of the portfolio would be most useful to explore?',
+    } }]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, false);
+  assert.equal(
+    observation.answerText,
+    '**I can walk you through Dylan’s published work and background.**\nWhich part of the portfolio would be most useful to explore?',
+  );
+  assert.doesNotMatch(observation.answerText, /Hi — I'm DM|Would you like a project overview|published public portfolio sources/);
+});
+
+test('v2 filters unknown and duplicate same-run metadata without repairing valid prose', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Tell me about agentic-trader.');
+  const prose = 'agentic-trader is a published project with a public portfolio record.';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'agentic-trader' } },
+      { toolName: 'finalizeAnswer', input: {
+        markdown: prose,
+        evidenceIds: ['agentic-trader:identity', 'unknown:evidence', 'agentic-trader:identity'],
+        artifacts: [
+          { kind: 'project', id: 'agentic-trader' },
+          { kind: 'project', id: 'unknown-project' },
+          { kind: 'project', id: 'agentic-trader' },
+        ],
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, false);
+  assert.equal(observation.answerText, prose);
+  assert.deepEqual(observation.evidenceIds, ['agentic-trader:identity']);
+  assert.deepEqual(observation.projectIds, ['agentic-trader']);
+});
+
+test('v2 does not apply v1 composition, quote, intent, cardinality, limitation, or follow-up policy', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Show exactly one project card and its public-source evidence.');
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'agentic-trader' } },
+      { toolName: 'getProject', input: { id: 'loom' } },
+      { toolName: 'searchPublicSources', input: { query: 'public evidence', projectIds: ['agentic-trader'] } },
+      { toolName: 'finalizeAnswer', input: {
+        markdown: 'Two returned public project records provide useful examples.',
+        evidenceIds: ['agentic-trader:identity'],
+        artifacts: [
+          { kind: 'project', id: 'agentic-trader' },
+          { kind: 'project', id: 'loom' },
+        ],
+        followUp: 'Want me to compare the trade-offs in plain language?',
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, false);
+  assert.deepEqual(observation.projectIds, ['agentic-trader', 'loom']);
+  assert.deepEqual(observation.evidenceIds, ['agentic-trader:identity']);
+  assert.equal(observation.limitations.length, 0);
+  assert.match(observation.answerText, /compare the trade-offs/);
+});
+
+test('v2 bounds model-authored prose without a repair turn', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const metricsLines: string[] = [];
+  const sentinel = 'OVERLONG_V2_MARKDOWN_SENTINEL';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: `${sentinel}${'x'.repeat(6_000)}`,
+      evidenceIds: [],
+      artifacts: [],
+    } }], prompts),
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+
+  assert.equal(prompts.length, 1);
+  assert.equal(observation.result?.status, 'limited');
+  assert.equal(observation.result?.repairAttempted, false);
+  assert.doesNotMatch(observation.answerText, new RegExp(sentinel));
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
+  assert.doesNotMatch(metricsLines.join('\n'), new RegExp(sentinel));
 });
 
 test('site brief failure stops before model work and exposes only a sanitized stream error', async () => {
@@ -3364,6 +3504,38 @@ test('the endpoint never puts invalid finalization prose on the wire', async () 
   assert.equal(fallbackFinalizationResult(chunks)?.status, 'limited');
   assert.equal(observation.result?.status, 'limited');
   assert.match(observation.answerText, /could not verify/i);
+});
+
+test('the endpoint suppresses raw v2 text and emits one terminal answer part', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const rawSentinel = 'RAW_V2_TEXT_MUST_NOT_STREAM';
+  const markdown = 'I can explain Dylan’s published projects and public background.';
+  const handler = createDMPostHandler({
+    config: v2Config,
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown,
+      evidenceIds: [],
+      artifacts: [],
+    }, prose: rawSentinel }]),
+  });
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    }),
+  } as never);
+  const observation = await observeDMResponse(response.clone(), request);
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.answerText, markdown);
+  assert.doesNotMatch(body, new RegExp(rawSentinel));
+  assert.equal(body.match(/data-dm-answer/g)?.length, 1);
 });
 
 function isFinalizationInputStart(

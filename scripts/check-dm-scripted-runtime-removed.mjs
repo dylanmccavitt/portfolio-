@@ -47,10 +47,13 @@ export const FORBIDDEN_TOKENS = [
   'PROJECT_FACT_PACKET=',
 ];
 
-export const REMOVAL_CLAIM_ID = 'dm-legacy-scripted-runtime-removed';
-export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM router, planner, request-routed deterministic answer generators, fake trace, canned answer fixtures, and custom NDJSON protocol are absent; model-selected no-evidence conversational, limitation, and follow-up content is restricted to finite enum-selected server-controlled copy materialized only by the validated finalization boundary';
+export const REMOVAL_CLAIM_ID = 'dm-finalization-contract-boundary';
+export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 accepts bounded model-authored markdown and filters evidence and artifact metadata to records returned in the current run before the single terminal answer boundary';
 
-const SUPERSEDED_REMOVAL_CLAIM_ID = 'dm-removed-scripted-runtime';
+const SUPERSEDED_REMOVAL_CLAIM_IDS = new Set([
+  'dm-removed-scripted-runtime',
+  'dm-legacy-scripted-runtime-removed',
+]);
 const CLAIMS_PATH = 'claims.json';
 const CHECKER_PATH = 'scripts/check-dm-scripted-runtime-removed.mjs';
 const FINALIZATION_COPY_IDENTIFIER = 'FINALIZATION_ENUM_COPY';
@@ -213,6 +216,7 @@ function strictObjectForKind(sourceFile, schemaName, kind) {
 
 function schemaBoundaryFailures(sourceFile) {
   const failures = [];
+  const compact = (node) => node?.getText(sourceFile).replace(/\s+/g, '') ?? '';
   const expectations = [
     ['conversational', 'act', 'ConversationalActSchema'],
     ['limitation', 'code', 'LimitationCodeSchema'],
@@ -243,12 +247,38 @@ function schemaBoundaryFailures(sourceFile) {
     : null;
   const limitations = object ? objectProperty(object, 'limitations') : null;
   const followUp = object ? objectProperty(object, 'followUp') : null;
-  const compact = (node) => node?.getText(sourceFile).replace(/\s+/g, '') ?? '';
   if (
     compact(limitations?.initializer) !== 'z.array(LimitationCodeSchema).max(4)'
     || compact(followUp?.initializer) !== 'FollowUpCodeSchema.optional()'
   ) {
     failures.push('src/lib/dm/runtime.ts: limitation and follow-up finalization input must remain enum-only');
+  }
+
+  const v2Answer = variableDeclaration(sourceFile, 'V2FinalAnswerInputSchema');
+  const v2Initializer = v2Answer?.initializer;
+  const v2Object = v2Initializer && ts.isCallExpression(v2Initializer) && v2Initializer.arguments.length === 1
+    && ts.isObjectLiteralExpression(v2Initializer.arguments[0])
+    ? v2Initializer.arguments[0]
+    : null;
+  const expectedV2Fields = new Map([
+    ['markdown', 'z.string().trim().min(1).max(6_000)'],
+    ['evidenceIds', 'z.array(z.string().trim().min(1).max(240)).max(32)'],
+    ['artifacts', 'z.array(ArtifactReferenceSchema).max(MAX_FINALIZATION_ARTIFACTS)'],
+    ['followUp', 'z.string().trim().min(1).max(600).optional()'],
+  ]);
+  const actualV2Names = v2Object?.properties
+    .filter(ts.isPropertyAssignment)
+    .map((property) => propertyNameText(property.name))
+    .sort() ?? [];
+  if (actualV2Names.join(',') !== [...expectedV2Fields.keys()].sort().join(',')) {
+    failures.push('src/lib/dm/runtime.ts: v2 finalization schema must expose only bounded markdown, evidence ids, artifacts, and optional follow-up');
+  } else {
+    for (const [field, expected] of expectedV2Fields) {
+      const actual = v2Object ? compact(objectProperty(v2Object, field)?.initializer) : '';
+      if (actual !== expected.replace(/\s+/g, '')) {
+        failures.push(`src/lib/dm/runtime.ts: v2 finalization field ${field} must remain ${expected}`);
+      }
+    }
   }
   return failures;
 }
@@ -287,6 +317,121 @@ function finalizationCopyFailures(sourceFile) {
     if (counts.get(key) !== expected) {
       failures.push(`src/lib/dm/runtime.ts: expected ${expected} validated finalization safety-copy access for ${key}`);
     }
+  }
+  return failures;
+}
+
+function v2ContractFailures(sourceFile) {
+  const failures = [];
+  const compact = (node) => node?.getText(sourceFile).replace(/\s+/g, '') ?? '';
+  const forbiddenSource = variableDeclaration(sourceFile, 'FORBIDDEN_SOURCE_INSTRUCTION');
+  const expectedForbiddenSource = 'Never claim access to Slack, admin drafts, candidate evidence, private notes, visitor history, credentials, hidden projects, or unpublished records. Those sources and tools do not exist here.';
+  let forbiddenSourceReferences = 0;
+  walk(sourceFile, (node) => {
+    if (ts.isIdentifier(node) && node.text === 'FORBIDDEN_SOURCE_INSTRUCTION' && node !== forbiddenSource?.name) {
+      forbiddenSourceReferences += 1;
+    }
+  });
+  if (
+    !forbiddenSource
+    || !ts.isStringLiteral(forbiddenSource.initializer)
+    || forbiddenSource.initializer.text !== expectedForbiddenSource
+    || forbiddenSourceReferences !== 2
+  ) {
+    failures.push('src/lib/dm/runtime.ts: v1 and v2 must retain the complete forbidden-source instruction');
+  }
+  const configReader = functionDeclaration(sourceFile, 'readDMRuntimeConfig');
+  const configText = compact(configReader);
+  for (const required of [
+    "constconfiguredContract=env.DM_CONTRACT?.trim()",
+    "constcontract:DMContractVersion=configuredContract==='v2'?'v2':'v1'",
+    "configuredContract!=='v1'&&configuredContract!=='v2'",
+    'return{provider,model:modelasstring,contract}',
+  ]) {
+    if (!configText.includes(required)) {
+      failures.push('src/lib/dm/runtime.ts: DM_CONTRACT must fail closed and select only v1 or v2 with v1 as the default');
+      break;
+    }
+  }
+
+  const chatResponse = functionDeclaration(sourceFile, 'createDMChatResponse');
+  const chatText = compact(chatResponse);
+  if (
+    !chatText.includes("constcontract=config.contract??'v1'")
+    || !chatText.includes('buildDMSystemInstructions(siteBrief,contract)')
+  ) {
+    failures.push('src/lib/dm/runtime.ts: the selected contract must control both finalization and system instructions');
+  }
+
+  const finalizerSchemas = [];
+  walk(chatResponse ?? sourceFile, (node) => {
+    if (!ts.isPropertyAssignment(node) || propertyNameText(node.name) !== 'finalizeAnswer') return;
+    const call = node.initializer;
+    if (!ts.isCallExpression(call) || !callIsNamed(call, 'tool')) return;
+    const options = call.arguments[0];
+    if (!ts.isObjectLiteralExpression(options)) return;
+    const inputSchema = objectProperty(options, 'inputSchema');
+    finalizerSchemas.push(compact(inputSchema?.initializer));
+  });
+  if (
+    finalizerSchemas.length !== 2
+    || finalizerSchemas.filter((schema) => schema === 'FinalAnswerInputSchema').length !== 1
+    || finalizerSchemas.filter((schema) => schema === 'V2FinalAnswerInputSchema').length !== 1
+  ) {
+    failures.push('src/lib/dm/runtime.ts: v1 and v2 must bind exactly one distinct finalizeAnswer schema each');
+  }
+
+  const resolver = functionDeclaration(sourceFile, 'resolveV2FinalAnswer');
+  const resolverText = compact(resolver);
+  for (const required of [
+    'newSet(input.evidenceIds)',
+    'filter((id)=>run.evidenceLedger.has(id))',
+    'deduplicateArtifactReferences(input.artifacts)',
+    'filter((reference)=>artifactAvailable(reference,artifacts))',
+    'evidence:run.evidenceLedger.resolve(evidenceIds)',
+    'artifacts:artifactReferences.flatMap((reference)=>resolveArtifact(reference,artifacts))',
+  ]) {
+    if (!resolverText.includes(required)) {
+      failures.push('src/lib/dm/runtime.ts: v2 must deduplicate, filter, and resolve only current-run evidence and artifacts');
+      break;
+    }
+  }
+  for (const forbidden of [
+    'FINALIZATION_ENUM_COPY',
+    'limitationOutcomeErrors',
+    'evidenceQuoteErrors',
+    'compositionCoverageErrors',
+    'stableProjectReadErrors',
+    'requestedArtifactErrors',
+    'artifactCardinalityErrors',
+  ]) {
+    if (resolverText.includes(forbidden)) {
+      failures.push(`src/lib/dm/runtime.ts: v2 must not run v1 finalization policy ${forbidden}`);
+    }
+  }
+
+  const resolveCalls = callExpressionsNamed(sourceFile, 'resolveV2FinalAnswer');
+  if (
+    resolveCalls.length !== 1
+    || resolveCalls[0].arguments.map((argument) => argument.getText(sourceFile)).join(',') !== 'input,publicRun,artifacts'
+    || !executeBelongsToCall(resolveCalls[0], 'tool', 'finalizeAnswer')
+  ) {
+    failures.push('src/lib/dm/runtime.ts: v2 finalization must receive the untouched tool input and current-run ledgers exactly once');
+  }
+
+  const repairProperty = (() => {
+    let match = null;
+    walk(chatResponse ?? sourceFile, (node) => {
+      if (!match && ts.isPropertyAssignment(node) && propertyNameText(node.name) === 'experimental_repairToolCall') match = node;
+    });
+    return match;
+  })();
+  const repairText = compact(repairProperty);
+  if (
+    repairText.indexOf("if(contract==='v2')") < 0
+    || repairText.indexOf("if(contract==='v2')") > repairText.indexOf('finalizationAttempts+=1')
+  ) {
+    failures.push('src/lib/dm/runtime.ts: v2 schema failures must stop without consuming the v1 repair turn');
   }
   return failures;
 }
@@ -357,6 +502,7 @@ export function finalizationBoundaryFailures(runtime) {
   }
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...finalizationCopyFailures(sourceFile));
+  failures.push(...v2ContractFailures(sourceFile));
   failures.push(...finalizationCallSiteFailures(sourceFile));
   const validate = functionDeclaration(sourceFile, 'validateFinalAnswer');
   if (!validate) failures.push('src/lib/dm/runtime.ts: validateFinalAnswer boundary is missing');
@@ -372,8 +518,10 @@ async function removalClaimFailures(projectRoot) {
   else if (claim.statement !== REMOVAL_CLAIM_STATEMENT) {
     failures.push(`${CLAIMS_PATH}: ${REMOVAL_CLAIM_ID} must describe the finalization safety-copy exception exactly`);
   }
-  if (active.some((item) => item.id === SUPERSEDED_REMOVAL_CLAIM_ID)) {
-    failures.push(`${CLAIMS_PATH}: superseded ${SUPERSEDED_REMOVAL_CLAIM_ID} claim must not remain active`);
+  for (const id of SUPERSEDED_REMOVAL_CLAIM_IDS) {
+    if (active.some((item) => item.id === id)) {
+      failures.push(`${CLAIMS_PATH}: superseded ${id} claim must not remain active`);
+    }
   }
   return failures;
 }

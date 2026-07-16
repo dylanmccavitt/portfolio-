@@ -17,9 +17,19 @@ const READ_NDJSON_TOKEN = 'readNdjson';
 const NDJSON_MEDIA_TYPE = 'application/x-ndjson';
 
 const CLEAN_RUNTIME_FIXTURE = `
+function readDMRuntimeConfig(env) {
+  const configuredContract = env.DM_CONTRACT?.trim();
+  const contract: DMContractVersion = configuredContract === 'v2' ? 'v2' : 'v1';
+  if (configuredContract && configuredContract !== 'v1' && configuredContract !== 'v2') throw new Error('DM_CONTRACT');
+  const provider = 'openai';
+  const model = 'test';
+  return { provider, model: model as string, contract };
+}
 const ConversationalActSchema = {};
 const LimitationCodeSchema = {};
 const FollowUpCodeSchema = {};
+const ArtifactReferenceSchema = {};
+const MAX_FINALIZATION_ARTIFACTS = 8;
 const FINALIZATION_ENUM_COPY = {
   conversational: {},
   limitation: {},
@@ -36,29 +46,72 @@ const FinalAnswerInputSchema = z.strictObject({
   limitations: z.array(LimitationCodeSchema).max(4),
   followUp: FollowUpCodeSchema.optional(),
 });
-function createDMChatResponse(request) {
+const V2FinalAnswerInputSchema = z.strictObject({
+  markdown: z.string().trim().min(1).max(6_000),
+  evidenceIds: z.array(z.string().trim().min(1).max(240)).max(32),
+  artifacts: z.array(ArtifactReferenceSchema).max(MAX_FINALIZATION_ARTIFACTS),
+  followUp: z.string().trim().min(1).max(600).optional(),
+});
+const FORBIDDEN_SOURCE_INSTRUCTION = 'Never claim access to Slack, admin drafts, candidate evidence, private notes, visitor history, credentials, hidden projects, or unpublished records. Those sources and tools do not exist here.';
+const DM_BASE_SYSTEM_INSTRUCTIONS = [FORBIDDEN_SOURCE_INSTRUCTION];
+const DM_V2_SYSTEM_INSTRUCTIONS = [FORBIDDEN_SOURCE_INSTRUCTION];
+function createDMChatResponse(request, config = {}) {
+  const contract = config.contract ?? 'v1';
   const publicRun = {};
   const artifacts = {};
+  const siteBrief = {};
   let finalizationResult = null;
   let finalizationAttempts = 0;
-  const agentTools = {
-    finalizeAnswer: tool({
-      execute: (input) => {
-        const validation = validateFinalAnswer(input, publicRun, artifacts);
-        finalizationResult = limitedResult(true);
-        return validation;
-      },
-    }),
-  };
+  let finalized = false;
+  const agentTools = contract === 'v2'
+    ? {
+        finalizeAnswer: tool({
+          inputSchema: V2FinalAnswerInputSchema,
+          execute: (input) => {
+            finalizationResult = resolveV2FinalAnswer(input, publicRun, artifacts);
+            return finalizationResult;
+          },
+        }),
+      }
+    : {
+        finalizeAnswer: tool({
+          inputSchema: FinalAnswerInputSchema,
+          execute: (input) => {
+            const validation = validateFinalAnswer(input, publicRun, artifacts);
+            finalizationResult = limitedResult(true);
+            return validation;
+          },
+        }),
+      };
   const stream = createUIMessageStream({
     async execute({ writer }) {
       finalizationResult ??= limitedResult(finalizationAttempts > 0);
       writer.write({ type: 'data-dm-answer', data: finalizationResult });
     },
   });
-  new ToolLoopAgent();
+  new ToolLoopAgent({
+    instructions: buildDMSystemInstructions(siteBrief, contract),
+    experimental_repairToolCall: async () => {
+      if (contract === 'v2') {
+        finalized = true;
+        return null;
+      }
+      finalizationAttempts += 1;
+      return null;
+    },
+  });
   createPublicAgentTools();
-  return { agentTools, request, stream };
+  return { agentTools, request, stream, finalized };
+}
+function resolveV2FinalAnswer(input, run, artifacts) {
+  const evidenceIds = [...new Set(input.evidenceIds)].filter((id) => run.evidenceLedger.has(id));
+  const artifactReferences = deduplicateArtifactReferences(input.artifacts)
+    .filter((reference) => artifactAvailable(reference, artifacts));
+  return {
+    segments: [{ text: input.markdown, evidenceIds, evidence: run.evidenceLedger.resolve(evidenceIds) }],
+    artifacts: artifactReferences.flatMap((reference) => resolveArtifact(reference, artifacts)),
+    limitations: [],
+  };
 }
 function validateFinalAnswer(input, run, artifacts) {
   const segments = input.segments.map((segment) => {
@@ -72,6 +125,9 @@ function validateFinalAnswer(input, run, artifacts) {
 }
 function limitedResult(repairAttempted) {
   return { status: 'limited', repairAttempted };
+}
+function buildDMSystemInstructions(siteBrief, contract) {
+  return [contract, siteBrief].join('');
 }
 `;
 
@@ -183,12 +239,68 @@ test('requires the truthful replacement claim and rejects the superseded identit
     claims: [{
       id: 'dm-removed-scripted-runtime',
       statement: 'the scripted DM router, planner, deterministic answer paths, fake trace, canned answer fixtures, and custom NDJSON protocol are absent',
+    }, {
+      id: 'dm-legacy-scripted-runtime-removed',
+      statement: 'superseded v1-only finalization claim',
     }],
   })}\n`);
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
   assert.ok(result.failures.includes(`claims.json: missing ${REMOVAL_CLAIM_ID} claim`));
   assert.ok(result.failures.includes('claims.json: superseded dm-removed-scripted-runtime claim must not remain active'));
+  assert.ok(result.failures.includes('claims.json: superseded dm-legacy-scripted-runtime-removed claim must not remain active'));
+});
+
+test('requires the v1-default fail-closed contract selector', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "config.contract ?? 'v1'",
+    "config.contract ?? 'v2'",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: the selected contract must control both finalization and system instructions',
+  ));
+});
+
+test('rejects an unbounded v2 prose schema', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'markdown: z.string().trim().min(1).max(6_000)',
+    'markdown: z.string().trim().min(1).max(60_000)',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 finalization field markdown must remain z.string().trim().min(1).max(6_000)',
+  ));
+});
+
+test('rejects v2 metadata that bypasses the current-run ledgers', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'filter((id) => run.evidenceLedger.has(id))',
+    'filter(() => true)',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 must deduplicate, filter, and resolve only current-run evidence and artifacts',
+  ));
+});
+
+test('requires the full forbidden-source list in both contracts', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'Never claim access to Slack,',
+    'Never claim access to Teams,',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v1 and v2 must retain the complete forbidden-source instruction',
+  ));
 });
 
 test('rejects model-authored free text in the no-evidence finalization schema', async (t) => {
@@ -207,8 +319,8 @@ test('rejects model-authored free text in the no-evidence finalization schema', 
 test('rejects request-routed access to server-controlled finalization copy', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    'function createDMChatResponse(request) {',
-    'function createDMChatResponse(request) {\n  const routed = FINALIZATION_ENUM_COPY.conversational[request.act];',
+    'function createDMChatResponse(request, config = {}) {',
+    'function createDMChatResponse(request, config = {}) {\n  const routed = FINALIZATION_ENUM_COPY.conversational[request.act];',
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
