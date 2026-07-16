@@ -335,6 +335,7 @@ export function createDMChatResponse(
   const artifacts = emptyArtifacts(requestedArtifactRequirements(request));
   const publicToolGate = createPublicToolGate();
   let finalizationAttempts = 0;
+  let v2FinalizationValidationFailed = false;
   let finalizationResult: Exclude<DMFinalizationResult, { status: 'rejected' }> | null = null;
   let finalized = false;
   let inputTokens = 0;
@@ -422,6 +423,7 @@ export function createDMChatResponse(
           experimental_repairToolCall: async ({ toolCall }) => {
             if (toolCall.toolName !== 'finalizeAnswer' || finalizationResult) return null;
             if (contract === 'v2') {
+              v2FinalizationValidationFailed = true;
               finalized = true;
               return null;
             }
@@ -494,7 +496,10 @@ export function createDMChatResponse(
         }
 
         finalizationResult ??= limitedResult(finalizationAttempts > 0);
-        if (finalizationResult.status === 'limited' && finalizationAttempts > 0) {
+        if (
+          finalizationResult.status === 'limited'
+          && (finalizationAttempts > 0 || v2FinalizationValidationFailed)
+        ) {
           metrics.setErrorCategory('finalization_validation');
         }
         const evidence = publicRun.evidenceLedger.snapshot();

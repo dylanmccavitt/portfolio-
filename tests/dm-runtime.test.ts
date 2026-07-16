@@ -158,6 +158,7 @@ test('v2 bounds model-authored prose without a repair turn', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');
   const prompts: LanguageModelV4CallOptions[] = [];
+  const metricsLines: string[] = [];
   const sentinel = 'OVERLONG_V2_MARKDOWN_SENTINEL';
   const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
     db: source.db,
@@ -167,12 +168,15 @@ test('v2 bounds model-authored prose without a repair turn', async () => {
       evidenceIds: [],
       artifacts: [],
     } }], prompts),
+    metricsLogger: (line) => metricsLines.push(line),
   }), request);
 
   assert.equal(prompts.length, 1);
   assert.equal(observation.result?.status, 'limited');
   assert.equal(observation.result?.repairAttempted, false);
   assert.doesNotMatch(observation.answerText, new RegExp(sentinel));
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
+  assert.doesNotMatch(metricsLines.join('\n'), new RegExp(sentinel));
 });
 
 test('site brief failure stops before model work and exposes only a sanitized stream error', async () => {
