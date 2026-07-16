@@ -6,8 +6,10 @@
 import { DefaultChatTransport, type UIMessageChunk } from 'ai';
 import {
   AGENT_NAME,
+  completedAssistantHistoryText,
   DM_ENDPOINT,
   fitCheckValidationMessage,
+  matchesStreamedV2Finalization,
   sanitizeJobDescriptionForFitCheck,
   validateFinalizationResult,
 } from '@/lib/dm/client';
@@ -15,6 +17,7 @@ import type {
   DMAnswerArtifact,
   DMAnswerSegment,
   DMChatContext,
+  DMFinalizationResult,
   DMUIData,
   DMUIMessage,
   DMValidatedAnswer,
@@ -62,9 +65,13 @@ class Turn {
   private readonly usedSummaryCount: HTMLElement;
   private readonly usedListEl: HTMLUListElement;
   private canvasEl: HTMLElement | null = null;
+  private streamedProseEl: HTMLParagraphElement | null = null;
   private answerShown = false;
   private toolCount = 0;
   private answerRendered = false;
+  private completed = false;
+  private errorShown = false;
+  private streamed = false;
   text = '';
 
   constructor(question: string) {
@@ -132,6 +139,33 @@ class Turn {
     for (const artifact of answer.artifacts) this.renderArtifact(artifact);
     const evidence = uniqueEvidence(answer.segments);
     if (evidence.length > 0) this.renderEvidence(evidence);
+    this.completed = true;
+  }
+
+  appendStreamedProse(delta: string): void {
+    if (!delta) return;
+    this.streamed = true;
+    this.revealAnswer();
+    this.streamedProseEl ??= make('p', { class: 'dm-p' });
+    if (!this.streamedProseEl.isConnected) this.proseEl.append(this.streamedProseEl);
+    this.text += delta;
+    this.streamedProseEl.textContent = this.text;
+  }
+
+  attachStreamedAnswer(result: Exclude<DMFinalizationResult, { status: 'rejected' }>): boolean {
+    const { answer } = result;
+    if (!this.streamed || this.answerRendered || !matchesStreamedV2Finalization(this.text, result)) return false;
+    this.answerRendered = true;
+    if (answer.followUp) {
+      this.proseEl.append(make('div', { class: 'dm-next' }, [
+        make('p', { class: 'dm-next-label', text: answer.followUp }),
+      ]));
+    }
+    for (const artifact of answer.artifacts) this.renderArtifact(artifact);
+    const evidence = uniqueEvidence(answer.segments);
+    if (evidence.length > 0) this.renderEvidence(evidence);
+    this.completed = true;
+    return true;
   }
 
   private renderArtifact(artifact: DMAnswerArtifact): void {
@@ -254,6 +288,8 @@ class Turn {
   }
 
   showError(message: string): void {
+    if (this.errorShown) return;
+    this.errorShown = true;
     this.revealAnswer();
     this.proseEl.append(make('div', { class: 'dm-error' }, [
       make('p', { text: message }),
@@ -261,9 +297,17 @@ class Turn {
     ]));
   }
 
-  finishEmptyIfNeeded(): void {
-    if (this.answerShown) return;
+  finishIfNeeded(): void {
+    if (this.completed) return;
     this.showError(`${AGENT_NAME} didn't return a verified answer. Please try rephrasing the question.`);
+  }
+
+  historyText(): string | null {
+    return completedAssistantHistoryText(this.text, this.completed);
+  }
+
+  hasStreamedProse(): boolean {
+    return this.streamed;
   }
 }
 
@@ -306,16 +350,28 @@ function handleChunk(
     turn.showError(chunk.errorText);
     return;
   }
+  if (chunk.type === 'text-delta') {
+    turn.appendStreamedProse(chunk.delta);
+    return;
+  }
   if (chunk.type === 'data-dm-answer') {
     const result = validateFinalizationResult(chunk.data);
-    if (result && result.status !== 'rejected') turn.renderAnswer(result.answer);
+    if (result && result.status !== 'rejected') {
+      if (turn.hasStreamedProse()) {
+        if (!turn.attachStreamedAnswer(result)) {
+          turn.showError('DM could not safely finish this answer. Please try again.');
+        }
+      } else {
+        turn.renderAnswer(result.answer);
+      }
+    }
     return;
   }
   if (chunk.type === 'tool-output-available') {
     const name = toolCalls.get(chunk.toolCallId);
     if (name !== 'finalizeAnswer') return;
     const result = validateFinalizationResult(chunk.output);
-    if (result && result.status !== 'rejected') {
+    if (result && result.status !== 'rejected' && !turn.hasStreamedProse()) {
       // The dedicated data part follows and is authoritative; rendering here
       // keeps the client resilient if an intermediary strips custom data parts.
       turn.renderAnswer(result.answer);
@@ -340,6 +396,7 @@ function initRoot(root: HTMLElement): void {
   const history: DMUIMessage[] = [];
   let busy = false;
   let controller: AbortController | null = null;
+  let generation = 0;
 
   const trigger = root.querySelector<HTMLElement>('[data-dm-open]');
   const dialog = root.querySelector<HTMLElement>('[data-dm-dialog]');
@@ -356,6 +413,7 @@ function initRoot(root: HTMLElement): void {
     if (!message || busy) return;
     const displayMessage = options.displayMessage?.trim() || message;
     const requestContext = mergeContext(context, options.transientContext);
+    const requestGeneration = generation;
     setBusy(true);
     root.classList.add('dm-started');
     history.push(uiTextMessage('user', message));
@@ -366,15 +424,18 @@ function initRoot(root: HTMLElement): void {
     controller = new AbortController();
     try {
       await streamInto(turn, history.slice(-13), requestContext, controller.signal);
-      turn.finishEmptyIfNeeded();
+      turn.finishIfNeeded();
     } catch (error) {
       if ((error as Error).name === 'AbortError') return;
       console.error('[dm] UIMessage stream failed', { name: error instanceof Error ? error.name : typeof error });
       turn.showError(`${AGENT_NAME} is unavailable right now. Please try again in a moment.`);
     } finally {
-      if (turn.text) history.push(uiTextMessage('assistant', turn.text));
-      setBusy(false);
-      controller = null;
+      if (requestGeneration === generation) {
+        const assistantText = turn.historyText();
+        if (assistantText) history.push(uiTextMessage('assistant', assistantText));
+        setBusy(false);
+        controller = null;
+      }
     }
   };
 
@@ -469,6 +530,7 @@ function initRoot(root: HTMLElement): void {
   }
 
   root.querySelector<HTMLElement>('[data-dm-reset]')?.addEventListener('click', () => {
+    generation += 1;
     controller?.abort();
     controller = null;
     setBusy(false);

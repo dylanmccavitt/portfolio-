@@ -48,7 +48,7 @@ export const FORBIDDEN_TOKENS = [
 ];
 
 export const REMOVAL_CLAIM_ID = 'dm-finalization-contract-boundary';
-export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 accepts bounded model-authored markdown and filters evidence and artifact metadata to records returned in the current run before the single terminal answer boundary';
+export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 streams Unicode-safe bounded canonical prose and attaches only an exact matching finalizer plus current-run evidence and artifact metadata at the terminal boundary';
 
 const SUPERSEDED_REMOVAL_CLAIM_IDS = new Set([
   'dm-removed-scripted-runtime',
@@ -261,7 +261,7 @@ function schemaBoundaryFailures(sourceFile) {
     ? v2Initializer.arguments[0]
     : null;
   const expectedV2Fields = new Map([
-    ['markdown', 'z.string().trim().min(1).max(6_000)'],
+    ['markdown', 'z.string().min(1).max(6_000).refine((value) => value.trim().length > 0)'],
     ['evidenceIds', 'z.array(z.string().trim().min(1).max(240)).max(32)'],
     ['artifacts', 'z.array(ArtifactReferenceSchema).max(MAX_FINALIZATION_ARTIFACTS)'],
     ['followUp', 'z.string().trim().min(1).max(600).optional()'],
@@ -362,6 +362,17 @@ function v2ContractFailures(sourceFile) {
   ) {
     failures.push('src/lib/dm/runtime.ts: the selected contract must control both finalization and system instructions');
   }
+  for (const required of [
+    'constv2Prose=createBoundedV2Prose()',
+    "if(contract==='v2'&&isV2TextChunk(chunk))",
+    'terminalMarkdown!==v2Prose.text',
+    "if(contract==='v1')metrics.visibleOutput()",
+  ]) {
+    if (!chatText.includes(required)) {
+      failures.push('src/lib/dm/runtime.ts: v2 must stream only bounded canonical prose and require an exact terminal integrity echo');
+      break;
+    }
+  }
 
   const finalizerSchemas = [];
   walk(chatResponse ?? sourceFile, (node) => {
@@ -407,6 +418,18 @@ function v2ContractFailures(sourceFile) {
   ]) {
     if (resolverText.includes(forbidden)) {
       failures.push(`src/lib/dm/runtime.ts: v2 must not run v1 finalization policy ${forbidden}`);
+    }
+  }
+
+  const v2Instructions = compact(variableDeclaration(sourceFile, 'DM_V2_SYSTEM_INSTRUCTIONS')?.initializer);
+  for (const required of [
+    'standardresponsetextstream',
+    'exactlyequalsthatstreamedtext',
+    'integrityecho,notasecondanswer',
+  ]) {
+    if (!v2Instructions.includes(required)) {
+      failures.push('src/lib/dm/runtime.ts: v2 instructions must bind standard streamed prose to the exact finalizer integrity echo');
+      break;
     }
   }
 

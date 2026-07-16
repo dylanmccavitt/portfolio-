@@ -120,6 +120,24 @@ test('benchmark classification keeps eval failures latency-valid when stream com
   assert.equal(result.evalPassed, false);
 });
 
+test('v2 benchmark timing starts at the first nonempty forwarded text delta', () => {
+  const events: TimedDMEvent[] = [
+    { elapsedMs: 1, event: { type: 'start' } },
+    { elapsedMs: 3, event: { type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'getProject' } },
+    { elapsedMs: 5, event: { type: 'text-start', id: 'text-1' } },
+    { elapsedMs: 6, event: { type: 'text-delta', id: 'text-1', delta: '' } },
+    { elapsedMs: 9, event: { type: 'text-delta', id: 'text-1', delta: 'Visible prose.' } },
+    { elapsedMs: 12, event: { type: 'text-end', id: 'text-1' } },
+    { elapsedMs: 14, event: answerChunk() },
+    { elapsedMs: 15, event: { type: 'finish' } },
+  ];
+  const result = classifyBenchmarkRun({ events, completionMs: 16, evalFailure: null });
+
+  assert.equal(result.firstTokenMs, 9);
+  assert.equal(result.failureClass, 'OK');
+  assert.equal(result.toolCount, 1);
+});
+
 test('benchmark classification requires the model-backed standard stream', () => {
   const events: TimedDMEvent[] = [
     { elapsedMs: 1, event: { type: 'start' } },

@@ -263,7 +263,7 @@ const FinalAnswerInputSchema = z.strictObject({
 });
 
 const V2FinalAnswerInputSchema = z.strictObject({
-  markdown: z.string().trim().min(1).max(6_000),
+  markdown: z.string().min(1).max(6_000).refine((value) => value.trim().length > 0),
   evidenceIds: z.array(z.string().trim().min(1).max(240)).max(32),
   artifacts: z.array(ArtifactReferenceSchema).max(MAX_FINALIZATION_ARTIFACTS),
   followUp: z.string().trim().min(1).max(600).optional(),
@@ -340,6 +340,7 @@ export function createDMChatResponse(
   let finalized = false;
   let inputTokens = 0;
   let outputTokens = 0;
+  const v2Prose = createBoundedV2Prose();
 
   const publicTools = createRuntimePublicTools(publicRun, artifacts, metrics, publicToolGate);
   const agentTools = contract === 'v2'
@@ -465,6 +466,11 @@ export function createDMChatResponse(
         const finalizationToolCalls = new Set<string>();
         const mappedFinalizationToolCalls = new Set<string>();
         for await (const chunk of uiStream) {
+          if (contract === 'v2' && isV2TextChunk(chunk)) {
+            const forwarded = v2Prose.forward(chunk, (forwardedChunk) => writer.write(forwardedChunk));
+            if (forwarded) metrics.visibleOutput();
+            continue;
+          }
           if (!isAllowedAgentStreamChunk(chunk)) continue;
           rememberFinalizationToolCall(chunk, finalizationToolCalls);
           if (isFinalizationInputLifecycleChunk(chunk, finalizationToolCalls)) {
@@ -478,24 +484,58 @@ export function createDMChatResponse(
             }
             continue;
           }
+          if (contract === 'v2' && isFinalizationOutputLifecycleChunk(chunk, finalizationToolCalls)) {
+            continue;
+          }
           writer.write(chunk as UIMessageChunk);
-          if (isVisitorVisibleAgentStreamChunk(chunk, finalizationToolCalls)) metrics.visibleOutput();
+          if (contract === 'v1' && isVisitorVisibleAgentStreamChunk(chunk, finalizationToolCalls)) {
+            metrics.visibleOutput();
+          }
           if (chunk.type === 'error') {
             streamFailed = true;
           }
         }
 
         if (abort.signal.aborted) {
+          if (contract === 'v2') {
+            v2Prose.close((chunk) => writer.write(chunk));
+            if (abort.timedOut()) writer.write({ type: 'error', errorText: 'DM took too long to answer. Please try again.' });
+            writer.write({ type: 'finish' });
+          }
           metrics.setErrorCategory(abort.timedOut() ? 'timeout' : 'aborted');
           metrics.finish(abort.timedOut() ? 'timeout' : 'aborted');
           return;
         }
         if (streamFailed) {
+          if (contract === 'v2') {
+            v2Prose.close((chunk) => writer.write(chunk));
+            writer.write({ type: 'finish' });
+          }
           metrics.error('unknown');
           return;
         }
 
         finalizationResult ??= limitedResult(finalizationAttempts > 0);
+        if (contract === 'v2') {
+          v2Prose.close((chunk) => writer.write(chunk));
+          const terminalMarkdown = finalizationResult.status === 'accepted'
+            && finalizationResult.answer.segments.length === 1
+            ? finalizationResult.answer.segments[0]?.text
+            : null;
+          if (v2Prose.failed || terminalMarkdown !== v2Prose.text) {
+            const evidence = publicRun.evidenceLedger.snapshot();
+            metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, true);
+            metrics.setUsage(inputTokens, outputTokens);
+            metrics.setErrorCategory('finalization_validation');
+            writer.write({
+              type: 'error',
+              errorText: 'DM could not safely finish this answer. Please try again.',
+            });
+            writer.write({ type: 'finish' });
+            metrics.error('finalization_validation');
+            return;
+          }
+        }
         if (
           finalizationResult.status === 'limited'
           && (finalizationAttempts > 0 || v2FinalizationValidationFailed)
@@ -506,19 +546,23 @@ export function createDMChatResponse(
         metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, finalizationResult.status === 'limited');
         metrics.setUsage(inputTokens, outputTokens);
         writer.write({ type: 'data-dm-answer', data: finalizationResult });
-        metrics.visibleOutput();
+        if (contract === 'v1') metrics.visibleOutput();
         writer.write({ type: 'finish' });
         metrics.finish('completed');
       } catch (error) {
         if (abort.signal.aborted) {
+          if (contract === 'v2') v2Prose.close((chunk) => writer.write(chunk));
           metrics.setErrorCategory(abort.timedOut() ? 'timeout' : 'aborted');
           metrics.finish(abort.timedOut() ? 'timeout' : 'aborted');
           if (abort.timedOut()) writer.write({ type: 'error', errorText: 'DM took too long to answer. Please try again.' });
+          if (contract === 'v2') writer.write({ type: 'finish' });
           return;
         }
         console.error('[dm] tool-loop failure', safeLogError(error, 'unknown'));
         metrics.error('unknown');
+        if (contract === 'v2') v2Prose.close((chunk) => writer.write(chunk));
         writer.write({ type: 'error', errorText: safeErrorMessage(error) });
+        if (contract === 'v2') writer.write({ type: 'finish' });
       } finally {
         abort.dispose();
       }
@@ -533,6 +577,128 @@ export function createDMChatResponse(
       'X-DM-Trace-Id': deps.traceId ?? 'unknown',
     },
   });
+}
+
+const MAX_V2_PROSE_CODE_UNITS = 6_000;
+
+type V2TextChunk = Extract<UIMessageChunk, {
+  type: 'text-start' | 'text-delta' | 'text-end';
+}>;
+
+interface BoundedV2Prose {
+  readonly text: string;
+  readonly failed: boolean;
+  forward(chunk: V2TextChunk, write: (chunk: UIMessageChunk) => void): boolean;
+  close(write: (chunk: UIMessageChunk) => void): void;
+}
+
+function isV2TextChunk(chunk: UIMessageChunk): chunk is V2TextChunk {
+  return chunk.type === 'text-start' || chunk.type === 'text-delta' || chunk.type === 'text-end';
+}
+
+function createBoundedV2Prose(): BoundedV2Prose {
+  const sourceOpen = new Set<string>();
+  const forwardedOpen = new Set<string>();
+  const pendingHighSurrogate = new Map<string, string>();
+  let text = '';
+  let failed = false;
+
+  const fail = (): void => {
+    failed = true;
+  };
+
+  const forward = (chunk: V2TextChunk, write: (chunk: UIMessageChunk) => void): boolean => {
+    if (chunk.type === 'text-start') {
+      if (sourceOpen.has(chunk.id)) fail();
+      else sourceOpen.add(chunk.id);
+      return false;
+    }
+
+    if (!sourceOpen.has(chunk.id)) {
+      fail();
+      return false;
+    }
+
+    if (chunk.type === 'text-end') {
+      if (pendingHighSurrogate.has(chunk.id)) fail();
+      pendingHighSurrogate.delete(chunk.id);
+      sourceOpen.delete(chunk.id);
+      if (forwardedOpen.delete(chunk.id)) {
+        write({ type: 'text-end', id: chunk.id });
+      }
+      return false;
+    }
+
+    if (failed || chunk.delta.length === 0) return false;
+    const combined = `${pendingHighSurrogate.get(chunk.id) ?? ''}${chunk.delta}`;
+    pendingHighSurrogate.delete(chunk.id);
+    const bounded = takeBoundedCompleteCodePoints(combined, MAX_V2_PROSE_CODE_UNITS - text.length);
+    if (bounded.pendingHighSurrogate) pendingHighSurrogate.set(chunk.id, bounded.pendingHighSurrogate);
+    if (bounded.invalid || bounded.overflow) fail();
+    if (!bounded.text) return false;
+    if (!forwardedOpen.has(chunk.id)) {
+      forwardedOpen.add(chunk.id);
+      write({ type: 'text-start', id: chunk.id });
+    }
+    text += bounded.text;
+    write({ type: 'text-delta', id: chunk.id, delta: bounded.text });
+    return true;
+  };
+
+  return {
+    get text() {
+      return text;
+    },
+    get failed() {
+      return failed;
+    },
+    forward,
+    close(write) {
+      if (sourceOpen.size > 0 || pendingHighSurrogate.size > 0) fail();
+      for (const id of forwardedOpen) write({ type: 'text-end', id });
+      sourceOpen.clear();
+      forwardedOpen.clear();
+      pendingHighSurrogate.clear();
+    },
+  };
+}
+
+function takeBoundedCompleteCodePoints(
+  input: string,
+  remainingCodeUnits: number,
+): { text: string; pendingHighSurrogate: string; overflow: boolean; invalid: boolean } {
+  let accepted = '';
+  let pendingHighSurrogate = '';
+  let overflow = false;
+  let invalid = false;
+  for (let index = 0; index < input.length;) {
+    const first = input.charCodeAt(index);
+    let point = input[index] as string;
+    let width = 1;
+    if (first >= 0xD800 && first <= 0xDBFF) {
+      if (index + 1 >= input.length) {
+        pendingHighSurrogate = point;
+        break;
+      }
+      const second = input.charCodeAt(index + 1);
+      if (second < 0xDC00 || second > 0xDFFF) {
+        invalid = true;
+        break;
+      }
+      point += input[index + 1];
+      width = 2;
+    } else if (first >= 0xDC00 && first <= 0xDFFF) {
+      invalid = true;
+      break;
+    }
+    if (accepted.length + width > remainingCodeUnits) {
+      overflow = true;
+      break;
+    }
+    accepted += point;
+    index += width;
+  }
+  return { text: accepted, pendingHighSurrogate, overflow, invalid };
 }
 
 function isAllowedAgentStreamChunk(chunk: UIMessageChunk): boolean {
@@ -581,6 +747,19 @@ function isFinalizationInputLifecycleChunk(
     default:
       return false;
   }
+}
+
+function isFinalizationOutputLifecycleChunk(
+  chunk: UIMessageChunk,
+  finalizationToolCalls: ReadonlySet<string>,
+): chunk is Extract<UIMessageChunk, {
+  type: 'tool-output-available' | 'tool-output-error' | 'tool-output-denied';
+}> {
+  return (
+    chunk.type === 'tool-output-available'
+    || chunk.type === 'tool-output-error'
+    || chunk.type === 'tool-output-denied'
+  ) && finalizationToolCalls.has(chunk.toolCallId);
 }
 
 function isVisitorVisibleAgentStreamChunk(
@@ -1684,9 +1863,9 @@ const DM_V2_SYSTEM_INSTRUCTIONS = [
   'If a requested public source is partial, empty, or unavailable, preserve the supported answer in your own words and state the bounded limitation without exposing internal error details.',
   'Unknown personal details require searchProfile and an honest explanation when its public result is empty.',
   FORBIDDEN_SOURCE_INSTRUCTION,
-  'Call finalizeAnswer exactly once with the complete visitor-facing markdown, optional model-authored follow-up, answer-level evidenceIds, and artifact references.',
+  'Emit the complete visitor-facing markdown through the standard response text stream, then call finalizeAnswer exactly once with markdown that exactly equals that streamed text plus any optional model-authored follow-up, answer-level evidenceIds, and artifact references.',
   'Every evidence id and artifact reference must come from a typed public tool in this same run. The server removes unknown or duplicate metadata while preserving otherwise valid markdown.',
-  'Do not emit visitor-facing prose outside finalizeAnswer.',
+  'Do not emit any additional visitor-facing prose before or after the streamed markdown. finalizeAnswer.markdown is an integrity echo, not a second answer.',
 ];
 
 export function buildDMSystemInstructions(

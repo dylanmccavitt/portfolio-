@@ -13,7 +13,13 @@ import {
 import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
 import { createDMEvalRuntimeSourceDeps } from '@/lib/dm/eval-runtime';
 import { observeDMResponse } from '@/lib/dm/response-observer';
-import { classifyDMStreamError, createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
+import {
+  buildDMSystemInstructions,
+  classifyDMStreamError,
+  createDMChatResponse,
+  readDMBudgetConfig,
+  readDMRuntimeConfig,
+} from '@/lib/dm/runtime';
 import type { DMChatRequest, DMFinalizationResult, DMUIData } from '@/lib/dm/contract';
 import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { createDMPostHandler } from '@/pages/api/dm/chat';
@@ -73,6 +79,28 @@ test('runtime budgets remain bounded', () => {
   assert.throws(() => readDMBudgetConfig({ DM_REQUEST_DEADLINE_MS: '500000' }), /safeguards/);
 });
 
+test('v2 instructions require standard streamed prose and an exact finalizer integrity echo', () => {
+  const instructions = buildDMSystemInstructions({
+    content: {
+      version: 1,
+      careerOverview: 'Public career overview.',
+      routes: { home: '/', projects: '/library', resume: '/journey', hiring: '/hiring', fitCheck: '/fit-check' },
+      projects: [],
+      resumeTracks: [],
+      contact: { route: '/', evidenceTool: 'getContact' },
+    },
+    promptText: '{}',
+    charCount: 2,
+    utf8ByteCount: 2,
+    approximatePlanningTokens: 1,
+  }, 'v2');
+
+  assert.match(instructions, /standard response text stream/);
+  assert.match(instructions, /exactly equals that streamed text/);
+  assert.match(instructions, /integrity echo, not a second answer/);
+  assert.doesNotMatch(instructions, /Do not emit visitor-facing prose outside finalizeAnswer/);
+});
+
 test('v2 accepts bounded model-authored markdown and follow-up text', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');
@@ -84,7 +112,7 @@ test('v2 accepts bounded model-authored markdown and follow-up text', async () =
       evidenceIds: [],
       artifacts: [],
       followUp: 'Which part of the portfolio would be most useful to explore?',
-    } }]),
+    }, prose: '**I can walk you through Dylan’s published work and background.**' }]),
   }), request);
 
   assert.equal(observation.result?.status, 'accepted');
@@ -113,7 +141,7 @@ test('v2 filters unknown and duplicate same-run metadata without repairing valid
           { kind: 'project', id: 'unknown-project' },
           { kind: 'project', id: 'agentic-trader' },
         ],
-      } },
+      }, prose },
     ]),
   }), request);
 
@@ -142,7 +170,7 @@ test('v2 does not apply v1 composition, quote, intent, cardinality, limitation, 
           { kind: 'project', id: 'loom' },
         ],
         followUp: 'Want me to compare the trade-offs in plain language?',
-      } },
+      }, prose: 'Two returned public project records provide useful examples.' },
     ]),
   }), request);
 
@@ -154,29 +182,78 @@ test('v2 does not apply v1 composition, quote, intent, cardinality, limitation, 
   assert.match(observation.answerText, /compare the trade-offs/);
 });
 
-test('v2 bounds model-authored prose without a repair turn', async () => {
+test('v2 bounds visible model-authored prose without splitting a Unicode code point', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');
   const prompts: LanguageModelV4CallOptions[] = [];
   const metricsLines: string[] = [];
   const sentinel = 'OVERLONG_V2_MARKDOWN_SENTINEL';
+  const finalizerMarkdown = `${sentinel}${'x'.repeat(5_970)}y`;
   const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
     db: source.db,
     projectLoader: source.projectLoader,
     model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
-      markdown: `${sentinel}${'x'.repeat(6_000)}`,
+      markdown: finalizerMarkdown,
       evidenceIds: [],
       artifacts: [],
-    } }], prompts),
+    }, prose: [`${sentinel}${'x'.repeat(5_970)}`, '\uD83D', '\uDE80overflow'] }], prompts),
     metricsLogger: (line) => metricsLines.push(line),
   }), request);
 
   assert.equal(prompts.length, 1);
-  assert.equal(observation.result?.status, 'limited');
-  assert.equal(observation.result?.repairAttempted, false);
-  assert.doesNotMatch(observation.answerText, new RegExp(sentinel));
+  assert.equal(observation.result, null);
+  assert.equal(observation.answerText.length, 5_999);
+  assert.match(observation.answerText, new RegExp(`^${sentinel}`));
+  assert.doesNotMatch(observation.answerText, /\uD83D|\uDE80|🚀|overflow/);
+  assert.match(observation.errors.join(' '), /safely finish/i);
   assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
   assert.doesNotMatch(metricsLines.join('\n'), new RegExp(sentinel));
+});
+
+test('v2 preserves leading and trailing finalizer whitespace in an exact prose echo', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const markdown = ' \nExact whitespace remains part of this answer.\n ';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown,
+      evidenceIds: [],
+      artifacts: [],
+    }, prose: markdown }]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  const streamedMarkdown = observation.timedChunks.flatMap(({ chunk }) => (
+    chunk.type === 'text-delta' ? [chunk.delta] : []
+  )).join('');
+  assert.equal(streamedMarkdown, markdown);
+  assert.equal(observation.result?.answer.segments[0]?.text, markdown);
+  assert.deepEqual(observation.errors, []);
+});
+
+test('v2 rejects finalizer markdown above 6000 raw UTF-16 units before integrity matching', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = 'x'.repeat(6_000);
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: `${prose}\n`,
+      evidenceIds: [],
+      artifacts: [],
+    }, prose }]),
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+
+  assert.equal(observation.answerText, prose);
+  assert.equal(observation.result, null);
+  assert.match(observation.errors.join(' '), /safely finish/i);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
 });
 
 test('site brief failure stops before model work and exposes only a sanitized stream error', async () => {
@@ -232,7 +309,7 @@ test('request cancellation bounds a stalled pre-model site brief load', async ()
   const metricsLines: string[] = [];
   const controller = new AbortController();
   const privateReason = 'visitor-private-brief-cancel-reason';
-  const response = createDMChatResponse(request, config, {
+  const response = createDMChatResponse(request, v2Config, {
     db: { async query() { throw new Error('database work must remain unreachable'); } },
     projectLoader: () => new Promise<never>(() => {}),
     model,
@@ -3260,7 +3337,7 @@ test('model failures surface only a sanitized UIMessage error', async () => {
   console.error = (...args: unknown[]) => { serverLogs.push(args); };
   const observation = await (async () => {
     try {
-      return await observeDMResponse(createDMChatResponse(request, config, {
+      return await observeDMResponse(createDMChatResponse(request, v2Config, {
         db: source.db,
         projectLoader: source.projectLoader,
         model,
@@ -3506,10 +3583,9 @@ test('the endpoint never puts invalid finalization prose on the wire', async () 
   assert.match(observation.answerText, /could not verify/i);
 });
 
-test('the endpoint suppresses raw v2 text and emits one terminal answer part', async () => {
+test('the endpoint streams canonical v2 prose once before attaching the matching terminal answer', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');
-  const rawSentinel = 'RAW_V2_TEXT_MUST_NOT_STREAM';
   const markdown = 'I can explain Dylan’s published projects and public background.';
   const handler = createDMPostHandler({
     config: v2Config,
@@ -3519,7 +3595,7 @@ test('the endpoint suppresses raw v2 text and emits one terminal answer part', a
       markdown,
       evidenceIds: [],
       artifacts: [],
-    }, prose: rawSentinel }]),
+    }, prose: ['I can explain Dylan’s ', 'published projects and public background.'] }]),
   });
   const response = await handler({
     request: new Request('https://portfolio.test/api/dm/chat', {
@@ -3534,8 +3610,104 @@ test('the endpoint suppresses raw v2 text and emits one terminal answer part', a
   assert.equal(response.status, 200);
   assert.equal(observation.result?.status, 'accepted');
   assert.equal(observation.answerText, markdown);
-  assert.doesNotMatch(body, new RegExp(rawSentinel));
+  const eventTypes = observation.timedChunks.map(({ chunk }) => chunk.type);
+  assert.ok(eventTypes.indexOf('text-start') < eventTypes.indexOf('text-delta'));
+  assert.ok(eventTypes.indexOf('text-delta') < eventTypes.indexOf('text-end'));
+  assert.ok(eventTypes.indexOf('text-end') < eventTypes.indexOf('data-dm-answer'));
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-delta').length, 2);
+  assert.equal(observation.timedChunks.some(({ chunk }) => chunk.type === 'tool-output-available'), false);
   assert.equal(body.match(/data-dm-answer/g)?.length, 1);
+});
+
+test('v2 rejects terminal metadata when the finalizer markdown does not exactly echo streamed prose', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = 'This bounded prose remains visible.';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: `${prose} changed`,
+      evidenceIds: [],
+      artifacts: [],
+      followUp: 'This must not attach.',
+    }, prose }]),
+  }), request);
+
+  assert.equal(observation.answerText, prose);
+  assert.equal(observation.result, null);
+  assert.equal(observation.projectIds.length, 0);
+  assert.doesNotMatch(observation.answerText, /must not attach/);
+  assert.match(observation.errors.join(' '), /safely finish/i);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+});
+
+test('v2 treats a partial text lifecycle as incomplete and withholds terminal metadata', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = 'A partial but bounded answer.';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: prose,
+      evidenceIds: [],
+      artifacts: [],
+    }, prose, omitTextEnd: true }]),
+  }), request);
+
+  assert.equal(observation.answerText, prose);
+  assert.equal(observation.result, null);
+  assert.match(observation.errors.join(' '), /safely finish/i);
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-end').length, 1);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+});
+
+test('v2 closes a partially visible provider-error stream and withholds assistant completion', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const privateMarker = 'PRIVATE_PROVIDER_PARTIAL_MARKER';
+  const model = new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: simulateReadableStream({ chunks: [
+        { type: 'stream-start' as const, warnings: [] },
+        { type: 'response-metadata' as const, id: 'partial-response', modelId: 'partial-model', timestamp: new Date(0) },
+        { type: 'text-start' as const, id: 'partial-text' },
+        { type: 'text-delta' as const, id: 'partial-text', delta: 'Already-visible safe prefix.' },
+        { type: 'error' as const, error: new Error(privateMarker) },
+      ] }),
+    }),
+  });
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+
+  assert.equal(observation.answerText, 'Already-visible safe prefix.');
+  assert.equal(observation.result, null);
+  assert.equal(observation.outcome, 'error');
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(privateMarker));
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-end').length, 1);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+});
+
+test('v2 forwards markup-shaped model prose as literal canonical text', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = '<script>globalThis.pwned=true</script> [click](javascript:alert(1)) <a href="javascript:alert(2)">x</a>';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: prose,
+      evidenceIds: [],
+      artifacts: [],
+    }, prose }]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.answerText, prose);
 });
 
 function isFinalizationInputStart(
@@ -3576,7 +3748,7 @@ function parseMetricsRecord(lines: string[]): DMMetricsRecord {
   return JSON.parse(lines[0].slice(prefix.length)) as DMMetricsRecord;
 }
 
-type MockToolCall = { toolName: string; input: unknown; prose?: string };
+type MockToolCall = { toolName: string; input: unknown; prose?: string | string[]; omitTextEnd?: boolean };
 
 function evalCase(id: string) {
   const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === id);
@@ -3643,11 +3815,12 @@ function toolStepModel(
             ...calls.flatMap((call, callIndex) => {
               const id = `call-${index}-${callIndex + 1}`;
               const textId = `text-${index}-${callIndex + 1}`;
+              const proseDeltas = typeof call.prose === 'string' ? [call.prose] : call.prose ?? [];
               return [
-                ...(call.prose ? [
+                ...(proseDeltas.length > 0 ? [
                   { type: 'text-start' as const, id: textId },
-                  { type: 'text-delta' as const, id: textId, delta: call.prose },
-                  { type: 'text-end' as const, id: textId },
+                  ...proseDeltas.map((delta) => ({ type: 'text-delta' as const, id: textId, delta })),
+                  ...(!call.omitTextEnd ? [{ type: 'text-end' as const, id: textId }] : []),
                 ] : []),
                 { type: 'tool-call' as const, toolCallId: id, toolName: call.toolName, input: JSON.stringify(call.input) },
               ];

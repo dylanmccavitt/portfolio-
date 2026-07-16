@@ -11,6 +11,7 @@ import {
   type DMEvalReport,
   type DMEvalRunRecord,
 } from '@/lib/dm/eval-report';
+import { isDMRuntimeErrorEvidenceConsistent } from '@/lib/dm/release-qualification';
 
 const QUALITY = { questionComprehension: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null } as const;
 
@@ -112,6 +113,35 @@ test('release gating fails completed limited finalization before corpus pass evi
   assert.equal(gated.failure, 'finalization validation failed');
   assert.deepEqual(gated.failureReasons, ['finalization-validation']);
   assert.equal(isDMEvalFailureEvidenceConsistent(gated), true);
+});
+
+test('runtime evidence accepts only completed or error finalization-validation failures', () => {
+  for (const outcome of ['completed', 'error'] as const) {
+    assert.equal(isDMRuntimeErrorEvidenceConsistent(run({
+      passed: false,
+      outcome,
+      runtimeErrorCategory: 'finalization_validation',
+    })), true);
+  }
+
+  for (const outcome of ['incomplete', 'timeout', 'aborted'] as const) {
+    assert.equal(isDMRuntimeErrorEvidenceConsistent(run({
+      passed: false,
+      outcome,
+      runtimeErrorCategory: 'finalization_validation',
+    })), false);
+  }
+
+  assert.equal(isDMRuntimeErrorEvidenceConsistent(run({
+    passed: false,
+    outcome: 'completed',
+    runtimeErrorCategory: 'provider_failure',
+  })), false);
+  assert.equal(isDMRuntimeErrorEvidenceConsistent(run({
+    passed: true,
+    outcome: 'error',
+    runtimeErrorCategory: 'finalization_validation',
+  })), false);
 });
 
 test('triage flags weak judge scores on otherwise-passing runs, and stays quiet on clean runs', () => {

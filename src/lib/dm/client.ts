@@ -59,6 +59,20 @@ export function validateFinalizationResult(value: unknown): DMFinalizationResult
   return { status: value.status, answer, repairAttempted: value.repairAttempted };
 }
 
+export function matchesStreamedV2Finalization(
+  prose: string,
+  result: Exclude<DMFinalizationResult, { status: 'rejected' }>,
+): boolean {
+  return prose.length > 0
+    && result.status === 'accepted'
+    && result.answer.segments.length === 1
+    && result.answer.segments[0]?.text === prose;
+}
+
+export function completedAssistantHistoryText(prose: string, completed: boolean): string | null {
+  return completed && prose ? prose : null;
+}
+
 function validateAnswer(value: unknown): DMValidatedAnswer | null {
   if (!isRecord(value) || !Array.isArray(value.segments) || !Array.isArray(value.artifacts)) return null;
   const segments = value.segments.map(validateSegment);

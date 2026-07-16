@@ -56,7 +56,11 @@ export interface DMBenchmarkModelSummary {
 }
 
 export function classifyBenchmarkRun(input: DMBenchmarkClassificationInput): DMBenchmarkClassification {
-  const firstToken = input.events.find((entry) => entry.event.type === 'data-dm-answer');
+  const firstStreamedToken = input.events.find((entry) =>
+    entry.event.type === 'text-delta' && entry.event.delta.length > 0,
+  );
+  const firstToken = firstStreamedToken
+    ?? input.events.find((entry) => entry.event.type === 'data-dm-answer');
   const firstTokenMs = firstToken ? clampMs(firstToken.elapsedMs) : null;
   const completionMs = clampMs(input.completionMs);
   const toolCount = new Set(input.events.flatMap((entry) =>

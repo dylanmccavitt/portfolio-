@@ -759,7 +759,8 @@ export function isDMRuntimeErrorEvidenceConsistent(run: DMEvalRunRecord): boolea
   }
   if (category === 'timeout') return run.outcome === 'timeout';
   if (category === 'aborted') return run.outcome === 'aborted';
-  return category === 'finalization_validation' && run.outcome === 'completed';
+  return category === 'finalization_validation'
+    && (run.outcome === 'completed' || run.outcome === 'error');
 }
 
 function matchesLiveReleaseGate(run: DMEvalRunRecord): boolean {
