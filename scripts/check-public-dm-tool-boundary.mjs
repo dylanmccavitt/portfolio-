@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -45,7 +45,12 @@ export async function checkPublicDMToolBoundary({
         failures.push(`${modulePath}: dynamic import must use a static string specifier`);
         continue;
       }
-      const canonical = canonicalModuleSpecifier(projectRoot, modulePath, imported.specifier);
+      const resolution = canonicalModuleSpecifier(projectRoot, modulePath, imported.specifier);
+      if (resolution.aliasEscapesSrc) {
+        failures.push(`${modulePath}: alias import escapes src (${imported.specifier})`);
+        continue;
+      }
+      const canonical = resolution.canonical;
       if (FORBIDDEN_IMPORT_SEGMENT.test(canonical)) {
         failures.push(`${modulePath}: forbidden import ${imported.specifier} (resolved ${canonical})`);
       }
@@ -93,15 +98,29 @@ function canonicalModuleSpecifier(projectRoot, modulePath, rawSpecifier) {
   const specifier = rawSpecifier.split(/[?#]/, 1)[0].replaceAll('\\', '/');
   let canonical;
   if (specifier.startsWith('@/')) {
-    canonical = `src/${specifier.slice(2)}`;
+    const srcRoot = resolve(projectRoot, 'src');
+    const target = resolve(srcRoot, specifier.slice(2));
+    const relativeToSrc = relative(srcRoot, target);
+    const aliasEscapesSrc = relativeToSrc.split(/[\\/]/, 1)[0] === '..'
+      || isAbsolute(relativeToSrc);
+    if (aliasEscapesSrc) {
+      return {
+        canonical: relative(projectRoot, target).replaceAll('\\', '/'),
+        aliasEscapesSrc: true,
+      };
+    }
+    canonical = relative(projectRoot, target).replaceAll('\\', '/');
   } else if (specifier.startsWith('.')) {
     canonical = relative(projectRoot, resolve(projectRoot, dirname(modulePath), specifier)).replaceAll('\\', '/');
   } else {
     canonical = specifier;
   }
-  return canonical
-    .replace(/(?:\.d)?\.[cm]?[jt]sx?$/i, '')
-    .replace(/\/index$/i, '');
+  return {
+    canonical: canonical
+      .replace(/(?:\.d)?\.[cm]?[jt]sx?$/i, '')
+      .replace(/\/index$/i, ''),
+    aliasEscapesSrc: false,
+  };
 }
 
 const isDirectInvocation = process.argv[1]

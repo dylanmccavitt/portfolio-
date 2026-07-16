@@ -14,7 +14,6 @@ import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from
 import { createDMEvalRuntimeSourceDeps } from '@/lib/dm/eval-runtime';
 import { observeDMResponse } from '@/lib/dm/response-observer';
 import { classifyDMStreamError, createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
-import { buildDMSiteBrief } from '@/lib/dm/site-brief';
 import type { DMChatRequest, DMFinalizationResult, DMUIData } from '@/lib/dm/contract';
 import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { createDMPostHandler } from '@/pages/api/dm/chat';
@@ -110,6 +109,43 @@ test('request cancellation bounds a stalled pre-model site brief load', async ()
   assert.equal(prompts.length, 0);
   assert.doesNotMatch(JSON.stringify(observation), new RegExp(privateReason));
   assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'aborted');
+});
+
+test('runtime callers cannot replace the validated startup brief with raw prompt content', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const marker = 'UNAPPROVED_OVERSIZED_BRIEF_CONTENT';
+  const depsWithUnknownRawContent = {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'conversational', act: 'capabilities' }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      },
+    }], prompts),
+  } as Parameters<typeof createDMChatResponse>[2] & Record<string, unknown>;
+  Object.defineProperty(depsWithUnknownRawContent, ['site', 'Brief'].join(''), {
+    value: {
+      content: { projects: [] },
+      promptText: marker.repeat(300),
+    },
+    enumerable: true,
+  });
+
+  const observation = await observeDMResponse(
+    createDMChatResponse(request, config, depsWithUnknownRawContent),
+    request,
+  );
+  const prompt = JSON.stringify(prompts[0]?.prompt);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.doesNotMatch(prompt, new RegExp(marker));
+  for (const id of source.publishedIds) assert.match(prompt, new RegExp(`\\b${id}\\b`));
 });
 
 test('ambient site brief supports reasoned engineer synthesis while same-run evidence remains mandatory', async (t) => {
@@ -256,6 +292,140 @@ test('ambient site brief supports reasoned engineer synthesis while same-run evi
     assert.deepEqual(observation.tools, ['getProject']);
     assert.ok(observation.evidenceIds.includes('loom:identity'));
   });
+
+  await t.test('a published title alias rejects unrelated resume evidence and accepts its exact direct read', async () => {
+    const template = (await source.projectLoader())[0];
+    assert.ok(template);
+    const titleOnlyProject = {
+      ...template,
+      id: 'nhf',
+      slug: 'nhf',
+      title: 'No Hard Feelings',
+      summary: 'A public band site whose title differs from its stable project id.',
+      dmArtifact: {
+        ...template.dmArtifact,
+        id: 'nhf',
+        title: 'No Hard Feelings',
+        href: '/projects/nhf',
+      },
+    };
+    const request = chatRequest('Tell me about No Hard Feelings.');
+    const unsupported = {
+      segments: [{
+        kind: 'factual',
+        text: 'It is a published public band site.',
+        evidenceIds: ['resume:now:role'],
+      }],
+      artifactIntent: 'none',
+      artifacts: [],
+      limitations: [],
+    };
+    const rejected = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: async () => [titleOnlyProject],
+      model: toolSequenceModel([
+        { toolName: 'readResume', input: { trackIds: ['now'] } },
+        { toolName: 'finalizeAnswer', input: unsupported },
+        { toolName: 'finalizeAnswer', input: unsupported },
+      ]),
+    }), request);
+
+    assert.equal(rejected.result?.status, 'limited');
+    assert.deepEqual(rejected.tools, ['readResume']);
+
+    const accepted = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: async () => [titleOnlyProject],
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'nhf' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'It is a published public band site.',
+            evidenceIds: ['nhf:summary'],
+          }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(accepted.result?.status, 'accepted');
+    assert.deepEqual(accepted.tools, ['getProject']);
+  });
+
+  await t.test('a pronoun-only comparison requires exact direct evidence for every named brief project', async () => {
+    const request = chatRequest('Compare loom and agentic-trader.');
+    const unsupported = {
+      segments: [{
+        kind: 'factual',
+        text: 'They are published projects with different focuses.',
+        evidenceIds: ['resume:now:role'],
+      }],
+      artifactIntent: 'none',
+      artifacts: [],
+      limitations: [],
+    };
+    const rejected = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'readResume', input: { trackIds: ['now'] } },
+        { toolName: 'finalizeAnswer', input: unsupported },
+        { toolName: 'finalizeAnswer', input: unsupported },
+      ]),
+    }), request);
+
+    assert.equal(rejected.result?.status, 'limited');
+    assert.deepEqual(rejected.tools, ['readResume']);
+
+    const accepted = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'getProject', input: { id: 'agentic-trader' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'They are published projects with different focuses.',
+            evidenceIds: ['loom:identity', 'agentic-trader:identity'],
+          }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(accepted.result?.status, 'accepted');
+    assert.deepEqual(accepted.tools, ['getProject']);
+    assert.ok(accepted.evidenceIds.includes('loom:identity'));
+    assert.ok(accepted.evidenceIds.includes('agentic-trader:identity'));
+  });
+
+  await t.test('a brief-named project can still use a natural limitation path with no project facts', async () => {
+    const request = chatRequest('Compare loom and agentic-trader.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([{
+        toolName: 'finalizeAnswer',
+        input: {
+          segments: [{ kind: 'limitation', code: 'ambiguous_reference' }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: ['ambiguous_reference'],
+          followUp: 'specify_project',
+        },
+      }]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.deepEqual(observation.tools, []);
+    assert.match(observation.answerText, /more specific published project/i);
+  });
 });
 
 test('one ToolLoopAgent run calls public tools and accepts only same-run evidence and artifacts', async () => {
@@ -299,8 +469,14 @@ test('live eval project-unavailable wiring preserves startup and exercises searc
   const source = await createEvalProjectSource();
   const testCase = evalCase('derived-project-tool-unavailable');
   const request = requestForEvalCase(testCase);
-  const startupSiteBrief = buildDMSiteBrief(await source.projectLoader());
-  const sourceDeps = createDMEvalRuntimeSourceDeps(testCase, source, startupSiteBrief);
+  let projectLoads = 0;
+  const sourceDeps = createDMEvalRuntimeSourceDeps(testCase, {
+    ...source,
+    projectLoader: async () => {
+      projectLoads += 1;
+      return source.projectLoader();
+    },
+  });
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
     ...sourceDeps,
     model: toolSequenceModel([
@@ -319,6 +495,7 @@ test('live eval project-unavailable wiring preserves startup and exercises searc
   assert.equal(observation.result?.status, 'accepted');
   assert.match(observation.answerText, /published project source is unavailable/i);
   assert.equal(evaluateDMEvalObservation(testCase, observation), null);
+  assert.equal(projectLoads, 1, 'startup brief and the failed search must share one validated project promise');
 });
 
 test('runtime metrics mark the first visible public-tool state before completion', async () => {
@@ -1215,8 +1392,8 @@ test('bounded outcome follow-ups are required, privacy-safe, and non-repetitive'
     const request = chatRequest('Which published project covers quantum cryptography?');
     const observation = await observeDMResponse(createDMChatResponse(request, config, {
       db: source.db,
-      projectLoader: async () => { throw new Error('private project database failure'); },
-      siteBrief: buildDMSiteBrief(await source.projectLoader()),
+      projectLoader: source.projectLoader,
+      searchProjectsFailure: async () => { throw new Error('private project database failure'); },
       model: toolSequenceModel([
         { toolName: 'searchProjects', input: { query: 'quantum cryptography' } },
         { toolName: 'finalizeAnswer', input: {
@@ -2172,7 +2349,7 @@ test('successful direct reads canonicalize disjoint ids and slugs', async (t) =>
   }
 });
 
-test('a title-only project name can use search before later direct coreference', async () => {
+test('a title from the site brief resolves directly to its stable project id', async () => {
   const source = await createEvalProjectSource();
   const template = (await source.projectLoader())[0];
   assert.ok(template);
@@ -2196,7 +2373,7 @@ test('a title-only project name can use search before later direct coreference',
     db: source.db,
     projectLoader: async () => [titleOnlyProject],
     model: toolSequenceModel([
-      { toolName: 'searchProjects', input: { query: 'No Hard Feelings', limit: 1 } },
+      { toolName: 'getProject', input: { id: 'nhf' } },
       { toolName: 'finalizeAnswer', input: {
         segments: [{
           kind: 'factual',
@@ -2211,7 +2388,7 @@ test('a title-only project name can use search before later direct coreference',
   }), request);
 
   assert.equal(observation.outcome, 'completed');
-  assert.deepEqual(observation.tools, ['searchProjects']);
+  assert.deepEqual(observation.tools, ['getProject']);
   assert.deepEqual(observation.projectIds, ['nhf']);
   assert.ok(observation.evidenceIds.includes('nhf:identity'));
 });
@@ -2231,8 +2408,8 @@ test('public tool failure becomes an explicit sanitized limitation', async () =>
   ]);
   const observation = await observeDMResponse(createDMChatResponse(request, config, {
     db: source.db,
-    projectLoader: async () => { throw new Error('private database host and query details'); },
-    siteBrief: buildDMSiteBrief(await source.projectLoader()),
+    projectLoader: source.projectLoader,
+    searchProjectsFailure: async () => { throw new Error('private database host and query details'); },
     model,
   }), request);
   assert.equal(observation.result?.status, 'accepted');
@@ -2420,7 +2597,7 @@ test('explicit resume, contact, and link artifacts cannot be dropped after same-
     assert.deepEqual(observation.blockKinds, ['links:loom', 'links:agentic-trader']);
   });
 
-  await t.test('title-only multi-project requests retain link cardinality after search resolution', async () => {
+  await t.test('brief-title multi-project requests retain link cardinality after direct reads', async () => {
     const sourceProjects = await source.projectLoader();
     const titleOnlyProjects = sourceProjects.slice(0, 2).map((project, index) => {
       const id = index === 0 ? 'loom-stable' : 'trader-stable';
@@ -2440,7 +2617,8 @@ test('explicit resume, contact, and link artifacts cannot be dropped after same-
       db: source.db,
       projectLoader: async () => titleOnlyProjects,
       model: toolSequenceModel([
-        { toolName: 'searchProjects', input: { query: 'Loom Agentic Trader', limit: 2 } },
+        { toolName: 'getProject', input: { id: 'loom-stable' } },
+        { toolName: 'getProject', input: { id: 'trader-stable' } },
         { toolName: 'finalizeAnswer', input: {
           segments: [{ kind: 'factual', text: 'Loom and Agentic Trader have public repository links.', evidenceIds: ['loom-stable:link:0', 'trader-stable:link:0'] }],
           artifactIntent: 'non_project',
@@ -2458,6 +2636,7 @@ test('explicit resume, contact, and link artifacts cannot be dropped after same-
 
     assert.equal(observation.result?.status, 'accepted');
     assert.equal(observation.result?.repairAttempted, true);
+    assert.deepEqual(observation.tools, ['getProject']);
     assert.deepEqual(observation.blockKinds, ['links:loom-stable', 'links:trader-stable']);
   });
 });

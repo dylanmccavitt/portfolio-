@@ -49,7 +49,6 @@ import {
   type DMReleaseSelectionEvidence,
 } from '@/lib/dm/release-qualification';
 import { createDMChatResponse, createDMModel } from '@/lib/dm/runtime';
-import { buildDMSiteBrief } from '@/lib/dm/site-brief';
 
 interface CliOptions {
   live: boolean;
@@ -118,7 +117,6 @@ async function main(): Promise<void> {
   if (options.release) assertDMReleaseConfiguration(modelSpecs.map((spec) => spec.label), options.runs, judgeConfig !== null);
 
   const source = await createEvalProjectSource();
-  const startupSiteBrief = buildDMSiteBrief(await source.projectLoader());
   const records: EvalRunRecord[] = [];
   process.env.DM_METRICS = '1';
 
@@ -139,7 +137,7 @@ async function main(): Promise<void> {
             request,
             { provider: spec.provider, model: spec.model },
             {
-              ...createDMEvalRuntimeSourceDeps(testCase, source, startupSiteBrief),
+              ...createDMEvalRuntimeSourceDeps(testCase, source),
               model,
               metricsLogger(line: string) {
                 metrics = parseMetricsLine(line) ?? metrics;

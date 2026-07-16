@@ -4,32 +4,31 @@ import {
   type EvalProjectSource,
 } from './eval-source';
 import type { DMRuntimeDeps } from './runtime';
-import type { DMSiteBrief } from './site-brief';
 
 type DMEvalRuntimeSourceDeps = Pick<
   DMRuntimeDeps,
-  'db' | 'projectLoader' | 'ragSearch' | 'siteBrief'
+  'db' | 'projectLoader' | 'ragSearch' | 'searchProjectsFailure'
 >;
 
 /**
- * Wires source failures at the public tool seam without making the mandatory
- * startup brief unavailable. The supplied brief must already have been built
- * successfully from the same published eval source.
+ * Wires source failures at the public tool seam after the mandatory startup
+ * brief has been built normally from the same published eval project loader.
  */
 export function createDMEvalRuntimeSourceDeps(
   testCase: DMLiveEvalCase,
   source: EvalProjectSource,
-  startupSiteBrief: DMSiteBrief,
 ): DMEvalRuntimeSourceDeps {
   const projectToolUnavailable = testCase.toolFailure?.tool === 'searchProjects';
   return {
     db: source.db,
-    projectLoader: projectToolUnavailable
-      ? async () => { throw new Error('simulated eval project source unavailable'); }
-      : source.projectLoader,
+    projectLoader: source.projectLoader,
     ragSearch: testCase.toolFailure?.tool === 'searchPublicSources'
       ? createUnavailableEvalPublicSourceSearch()
       : source.publicSourceSearch,
-    ...(projectToolUnavailable ? { siteBrief: startupSiteBrief } : {}),
+    ...(projectToolUnavailable ? {
+      searchProjectsFailure: async (): Promise<never> => {
+        throw new Error('simulated eval project search unavailable');
+      },
+    } : {}),
   };
 }

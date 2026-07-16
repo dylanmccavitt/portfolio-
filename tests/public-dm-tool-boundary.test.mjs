@@ -60,6 +60,36 @@ test('AST import boundary rejects canonical private, admin, and catalog variants
       source: "import type { Project } from '@/data/catalog.ts';\n",
       expected: /must not import the catalog.*@\/data\/catalog\.ts/,
     },
+    {
+      name: 'static dot-segment alias catalog',
+      path: 'src/lib/dm/runtime.ts',
+      source: "import '@/data/./catalog.ts';\n",
+      expected: /must not import the catalog.*@\/data\/\.\/catalog\.ts/,
+    },
+    {
+      name: 'dynamic parent-segment alias catalog',
+      path: 'src/lib/dm/site-brief.ts',
+      source: "export const load = () => import('@/data/x/../catalog.ts');\n",
+      expected: /must not import the catalog.*@\/data\/x\/\.\.\/catalog\.ts/,
+    },
+    {
+      name: 'alias traversal outside src',
+      path: 'src/lib/dm/public-agent-tools.ts',
+      source: "import '@/../private/runtime.ts';\n",
+      expected: /alias import escapes src.*@\/\.\.\/private\/runtime\.ts/,
+    },
+    {
+      name: 'import-equals dot-segment alias',
+      path: 'src/lib/dm/runtime.ts',
+      source: "import catalog = require('@/data/./catalog.ts');\n",
+      expected: /must not import the catalog.*@\/data\/\.\/catalog\.ts/,
+    },
+    {
+      name: 'import-type parent-segment alias',
+      path: 'src/lib/dm/site-brief.ts',
+      source: "export type Catalog = import('@/data/x/../catalog.ts').Catalog;\n",
+      expected: /must not import the catalog.*@\/data\/x\/\.\.\/catalog\.ts/,
+    },
   ];
 
   for (const fixture of cases) {

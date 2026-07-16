@@ -6,7 +6,6 @@ import { createEvalProjectSource } from '@/lib/dm/eval-source';
 import {
   buildDMSiteBrief,
   DM_SITE_BRIEF_MAX_CHARS,
-  DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS,
   DM_SITE_BRIEF_MAX_UTF8_BYTES,
   DM_SITE_BRIEF_SUMMARY_MAX_CHARS,
   DMSiteBriefError,
@@ -35,12 +34,19 @@ test('site brief covers variable published-project counts deterministically with
     assert.equal(brief.promptText, JSON.stringify(brief.content));
     assert.equal(brief.charCount, brief.promptText.length);
     assert.equal(brief.utf8ByteCount, new TextEncoder().encode(brief.promptText).byteLength);
-    assert.equal(brief.estimatedTokens, Math.ceil(brief.utf8ByteCount / 4));
+    assert.equal(brief.approximatePlanningTokens, Math.ceil(brief.utf8ByteCount / 4));
     assert.ok(brief.charCount <= DM_SITE_BRIEF_MAX_CHARS);
     assert.ok(brief.utf8ByteCount <= DM_SITE_BRIEF_MAX_UTF8_BYTES);
-    assert.ok(brief.estimatedTokens <= DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS);
     assert.equal(buildDMSiteBrief([...rows].reverse()).promptText, brief.promptText);
   }
+});
+
+test('the complete local fixture stays in the approximate 1–2k planning range without claiming a tokenizer bound', async () => {
+  const brief = await loadDMSiteBrief({ env: {} });
+
+  assert.ok(brief.approximatePlanningTokens >= 1_000);
+  assert.ok(brief.approximatePlanningTokens <= 2_000);
+  assert.equal(brief.approximatePlanningTokens, Math.ceil(brief.utf8ByteCount / 4));
 });
 
 test('site brief includes the canonical career overview, resume tracks, routes, and contact pointer', async () => {
@@ -65,6 +71,21 @@ test('site brief includes the canonical career overview, resume tracks, routes, 
     route: `/journey/${current.id}`,
     evidenceTool: 'getContact',
   });
+});
+
+test('site brief fails closed when normalized project title aliases collide', async () => {
+  const source = await createEvalProjectSource();
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+  const rows = variableProjects(template, 2).map((project, index) => ({
+    ...project,
+    title: index === 0 ? 'No Hard Feelings' : 'No-Hard Feelings',
+  }));
+
+  assert.throws(
+    () => buildDMSiteBrief(rows),
+    (error: unknown) => error instanceof DMSiteBriefError && error.code === 'validation_failed',
+  );
 });
 
 test('site brief UTF-8 budget fails closed immediately above the Unicode-safe byte limit', async () => {
@@ -109,9 +130,44 @@ test('site brief UTF-8 budget fails closed immediately above the Unicode-safe by
   assert.ok(firstRejectedUnicodeCount > 0);
   assert.equal(DM_SITE_BRIEF_MAX_UTF8_BYTES - belowLimit.utf8ByteCount < 2, true);
   assert.ok(belowLimit.charCount <= DM_SITE_BRIEF_MAX_CHARS);
-  assert.equal(belowLimit.estimatedTokens, Math.ceil(belowLimit.utf8ByteCount / 4));
+  assert.equal(belowLimit.approximatePlanningTokens, Math.ceil(belowLimit.utf8ByteCount / 4));
   assert.throws(
     () => buildDMSiteBrief(unicodeBudgetProjects(template, rowCount, firstRejectedUnicodeCount)),
+    (error: unknown) => error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded',
+  );
+});
+
+test('high-entropy ASCII reaches the exact UTF-8 payload cutoff without implying a tokenizer guarantee', async () => {
+  const source = await createEvalProjectSource();
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+  let atLimit: ReturnType<typeof buildDMSiteBrief> | null = null;
+  let rejectedRows: ProjectDetailReadModel[] | null = null;
+
+  for (let count = 2; count <= 60 && !atLimit; count += 1) {
+    for (let finalSummaryCharacters = 1; finalSummaryCharacters <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS; finalSummaryCharacters += 1) {
+      const rows = asciiBudgetProjects(template, count, finalSummaryCharacters);
+      try {
+        const brief = buildDMSiteBrief(rows);
+        if (brief.utf8ByteCount === DM_SITE_BRIEF_MAX_UTF8_BYTES) {
+          atLimit = brief;
+          rejectedRows = asciiBudgetProjects(template, count, finalSummaryCharacters + 1);
+          break;
+        }
+      } catch (error) {
+        if (!(error instanceof DMSiteBriefError) || error.code !== 'size_limit_exceeded') throw error;
+        break;
+      }
+    }
+  }
+
+  assert.ok(atLimit, 'expected an ASCII fixture exactly at the UTF-8 byte cutoff');
+  assert.ok(rejectedRows);
+  assert.equal(atLimit.utf8ByteCount, DM_SITE_BRIEF_MAX_UTF8_BYTES);
+  assert.ok(atLimit.charCount <= DM_SITE_BRIEF_MAX_CHARS);
+  assert.equal(atLimit.approximatePlanningTokens, Math.ceil(atLimit.utf8ByteCount / 4));
+  assert.throws(
+    () => buildDMSiteBrief(rejectedRows),
     (error: unknown) => error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded',
   );
 });
@@ -231,6 +287,20 @@ function unicodeBudgetProjects(
     summary: index === count - 1
       ? `${'界'.repeat(finalSummaryUnicodeCharacters)}${'a'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS - finalSummaryUnicodeCharacters)}`
       : '界'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS),
+  }));
+}
+
+function asciiBudgetProjects(
+  template: ProjectDetailReadModel,
+  count: number,
+  finalSummaryCharacters: number,
+): ProjectDetailReadModel[] {
+  const highEntropyAscii = (length: number) => 'aZ09Qx7M'.repeat(Math.ceil(length / 8)).slice(0, length);
+  return variableProjects(template, count).map((project, index) => ({
+    ...project,
+    summary: highEntropyAscii(index === count - 1
+      ? finalSummaryCharacters
+      : DM_SITE_BRIEF_SUMMARY_MAX_CHARS),
   }));
 }
 

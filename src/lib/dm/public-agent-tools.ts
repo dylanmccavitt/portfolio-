@@ -233,6 +233,8 @@ export interface PublicAgentToolDependencies {
   db: ProjectReadQueryable;
   env?: PublicProjectEnv;
   loadProjects?: () => Promise<ProjectDetailReadModel[]>;
+  /** Narrow provider-free eval seam; cannot replace or mutate published project data. */
+  searchProjectsFailure?: () => never | Promise<never>;
   createRagConfig?: () => Promise<PublicRagSearchConfig | null>;
   ragSearch?: (
     query: string,
@@ -270,6 +272,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
     SearchProjectsInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
+      if (deps.searchProjectsFailure) await deps.searchProjectsFailure();
       throwIfAborted(signal);
       const filtered = projects.filter((project) => projectMatchesFilters(project, input.filters));
       const scored = filtered
