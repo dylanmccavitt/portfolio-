@@ -7,6 +7,7 @@ import {
   buildDMSiteBrief,
   DM_SITE_BRIEF_MAX_CHARS,
   DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS,
+  DM_SITE_BRIEF_MAX_UTF8_BYTES,
   DM_SITE_BRIEF_SUMMARY_MAX_CHARS,
   DMSiteBriefError,
   loadDMSiteBrief,
@@ -33,8 +34,10 @@ test('site brief covers variable published-project counts deterministically with
     assert.ok(brief.content.projects.every((project) => [...project.summary].length <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS));
     assert.equal(brief.promptText, JSON.stringify(brief.content));
     assert.equal(brief.charCount, brief.promptText.length);
-    assert.equal(brief.estimatedTokens, Math.ceil(brief.charCount / 4));
+    assert.equal(brief.utf8ByteCount, new TextEncoder().encode(brief.promptText).byteLength);
+    assert.equal(brief.estimatedTokens, Math.ceil(brief.utf8ByteCount / 4));
     assert.ok(brief.charCount <= DM_SITE_BRIEF_MAX_CHARS);
+    assert.ok(brief.utf8ByteCount <= DM_SITE_BRIEF_MAX_UTF8_BYTES);
     assert.ok(brief.estimatedTokens <= DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS);
     assert.equal(buildDMSiteBrief([...rows].reverse()).promptText, brief.promptText);
   }
@@ -62,22 +65,54 @@ test('site brief includes the canonical career overview, resume tracks, routes, 
     route: `/journey/${current.id}`,
     evidenceTool: 'getContact',
   });
-  assert.equal(Object.hasOwn(brief.content, 'ownerApprovedProfileSummary'), false);
 });
 
-test('the reserved profile extension accepts only an explicitly supplied owner-approved short summary', async () => {
+test('site brief UTF-8 budget fails closed immediately above the Unicode-safe byte limit', async () => {
   const source = await createEvalProjectSource();
-  const projects = await source.projectLoader();
-  const approved = buildDMSiteBrief(projects, {
-    ownerApprovedProfileSummary: '  Owner-approved public profile summary for a later phase.  ',
-  });
-  assert.equal(
-    approved.content.ownerApprovedProfileSummary,
-    'Owner-approved public profile summary for a later phase.',
-  );
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+  let rowCount = 0;
+
+  for (let count = 2; count <= 30; count += 1) {
+    const belowCandidate = unicodeBudgetProjects(template, count, 0);
+    const aboveCandidate = unicodeBudgetProjects(template, count, DM_SITE_BRIEF_SUMMARY_MAX_CHARS);
+    try {
+      buildDMSiteBrief(belowCandidate);
+    } catch {
+      break;
+    }
+    try {
+      buildDMSiteBrief(aboveCandidate);
+    } catch (error) {
+      if (error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded') {
+        rowCount = count;
+        break;
+      }
+      throw error;
+    }
+  }
+  assert.ok(rowCount > 0, 'expected a Unicode fixture that crosses only the UTF-8 byte ceiling');
+
+  let belowLimit: ReturnType<typeof buildDMSiteBrief> | null = null;
+  let firstRejectedUnicodeCount = 0;
+  for (let unicodeCount = 0; unicodeCount <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS; unicodeCount += 1) {
+    try {
+      belowLimit = buildDMSiteBrief(unicodeBudgetProjects(template, rowCount, unicodeCount));
+    } catch (error) {
+      assert.ok(error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded');
+      firstRejectedUnicodeCount = unicodeCount;
+      break;
+    }
+  }
+
+  assert.ok(belowLimit);
+  assert.ok(firstRejectedUnicodeCount > 0);
+  assert.equal(DM_SITE_BRIEF_MAX_UTF8_BYTES - belowLimit.utf8ByteCount < 2, true);
+  assert.ok(belowLimit.charCount <= DM_SITE_BRIEF_MAX_CHARS);
+  assert.equal(belowLimit.estimatedTokens, Math.ceil(belowLimit.utf8ByteCount / 4));
   assert.throws(
-    () => buildDMSiteBrief(projects, { ownerApprovedProfileSummary: '   ' }),
-    (error: unknown) => error instanceof DMSiteBriefError && error.code === 'validation_failed',
+    () => buildDMSiteBrief(unicodeBudgetProjects(template, rowCount, firstRejectedUnicodeCount)),
+    (error: unknown) => error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded',
   );
 });
 
@@ -184,6 +219,19 @@ function variableProjects(template: ProjectDetailReadModel, count: number): Proj
       },
     };
   });
+}
+
+function unicodeBudgetProjects(
+  template: ProjectDetailReadModel,
+  count: number,
+  finalSummaryUnicodeCharacters: number,
+): ProjectDetailReadModel[] {
+  return variableProjects(template, count).map((project, index) => ({
+    ...project,
+    summary: index === count - 1
+      ? `${'界'.repeat(finalSummaryUnicodeCharacters)}${'a'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS - finalSummaryUnicodeCharacters)}`
+      : '界'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS),
+  }));
 }
 
 function databaseRows(rows: unknown[]): ProjectReadQueryable {

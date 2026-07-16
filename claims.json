@@ -38,10 +38,21 @@
       "subjectRefs": [
         "src/lib/dm/public-agent-tools.ts",
         "src/lib/dm/runtime.ts",
-        "src/lib/dm/site-brief.ts",
         "scripts/check-public-dm-tool-boundary.mjs"
       ],
       "check": "node scripts/check-public-dm-tool-boundary.mjs"
+    },
+    {
+      "id": "dm-public-tool-import-boundary-regressions",
+      "statement": "the public DM import-boundary proof rejects dynamic private imports plus relative, alias, and extension-bearing catalog specifiers across the three public DM modules",
+      "subjectRefs": [
+        "src/lib/dm/public-agent-tools.ts",
+        "src/lib/dm/runtime.ts",
+        "src/lib/dm/site-brief.ts",
+        "scripts/check-public-dm-tool-boundary.mjs",
+        "tests/public-dm-tool-boundary.test.mjs"
+      ],
+      "check": "node --test tests/public-dm-tool-boundary.test.mjs && node scripts/check-public-dm-tool-boundary.mjs"
     },
     {
       "id": "dm-site-brief-boundary",
@@ -78,6 +89,7 @@
         "src/lib/dm/contract.ts",
         "src/lib/dm/eval-corpus.ts",
         "src/lib/dm/eval-report.ts",
+        "src/lib/dm/eval-runtime.ts",
         "src/lib/dm/eval-source.ts",
         "src/lib/dm/fit-check.ts",
         "src/lib/dm/judge.ts",
@@ -126,6 +138,7 @@
       "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case, and canned unit answers cannot produce a release score",
       "subjectRefs": [
         "src/lib/dm/eval-corpus.ts",
+        "src/lib/dm/eval-runtime.ts",
         "src/lib/dm/eval-source.ts",
         "src/lib/dm/judge.ts",
         "src/lib/dm/eval-report.ts",

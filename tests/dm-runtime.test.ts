@@ -11,6 +11,7 @@ import {
   requestForEvalCase,
 } from '@/lib/dm/eval-corpus';
 import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
+import { createDMEvalRuntimeSourceDeps } from '@/lib/dm/eval-runtime';
 import { observeDMResponse } from '@/lib/dm/response-observer';
 import { classifyDMStreamError, createDMChatResponse, readDMBudgetConfig, readDMRuntimeConfig } from '@/lib/dm/runtime';
 import { buildDMSiteBrief } from '@/lib/dm/site-brief';
@@ -53,6 +54,62 @@ test('site brief failure stops before model work and exposes only a sanitized st
   assert.equal(model.doStreamCalls.length, 0);
   assert.match(observation.errors.join(' '), /could not answer that safely/i);
   assert.doesNotMatch(JSON.stringify(observation), new RegExp(marker));
+});
+
+test('request deadline bounds a stalled pre-model site brief load', async () => {
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const model = toolSequenceModel([], prompts) as MockLanguageModelV4;
+  const request = chatRequest('What kind of engineer is Dylan?');
+  const metricsLines: string[] = [];
+  const neverResolvingProjects = new Promise<never>(() => {});
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+
+  const observation = await Promise.race([
+    observeDMResponse(createDMChatResponse(request, config, {
+      db: { async query() { throw new Error('database work must remain unreachable'); } },
+      projectLoader: () => neverResolvingProjects,
+      model,
+      budgets: { deadlineMs: 5, maxOutputTokens: 1_200, maxSteps: 2 },
+      metricsLogger: (line) => metricsLines.push(line),
+    }), request),
+    new Promise<never>((_, reject) => {
+      watchdog = setTimeout(() => reject(new Error('site brief load exceeded the request deadline watchdog')), 500);
+    }),
+  ]).finally(() => {
+    if (watchdog) clearTimeout(watchdog);
+  });
+
+  assert.equal(observation.outcome, 'error');
+  assert.equal(model.doStreamCalls.length, 0);
+  assert.equal(prompts.length, 0);
+  assert.match(observation.errors.join(' '), /took too long/i);
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'timeout');
+});
+
+test('request cancellation bounds a stalled pre-model site brief load', async () => {
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const model = toolSequenceModel([], prompts) as MockLanguageModelV4;
+  const request = chatRequest('What kind of engineer is Dylan?');
+  const metricsLines: string[] = [];
+  const controller = new AbortController();
+  const privateReason = 'visitor-private-brief-cancel-reason';
+  const response = createDMChatResponse(request, config, {
+    db: { async query() { throw new Error('database work must remain unreachable'); } },
+    projectLoader: () => new Promise<never>(() => {}),
+    model,
+    signal: controller.signal,
+    budgets: { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 2 },
+    metricsLogger: (line) => metricsLines.push(line),
+  });
+  setTimeout(() => controller.abort(new Error(privateReason)), 5);
+
+  const observation = await observeDMResponse(response, request);
+
+  assert.equal(observation.outcome, 'incomplete');
+  assert.equal(model.doStreamCalls.length, 0);
+  assert.equal(prompts.length, 0);
+  assert.doesNotMatch(JSON.stringify(observation), new RegExp(privateReason));
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'aborted');
 });
 
 test('ambient site brief supports reasoned engineer synthesis while same-run evidence remains mandatory', async (t) => {
@@ -118,11 +175,93 @@ test('ambient site brief supports reasoned engineer synthesis while same-run evi
     assert.deepEqual(observation.tools, []);
     assert.match(observation.answerText, /could not verify/i);
   });
+
+  await t.test('a named brief project rejects unrelated evidence without a direct read', async () => {
+    const request = chatRequest('Tell me about loom.');
+    const unsupported = {
+      segments: [{
+        kind: 'factual',
+        text: 'Loom is a published project.',
+        evidenceIds: ['resume:now:role'],
+      }],
+      artifactIntent: 'none',
+      artifacts: [],
+      limitations: [],
+    };
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'readResume', input: { trackIds: ['now'] } },
+        { toolName: 'finalizeAnswer', input: unsupported },
+        { toolName: 'finalizeAnswer', input: unsupported },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'limited');
+    assert.deepEqual(observation.tools, ['readResume']);
+    assert.match(observation.answerText, /could not verify/i);
+  });
+
+  await t.test('a named brief project still rejects unrelated citations after a direct read', async () => {
+    const request = chatRequest('Tell me about loom.');
+    const unsupported = {
+      segments: [{
+        kind: 'factual',
+        text: 'Loom is a published project.',
+        evidenceIds: ['resume:now:role'],
+      }],
+      artifactIntent: 'none',
+      artifacts: [],
+      limitations: [],
+    };
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'readResume', input: { trackIds: ['now'] } },
+        { toolName: 'finalizeAnswer', input: unsupported },
+        { toolName: 'finalizeAnswer', input: unsupported },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'limited');
+    assert.deepEqual(observation.tools, ['getProject', 'readResume']);
+    assert.match(observation.answerText, /could not verify/i);
+  });
+
+  await t.test('a named brief project accepts evidence from its exact direct read', async () => {
+    const request = chatRequest('Tell me about loom.');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: source.db,
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'loom' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'Loom is a published project.',
+            evidenceIds: ['loom:identity'],
+          }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        } },
+      ]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.equal(observation.result?.repairAttempted, false);
+    assert.deepEqual(observation.tools, ['getProject']);
+    assert.ok(observation.evidenceIds.includes('loom:identity'));
+  });
 });
 
 test('one ToolLoopAgent run calls public tools and accepts only same-run evidence and artifacts', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('Which project shows trading automation?');
+  let projectLoads = 0;
   const model = toolSequenceModel([
     { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
     {
@@ -138,7 +277,10 @@ test('one ToolLoopAgent run calls public tools and accepts only same-run evidenc
 
   const response = createDMChatResponse(request, config, {
     db: source.db,
-    projectLoader: source.projectLoader,
+    projectLoader: async () => {
+      projectLoads += 1;
+      return source.projectLoader();
+    },
     model,
   });
   assert.match(response.headers.get('content-type') ?? '', /^text\/event-stream/);
@@ -150,6 +292,33 @@ test('one ToolLoopAgent run calls public tools and accepts only same-run evidenc
   assert.ok(observation.evidenceIds.includes('agentic-trader:identity'));
   assert.match(observation.answerText, /trading automation/i);
   assert.equal(observation.result?.status, 'accepted');
+  assert.equal(projectLoads, 1, 'the brief and public tools must share one run-local project promise');
+});
+
+test('live eval project-unavailable wiring preserves startup and exercises searchProjects', async () => {
+  const source = await createEvalProjectSource();
+  const testCase = evalCase('derived-project-tool-unavailable');
+  const request = requestForEvalCase(testCase);
+  const startupSiteBrief = buildDMSiteBrief(await source.projectLoader());
+  const sourceDeps = createDMEvalRuntimeSourceDeps(testCase, source, startupSiteBrief);
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    ...sourceDeps,
+    model: toolSequenceModel([
+      { toolName: 'searchProjects', input: { query: 'production reliability', limit: 1 } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'limitation', code: 'public_data_unavailable' }],
+        artifactIntent: 'one_project',
+        artifacts: [],
+        limitations: ['public_data_unavailable'],
+        followUp: 'try_resume',
+      } },
+    ]),
+  }), request);
+
+  assert.deepEqual(observation.tools, ['searchProjects']);
+  assert.equal(observation.result?.status, 'accepted');
+  assert.match(observation.answerText, /published project source is unavailable/i);
+  assert.equal(evaluateDMEvalObservation(testCase, observation), null);
 });
 
 test('runtime metrics mark the first visible public-tool state before completion', async () => {

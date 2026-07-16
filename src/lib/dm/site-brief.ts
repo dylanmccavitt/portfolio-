@@ -9,10 +9,10 @@ import { ProjectStatusSchema } from '@/lib/projects/schema';
 
 export const DM_SITE_BRIEF_MAX_CHARS = 8_000;
 export const DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS = 2_000;
+export const DM_SITE_BRIEF_MAX_UTF8_BYTES = DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS * 4;
 export const DM_SITE_BRIEF_SUMMARY_MAX_CHARS = 180;
 
-const ESTIMATED_CHARS_PER_TOKEN = 4;
-const OWNER_PROFILE_SUMMARY_MAX_CHARS = 480;
+const ESTIMATED_UTF8_BYTES_PER_TOKEN = 4;
 
 const StableIdSchema = z.string().trim().min(1).max(200).regex(/^[a-z0-9][a-z0-9_-]*$/i);
 const SlugSchema = z.string().trim().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]*$/);
@@ -61,19 +61,14 @@ export interface DMSiteBriefContent {
     route: string;
     evidenceTool: 'getContact';
   };
-  ownerApprovedProfileSummary?: string;
 }
 
 export interface DMSiteBrief {
   content: DMSiteBriefContent;
   promptText: string;
   charCount: number;
+  utf8ByteCount: number;
   estimatedTokens: number;
-}
-
-/** Reserved for #267. No profile source is loaded unless an owner-approved summary is supplied later. */
-export interface DMSiteBriefExtensions {
-  ownerApprovedProfileSummary?: string;
 }
 
 export type DMSiteBriefErrorCode =
@@ -93,15 +88,13 @@ export class DMSiteBriefError extends Error {
 
 export async function loadDMSiteBrief(
   options: PublicProjectLoadOptions = {},
-  extensions: DMSiteBriefExtensions = {},
 ): Promise<DMSiteBrief> {
   const loaded = await loadPublicProjectDetails(options);
-  return buildDMSiteBrief(loaded.projects, extensions);
+  return buildDMSiteBrief(loaded.projects);
 }
 
 export function buildDMSiteBrief(
   projectRows: readonly ProjectDetailReadModel[],
-  extensions: DMSiteBriefExtensions = {},
 ): DMSiteBrief {
   if (projectRows.length === 0) {
     throw new DMSiteBriefError(
@@ -154,9 +147,6 @@ export function buildDMSiteBrief(
     throw new DMSiteBriefError('validation_failed', 'The canonical resume contact pointer is unavailable.');
   }
 
-  const profileSummary = extensions.ownerApprovedProfileSummary === undefined
-    ? undefined
-    : boundedProfileSummary(extensions.ownerApprovedProfileSummary);
   const careerOverview = OneLineSchema.safeParse(RESUME.about);
   if (!careerOverview.success) {
     throw new DMSiteBriefError('validation_failed', 'The canonical career overview is unavailable.');
@@ -178,27 +168,26 @@ export function buildDMSiteBrief(
       route: `/journey/${currentTrack.id}`,
       evidenceTool: 'getContact',
     },
-    ...(profileSummary === undefined ? {} : { ownerApprovedProfileSummary: profileSummary }),
   };
   const promptText = JSON.stringify(content);
   const charCount = promptText.length;
-  const estimatedTokens = Math.ceil(charCount / ESTIMATED_CHARS_PER_TOKEN);
-  if (charCount > DM_SITE_BRIEF_MAX_CHARS || estimatedTokens > DM_SITE_BRIEF_MAX_ESTIMATED_TOKENS) {
+  // The encoded byte ceiling is the conservative provider-independent safety
+  // boundary: unlike JavaScript string length, it charges multibyte Unicode
+  // fully. estimatedTokens remains a transparent four-byte planning estimate,
+  // not a claim that every provider uses the same tokenizer.
+  const utf8ByteCount = new TextEncoder().encode(promptText).byteLength;
+  const estimatedTokens = Math.ceil(utf8ByteCount / ESTIMATED_UTF8_BYTES_PER_TOKEN);
+  if (
+    charCount > DM_SITE_BRIEF_MAX_CHARS
+    || utf8ByteCount > DM_SITE_BRIEF_MAX_UTF8_BYTES
+  ) {
     throw new DMSiteBriefError(
       'size_limit_exceeded',
       'The complete DM site brief exceeds its bounded prompt budget; no published projects were omitted.',
     );
   }
 
-  return { content, promptText, charCount, estimatedTokens };
-}
-
-function boundedProfileSummary(value: string): string {
-  const normalized = oneLine(value);
-  if (!normalized || normalized.length > OWNER_PROFILE_SUMMARY_MAX_CHARS) {
-    throw new DMSiteBriefError('validation_failed', 'The owner-approved profile summary is invalid.');
-  }
-  return normalized;
+  return { content, promptText, charCount, utf8ByteCount, estimatedTokens };
 }
 
 function boundedOneLine(value: string, maxChars: number): string {
