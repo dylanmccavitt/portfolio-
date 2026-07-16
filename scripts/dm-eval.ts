@@ -12,7 +12,8 @@ import {
   validateDMLiveEvalCorpus,
   type DMLiveEvalCase,
 } from '@/lib/dm/eval-corpus';
-import { createEvalProjectSource, createUnavailableEvalPublicSourceSearch } from '@/lib/dm/eval-source';
+import { createDMEvalRuntimeSourceDeps } from '@/lib/dm/eval-runtime';
+import { createEvalProjectSource } from '@/lib/dm/eval-source';
 import { observeDMResponse } from '@/lib/dm/response-observer';
 import type { DMMetricsRecord } from '@/lib/dm/metrics';
 import { formatMissingLiveModelKeysError, parseDMEvalModelSpecs, readModelKeyAvailability } from '@/lib/dm/model-specs';
@@ -116,7 +117,6 @@ async function main(): Promise<void> {
   if (options.release) assertDMReleaseConfiguration(modelSpecs.map((spec) => spec.label), options.runs, judgeConfig !== null);
 
   const source = await createEvalProjectSource();
-  const unavailablePublicSourceSearch = createUnavailableEvalPublicSourceSearch();
   const records: EvalRunRecord[] = [];
   process.env.DM_METRICS = '1';
 
@@ -137,14 +137,8 @@ async function main(): Promise<void> {
             request,
             { provider: spec.provider, model: spec.model },
             {
-              db: source.db,
+              ...createDMEvalRuntimeSourceDeps(testCase, source),
               model,
-              projectLoader: testCase.toolFailure?.tool === 'searchProjects'
-                ? async () => { throw new Error('simulated eval project source unavailable'); }
-                : source.projectLoader,
-              ragSearch: testCase.toolFailure?.tool === 'searchPublicSources'
-                ? unavailablePublicSourceSearch
-                : source.publicSourceSearch,
               metricsLogger(line: string) {
                 metrics = parseMetricsLine(line) ?? metrics;
               },

@@ -43,6 +43,30 @@
       "check": "node scripts/check-public-dm-tool-boundary.mjs"
     },
     {
+      "id": "dm-public-tool-import-boundary-regressions",
+      "statement": "the public DM import-boundary proof rejects dynamic private imports plus relative, alias, and extension-bearing catalog specifiers across the three public DM modules",
+      "subjectRefs": [
+        "src/lib/dm/public-agent-tools.ts",
+        "src/lib/dm/runtime.ts",
+        "src/lib/dm/site-brief.ts",
+        "scripts/check-public-dm-tool-boundary.mjs",
+        "tests/public-dm-tool-boundary.test.mjs"
+      ],
+      "check": "node --test tests/public-dm-tool-boundary.test.mjs && node scripts/check-public-dm-tool-boundary.mjs"
+    },
+    {
+      "id": "dm-site-brief-boundary",
+      "statement": "DM starts model work only after building a deterministic bounded site brief from the complete dynamic public-project source plus canonical resume and public route pointers, without weakening same-run typed-tool evidence rules",
+      "subjectRefs": [
+        "src/lib/dm/site-brief.ts",
+        "src/lib/dm/runtime.ts",
+        "src/pages/api/dm/chat.ts",
+        "tests/dm-site-brief.test.ts",
+        "tests/dm-runtime.test.ts"
+      ],
+      "check": "npm run test:dm"
+    },
+    {
       "id": "dm-tool-loop-runtime",
       "statement": "DM uses one AI SDK ToolLoopAgent over typed public tools and emits validated same-run evidence and artifacts through the standard UIMessage stream",
       "subjectRefs": [
@@ -65,6 +89,7 @@
         "src/lib/dm/contract.ts",
         "src/lib/dm/eval-corpus.ts",
         "src/lib/dm/eval-report.ts",
+        "src/lib/dm/eval-runtime.ts",
         "src/lib/dm/eval-source.ts",
         "src/lib/dm/fit-check.ts",
         "src/lib/dm/judge.ts",
@@ -113,6 +138,7 @@
       "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case, and canned unit answers cannot produce a release score",
       "subjectRefs": [
         "src/lib/dm/eval-corpus.ts",
+        "src/lib/dm/eval-runtime.ts",
         "src/lib/dm/eval-source.ts",
         "src/lib/dm/judge.ts",
         "src/lib/dm/eval-report.ts",

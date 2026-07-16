@@ -39,6 +39,7 @@ export interface DMPostHandlerDeps {
   env?: DMRuntimeEnv & DMRateLimitEnv;
   db?: DMRuntimeDeps['db'];
   model?: DMRuntimeDeps['model'];
+  projectLoader?: DMRuntimeDeps['projectLoader'];
   createDb?: (connectionString?: string) => DbClient;
   clientAddressResolver?: DMClientAddressResolver;
   rateLimitConfig?: DMRateLimitConfig;
@@ -102,6 +103,7 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
       const response = createDMChatResponse(payload, config, {
         db,
         model: deps.model,
+        projectLoader: deps.projectLoader,
         env: deps.env,
         signal: request.signal,
         traceId,
