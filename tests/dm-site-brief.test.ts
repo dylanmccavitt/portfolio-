@@ -10,6 +10,7 @@ import {
   DM_SITE_BRIEF_SUMMARY_MAX_CHARS,
   DMSiteBriefError,
   loadDMSiteBrief,
+  normalizeDMSiteBriefProjectReference,
 } from '@/lib/dm/site-brief';
 import { PublicProjectDataError } from '@/lib/public-projects';
 
@@ -86,6 +87,25 @@ test('site brief fails closed when normalized project title aliases collide', as
     () => buildDMSiteBrief(rows),
     (error: unknown) => error instanceof DMSiteBriefError && error.code === 'validation_failed',
   );
+});
+
+test('site brief fails closed when a published title has no matchable Unicode alias', async () => {
+  const source = await createEvalProjectSource();
+  const template = (await source.projectLoader())[0];
+  assert.ok(template);
+
+  assert.throws(
+    () => buildDMSiteBrief([{ ...template, title: '✨—!' }]),
+    (error: unknown) => error instanceof DMSiteBriefError && error.code === 'validation_failed',
+  );
+});
+
+test('project-reference normalization treats equivalent Unicode forms consistently', () => {
+  assert.equal(
+    normalizeDMSiteBriefProjectReference('Ｃａｆｅ\u0301'),
+    normalizeDMSiteBriefProjectReference('Café'),
+  );
+  assert.equal(normalizeDMSiteBriefProjectReference('界面 — 2026'), '界面 2026');
 });
 
 test('site brief UTF-8 budget fails closed immediately above the Unicode-safe byte limit', async () => {

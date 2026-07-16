@@ -355,6 +355,72 @@ test('ambient site brief supports reasoned engineer synthesis while same-run evi
     assert.deepEqual(accepted.tools, ['getProject']);
   });
 
+  const unicodeTitleTemplate = (await source.projectLoader())[0];
+  assert.ok(unicodeTitleTemplate);
+  const unicodeTitleProject = {
+    ...unicodeTitleTemplate,
+    id: 'unicode-title',
+    slug: 'unicode-title',
+    title: '界面',
+    summary: 'A public interface project.',
+    dmArtifact: {
+      ...unicodeTitleTemplate.dmArtifact,
+      id: 'unicode-title',
+      title: '界面',
+      href: '/projects/unicode-title',
+    },
+  };
+  const unicodeTitleRequest = chatRequest('Tell me about 界面.');
+
+  await t.test('a non-Latin published title rejects unrelated resume evidence', async () => {
+    const unsupported = {
+      segments: [{
+        kind: 'factual',
+        text: 'It is a public interface project.',
+        evidenceIds: ['resume:now:role'],
+      }],
+      artifactIntent: 'none',
+      artifacts: [],
+      limitations: [],
+    };
+    const observation = await observeDMResponse(createDMChatResponse(unicodeTitleRequest, config, {
+      db: source.db,
+      projectLoader: async () => [unicodeTitleProject],
+      model: toolSequenceModel([
+        { toolName: 'readResume', input: { trackIds: ['now'] } },
+        { toolName: 'finalizeAnswer', input: unsupported },
+        { toolName: 'finalizeAnswer', input: unsupported },
+      ]),
+    }), unicodeTitleRequest);
+
+    assert.equal(observation.result?.status, 'limited');
+    assert.deepEqual(observation.tools, ['readResume']);
+  });
+
+  await t.test('a non-Latin published title accepts evidence from its exact direct read', async () => {
+    const observation = await observeDMResponse(createDMChatResponse(unicodeTitleRequest, config, {
+      db: source.db,
+      projectLoader: async () => [unicodeTitleProject],
+      model: toolSequenceModel([
+        { toolName: 'getProject', input: { id: 'unicode-title' } },
+        { toolName: 'finalizeAnswer', input: {
+          segments: [{
+            kind: 'factual',
+            text: 'It is a public interface project.',
+            evidenceIds: ['unicode-title:summary'],
+          }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        } },
+      ]),
+    }), unicodeTitleRequest);
+
+    assert.equal(observation.result?.status, 'accepted');
+    assert.deepEqual(observation.tools, ['getProject']);
+    assert.ok(observation.evidenceIds.includes('unicode-title:summary'));
+  });
+
   await t.test('a pronoun-only comparison requires exact direct evidence for every named brief project', async () => {
     const request = chatRequest('Compare loom and agentic-trader.');
     const unsupported = {

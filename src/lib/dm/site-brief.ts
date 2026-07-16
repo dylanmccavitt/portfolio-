@@ -205,13 +205,19 @@ function oneLine(value: string): string {
 }
 
 export function normalizeDMSiteBriefProjectReference(value: string): string {
-  return value.normalize('NFKD').toLowerCase().replace(/\p{M}+/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  return value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim();
 }
 
 function assertUniqueProjectAliases(projects: readonly DMSiteBriefProject[]): void {
   const projectIdByAlias = new Map<string, string>();
   for (const project of projects) {
     const slug = project.route.startsWith('/projects/') ? project.route.slice('/projects/'.length) : '';
+    if (!normalizeDMSiteBriefProjectReference(project.title)) {
+      throw new DMSiteBriefError(
+        'validation_failed',
+        'Published project titles must produce a matchable DM site brief alias.',
+      );
+    }
     for (const reference of [project.id, slug, project.title]) {
       const alias = normalizeDMSiteBriefProjectReference(reference);
       if (!alias) continue;
