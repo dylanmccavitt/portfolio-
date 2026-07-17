@@ -362,6 +362,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const callableContainers = new Set();
   const callableResultBindings = new Set();
   const callableYieldBindings = new Set();
+  const callableAccessorBindings = new Set();
+  const classInstances = new Map();
   walk(sourceFile, (node) => {
     if (
       (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node))
@@ -522,11 +524,67 @@ function dynamicCodeExecutionFailures(sourceFile) {
     const path = staticPropertyPath(expression, constBindings);
     return path ? [`${path.join('.')}.${key}`] : [];
   };
+  const callableSourcePaths = (node) => {
+    const expression = unwrapExpression(node);
+    if (ts.isConditionalExpression(expression)) {
+      return [
+        ...callableSourcePaths(expression.whenTrue),
+        ...callableSourcePaths(expression.whenFalse),
+      ];
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        return callableSourcePaths(expression.right);
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+        || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+        || expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) return [...callableSourcePaths(expression.left), ...callableSourcePaths(expression.right)];
+    }
+    const path = staticPropertyPath(expression, constBindings)?.join('.');
+    return path ? [path] : [];
+  };
   const recordCallableTarget = (target) => {
     const collection = target.includes('.') ? callablePaths : callableBindings;
     if (collection.has(target)) return false;
     collection.add(target);
     return true;
+  };
+  const recordCallableOutputAliases = (target, sources) => {
+    let changed = false;
+    if (sources.some((source) => callableResultBindings.has(source))) {
+      if (!callableResultBindings.has(target)) {
+        callableResultBindings.add(target);
+        changed = true;
+      }
+    }
+    if (sources.some((source) => callableYieldBindings.has(source))) {
+      if (!callableYieldBindings.has(target)) {
+        callableYieldBindings.add(target);
+        changed = true;
+      }
+    }
+    return changed;
+  };
+  const callableCalleePaths = (node) => {
+    const expression = unwrapExpression(node);
+    const paths = callableSourcePaths(expression);
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      const key = ts.isPropertyAccessExpression(expression)
+        ? expression.name.text
+        : expression.argumentExpression && computedName(expression.argumentExpression);
+      const receiver = unwrapExpression(expression.expression);
+      if (key !== null && key !== undefined) {
+        if (ts.isIdentifier(receiver) && classInstances.has(receiver.text)) {
+          paths.push(`${classInstances.get(receiver.text)}.prototype.${key}`);
+        }
+        if (ts.isNewExpression(receiver) && ts.isIdentifier(receiver.expression)) {
+          paths.push(`${receiver.expression.text}.prototype.${key}`);
+        }
+      }
+    }
+    return [...new Set(paths)];
   };
   const isTrackedCallableExpression = (node) => {
     const expression = unwrapExpression(node);
@@ -535,7 +593,11 @@ function dynamicCodeExecutionFailures(sourceFile) {
       ts.isFunctionExpression(expression)
       || ts.isArrowFunction(expression)
       || ts.isClassExpression(expression)
-      || (source && (callableBindings.has(source) || callablePaths.has(source)))
+      || (source && (
+        callableBindings.has(source)
+        || callablePaths.has(source)
+        || callableAccessorBindings.has(source)
+      ))
     ) return true;
     if (ts.isConditionalExpression(expression)) {
       return isTrackedCallableExpression(expression.whenTrue)
@@ -559,6 +621,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
       ))
     );
     if (ts.isPropertyAccessExpression(expression)) {
+      if (callableCalleePaths(expression).some((path) => callableAccessorBindings.has(path))) return true;
       if (selectedMember(expression.expression, expression.name.text)) return true;
       if (expression.name.text === 'value') {
         const nextCall = unwrapExpression(expression.expression);
@@ -568,20 +631,21 @@ function dynamicCodeExecutionFailures(sourceFile) {
           && nextCall.expression.name.text === 'next'
         ) {
           const generatorCall = unwrapExpression(nextCall.expression.expression);
-          const generator = ts.isCallExpression(generatorCall)
-            ? staticPropertyPath(generatorCall.expression, constBindings)?.join('.')
-            : null;
-          if (generator && callableYieldBindings.has(generator)) return true;
+          const generators = ts.isCallExpression(generatorCall)
+            ? callableCalleePaths(generatorCall.expression)
+            : [];
+          if (generators.some((generator) => callableYieldBindings.has(generator))) return true;
         }
       }
     }
     if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+      if (callableCalleePaths(expression).some((path) => callableAccessorBindings.has(path))) return true;
       const key = computedName(expression.argumentExpression);
       if (key !== null && selectedMember(expression.expression, key)) return true;
     }
     if (ts.isCallExpression(expression)) {
-      const callee = staticPropertyPath(expression.expression, constBindings)?.join('.');
-      return Boolean(callee && callableResultBindings.has(callee));
+      return callableCalleePaths(expression.expression)
+        .some((callee) => callableResultBindings.has(callee));
     }
     return false;
   };
@@ -668,7 +732,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const propagateCallableBinding = (name, initializer) => {
     const target = unwrapExpression(name);
     const expression = unwrapExpression(initializer);
-    if (ts.isIdentifier(target)) return propagateCallableInitializer(target.text, expression);
+    if (ts.isIdentifier(target)) {
+      return recordCallableOutputAliases(target.text, callableSourcePaths(expression))
+        || propagateCallableInitializer(target.text, expression);
+    }
     let changed = false;
     if (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target)) {
       for (const [index, element] of target.elements.entries()) {
@@ -691,6 +758,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
             if (callableBindings.has(path) || callablePaths.has(path)) {
               const binding = unwrapExpression(elementTarget);
               if (ts.isIdentifier(binding)) changed = recordCallableTarget(binding.text) || changed;
+            }
+            const binding = unwrapExpression(elementTarget);
+            if (ts.isIdentifier(binding)) {
+              changed = recordCallableOutputAliases(binding.text, [path]) || changed;
             }
           }
         }
@@ -716,6 +787,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
               ts.isIdentifier(binding)
               && (callableBindings.has(path) || callablePaths.has(path))
             ) changed = recordCallableTarget(binding.text) || changed;
+            if (ts.isIdentifier(binding)) {
+              changed = recordCallableOutputAliases(binding.text, [path]) || changed;
+            }
           }
         } else if (ts.isShorthandPropertyAssignment(property)) {
           for (const value of literalMemberValues(expression, property.name.text)) {
@@ -731,6 +805,31 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return changed;
   };
+  const objectLiteralBindingPath = (object) => {
+    if (
+      ts.isVariableDeclaration(object.parent)
+      && object.parent.initializer === object
+      && ts.isIdentifier(object.parent.name)
+    ) return object.parent.name.text;
+    if (
+      ts.isPropertyAssignment(object.parent)
+      && object.parent.initializer === object
+      && ts.isObjectLiteralExpression(object.parent.parent)
+    ) {
+      const parent = objectLiteralBindingPath(object.parent.parent);
+      return parent ? `${parent}.${propertyNameText(object.parent.name)}` : null;
+    }
+    return null;
+  };
+  const classBindingName = (node) => {
+    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node)) && node.name) return node.name.text;
+    if (
+      ts.isClassExpression(node)
+      && ts.isVariableDeclaration(node.parent)
+      && ts.isIdentifier(node.parent.name)
+    ) return node.parent.name.text;
+    return null;
+  };
   const functionBindingName = (node) => {
     if (ts.isFunctionDeclaration(node) && node.name) return node.name.text;
     if (
@@ -738,6 +837,32 @@ function dynamicCodeExecutionFailures(sourceFile) {
       && ts.isVariableDeclaration(node.parent)
       && ts.isIdentifier(node.parent.name)
     ) return node.parent.name.text;
+    if (
+      (ts.isFunctionExpression(node) || ts.isArrowFunction(node))
+      && ts.isPropertyAssignment(node.parent)
+      && ts.isObjectLiteralExpression(node.parent.parent)
+    ) {
+      const object = objectLiteralBindingPath(node.parent.parent);
+      return object ? `${object}.${propertyNameText(node.parent.name)}` : null;
+    }
+    if (
+      (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node))
+      && ts.isObjectLiteralExpression(node.parent)
+    ) {
+      const object = objectLiteralBindingPath(node.parent);
+      return object ? `${object}.${propertyNameText(node.name)}` : null;
+    }
+    if (
+      (ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node))
+      && (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent))
+    ) {
+      const className = classBindingName(node.parent);
+      if (!className) return null;
+      const prefix = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)
+        ? className
+        : `${className}.prototype`;
+      return `${prefix}.${propertyNameText(node.name)}`;
+    }
     return null;
   };
   const directFunctionOutputs = (node) => {
@@ -763,6 +888,17 @@ function dynamicCodeExecutionFailures(sourceFile) {
         ts.isBinaryExpression(node)
         && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
       ) {
+        const assignedTarget = unwrapExpression(node.left);
+        const assignedValue = unwrapExpression(node.right);
+        if (
+          ts.isIdentifier(assignedTarget)
+          && ts.isNewExpression(assignedValue)
+          && ts.isIdentifier(assignedValue.expression)
+          && classInstances.get(assignedTarget.text) !== assignedValue.expression.text
+        ) {
+          classInstances.set(assignedTarget.text, assignedValue.expression.text);
+          callableChanged = true;
+        }
         callableChanged = propagateCallableBinding(node.left, node.right) || callableChanged;
         const target = staticPropertyPath(node.left, constBindings)?.join('.');
         const source = staticPropertyPath(node.right, constBindings)?.join('.');
@@ -802,10 +938,14 @@ function dynamicCodeExecutionFailures(sourceFile) {
           const outputs = directFunctionOutputs(node);
           if (
             outputs.returns.some(isTrackedCallableExpression)
-            && !callableResultBindings.has(name)
           ) {
-            callableResultBindings.add(name);
-            callableChanged = true;
+            const outputsSet = ts.isGetAccessorDeclaration(node)
+              ? callableAccessorBindings
+              : callableResultBindings;
+            if (!outputsSet.has(name)) {
+              outputsSet.add(name);
+              callableChanged = true;
+            }
           }
           if (
             outputs.yields.some(isTrackedCallableExpression)
@@ -817,6 +957,16 @@ function dynamicCodeExecutionFailures(sourceFile) {
         }
       }
       if (!ts.isVariableDeclaration(node) || !node.initializer) return;
+      const initializer = unwrapExpression(node.initializer);
+      if (
+        ts.isIdentifier(node.name)
+        && ts.isNewExpression(initializer)
+        && ts.isIdentifier(initializer.expression)
+        && classInstances.get(node.name.text) !== initializer.expression.text
+      ) {
+        classInstances.set(node.name.text, initializer.expression.text);
+        callableChanged = true;
+      }
       callableChanged = propagateCallableBinding(node.name, node.initializer) || callableChanged;
       if (!ts.isIdentifier(node.name)) return;
       const path = staticPropertyPath(node.initializer, constBindings)?.join('.');
@@ -1597,7 +1747,11 @@ function trustedPrimitiveMutationFailures(sourceFile) {
         && staticStringValue(expression.argumentExpression, constBindings) === null
       ) {
         const owner = resolvePath(expression.expression);
-        if (governed(owner) || owner?.join('.') === 'z') found = true;
+        if (
+          governed(owner)
+          || owner?.join('.') === 'z'
+          || (owner?.length === 1 && GOVERNED_INTRINSIC_PROTOTYPES.has(owner[0]))
+        ) found = true;
       }
       ts.forEachChild(expression, visit);
     };
@@ -1652,6 +1806,12 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   ));
   let mutated = false;
   walk(sourceFile, (node) => {
+    if (
+      ts.isElementAccessExpression(node)
+      && node.argumentExpression
+      && staticStringValue(node.argumentExpression, constBindings) === null
+      && unresolvedComputedTargetIsGoverned(node)
+    ) mutated = true;
     if (ts.isReturnStatement(node) && node.expression && governedStoredValue(node.expression)) mutated = true;
     if (ts.isArrowFunction(node) && !ts.isBlock(node.body) && governedStoredValue(node.body)) mutated = true;
     if (ts.isYieldExpression(node) && node.expression && governedStoredValue(node.expression)) mutated = true;
@@ -1948,8 +2108,8 @@ function governedV2DependencyMutationFailures(sourceFile) {
     for (const path of governedPaths(node)) {
       for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
         if (
-          path.length === governedPath.length
-          && governedPath.every((part, index) => path[index] === part)
+          path.length <= governedPath.length
+          && path.every((part, index) => governedPath[index] === part)
         ) mutated.add(`${label} must not escape through an unapproved helper parameter`);
       }
     }
@@ -2236,26 +2396,69 @@ function governedV2DependencyMutationFailures(sourceFile) {
     if (ownerName !== 'Object' || method !== 'assign') return;
     const objectPaths = node.arguments[0] ? governedPaths(node.arguments[0]) : [];
     if (objectPaths.length === 0) return;
+    let uncertainSource = false;
     for (const source of node.arguments.slice(1)) {
       const unwrapped = unwrapExpression(source);
-      if (!ts.isObjectLiteralExpression(unwrapped)) continue;
+      if (!ts.isObjectLiteralExpression(unwrapped)) {
+        uncertainSource = true;
+        continue;
+      }
       for (const property of unwrapped.properties) {
-        if (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+        if (
+          (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property))
+          && !ts.isComputedPropertyName(property.name)
+        ) {
           for (const objectPath of objectPaths) recordPath([...objectPath, propertyNameText(property.name)]);
+        } else {
+          uncertainSource = true;
         }
       }
+    }
+    if (uncertainSource) {
+      for (const objectPath of objectPaths) recordPath(objectPath, true);
     }
   });
 
   walk(sourceFile, (node) => {
     if (!ts.isCallExpression(node)) return;
+    if (
+      compactNode(node, sourceFile)
+      === 'createRuntimePublicTools(publicRun,artifacts,metrics,publicToolGate)'
+    ) return;
+    const trustedGovernedRootConsumers = new Set([
+      'resolveV2FinalAnswer',
+      'validateFinalAnswer',
+      'rememberBriefProjectReferences',
+      'reserveToolOutcome',
+      'rememberToolOutcome',
+      'rememberLimitations',
+      'artifactAvailable',
+      'resolveArtifact',
+      'limitationOutcomeErrors',
+      'stableProjectReadErrors',
+      'requestedArtifactErrors',
+      'effectiveLimitations',
+      'requiredOutcomeLimitations',
+      'allowedFollowUps',
+      'emptyOutcomeHasRetainedArtifacts',
+      'briefProjectIdsRequiredByLatestTurn',
+      'briefProjectIdsMentioned',
+      'evidenceQuoteErrors',
+      'compositionCoverageErrors',
+      'groundedProjectFollowUps',
+    ]);
+    const trustedRootConsumer = (
+      ts.isIdentifier(node.expression)
+      && trustedGovernedRootConsumers.has(node.expression.text)
+    );
     for (const argument of node.arguments) {
       for (const path of governedPaths(argument)) {
         for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
           if (
-            path.length === governedPath.length
-            && governedPath.every((part, index) => path[index] === part)
+            path.length <= governedPath.length
+            && path.every((part, index) => governedPath[index] === part)
           ) {
+            if (trustedRootConsumer && path.length < governedPath.length) continue;
             mutated.add(`${label} must not escape through an unapproved helper parameter`);
           }
         }

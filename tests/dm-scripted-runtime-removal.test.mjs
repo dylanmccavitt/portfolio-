@@ -921,6 +921,14 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `class Holder { callable = () => {}; } const callable = new Holder().callable; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const expose = () => fn; const callable = expose(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; function* expose() { yield fn; } const callable = expose().next().value; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const holder = { expose() { return fn; } }; const callable = holder.expose(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const holder = { get expose() { return fn; } }; const callable = holder.expose; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const holder = { expose: () => fn }; const callable = holder.expose(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; class Holder { expose() { return fn; } } const holder = new Holder(); const callable = holder.expose(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; class Holder { get expose() { return fn; } } const callable = new Holder().expose; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const expose = () => fn; const alias = expose; const callable = alias(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const expose = () => fn; const alias = true ? expose : (() => null); const callable = alias(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const holder = { expose: () => fn }; const { expose: alias } = holder; const callable = alias(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1506,6 +1514,9 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  function patch(key: string) { (Array.prototype as any)[key]++; } patch('0');\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  function patch(key: string) { for ((Array.prototype as any)[key] of ['poison']) {} } patch('0');\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  function patch(key: string) { ({ value: (Array.prototype as any)[key] } = { value: 'poison' }); } patch('0');\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  function patch(key: string) { (Array as any)[key][0] = 'poison'; } patch('prototype');\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  function patch(key: string) { (Array as any)[key].push('poison'); } patch('prototype');\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  function patch(key: string) { const P = (Array as any)[key]; P.push('poison'); } patch('prototype');\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1774,6 +1785,30 @@ test('rejects governed dependency and schema escapes through property stores and
       "  const agentTools = contract === 'v2'",
       "  function patch(key: string) { ({ value: (V2FinalAnswerInputSchema as any)[key] } = { value: (x: unknown) => x }); } patch('parse');\n  const agentTools = contract === 'v2'",
     ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  function poison(value: any) { value.searchProjects = async () => ({}); } poison(publicRun);\n  const siteBrief =",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  function poison(value: any) { value.projects = new Map(); } poison(artifacts);\n  const siteBrief =",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  const overrides: any = { searchProjects: async () => ({}) }; Object.assign(publicRun, overrides);\n  const siteBrief =",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  const overrides: any = { projects: new Map() }; Object.assign(artifacts, overrides);\n  const siteBrief =",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  const overrides: any = { searchProjects: async () => ({}) }; Object.assign(publicRun, { ...overrides });\n  const siteBrief =",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  const key = ['search', 'Projects'].join(''); Object.assign(publicRun, { [key]: async () => ({}) });\n  const siteBrief =",
+    ),
   ];
   const expected = [
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
@@ -1826,6 +1861,12 @@ test('rejects governed dependency and schema escapes through property stores and
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+    'src/lib/dm/runtime.ts: governed v2 dependency publicRun.searchProjects must not escape through an unapproved helper parameter',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
+    'src/lib/dm/runtime.ts: governed v2 dependency publicRun.searchProjects must not be replaced or redefined',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+    'src/lib/dm/runtime.ts: governed v2 dependency publicRun.searchProjects must not be replaced or redefined',
+    'src/lib/dm/runtime.ts: governed v2 dependency publicRun.searchProjects must not be replaced or redefined',
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
