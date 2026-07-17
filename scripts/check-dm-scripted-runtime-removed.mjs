@@ -244,6 +244,8 @@ function zodBindingFailures(sourceFile) {
 function metricsRecorderBindingFailures(sourceFile) {
   const imports = [];
   const shadows = [];
+  const callSites = [];
+  const unexpectedReferences = [];
   let bindingWritten = false;
   walk(sourceFile, (node) => {
     if (ts.isImportSpecifier(node)) {
@@ -260,14 +262,51 @@ function metricsRecorderBindingFailures(sourceFile) {
     }
     if (declaresValueName(node, 'createDMMetricsRecorder')) shadows.push(node);
     if (writesValueName(node, 'createDMMetricsRecorder')) bindingWritten = true;
+    if (!ts.isIdentifier(node) || node.text !== 'createDMMetricsRecorder') return;
+    if (ts.isImportSpecifier(node.parent) || ts.isTypeQueryNode(node.parent)) return;
+    if (ts.isCallExpression(node.parent) && node.parent.expression === node) callSites.push(node.parent);
+    else unexpectedReferences.push(node);
   });
   return imports.length === 1
     && imports[0].localName === 'createDMMetricsRecorder'
     && imports[0].moduleName === './metrics'
     && shadows.length === 0
     && !bindingWritten
+    && callSites.length === 1
+    && unexpectedReferences.length === 0
     ? []
-    : ['src/lib/dm/runtime.ts: createDMMetricsRecorder must retain one unaliased, unshadowed, immutable import from ./metrics'];
+    : ['src/lib/dm/runtime.ts: createDMMetricsRecorder must retain one unaliased, unshadowed, immutable import from ./metrics and its sole direct call site'];
+}
+
+const DYNAMIC_CODE_NAMES = new Set([
+  'eval',
+  'Function',
+  'AsyncFunction',
+  'GeneratorFunction',
+  'AsyncGeneratorFunction',
+]);
+
+function dynamicCodeExecutionFailures(sourceFile) {
+  let unsafe = false;
+  walk(sourceFile, (node) => {
+    if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
+    if (
+      ts.isPropertyAccessExpression(node)
+      && (DYNAMIC_CODE_NAMES.has(node.name.text) || node.name.text === 'constructor')
+    ) unsafe = true;
+    if (
+      ts.isElementAccessExpression(node)
+      && node.argumentExpression
+      && ts.isStringLiteral(unwrapExpression(node.argumentExpression))
+      && (
+        DYNAMIC_CODE_NAMES.has(unwrapExpression(node.argumentExpression).text)
+        || unwrapExpression(node.argumentExpression).text === 'constructor'
+      )
+    ) unsafe = true;
+  });
+  return unsafe
+    ? ['src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction']
+    : [];
 }
 
 const SDK_PRIMITIVE_CALL_KINDS = new Map([
@@ -447,9 +486,16 @@ function staticPropertyPath(node) {
     return parentPath ? [...parentPath, expression.name.text] : null;
   }
   if (ts.isElementAccessExpression(expression)) {
-    const parentPath = staticPropertyPath(expression.expression);
     const argument = expression.argumentExpression && unwrapExpression(expression.argumentExpression);
-    if (!parentPath || !argument || (!ts.isStringLiteral(argument) && !ts.isNumericLiteral(argument))) return null;
+    if (!argument || (!ts.isStringLiteral(argument) && !ts.isNumericLiteral(argument))) return null;
+    const container = unwrapExpression(expression.expression);
+    if (ts.isArrayLiteralExpression(container) && ts.isNumericLiteral(argument)) {
+      const element = container.elements[Number(argument.text)];
+      if (!element || ts.isOmittedExpression(element)) return null;
+      return staticPropertyPath(ts.isSpreadElement(element) ? element.expression : element);
+    }
+    const parentPath = staticPropertyPath(container);
+    if (!parentPath) return null;
     return [...parentPath, argument.text];
   }
   return null;
@@ -476,6 +522,13 @@ function possiblePropertyPaths(node) {
       ...possiblePropertyPaths(expression.right),
     ];
   }
+  if (ts.isArrayLiteralExpression(expression)) {
+    return expression.elements.flatMap((element) => (
+      ts.isOmittedExpression(element)
+        ? []
+        : possiblePropertyPaths(ts.isSpreadElement(element) ? element.expression : element)
+    ));
+  }
   const path = staticPropertyPath(expression);
   return path ? [path] : [];
 }
@@ -484,6 +537,9 @@ const GOVERNED_V2_DEPENDENCY_PATHS = new Map([
   ['publicRun.evidenceLedger', ['publicRun', 'evidenceLedger']],
   ['publicToolGate.waitForIdle', ['publicToolGate', 'waitForIdle']],
   ['artifacts.projects', ['artifacts', 'projects']],
+  ['artifacts.resumeTracks', ['artifacts', 'resumeTracks']],
+  ['artifacts.contact', ['artifacts', 'contact']],
+  ['artifacts.sources', ['artifacts', 'sources']],
 ]);
 
 function governedV2DependencyMutationFailures(sourceFile) {
@@ -644,6 +700,10 @@ function governedV2DependencyMutationFailures(sourceFile) {
       if (mutatesGovernedPath || mutatesGovernedDescendant) mutated.add(label);
     }
   };
+  const isAuthorizedArtifactContactWrite = (node, path) => (
+    path.join('.') === 'artifacts.contact'
+    && hasFunctionDeclarationAncestor(node, 'createRuntimePublicTools')
+  );
 
   walk(sourceFile, (node) => {
     if (
@@ -652,7 +712,9 @@ function governedV2DependencyMutationFailures(sourceFile) {
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
       if (aliasAssignments.has(node)) return;
-      for (const path of governedPaths(node.left)) recordPath(path);
+      for (const path of governedPaths(node.left)) {
+        if (!isAuthorizedArtifactContactWrite(node, path)) recordPath(path);
+      }
       return;
     }
     if (ts.isDeleteExpression(node)) {
@@ -720,8 +782,26 @@ function governedV2DependencyMutationFailures(sourceFile) {
     }
   });
 
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    for (const argument of node.arguments) {
+      for (const path of governedPaths(argument)) {
+        for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
+          if (
+            path.length === governedPath.length
+            && governedPath.every((part, index) => path[index] === part)
+          ) {
+            mutated.add(`${label} must not escape through an unapproved helper parameter`);
+          }
+        }
+      }
+    }
+  });
+
   return [...mutated].map((label) => (
-    `src/lib/dm/runtime.ts: governed v2 dependency ${label} must not be replaced or redefined`
+    label.includes(' must not escape through an unapproved helper parameter')
+      ? `src/lib/dm/runtime.ts: governed v2 dependency ${label}`
+      : `src/lib/dm/runtime.ts: governed v2 dependency ${label} must not be replaced or redefined`
   ));
 }
 
@@ -1183,6 +1263,21 @@ function governedSchemaMutationFailures(sourceFile) {
     const paths = node.arguments[0] ? governedPaths(node.arguments[0]) : [];
     if (paths.some(mutatesGovernedSchema)) mutated = true;
   });
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const approvedArtifactSchemaUse = (
+      ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === 'z'
+      && node.expression.name.text === 'array'
+    );
+    for (const argument of node.arguments) {
+      const paths = governedPaths(argument);
+      if (paths.some((path) => governed.has(path[0]) && !(approvedArtifactSchemaUse && path[0] === 'ArtifactReferenceSchema'))) {
+        mutated = true;
+      }
+    }
+  });
   return mutated
     ? ['src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated']
     : [];
@@ -1302,6 +1397,10 @@ const APPROVED_METRICS_CALL_COUNTS = new Map([
   ["finish('completed')", 1],
 ]);
 
+const APPROVED_PUBLIC_TOOL_METRICS_CALL_COUNTS = new Map([
+  ['tool()', 6],
+]);
+
 const APPROVED_FINALIZATION_RESULT_STATEMENT_COUNTS = new Map([
   ['if(finalizationResult)returnfinalizationResult;', 2],
   ['returnfinalizationResult;', 5],
@@ -1382,11 +1481,56 @@ function closedSinkReferences(container, owner, approvedCalls, declaration) {
     const key = `${call.expression.name.text}(${call.arguments.map((argument) => compactNode(argument, container.getSourceFile())).join(',')})`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   });
-  if (unexpectedReference) return false;
-  for (const [key, count] of counts) {
-    if (!approvedCalls.has(key) || count > approvedCalls.get(key)) return false;
+  if (unexpectedReference || counts.size !== approvedCalls.size) return false;
+  for (const [key, count] of approvedCalls) {
+    if (counts.get(key) !== count) return false;
   }
   return true;
+}
+
+function publicToolMetricsBoundaryIsClosed(sourceFile) {
+  const declarations = [];
+  const callSites = [];
+  const unexpectedReferences = [];
+  let bindingWritten = false;
+  walk(sourceFile, (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'createRuntimePublicTools') {
+      declarations.push(node);
+    }
+    if (writesValueName(node, 'createRuntimePublicTools')) bindingWritten = true;
+    if (!ts.isIdentifier(node) || node.text !== 'createRuntimePublicTools') return;
+    if (ts.isFunctionDeclaration(node.parent) && node.parent.name === node) return;
+    if (ts.isCallExpression(node.parent) && node.parent.expression === node) callSites.push(node.parent);
+    else unexpectedReferences.push(node);
+  });
+
+  if (declarations.length === 0 && callSites.length === 0) return true;
+  const declaration = declarations[0];
+  const metricsParameter = declaration?.parameters[2]?.name;
+  let argumentsReference = false;
+  if (declaration?.body) {
+    walk(declaration.body, (node) => {
+      if (ts.isIdentifier(node) && node.text === 'arguments') argumentsReference = true;
+    });
+  }
+  return declarations.length === 1
+    && callSites.length === 1
+    && unexpectedReferences.length === 0
+    && !bindingWritten
+    && compactNode(callSites[0], sourceFile)
+      === 'createRuntimePublicTools(publicRun,artifacts,metrics,publicToolGate)'
+    && declaration.parameters.length === 4
+    && Boolean(metricsParameter)
+    && ts.isIdentifier(metricsParameter)
+    && metricsParameter.text === 'metrics'
+    && !argumentsReference
+    && Boolean(declaration.body)
+    && closedSinkReferences(
+      declaration.body,
+      'metrics',
+      APPROVED_PUBLIC_TOOL_METRICS_CALL_COUNTS,
+      metricsParameter,
+    );
 }
 
 function streamFailureCompletionIsClosed(chatResponse, sourceFile) {
@@ -1459,6 +1603,7 @@ function streamCompletionSinkFailures(sourceFile) {
     || !validMetricsDeclaration
     || !closedSinkReferences(execute, 'writer', APPROVED_WRITER_CALL_COUNTS, writerIdentifier)
     || !closedSinkReferences(chatResponse, 'metrics', APPROVED_METRICS_CALL_COUNTS, metrics.name)
+    || !publicToolMetricsBoundaryIsClosed(sourceFile)
     || !streamFailureCompletionIsClosed(chatResponse, sourceFile)
   ) return [failure];
   return [];
@@ -1928,6 +2073,7 @@ export function finalizationBoundaryFailures(runtime) {
   failures.push(...toolBindingFailures(sourceFile));
   failures.push(...sdkPrimitiveBindingFailures(sourceFile));
   failures.push(...metricsRecorderBindingFailures(sourceFile));
+  failures.push(...dynamicCodeExecutionFailures(sourceFile));
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...v2ProseEmissionFailures(sourceFile));
   failures.push(...streamCompletionSinkFailures(sourceFile));

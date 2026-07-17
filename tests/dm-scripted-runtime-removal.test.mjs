@@ -505,6 +505,16 @@ function assertStreamSinkMutationRejected(runtime) {
   ));
 }
 
+function replaceLast(text, needle, replacement) {
+  const index = text.lastIndexOf(needle);
+  assert.notEqual(index, -1, `missing replacement target: ${needle}`);
+  return `${text.slice(0, index)}${replacement}${text.slice(index + needle.length)}`;
+}
+
+test('the live runtime satisfies the finalization boundary proof', async () => {
+  assert.deepEqual(finalizationBoundaryFailures(await liveRuntimeSource()), []);
+});
+
 test('detects forbidden tokens moved anywhere under each runtime-facing source root', async (t) => {
   const cases = [
     ['src/lib/dm/nested/legacy.ts', PROJECT_DRAFT_TOKEN],
@@ -841,6 +851,80 @@ test('rejects deletion of v2 stream-failure finish and metrics completion', asyn
   }
 });
 
+test('rejects deletion of general-catch v2 finish and metrics completion', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const mutations = [
+    replaceLast(runtime, "if (contract === 'v2') writer.write({ type: 'finish' });", ''),
+    replaceLast(runtime, "metrics.error('unknown');", ''),
+  ];
+  for (const [index, mutated] of mutations.entries()) {
+    await t.test(String(index), () => assertStreamSinkMutationRejected(mutated));
+  }
+});
+
+test('rejects dynamic evaluation and function construction in the governed runtime', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const hiddenWrite = "writer.write({type:'data-dm-answer',data:finalizationResult})";
+  const mutations = [
+    `eval(${JSON.stringify(hiddenWrite)});`,
+    `(0, eval)(${JSON.stringify(hiddenWrite)});`,
+    `const hiddenEval = eval; hiddenEval(${JSON.stringify(hiddenWrite)});`,
+    `globalThis.eval(${JSON.stringify(hiddenWrite)});`,
+    `globalThis['eval'](${JSON.stringify(hiddenWrite)});`,
+    `Function(${JSON.stringify(hiddenWrite)})();`,
+    `new Function(${JSON.stringify(hiddenWrite)});`,
+    `globalThis.Function(${JSON.stringify(hiddenWrite)})();`,
+    `(async () => {}).constructor(${JSON.stringify(hiddenWrite)})();`,
+    `Object.getPrototypeOf(function* () {}).constructor(${JSON.stringify(hiddenWrite)})();`,
+  ];
+  for (const [index, mutation] of mutations.entries()) {
+    await t.test(String(index), () => {
+      const mutated = runtime.replace(
+        '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+        `        ${mutation}\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);`,
+      );
+      assert.ok(finalizationBoundaryFailures(mutated).includes(
+        'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+      ));
+    });
+  }
+});
+
+test('rejects mutation or escape of the metrics recorder inside public tools', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const helperStart = `function createRuntimePublicTools(
+  run: PublicAgentToolRun,
+  artifacts: RunArtifacts,
+  metrics: ReturnType<typeof createDMMetricsRecorder>,
+  gate: PublicToolGate,
+) {`;
+  const mutations = [
+    'metrics.finish = () => {};',
+    'const recorder = metrics; recorder.finish = () => {};',
+    "Object.defineProperty(metrics, 'finish', { value: () => {} });",
+    "Object.setPrototypeOf(metrics, { finish() {} });",
+    "Reflect.set(metrics, 'finish', () => {});",
+    'arguments[2].finish = () => {};',
+  ];
+  for (const [index, mutation] of mutations.entries()) {
+    await t.test(String(index), () => {
+      const mutated = runtime.replace(helperStart, `${helperStart}\n  ${mutation}`);
+      assertStreamSinkMutationRejected(mutated);
+    });
+  }
+});
+
+test('requires the exact public-tool metrics call multiset', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const mutations = [
+    runtime.replace('          metrics.tool();', ''),
+    runtime.replace('          metrics.tool();', '          metrics.tool();\n          metrics.tool();'),
+  ];
+  for (const [index, mutated] of mutations.entries()) {
+    await t.test(String(index), () => assertStreamSinkMutationRejected(mutated));
+  }
+});
+
 test('rejects an aliased and locally wrapped DM metrics recorder factory', async () => {
   const runtime = await liveRuntimeSource();
   const mutated = runtime
@@ -859,7 +943,7 @@ export function createDMChatResponse(`,
     );
 
   assert.ok(finalizationBoundaryFailures(mutated).includes(
-    'src/lib/dm/runtime.ts: createDMMetricsRecorder must retain one unaliased, unshadowed, immutable import from ./metrics',
+    'src/lib/dm/runtime.ts: createDMMetricsRecorder must retain one unaliased, unshadowed, immutable import from ./metrics and its sole direct call site',
   ));
 });
 
@@ -1196,6 +1280,60 @@ test('rejects replacement of current-run project map methods through an alias', 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+  ));
+});
+
+test('rejects replacement of every resolved same-run artifact store', async (t) => {
+  const cases = [
+    ['resumeTracks', 'resumeMap'],
+    ['contact', 'contactRecord'],
+    ['sources', 'sourceMap'],
+  ];
+  for (const [store, alias] of cases) {
+    await t.test(store, async () => {
+      const root = await createCleanFixture(t);
+      await mutateRuntime(root, (runtime) => runtime.replace(
+        'const siteBrief =',
+        `const ${alias} = artifacts.${store};\n  artifacts.${store} = ${alias};\n  const siteBrief =`,
+      ));
+
+      const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+      assert.ok(result.failures.includes(
+        `src/lib/dm/runtime.ts: governed v2 dependency artifacts.${store} must not be replaced or redefined`,
+      ));
+    });
+  }
+});
+
+test('rejects governed schema and artifact stores hidden in array containers', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const agentTools = contract === \'v2\'',
+    `([V2FinalAnswerInputSchema][0] as any).parse = (value) => value;\n  const projectMap = [artifacts.projects][0];\n  projectMap.has = () => true;\n  const agentTools = contract === 'v2'`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+  ));
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+  ));
+});
+
+test('rejects governed schema and artifact stores passed to helper parameters', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const agentTools = contract === \'v2\'',
+    `const mutateSchema = (schema: any) => { schema.parse = (value: unknown) => value; };\n  const mutateArtifacts = (projects: any) => { projects.has = () => true; };\n  mutateSchema(V2FinalAnswerInputSchema);\n  mutateArtifacts(artifacts.projects);\n  const agentTools = contract === 'v2'`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+  ));
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
   ));
 });
 
