@@ -312,11 +312,19 @@ function governedV2DependencyMutationFailures(sourceFile) {
   };
   const recordBindingAliases = (name, path) => {
     if (!path) return false;
-    if (ts.isIdentifier(name)) return recordAlias(name.text, path);
+    const target = unwrapExpression(name);
+    if (ts.isIdentifier(target)) return recordAlias(target.text, path);
+
+    if (
+      ts.isBinaryExpression(target)
+      && target.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      return recordBindingAliases(target.left, path);
+    }
 
     let changed = false;
-    if (ts.isObjectBindingPattern(name)) {
-      for (const element of name.elements) {
+    if (ts.isObjectBindingPattern(target)) {
+      for (const element of target.elements) {
         if (element.dotDotDotToken) {
           // Object rest is a shallow copy, so governed descendant values retain
           // their identity through the new binding.
@@ -335,34 +343,80 @@ function governedV2DependencyMutationFailures(sourceFile) {
       return changed;
     }
 
-    for (const [index, element] of name.elements.entries()) {
-      if (ts.isOmittedExpression(element)) continue;
-      changed = recordBindingAliases(element.name, [...path, String(index)]) || changed;
+    if (ts.isObjectLiteralExpression(target)) {
+      for (const property of target.properties) {
+        if (ts.isSpreadAssignment(property)) {
+          changed = recordBindingAliases(property.expression, path) || changed;
+          continue;
+        }
+        if (ts.isShorthandPropertyAssignment(property)) {
+          changed = recordBindingAliases(property.name, [...path, property.name.text]) || changed;
+          continue;
+        }
+        if (ts.isPropertyAssignment(property)) {
+          changed = recordBindingAliases(
+            property.initializer,
+            [...path, propertyNameText(property.name)],
+          ) || changed;
+        }
+      }
+      return changed;
+    }
+
+    if (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target)) {
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const elementTarget = ts.isBindingElement(element)
+          ? element.name
+          : ts.isSpreadElement(element)
+            ? element.expression
+            : element;
+        changed = recordBindingAliases(elementTarget, [...path, String(index)]) || changed;
+      }
     }
     return changed;
   };
-  const recordDeclarationAliases = (name, initializer) => {
+  const recordAssignmentAliases = (name, initializer) => {
     const expression = unwrapExpression(initializer);
-    if (ts.isArrayBindingPattern(name) && ts.isArrayLiteralExpression(expression)) {
+    const target = unwrapExpression(name);
+    if (
+      (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target))
+      && ts.isArrayLiteralExpression(expression)
+    ) {
       let changed = false;
-      for (const [index, element] of name.elements.entries()) {
+      for (const [index, element] of target.elements.entries()) {
         if (ts.isOmittedExpression(element)) continue;
         const source = expression.elements[index];
         const sourcePath = source && !ts.isOmittedExpression(source)
           ? resolveAliasPath(staticPropertyPath(ts.isSpreadElement(source) ? source.expression : source))
           : null;
-        changed = recordBindingAliases(element.name, sourcePath) || changed;
+        const elementTarget = ts.isBindingElement(element)
+          ? element.name
+          : ts.isSpreadElement(element)
+            ? element.expression
+            : element;
+        changed = recordBindingAliases(elementTarget, sourcePath) || changed;
       }
       return changed;
     }
-    return recordBindingAliases(name, resolveAliasPath(staticPropertyPath(expression)));
+    return recordBindingAliases(target, resolveAliasPath(staticPropertyPath(expression)));
   };
+  const aliasAssignments = new Set();
   let aliasesChanged = true;
   while (aliasesChanged) {
     aliasesChanged = false;
     walk(sourceFile, (node) => {
-      if (!ts.isVariableDeclaration(node) || !node.initializer) return;
-      aliasesChanged = recordDeclarationAliases(node.name, node.initializer) || aliasesChanged;
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        aliasesChanged = recordAssignmentAliases(node.name, node.initializer) || aliasesChanged;
+        return;
+      }
+      if (
+        !ts.isBinaryExpression(node)
+        || node.operatorToken.kind !== ts.SyntaxKind.EqualsToken
+      ) return;
+      const changed = recordAssignmentAliases(node.left, node.right);
+      if (changed) aliasAssignments.add(node);
+      aliasesChanged = changed || aliasesChanged;
     });
   }
   const governedPath = (node) => resolveAliasPath(staticPropertyPath(node));
@@ -382,6 +436,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
+      if (aliasAssignments.has(node)) return;
       recordPath(governedPath(node.left));
       return;
     }
