@@ -402,6 +402,35 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const isCallableContainer = (path) => [...callableContainers].some((container) => (
     path === container || path.startsWith(`${container}.`)
   ));
+  const propagateCallableInitializer = (target, node) => {
+    const expression = unwrapExpression(node);
+    const source = staticPropertyPath(expression, constBindings)?.join('.');
+    if (source && isCallableContainer(source)) {
+      if (callableContainers.has(target)) return false;
+      callableContainers.add(target);
+      return true;
+    }
+    let changed = false;
+    if (ts.isArrayLiteralExpression(expression)) {
+      for (const [index, element] of expression.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const value = ts.isSpreadElement(element) ? element.expression : element;
+        changed = propagateCallableInitializer(`${target}.${index}`, value) || changed;
+      }
+    }
+    if (ts.isObjectLiteralExpression(expression)) {
+      for (const property of expression.properties) {
+        if (ts.isShorthandPropertyAssignment(property)) {
+          changed = propagateCallableInitializer(`${target}.${property.name.text}`, property.name) || changed;
+        } else if (ts.isPropertyAssignment(property)) {
+          changed = propagateCallableInitializer(`${target}.${propertyNameText(property.name)}`, property.initializer) || changed;
+        } else if (ts.isSpreadAssignment(property)) {
+          changed = propagateCallableInitializer(target, property.expression) || changed;
+        }
+      }
+    }
+    return changed;
+  };
   let callableChanged = true;
   while (callableChanged) {
     callableChanged = false;
@@ -443,20 +472,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
       if (path) {
         callableChanged = propagateCallableContainers(node.name.text, path) || callableChanged;
       }
-      const initializer = unwrapExpression(node.initializer);
-      if (ts.isArrayLiteralExpression(initializer)) {
-        for (const [index, element] of initializer.elements.entries()) {
-          if (ts.isOmittedExpression(element)) continue;
-          const source = staticPropertyPath(ts.isSpreadElement(element) ? element.expression : element, constBindings)?.join('.');
-          if (source && isCallableContainer(source)) {
-            const target = `${node.name.text}.${index}`;
-            if (!callableContainers.has(target)) {
-              callableContainers.add(target);
-              callableChanged = true;
-            }
-          }
-        }
-      }
+      callableChanged = propagateCallableInitializer(node.name.text, node.initializer) || callableChanged;
       if (
         path
         && (callableBindings.has(path) || callablePaths.has(path))
@@ -1009,6 +1025,10 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       if (descriptorParent?.length === 2 && descriptorParent[1] === '$descriptors' && property === 'prototype') {
         return [descriptorParent[0], 'prototype'];
       }
+      const dynamicDescriptorParent = property === null ? resolvedCalleePath(expression.expression) : null;
+      if (dynamicDescriptorParent?.length === 2 && dynamicDescriptorParent[1] === '$descriptors') {
+        return ['UnknownIntrinsic', 'prototype'];
+      }
       const parent = property === null ? null : resolveDirectPath(expression.expression);
       if (parent && property !== null) return [...parent, property];
     }
@@ -1172,7 +1192,10 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     return path ? [path] : [];
   };
   const governedStoredValue = (node) => possiblePrimitivePaths(node).some((path) => (
-    governed(path) || path.join('.') === 'z'
+    governed(path)
+    || path.join('.') === 'z'
+    || intrinsicContainers.has(path.join('.'))
+    || intrinsicContainerAliases.has(path.join('.'))
   ));
   let mutated = false;
   walk(sourceFile, (node) => {
