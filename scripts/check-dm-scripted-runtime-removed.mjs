@@ -359,6 +359,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const callableBindings = new Set();
   const callablePaths = new Set();
+  const callableContainers = new Set();
   walk(sourceFile, (node) => {
     if (
       (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node))
@@ -404,6 +405,18 @@ function dynamicCodeExecutionFailures(sourceFile) {
           callablePaths.add(target);
           callableChanged = true;
         }
+        if (
+          !target
+          && source
+          && ts.isElementAccessExpression(unwrapExpression(node.left))
+          && (callableBindings.has(source) || callablePaths.has(source))
+        ) {
+          const container = staticPropertyPath(unwrapExpression(node.left).expression, constBindings)?.join('.');
+          if (container && !callableContainers.has(container)) {
+            callableContainers.add(container);
+            callableChanged = true;
+          }
+        }
         return;
       }
       if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
@@ -420,12 +433,14 @@ function dynamicCodeExecutionFailures(sourceFile) {
   }
   const couldProduceCallable = (node) => {
     const expression = unwrapExpression(node);
+    const path = staticPropertyPath(expression, constBindings);
     return ts.isFunctionExpression(expression)
       || ts.isArrowFunction(expression)
       || ts.isClassExpression(expression)
       || ts.isCallExpression(expression)
       || (ts.isIdentifier(expression) && callableBindings.has(expression.text))
-      || callablePaths.has(staticPropertyPath(expression, constBindings)?.join('.'));
+      || callablePaths.has(path?.join('.'))
+      || (path && callableContainers.has(path[0]));
   };
   walk(sourceFile, (node) => {
     if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
@@ -813,8 +828,11 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     const resolvedCalleePath = (callee) => {
       const path = staticPropertyPath(callee, constBindings);
       if (!path) return null;
-      const replacement = aliases.get(path[0]);
-      return replacement ? [...replacement, ...path.slice(1)] : path;
+      for (let length = path.length; length > 0; length -= 1) {
+        const replacement = aliases.get(path.slice(0, length).join('.'));
+        if (replacement) return [...replacement, ...path.slice(length)];
+      }
+      return path;
     };
     const canonicalIntrinsic = (path) => {
       const name = path?.length === 1
@@ -841,6 +859,13 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       const targetPath = target && resolvedCalleePath(target);
       const intrinsic = canonicalIntrinsic(targetPath);
       const property = call.arguments[1] && staticStringValue(call.arguments[1], constBindings);
+      if (
+        expectedCallee === 'Reflect.get'
+        && targetPath?.length === 2
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(targetPath[0])
+        && targetPath[1] === 'prototype'
+        && property === 'value'
+      ) return targetPath;
       return intrinsic
         && GOVERNED_INTRINSIC_PROTOTYPES.has(intrinsic)
         && intrinsic !== 'UnknownIntrinsic'
@@ -848,6 +873,21 @@ function trustedPrimitiveMutationFailures(sourceFile) {
         ? [intrinsic, 'prototype']
         : null;
     };
+    const pluralDescriptorEntry = (member) => {
+      if (
+        (!ts.isPropertyAccessExpression(member) && !ts.isElementAccessExpression(member))
+        || staticMemberName(member) !== 'prototype'
+      ) return null;
+      const call = unwrapExpression(member.expression);
+      if (
+        !ts.isCallExpression(call)
+        || resolvedCalleePath(call.expression)?.join('.') !== 'Object.getOwnPropertyDescriptors'
+      ) return null;
+      const intrinsic = canonicalIntrinsic(call.arguments[0] && resolvedCalleePath(call.arguments[0]));
+      return intrinsic ? [intrinsic, 'prototype'] : null;
+    };
+    const pluralEntry = pluralDescriptorEntry(expression);
+    if (pluralEntry) return pluralEntry;
     const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
     if (reflectedPrototype) return reflectedPrototype;
     const directDescriptorPrototype = reflectionPrototype(expression, 'Object.getOwnPropertyDescriptor')
@@ -861,21 +901,8 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       const descriptorPrototype = reflectionPrototype(descriptorCall, 'Object.getOwnPropertyDescriptor')
         ?? reflectionPrototype(descriptorCall, 'Reflect.getOwnPropertyDescriptor');
       if (descriptorPrototype) return descriptorPrototype;
-      if (
-        (ts.isPropertyAccessExpression(descriptorCall) || ts.isElementAccessExpression(descriptorCall))
-        && staticMemberName(descriptorCall) === 'prototype'
-        && ts.isCallExpression(unwrapExpression(descriptorCall.expression))
-      ) {
-        const descriptorsCall = unwrapExpression(descriptorCall.expression);
-        const target = descriptorsCall.arguments[0] && resolvedCalleePath(descriptorsCall.arguments[0]);
-        const intrinsic = canonicalIntrinsic(target);
-        if (
-          resolvedCalleePath(descriptorsCall.expression)?.join('.') === 'Object.getOwnPropertyDescriptors'
-          && intrinsic
-          && GOVERNED_INTRINSIC_PROTOTYPES.has(intrinsic)
-          && intrinsic !== 'UnknownIntrinsic'
-        ) return [intrinsic, 'prototype'];
-      }
+      const pluralPrototype = pluralDescriptorEntry(descriptorCall);
+      if (pluralPrototype) return pluralPrototype;
     }
     if (
       ts.isCallExpression(expression)
@@ -918,6 +945,21 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   const recordAlias = (name, initializer) => {
     const target = unwrapExpression(name);
     const expression = unwrapExpression(initializer);
+    const targetPath = staticPropertyPath(target, constBindings);
+    if (targetPath && targetPath.length > 1) {
+      const path = expandAlias(resolveDirectPath(expression));
+      return path ? storeAlias(targetPath.join('.'), path) : false;
+    }
+    if (ts.isIdentifier(target) && ts.isArrayLiteralExpression(expression)) {
+      let recorded = false;
+      for (const [index, element] of expression.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const value = ts.isSpreadElement(element) ? element.expression : element;
+        const path = expandAlias(resolveDirectPath(value));
+        if (path) recorded = storeAlias(`${target.text}.${index}`, path) || recorded;
+      }
+      return recorded;
+    }
     if (ts.isIdentifier(target) && ts.isObjectLiteralExpression(expression)) {
       let recorded = false;
       const recordObject = (object, prefix) => {

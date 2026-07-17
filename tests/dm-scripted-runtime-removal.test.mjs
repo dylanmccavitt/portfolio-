@@ -897,6 +897,7 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const holder = new Map(); holder.set('C', box[0][key]); holder.get('C')(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const getC = () => box[0][key]; getC()(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box: any = {}; box.fn = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [box.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box: any = {}; const prop = ['f', 'n'].join(''); box[prop] = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [box.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1441,6 +1442,9 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const { value: P } = Object.getOwnPropertyDescriptor(Set, 'prototype')!; P.has = () => true;\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const P = Object.getOwnPropertyDescriptors(Array)['prototype'].value; P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const P = Reflect.get(globalThis.Array, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const holder: any = {}; holder.A = Array; const P = Reflect.get(holder.A, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const holder = [Map]; const P = Reflect.get(holder[0], 'prototype'); P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const d = Object.getOwnPropertyDescriptors(Set).prototype; const P = Reflect.get(d, 'value'); P.has = () => true;\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
