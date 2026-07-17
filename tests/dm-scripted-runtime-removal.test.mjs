@@ -891,6 +891,8 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const box = { nested: { fn() {} } }; const key = ['con', 'structor'].join(''); box.nested.fn[key](${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const alias = fn.bind(null); const key = ['con', 'structor'].join(''); alias[key](${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const C = box[0][key]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); let C: any; C = box[0][key]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const holder: any = {}; holder.C = box[0][key]; holder.C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1423,6 +1425,9 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.has = () => true; }; mutate(true && Map.prototype);\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  Object.getPrototypeOf([]).flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  Reflect.getPrototypeOf(new Map()).has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const P = Reflect.get(Array, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const P = Object.getOwnPropertyDescriptor(Map, 'prototype')?.value; P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const R = Reflect; const P = R['get'](Array, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {

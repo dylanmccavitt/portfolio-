@@ -343,9 +343,12 @@ function dynamicCodeExecutionFailures(sourceFile) {
   let unsafe = false;
   const constBindings = immutableConstBindings(sourceFile);
   const directlyInvokedBindings = new Set();
+  const directlyInvokedPaths = new Set();
   walk(sourceFile, (node) => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      directlyInvokedBindings.add(node.expression.text);
+    if (ts.isCallExpression(node)) {
+      if (ts.isIdentifier(node.expression)) directlyInvokedBindings.add(node.expression.text);
+      const path = staticPropertyPath(node.expression, constBindings);
+      if (path) directlyInvokedPaths.add(path.join('.'));
     }
   });
   const computedName = (node) => {
@@ -438,6 +441,15 @@ function dynamicCodeExecutionFailures(sourceFile) {
       && node.parent.initializer === node
       && ts.isIdentifier(node.parent.name)
       && directlyInvokedBindings.has(node.parent.name.text)
+    ) unsafe = true;
+    if (
+      ts.isElementAccessExpression(node)
+      && node.argumentExpression
+      && computedName(node.argumentExpression) === null
+      && ts.isBinaryExpression(node.parent)
+      && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && node.parent.right === node
+      && directlyInvokedPaths.has(staticPropertyPath(node.parent.left, constBindings)?.join('.'))
     ) unsafe = true;
     if (
       ts.isCallExpression(node)
@@ -776,6 +788,35 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   }
   const resolveDirectPath = (node) => {
     const expression = unwrapExpression(node);
+    const resolvedCalleePath = (callee) => {
+      const path = staticPropertyPath(callee, constBindings);
+      if (!path) return null;
+      const replacement = aliases.get(path[0]);
+      return replacement ? [...replacement, ...path.slice(1)] : path;
+    };
+    const reflectionPrototype = (call, expectedCallee) => {
+      if (!ts.isCallExpression(call) || resolvedCalleePath(call.expression)?.join('.') !== expectedCallee) return null;
+      const target = call.arguments[0] && unwrapExpression(call.arguments[0]);
+      const property = call.arguments[1] && staticStringValue(call.arguments[1], constBindings);
+      return ts.isIdentifier(target)
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(target.text)
+        && target.text !== 'UnknownIntrinsic'
+        && property === 'prototype'
+        ? [target.text, 'prototype']
+        : null;
+    };
+    const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
+    if (reflectedPrototype) return reflectedPrototype;
+    if (
+      ts.isPropertyAccessExpression(expression)
+      && expression.name.text === 'value'
+    ) {
+      const descriptorPrototype = reflectionPrototype(
+        unwrapExpression(expression.expression),
+        'Object.getOwnPropertyDescriptor',
+      );
+      if (descriptorPrototype) return descriptorPrototype;
+    }
     if (
       ts.isCallExpression(expression)
       && ['Object.getPrototypeOf', 'Reflect.getPrototypeOf'].includes(
