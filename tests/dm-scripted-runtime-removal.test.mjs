@@ -17,7 +17,7 @@ const READ_NDJSON_TOKEN = 'readNdjson';
 const NDJSON_MEDIA_TYPE = 'application/x-ndjson';
 
 const CLEAN_RUNTIME_FIXTURE = `
-import { tool } from 'ai';
+import { ToolLoopAgent, createUIMessageStream, createUIMessageStreamResponse, toUIMessageStream, tool } from 'ai';
 function readDMRuntimeConfig(env) {
   const configuredContract = env.DM_CONTRACT?.trim();
   const contract: DMContractVersion = configuredContract === 'v2' ? 'v2' : 'v1';
@@ -128,7 +128,7 @@ function createDMChatResponse(request, config = {}) {
     tools: agentTools,
   });
   createPublicAgentTools();
-  return { agentTools, request, stream, finalized };
+  return createUIMessageStreamResponse({ stream });
 }
 function resolveV2FinalAnswer(input, run, artifacts) {
   const evidenceIds = [...new Set(input.evidenceIds)].filter((id) => run.evidenceLedger.has(id));
@@ -747,6 +747,52 @@ test('rejects an aliased SDK tool hidden behind a behavior-mutating local wrappe
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: governed finalizer tool calls must retain the unaliased, unshadowed, immutable top-level ai tool import',
   ));
+});
+
+const SDK_PRIMITIVE_BINDINGS = [
+  ['ToolLoopAgent', 'constructor'],
+  ['createUIMessageStream', 'call'],
+  ['toUIMessageStream', 'call'],
+  ['createUIMessageStreamResponse', 'call'],
+];
+
+test('rejects aliased imports for each governed AI SDK stream primitive', async (t) => {
+  for (const [name, callKind] of SDK_PRIMITIVE_BINDINGS) {
+    await t.test(name, async (t) => {
+      const root = await createCleanFixture(t);
+      await mutateRuntime(root, (runtime) => runtime.replace(
+        name,
+        `${name} as sdk${name}`,
+      ));
+
+      const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+      assert.ok(result.failures.includes(
+        `src/lib/dm/runtime.ts: ${name} must retain one unaliased, unshadowed, immutable top-level ai import and its sole direct ${callKind} site`,
+      ));
+    });
+  }
+});
+
+test('rejects local wrappers for each governed AI SDK stream primitive', async (t) => {
+  for (const [name, callKind] of SDK_PRIMITIVE_BINDINGS) {
+    await t.test(name, async (t) => {
+      const root = await createCleanFixture(t);
+      const wrapper = name === 'ToolLoopAgent'
+        ? `const ${name} = class extends sdk${name} {};`
+        : `const ${name} = (...args) => sdk${name}(...args);`;
+      await mutateRuntime(root, (runtime) => runtime
+        .replace(name, `${name} as sdk${name}`)
+        .replace(
+          'function createDMChatResponse(request, config = {}) {',
+          `function createDMChatResponse(request, config = {}) {\n  ${wrapper}`,
+        ));
+
+      const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+      assert.ok(result.failures.includes(
+        `src/lib/dm/runtime.ts: ${name} must retain one unaliased, unshadowed, immutable top-level ai import and its sole direct ${callKind} site`,
+      ));
+    });
+  }
 });
 
 test('rejects a newly named v2 behavior validator even when historical names are avoided', async (t) => {

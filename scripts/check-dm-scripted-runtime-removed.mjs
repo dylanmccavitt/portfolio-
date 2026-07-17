@@ -163,6 +163,64 @@ function toolBindingFailures(sourceFile) {
   return [];
 }
 
+const SDK_PRIMITIVE_CALL_KINDS = new Map([
+  ['ToolLoopAgent', 'constructor'],
+  ['createUIMessageStream', 'call'],
+  ['toUIMessageStream', 'call'],
+  ['createUIMessageStreamResponse', 'call'],
+]);
+
+function sdkPrimitiveBindingFailures(sourceFile) {
+  const failures = [];
+  for (const [name, callKind] of SDK_PRIMITIVE_CALL_KINDS) {
+    const imports = [];
+    const shadows = [];
+    const callSites = [];
+    const unexpectedReferences = [];
+    let bindingWritten = false;
+
+    walk(sourceFile, (node) => {
+      if (ts.isImportSpecifier(node)) {
+        const importedName = node.propertyName?.text ?? node.name.text;
+        if (importedName !== name) return;
+        const declaration = node.parent.parent.parent;
+        imports.push({
+          localName: node.name.text,
+          moduleName: ts.isImportDeclaration(declaration) && ts.isStringLiteral(declaration.moduleSpecifier)
+            ? declaration.moduleSpecifier.text
+            : null,
+        });
+        return;
+      }
+      if (declaresValueName(node, name)) shadows.push(node);
+      if (writesValueName(node, name)) bindingWritten = true;
+      if (!ts.isIdentifier(node) || node.text !== name) return;
+
+      const parent = node.parent;
+      if (ts.isImportSpecifier(parent)) return;
+      const isCallSite = callKind === 'constructor'
+        ? ts.isNewExpression(parent) && parent.expression === node
+        : ts.isCallExpression(parent) && parent.expression === node;
+      if (isCallSite) callSites.push(parent);
+      else unexpectedReferences.push(node);
+    });
+
+    const trustedImport = imports.length === 1
+      && imports[0].localName === name
+      && imports[0].moduleName === 'ai';
+    if (
+      !trustedImport
+      || shadows.length > 0
+      || bindingWritten
+      || callSites.length !== 1
+      || unexpectedReferences.length > 0
+    ) {
+      failures.push(`src/lib/dm/runtime.ts: ${name} must retain one unaliased, unshadowed, immutable top-level ai import and its sole direct ${callKind} site`);
+    }
+  }
+  return failures;
+}
+
 function walk(node, visit) {
   visit(node);
   ts.forEachChild(node, (child) => walk(child, visit));
@@ -1134,6 +1192,7 @@ export function finalizationBoundaryFailures(runtime) {
     return failures;
   }
   failures.push(...toolBindingFailures(sourceFile));
+  failures.push(...sdkPrimitiveBindingFailures(sourceFile));
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...finalizationCopyFailures(sourceFile));
   failures.push(...v2ContractFailures(sourceFile));
