@@ -389,6 +389,23 @@ function dynamicCodeExecutionFailures(sourceFile) {
   while (callableChanged) {
     callableChanged = false;
     walk(sourceFile, (node) => {
+      if (
+        ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ) {
+        const target = staticPropertyPath(node.left, constBindings)?.join('.');
+        const source = staticPropertyPath(node.right, constBindings)?.join('.');
+        if (
+          target
+          && source
+          && (callableBindings.has(source) || callablePaths.has(source))
+          && !callablePaths.has(target)
+        ) {
+          callablePaths.add(target);
+          callableChanged = true;
+        }
+        return;
+      }
       if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
       const path = staticPropertyPath(node.initializer, constBindings)?.join('.');
       if (
@@ -799,11 +816,30 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       const replacement = aliases.get(path[0]);
       return replacement ? [...replacement, ...path.slice(1)] : path;
     };
+    const canonicalIntrinsic = (path) => {
+      const name = path?.length === 1
+        ? path[0]
+        : path?.length === 2 && path[0] === 'globalThis'
+          ? path[1]
+          : null;
+      return name
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(name)
+        && name !== 'UnknownIntrinsic'
+        ? name
+        : null;
+    };
+    const staticMemberName = (member) => {
+      if (ts.isPropertyAccessExpression(member)) return member.name.text;
+      if (ts.isElementAccessExpression(member) && member.argumentExpression) {
+        return staticStringValue(member.argumentExpression, constBindings);
+      }
+      return null;
+    };
     const reflectionPrototype = (call, expectedCallee) => {
       if (!ts.isCallExpression(call) || resolvedCalleePath(call.expression)?.join('.') !== expectedCallee) return null;
       const target = call.arguments[0] && unwrapExpression(call.arguments[0]);
       const targetPath = target && resolvedCalleePath(target);
-      const intrinsic = targetPath?.length === 1 ? targetPath[0] : null;
+      const intrinsic = canonicalIntrinsic(targetPath);
       const property = call.arguments[1] && staticStringValue(call.arguments[1], constBindings);
       return intrinsic
         && GOVERNED_INTRINSIC_PROTOTYPES.has(intrinsic)
@@ -814,22 +850,25 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     };
     const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
     if (reflectedPrototype) return reflectedPrototype;
+    const directDescriptorPrototype = reflectionPrototype(expression, 'Object.getOwnPropertyDescriptor')
+      ?? reflectionPrototype(expression, 'Reflect.getOwnPropertyDescriptor');
+    if (directDescriptorPrototype) return directDescriptorPrototype;
     if (
-      ts.isPropertyAccessExpression(expression)
-      && expression.name.text === 'value'
+      (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
+      && staticMemberName(expression) === 'value'
     ) {
       const descriptorCall = unwrapExpression(expression.expression);
       const descriptorPrototype = reflectionPrototype(descriptorCall, 'Object.getOwnPropertyDescriptor')
         ?? reflectionPrototype(descriptorCall, 'Reflect.getOwnPropertyDescriptor');
       if (descriptorPrototype) return descriptorPrototype;
       if (
-        ts.isPropertyAccessExpression(descriptorCall)
-        && descriptorCall.name.text === 'prototype'
+        (ts.isPropertyAccessExpression(descriptorCall) || ts.isElementAccessExpression(descriptorCall))
+        && staticMemberName(descriptorCall) === 'prototype'
         && ts.isCallExpression(unwrapExpression(descriptorCall.expression))
       ) {
         const descriptorsCall = unwrapExpression(descriptorCall.expression);
         const target = descriptorsCall.arguments[0] && resolvedCalleePath(descriptorsCall.arguments[0]);
-        const intrinsic = target?.length === 1 ? target[0] : null;
+        const intrinsic = canonicalIntrinsic(target);
         if (
           resolvedCalleePath(descriptorsCall.expression)?.join('.') === 'Object.getOwnPropertyDescriptors'
           && intrinsic

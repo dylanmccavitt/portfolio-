@@ -896,6 +896,7 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); let C: any; [C] = [box[0][key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const holder = new Map(); holder.set('C', box[0][key]); holder.get('C')(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const getC = () => box[0][key]; getC()(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box: any = {}; box.fn = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [box.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1436,6 +1437,10 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const P = Object.getOwnPropertyDescriptors(Set).prototype.value; P.has = () => true;\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const id = (_parts: TemplateStringsArray, x: any) => x; const escaped = id`${z}`; escaped.strictObject = () => ({});\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const id = (_parts: TemplateStringsArray, x: any) => x; const escaped = id`${Map.prototype}`; escaped.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const P = Object.getOwnPropertyDescriptor(Map, 'prototype')?.['value']; P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const { value: P } = Object.getOwnPropertyDescriptor(Set, 'prototype')!; P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const P = Object.getOwnPropertyDescriptors(Array)['prototype'].value; P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const P = Reflect.get(globalThis.Array, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
