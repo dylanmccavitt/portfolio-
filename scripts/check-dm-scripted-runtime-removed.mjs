@@ -256,6 +256,93 @@ function writesValueName(node, name) {
   return false;
 }
 
+function unwrapExpression(node) {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current)
+    || ts.isNonNullExpression(current)
+    || ts.isSatisfiesExpression(current)
+  ) current = current.expression;
+  return current;
+}
+
+function staticPropertyPath(node) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) return [expression.text];
+  if (ts.isPropertyAccessExpression(expression)) {
+    const parentPath = staticPropertyPath(expression.expression);
+    return parentPath ? [...parentPath, expression.name.text] : null;
+  }
+  if (ts.isElementAccessExpression(expression)) {
+    const parentPath = staticPropertyPath(expression.expression);
+    const argument = expression.argumentExpression && unwrapExpression(expression.argumentExpression);
+    if (!parentPath || !argument || (!ts.isStringLiteral(argument) && !ts.isNumericLiteral(argument))) return null;
+    return [...parentPath, argument.text];
+  }
+  return null;
+}
+
+const GOVERNED_V2_DEPENDENCY_PATHS = new Map([
+  ['publicRun.evidenceLedger', ['publicRun', 'evidenceLedger']],
+  ['publicToolGate.waitForIdle', ['publicToolGate', 'waitForIdle']],
+  ['artifacts.projects', ['artifacts', 'projects']],
+]);
+
+function governedV2DependencyMutationFailures(sourceFile) {
+  const mutated = new Set();
+  const recordPath = (path) => {
+    if (!path) return;
+    for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
+      if (governedPath.every((part, index) => path[index] === part)) mutated.add(label);
+    }
+  };
+
+  walk(sourceFile, (node) => {
+    if (
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      recordPath(staticPropertyPath(node.left));
+      return;
+    }
+    if (ts.isDeleteExpression(node)) {
+      recordPath(staticPropertyPath(node.expression));
+      return;
+    }
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
+    const owner = node.expression.expression;
+    const method = node.expression.name.text;
+    const ownerName = ts.isIdentifier(owner) ? owner.text : null;
+    if ((ownerName === 'Object' || ownerName === 'Reflect') && method === 'defineProperty') {
+      const objectPath = node.arguments[0] ? staticPropertyPath(node.arguments[0]) : null;
+      const property = node.arguments[1] && unwrapExpression(node.arguments[1]);
+      if (objectPath && property && (ts.isStringLiteral(property) || ts.isNumericLiteral(property))) {
+        recordPath([...objectPath, property.text]);
+      }
+      return;
+    }
+    if (ownerName !== 'Object' || method !== 'assign') return;
+    const objectPath = node.arguments[0] ? staticPropertyPath(node.arguments[0]) : null;
+    if (!objectPath) return;
+    for (const source of node.arguments.slice(1)) {
+      const unwrapped = unwrapExpression(source);
+      if (!ts.isObjectLiteralExpression(unwrapped)) continue;
+      for (const property of unwrapped.properties) {
+        if (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+          recordPath([...objectPath, propertyNameText(property.name)]);
+        }
+      }
+    }
+  });
+
+  return [...mutated].map((label) => (
+    `src/lib/dm/runtime.ts: governed v2 dependency ${label} must not be replaced or redefined`
+  ));
+}
+
 function hasFunctionDeclarationAncestor(node, name) {
   for (let current = node.parent; current; current = current.parent) {
     if (ts.isFunctionDeclaration(current) && current.name?.text === name) return true;
@@ -536,7 +623,7 @@ function finalizationCopyFailures(sourceFile) {
 }
 
 function v2ContractFailures(sourceFile) {
-  const failures = [];
+  const failures = governedV2DependencyMutationFailures(sourceFile);
   const compact = (node) => node?.getText(sourceFile).replace(/\s+/g, '') ?? '';
   const forbiddenSource = variableDeclaration(sourceFile, 'FORBIDDEN_SOURCE_INSTRUCTION');
   const expectedForbiddenSource = 'Never claim access to Slack, admin drafts, candidate evidence, private notes, visitor history, credentials, hidden projects, or unpublished records. Those sources and tools do not exist here.';

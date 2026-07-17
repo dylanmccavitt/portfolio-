@@ -373,6 +373,55 @@ test('rejects v2 metadata that bypasses the current-run ledgers', async (t) => {
   ));
 });
 
+test('rejects replacement of the current-run evidence ledger semantics', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const artifacts = {};',
+    `publicRun.evidenceLedger = {
+    ...publicRun.evidenceLedger,
+    has: (id) => id.includes('approved'),
+  };
+  const artifacts = {};`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency publicRun.evidenceLedger must not be replaced or redefined',
+  ));
+});
+
+test('rejects replacement of the public tool idle gate with a finalization wrapper', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'let finalizationAttempts = 0;',
+    `publicToolGate.waitForIdle = async () => {
+    finalizationResult = limitedResult(false);
+  };
+  let finalizationAttempts = 0;`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency publicToolGate.waitForIdle must not be replaced or redefined',
+  ));
+});
+
+test('rejects replacement of the current-run project map with subclass semantics', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const siteBrief = {};',
+    `artifacts.projects = new class extends Map {
+    has() { return true; }
+  }();
+  const siteBrief = {};`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+  ));
+});
+
 test('the governed v2 finalization allowlist accepts the structural resolver path', async (t) => {
   const root = await createCleanFixture(t);
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
