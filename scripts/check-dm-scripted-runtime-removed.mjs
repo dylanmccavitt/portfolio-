@@ -418,6 +418,39 @@ function dynamicCodeExecutionFailures(sourceFile) {
       callableContainers.add(target);
       return true;
     }
+    if (ts.isPropertyAccessExpression(expression)) {
+      const receiver = unwrapExpression(expression.expression);
+      if (ts.isObjectLiteralExpression(receiver)) {
+        const property = receiver.properties.find((candidate) => (
+          (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+          && propertyNameText(candidate.name) === expression.name.text
+        ));
+        if (property) {
+          const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
+          return propagateCallableInitializer(target, value);
+        }
+      }
+    }
+    if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+      const receiver = unwrapExpression(expression.expression);
+      const key = staticStringValue(expression.argumentExpression, constBindings);
+      if (ts.isObjectLiteralExpression(receiver) && key !== null) {
+        const property = receiver.properties.find((candidate) => (
+          (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+          && propertyNameText(candidate.name) === key
+        ));
+        if (property) {
+          const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
+          return propagateCallableInitializer(target, value);
+        }
+      }
+      if (ts.isArrayLiteralExpression(receiver) && /^\d+$/.test(key ?? '')) {
+        const value = receiver.elements[Number(key)];
+        if (value && !ts.isOmittedExpression(value)) {
+          return propagateCallableInitializer(target, ts.isSpreadElement(value) ? value.expression : value);
+        }
+      }
+    }
     let changed = false;
     if (ts.isArrayLiteralExpression(expression)) {
       for (const [index, element] of expression.elements.entries()) {
@@ -510,6 +543,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (ts.isReturnStatement(node) && node.expression && containsCallableContainer(node.expression)) unsafe = true;
     if (ts.isArrowFunction(node) && !ts.isBlock(node.body) && containsCallableContainer(node.body)) unsafe = true;
     if (ts.isYieldExpression(node) && node.expression && containsCallableContainer(node.expression)) unsafe = true;
+    if (ts.isParameter(node) && node.initializer && containsCallableContainer(node.initializer)) unsafe = true;
+    if (ts.isPropertyDeclaration(node) && node.initializer && containsCallableContainer(node.initializer)) unsafe = true;
     if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
     if (
       ts.isPropertyAccessExpression(node)
@@ -1005,8 +1040,7 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     if (
       ts.isElementAccessExpression(expression)
       && expression.argumentExpression
-      && ts.isIdentifier(unwrapExpression(expression.expression))
-      && unwrapExpression(expression.expression).text === 'globalThis'
+      && resolvedCalleePath(expression.expression)?.every((segment) => segment === 'globalThis')
       && staticStringValue(expression.argumentExpression, constBindings) === null
     ) return ['UnknownIntrinsic'];
     const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
@@ -1240,6 +1274,8 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     if (ts.isReturnStatement(node) && node.expression && governedStoredValue(node.expression)) mutated = true;
     if (ts.isArrowFunction(node) && !ts.isBlock(node.body) && governedStoredValue(node.body)) mutated = true;
     if (ts.isYieldExpression(node) && node.expression && governedStoredValue(node.expression)) mutated = true;
+    if (ts.isParameter(node) && node.initializer && governedStoredValue(node.initializer)) mutated = true;
+    if (ts.isPropertyDeclaration(node) && node.initializer && governedStoredValue(node.initializer)) mutated = true;
     if (ts.isVariableDeclaration(node) && node.initializer && governedStoredValue(node.initializer)) mutated = true;
     if (
       ts.isBinaryExpression(node)

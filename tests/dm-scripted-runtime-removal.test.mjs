@@ -904,6 +904,7 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const outer: any = { inner: {} }; const prop = ['f', 'n'].join(''); outer.inner[prop] = fn; const holders = { h: outer.inner }; const key = ['con', 'structor'].join(''); let C: any; [C] = [holders.h.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const outer: any = { inner: {} }; const prop = ['f', 'n'].join(''); outer.inner[prop] = fn; const carriers = new Map<string, any>(); carriers.set('h', outer.inner); const key = ['con', 'structor'].join(''); let C: any; [C] = [carriers.get('h').fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const expose = () => box; const carrier = expose(); const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const carrier = ({ value: box }).value; const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1467,6 +1468,9 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const expose = () => Object.getOwnPropertyDescriptors(Set); const descriptors = expose(); const P = Reflect.get(descriptors.prototype, 'value'); P.has = () => true;\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const name = ['Arr', 'ay'].join(''); const C = (globalThis as any)[name]; const P = Reflect.get(C, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const name = ['S', 'et'].join(''); const C = Object.getOwnPropertyDescriptor(globalThis, name)?.value; const P = Reflect.get(C, 'prototype'); P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  function expose(A = Array) { return A; } const C = expose(); const P = Reflect.get(C, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  class Carrier { value = Array; } const C = new Carrier().value; const P = Reflect.get(C, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const root: any = globalThis; const name = ['S', 'et'].join(''); const C = root[name]; const P = Reflect.get(C, 'prototype'); P.has = () => true;\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
