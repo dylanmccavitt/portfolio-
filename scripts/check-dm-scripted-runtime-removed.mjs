@@ -402,6 +402,14 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const isCallableContainer = (path) => [...callableContainers].some((container) => (
     path === container || path.startsWith(`${container}.`)
   ));
+  const containsCallableContainer = (node) => {
+    let found = false;
+    walk(node, (current) => {
+      const path = staticPropertyPath(current, constBindings)?.join('.');
+      if (path && isCallableContainer(path)) found = true;
+    });
+    return found;
+  };
   const propagateCallableInitializer = (target, node) => {
     const expression = unwrapExpression(node);
     const source = staticPropertyPath(expression, constBindings)?.join('.');
@@ -497,11 +505,11 @@ function dynamicCodeExecutionFailures(sourceFile) {
   walk(sourceFile, (node) => {
     if (
       (ts.isCallExpression(node) || ts.isNewExpression(node))
-      && node.arguments?.some((argument) => {
-        const path = staticPropertyPath(argument, constBindings)?.join('.');
-        return path ? isCallableContainer(path) : false;
-      })
+      && node.arguments?.some((argument) => containsCallableContainer(argument))
     ) unsafe = true;
+    if (ts.isReturnStatement(node) && node.expression && containsCallableContainer(node.expression)) unsafe = true;
+    if (ts.isArrowFunction(node) && !ts.isBlock(node.body) && containsCallableContainer(node.body)) unsafe = true;
+    if (ts.isYieldExpression(node) && node.expression && containsCallableContainer(node.expression)) unsafe = true;
     if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
     if (
       ts.isPropertyAccessExpression(node)
@@ -994,6 +1002,13 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       && resolvedCalleePath(expression.arguments[0])?.join('.') === 'globalThis'
       && staticStringValue(expression.arguments[1], constBindings) === null
     ) return ['UnknownIntrinsic'];
+    if (
+      ts.isElementAccessExpression(expression)
+      && expression.argumentExpression
+      && ts.isIdentifier(unwrapExpression(expression.expression))
+      && unwrapExpression(expression.expression).text === 'globalThis'
+      && staticStringValue(expression.argumentExpression, constBindings) === null
+    ) return ['UnknownIntrinsic'];
     const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
     if (reflectedPrototype) return reflectedPrototype;
     const directDescriptorPrototype = reflectionPrototype(expression, 'Object.getOwnPropertyDescriptor')
@@ -1004,6 +1019,14 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       && staticMemberName(expression) === 'value'
     ) {
       const descriptorCall = unwrapExpression(expression.expression);
+      if (
+        ts.isCallExpression(descriptorCall)
+        && ['Object.getOwnPropertyDescriptor', 'Reflect.getOwnPropertyDescriptor'].includes(
+          resolvedCalleePath(descriptorCall.expression)?.join('.'),
+        )
+        && resolvedCalleePath(descriptorCall.arguments[0])?.join('.') === 'globalThis'
+        && staticStringValue(descriptorCall.arguments[1], constBindings) === null
+      ) return ['UnknownIntrinsic'];
       const descriptorPrototype = reflectionPrototype(descriptorCall, 'Object.getOwnPropertyDescriptor')
         ?? reflectionPrototype(descriptorCall, 'Reflect.getOwnPropertyDescriptor');
       if (descriptorPrototype) return descriptorPrototype;
@@ -1214,10 +1237,9 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   ));
   let mutated = false;
   walk(sourceFile, (node) => {
-    const escapesZ = (expression) => resolvePath(expression)?.join('.') === 'z';
-    if (ts.isReturnStatement(node) && node.expression && escapesZ(node.expression)) mutated = true;
-    if (ts.isArrowFunction(node) && !ts.isBlock(node.body) && escapesZ(node.body)) mutated = true;
-    if (ts.isYieldExpression(node) && node.expression && escapesZ(node.expression)) mutated = true;
+    if (ts.isReturnStatement(node) && node.expression && governedStoredValue(node.expression)) mutated = true;
+    if (ts.isArrowFunction(node) && !ts.isBlock(node.body) && governedStoredValue(node.body)) mutated = true;
+    if (ts.isYieldExpression(node) && node.expression && governedStoredValue(node.expression)) mutated = true;
     if (ts.isVariableDeclaration(node) && node.initializer && governedStoredValue(node.initializer)) mutated = true;
     if (
       ts.isBinaryExpression(node)
