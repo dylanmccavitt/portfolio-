@@ -194,6 +194,25 @@ function objectProperty(object, name) {
   )) ?? null;
 }
 
+function compactNode(node, sourceFile) {
+  return node?.getText(sourceFile).replace(/\s+/g, '').replace(/,([}\]])/g, '$1') ?? '';
+}
+
+function finalizeExecuteForSchema(root, sourceFile, schemaName) {
+  let match = null;
+  walk(root, (node) => {
+    if (match || !ts.isCallExpression(node) || !callIsNamed(node, 'tool')) return;
+    const options = node.arguments[0];
+    if (!ts.isObjectLiteralExpression(options)) return;
+    const inputSchema = objectProperty(options, 'inputSchema');
+    if (compactNode(inputSchema?.initializer, sourceFile) !== schemaName) return;
+    const execute = objectProperty(options, 'execute');
+    if (!execute || !ts.isArrowFunction(execute.initializer)) return;
+    match = execute.initializer;
+  });
+  return match;
+}
+
 function strictObjectForKind(sourceFile, schemaName, kind) {
   const declaration = variableDeclaration(sourceFile, schemaName);
   if (!declaration?.initializer) return null;
@@ -419,6 +438,34 @@ function v2ContractFailures(sourceFile) {
     if (resolverText.includes(forbidden)) {
       failures.push(`src/lib/dm/runtime.ts: v2 must not run v1 finalization policy ${forbidden}`);
     }
+  }
+
+  const v2Execute = chatResponse
+    ? finalizeExecuteForSchema(chatResponse, sourceFile, 'V2FinalAnswerInputSchema')
+    : null;
+  const expectedExecuteStatements = [
+    'awaitpublicToolGate.waitForIdle();',
+    'if(finalizationResult)returnfinalizationResult;',
+    'finalizationAttempts+=1;',
+    'finalized=true;',
+    "finalizationResult={status:'accepted',answer:resolveV2FinalAnswer(input,publicRun,artifacts),repairAttempted:false};",
+    'returnfinalizationResult;',
+  ];
+  const actualExecuteStatements = ts.isBlock(v2Execute?.body)
+    ? v2Execute.body.statements.map((statement) => compactNode(statement, sourceFile))
+    : [];
+  const expectedResolverStatements = [
+    'constevidenceIds=[...newSet(input.evidenceIds)].filter((id)=>run.evidenceLedger.has(id));',
+    'constartifactReferences=deduplicateArtifactReferences(input.artifacts).filter((reference)=>artifactAvailable(reference,artifacts));',
+    'return{segments:[{text:input.markdown,evidenceIds,evidence:run.evidenceLedger.resolve(evidenceIds)}],artifacts:artifactReferences.flatMap((reference)=>resolveArtifact(reference,artifacts)),limitations:[],...(input.followUp?{followUp:input.followUp}:{})};',
+  ];
+  const actualResolverStatements = resolver?.body?.statements
+    .map((statement) => compactNode(statement, sourceFile)) ?? [];
+  if (
+    actualExecuteStatements.join('\n') !== expectedExecuteStatements.join('\n')
+    || actualResolverStatements.join('\n') !== expectedResolverStatements.join('\n')
+  ) {
+    failures.push('src/lib/dm/runtime.ts: v2 finalization execution and resolution must contain only the governed structural allowlist');
   }
 
   const v2Instructions = compact(variableDeclaration(sourceFile, 'DM_V2_SYSTEM_INSTRUCTIONS')?.initializer);

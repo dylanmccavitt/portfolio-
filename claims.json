@@ -111,6 +111,20 @@
       "check": "npm run test:dm-removal"
     },
     {
+      "id": "dm-v2-validator-governance",
+      "statement": "DM v2 runtime finalization is limited to documented structural, same-run provenance, source, integrity, and operational controls; behavior quality stays in prompts, approved public content, and evaluations",
+      "subjectRefs": [
+        "docs/agents/dm-validator-governance.md",
+        "docs/agents/dm-evals.md",
+        "docs/agents/scope-ledger.md",
+        "src/lib/dm/runtime.ts",
+        "scripts/check-dm-scripted-runtime-removed.mjs",
+        "tests/dm-scripted-runtime-removal.test.mjs",
+        "tests/dm-runtime.test.ts"
+      ],
+      "check": "npm run test:dm-removal"
+    },
+    {
       "id": "filter-slugs",
       "statement": "PLAYLIST_SLUGS defines exactly 6 library filter slugs backing /library/[filter]",
       "subjectRefs": ["src/data/catalog.ts", "src/pages/library/[filter].astro"],

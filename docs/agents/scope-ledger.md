@@ -10,6 +10,13 @@ DM supersedes Eve for new product architecture. Eve runtime paths (`src/lib/eve/
 
 Public DM answers may use only published DB project records, approved public RAG sources, and static résumé/contact data from `src/data/resume.ts`. Hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor chats, and unsupported/generated claims stay out of public answers.
 
+DM v2 runtime validation follows
+[`docs/agents/dm-validator-governance.md`](./dm-validator-governance.md): hard
+controls protect structure, same-run provenance, private-source exclusion, and
+operations, while answer quality and semantic privacy wording remain evaluated
+behavior. The rule does not weaken the published-project, approved-public-RAG,
+or canonical résumé/contact source boundary above.
+
 ## PRD continuity
 
 The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-specific future architecture while preserving useful UI/runtime evidence from that prototype slice.

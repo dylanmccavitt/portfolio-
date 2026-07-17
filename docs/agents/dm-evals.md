@@ -15,6 +15,14 @@ source-gap cases; they do not make draft copy executable or permit catalog
 fallback. Keep it at 30 or more cases. Add a failing behavioral case before
 changing DM behavior.
 
+DM v2 behavior changes follow the
+[validator-governance rule](./dm-validator-governance.md): naturalness,
+composition, limitation wording, artifact usefulness/cardinality, and follow-up
+usefulness remain prompt/content/eval judgments rather than runtime rejection
+rules. Published DB projects, approved public RAG sources, canonical
+résumé/contact data, semantic privacy judgment, and deterministic private-source
+exclusion remain mandatory.
+
 ## Commands and proof classes
 
 | Proof | Command | Meaning |

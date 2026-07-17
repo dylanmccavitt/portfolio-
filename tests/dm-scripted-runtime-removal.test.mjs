@@ -72,8 +72,16 @@ function createDMChatResponse(request, config = {}) {
     ? {
         finalizeAnswer: tool({
           inputSchema: V2FinalAnswerInputSchema,
-          execute: (input) => {
-            finalizationResult = resolveV2FinalAnswer(input, publicRun, artifacts);
+          execute: async (input) => {
+            await publicToolGate.waitForIdle();
+            if (finalizationResult) return finalizationResult;
+            finalizationAttempts += 1;
+            finalized = true;
+            finalizationResult = {
+              status: 'accepted',
+              answer: resolveV2FinalAnswer(input, publicRun, artifacts),
+              repairAttempted: false,
+            };
             return finalizationResult;
           },
         }),
@@ -122,6 +130,7 @@ function resolveV2FinalAnswer(input, run, artifacts) {
     segments: [{ text: input.markdown, evidenceIds, evidence: run.evidenceLedger.resolve(evidenceIds) }],
     artifacts: artifactReferences.flatMap((reference) => resolveArtifact(reference, artifacts)),
     limitations: [],
+    ...(input.followUp ? { followUp: input.followUp } : {}),
   };
 }
 function validateFinalAnswer(input, run, artifacts) {
@@ -311,6 +320,52 @@ test('rejects v2 metadata that bypasses the current-run ledgers', async (t) => {
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: v2 must deduplicate, filter, and resolve only current-run evidence and artifacts',
+  ));
+});
+
+test('the governed v2 finalization allowlist accepts the structural resolver path', async (t) => {
+  const root = await createCleanFixture(t);
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+
+  assert.deepEqual(result.failures, []);
+});
+
+test('rejects a newly named v2 behavior validator even when historical names are avoided', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const evidenceIds = [...new Set(input.evidenceIds)]',
+    'if (!soundsHelpfulEnough(input.markdown)) return limitedResult(false);\n  const evidenceIds = [...new Set(input.evidenceIds)]',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 finalization execution and resolution must contain only the governed structural allowlist',
+  ));
+});
+
+test('rejects routing v2 through the known v1 behavior validator', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'answer: resolveV2FinalAnswer(input, publicRun, artifacts)',
+    'answer: validateFinalAnswer(input, publicRun, artifacts)',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 finalization execution and resolution must contain only the governed structural allowlist',
+  ));
+});
+
+test('rejects a v2 bypass that returns a behavior-gated rejection result', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'if (finalizationResult) return finalizationResult;',
+    "if (!input.markdown.includes('portfolio')) return limitedResult(false);\n            if (finalizationResult) return finalizationResult;",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 finalization execution and resolution must contain only the governed structural allowlist',
   ));
 });
 
