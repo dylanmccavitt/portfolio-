@@ -292,10 +292,37 @@ const GOVERNED_V2_DEPENDENCY_PATHS = new Map([
 
 function governedV2DependencyMutationFailures(sourceFile) {
   const mutated = new Set();
-  const recordPath = (path) => {
+  const aliases = new Map();
+  const resolveAliasPath = (path) => {
+    if (!path) return null;
+    const expanded = new Set();
+    let resolved = path;
+    while (aliases.has(resolved[0]) && !expanded.has(resolved[0])) {
+      expanded.add(resolved[0]);
+      resolved = [...aliases.get(resolved[0]), ...resolved.slice(1)];
+    }
+    return resolved;
+  };
+  let aliasesChanged = true;
+  while (aliasesChanged) {
+    aliasesChanged = false;
+    walk(sourceFile, (node) => {
+      if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
+      const path = resolveAliasPath(staticPropertyPath(node.initializer));
+      if (!path || (path.length === 1 && path[0] === node.name.text)) return;
+      if (aliases.get(node.name.text)?.join('.') === path.join('.')) return;
+      aliases.set(node.name.text, path);
+      aliasesChanged = true;
+    });
+  }
+  const governedPath = (node) => resolveAliasPath(staticPropertyPath(node));
+  const recordPath = (path, affectsDescendants = false) => {
     if (!path) return;
     for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
-      if (governedPath.every((part, index) => path[index] === part)) mutated.add(label);
+      const mutatesGovernedPath = governedPath.every((part, index) => path[index] === part);
+      const mutatesGovernedDescendant = affectsDescendants
+        && path.every((part, index) => governedPath[index] === part);
+      if (mutatesGovernedPath || mutatesGovernedDescendant) mutated.add(label);
     }
   };
 
@@ -305,11 +332,11 @@ function governedV2DependencyMutationFailures(sourceFile) {
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
-      recordPath(staticPropertyPath(node.left));
+      recordPath(governedPath(node.left));
       return;
     }
     if (ts.isDeleteExpression(node)) {
-      recordPath(staticPropertyPath(node.expression));
+      recordPath(governedPath(node.expression));
       return;
     }
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
@@ -317,15 +344,50 @@ function governedV2DependencyMutationFailures(sourceFile) {
     const method = node.expression.name.text;
     const ownerName = ts.isIdentifier(owner) ? owner.text : null;
     if ((ownerName === 'Object' || ownerName === 'Reflect') && method === 'defineProperty') {
-      const objectPath = node.arguments[0] ? staticPropertyPath(node.arguments[0]) : null;
+      const objectPath = node.arguments[0] ? governedPath(node.arguments[0]) : null;
       const property = node.arguments[1] && unwrapExpression(node.arguments[1]);
       if (objectPath && property && (ts.isStringLiteral(property) || ts.isNumericLiteral(property))) {
         recordPath([...objectPath, property.text]);
+      } else {
+        recordPath(objectPath, true);
       }
       return;
     }
+    if (ownerName === 'Reflect' && method === 'set') {
+      const objectPath = node.arguments[0] ? governedPath(node.arguments[0]) : null;
+      const property = node.arguments[1] && unwrapExpression(node.arguments[1]);
+      if (objectPath && property && (ts.isStringLiteral(property) || ts.isNumericLiteral(property))) {
+        recordPath([...objectPath, property.text]);
+      } else {
+        recordPath(objectPath, true);
+      }
+      return;
+    }
+    if (ownerName === 'Object' && method === 'defineProperties') {
+      const objectPath = node.arguments[0] ? governedPath(node.arguments[0]) : null;
+      const descriptors = node.arguments[1] && unwrapExpression(node.arguments[1]);
+      if (!objectPath || !descriptors || !ts.isObjectLiteralExpression(descriptors)) {
+        recordPath(objectPath, true);
+        return;
+      }
+      for (const property of descriptors.properties) {
+        if (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+          recordPath([...objectPath, propertyNameText(property.name)]);
+        } else {
+          recordPath(objectPath, true);
+        }
+      }
+      return;
+    }
+    if (
+      (ownerName === 'Object' || ownerName === 'Reflect')
+      && method === 'setPrototypeOf'
+    ) {
+      recordPath(node.arguments[0] ? governedPath(node.arguments[0]) : null, true);
+      return;
+    }
     if (ownerName !== 'Object' || method !== 'assign') return;
-    const objectPath = node.arguments[0] ? staticPropertyPath(node.arguments[0]) : null;
+    const objectPath = node.arguments[0] ? governedPath(node.arguments[0]) : null;
     if (!objectPath) return;
     for (const source of node.arguments.slice(1)) {
       const unwrapped = unwrapExpression(source);

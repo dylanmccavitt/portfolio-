@@ -470,6 +470,72 @@ test('rejects replacement of the public tool idle gate with a finalization wrapp
   ));
 });
 
+test('rejects replacement of the public tool idle gate through an object alias', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'let finalizationAttempts = 0;',
+    `const gateAlias = publicToolGate;
+  gateAlias.waitForIdle = async () => {
+    finalizationResult = limitedResult(false);
+  };
+  let finalizationAttempts = 0;`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency publicToolGate.waitForIdle must not be replaced or redefined',
+  ));
+});
+
+test('rejects replacement of current-run project map methods through an alias', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const siteBrief =',
+    `const projectsAlias = artifacts.projects;
+  projectsAlias.has = () => true;
+  const siteBrief =`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+  ));
+});
+
+test('rejects Reflect.set replacement of the public tool idle gate', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'let finalizationAttempts = 0;',
+    `Reflect.set(publicToolGate, 'waitForIdle', async () => {
+    finalizationResult = limitedResult(false);
+  });
+  let finalizationAttempts = 0;`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency publicToolGate.waitForIdle must not be replaced or redefined',
+  ));
+});
+
+test('rejects Object.defineProperties replacement of the public tool idle gate', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'let finalizationAttempts = 0;',
+    `Object.defineProperties(publicToolGate, {
+    waitForIdle: { value: async () => {
+      finalizationResult = limitedResult(false);
+    } },
+  });
+  let finalizationAttempts = 0;`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency publicToolGate.waitForIdle must not be replaced or redefined',
+  ));
+});
+
 test('rejects replacement of the current-run project map with subclass semantics', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
@@ -484,6 +550,26 @@ test('rejects replacement of the current-run project map with subclass semantics
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
   ));
+});
+
+test('rejects Object and Reflect prototype replacement of current-run project maps', async (t) => {
+  for (const mutator of ['Object.setPrototypeOf', 'Reflect.setPrototypeOf']) {
+    await t.test(mutator, async (t) => {
+      const root = await createCleanFixture(t);
+      await mutateRuntime(root, (runtime) => runtime.replace(
+        'const siteBrief = {};',
+        `${mutator}(artifacts.projects, {
+    has: () => true,
+  });
+  const siteBrief = {};`,
+      ));
+
+      const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+      assert.ok(result.failures.includes(
+        'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+      ));
+    });
+  }
 });
 
 test('the governed v2 finalization allowlist accepts the structural resolver path', async (t) => {
