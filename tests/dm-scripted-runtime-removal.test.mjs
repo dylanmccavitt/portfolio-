@@ -899,6 +899,7 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const box: any = {}; box.fn = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [box.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box: any = {}; const prop = ['f', 'n'].join(''); box[prop] = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [box.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const outer: any = { inner: {} }; const prop = ['f', 'n'].join(''); outer.inner[prop] = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [outer.inner.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const outer: any = { inner: {} }; const alias = outer.inner; const prop = ['f', 'n'].join(''); outer.inner[prop] = fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [alias.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1448,6 +1449,8 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const d = Object.getOwnPropertyDescriptors(Set).prototype; const P = Reflect.get(d, 'value'); P.has = () => true;\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const holder: any = {}; const prop = ['A'].join(''); holder[prop] = Array; const P = Reflect.get(holder.A, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const descriptors = Object.getOwnPropertyDescriptors(Set); const d = descriptors.prototype; const P = Reflect.get(d, 'value'); P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const holder: any = {}; const prop = ['A'].join(''); holder[prop] = Array; const alias = holder; const P = Reflect.get(alias.A, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const holder: any = {}; const prop = ['descriptors'].join(''); holder[prop] = Object.getOwnPropertyDescriptors(Set); const d = holder.descriptors.prototype; const P = Reflect.get(d, 'value'); P.has = () => true;\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {

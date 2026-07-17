@@ -386,6 +386,19 @@ function dynamicCodeExecutionFailures(sourceFile) {
       }
     }
   });
+  const propagateCallableContainers = (target, source) => {
+    let changed = false;
+    for (const container of [...callableContainers]) {
+      if (container === source || container.startsWith(`${source}.`)) {
+        const alias = `${target}${container.slice(source.length)}`;
+        if (!callableContainers.has(alias)) {
+          callableContainers.add(alias);
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  };
   let callableChanged = true;
   while (callableChanged) {
     callableChanged = false;
@@ -405,6 +418,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
           callablePaths.add(target);
           callableChanged = true;
         }
+        if (target && source) {
+          callableChanged = propagateCallableContainers(target, source) || callableChanged;
+        }
         if (
           !target
           && source
@@ -421,6 +437,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
       }
       if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
       const path = staticPropertyPath(node.initializer, constBindings)?.join('.');
+      if (path) {
+        callableChanged = propagateCallableContainers(node.name.text, path) || callableChanged;
+      }
       if (
         path
         && (callableBindings.has(path) || callablePaths.has(path))
@@ -827,15 +846,25 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   const resolveDirectPath = (node) => {
     const expression = unwrapExpression(node);
     const resolvedCalleePath = (callee) => {
-      const path = staticPropertyPath(callee, constBindings);
+      let path = staticPropertyPath(callee, constBindings);
       if (!path) return null;
-      for (let length = path.length; length > 0; length -= 1) {
-        const replacement = aliases.get(path.slice(0, length).join('.'));
-        if (replacement) return [...replacement, ...path.slice(length)];
-        const intrinsic = intrinsicContainers.get(path.slice(0, length).join('.'));
-        if (intrinsic && path.length > length) {
-          return [...intrinsic, ...path.slice(length + 1)];
+      const seen = new Set();
+      while (!seen.has(path.join('.'))) {
+        seen.add(path.join('.'));
+        let expanded = false;
+        for (let length = path.length; length > 0; length -= 1) {
+          const replacement = aliases.get(path.slice(0, length).join('.'));
+          if (replacement) {
+            path = [...replacement, ...path.slice(length)];
+            expanded = true;
+            break;
+          }
+          const carrier = intrinsicContainers.get(path.slice(0, length).join('.'));
+          if (carrier && path.length > length) {
+            return [...carrier, ...path.slice(length + 1)];
+          }
         }
+        if (!expanded) return path;
       }
       return path;
     };
@@ -967,12 +996,18 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     if (!targetPath && ts.isElementAccessExpression(target)) {
       const container = staticPropertyPath(target.expression, constBindings)?.join('.');
       const source = expandAlias(resolveDirectPath(expression));
-      const intrinsic = source?.length === 1 && GOVERNED_INTRINSIC_PROTOTYPES.has(source[0])
+      const carrier = source
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(source[0])
+        && (source.length === 1 || (source.length === 2 && source[1] === '$descriptors'))
         ? source
         : null;
-      if (container && intrinsic) {
+      if (container && carrier) {
         const existing = intrinsicContainers.get(container);
-        const next = existing && existing[0] !== intrinsic[0] ? ['UnknownIntrinsic'] : intrinsic;
+        const next = existing && existing.join('.') !== carrier.join('.')
+          ? existing.at(-1) === '$descriptors' && carrier.at(-1) === '$descriptors'
+            ? ['UnknownIntrinsic', '$descriptors']
+            : ['UnknownIntrinsic']
+          : carrier;
         if (existing?.join('.') === next.join('.')) return false;
         intrinsicContainers.set(container, next);
         return true;
