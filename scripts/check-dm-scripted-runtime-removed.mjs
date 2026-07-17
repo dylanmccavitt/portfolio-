@@ -1200,6 +1200,119 @@ const EXPECTED_V2_PROSE_HELPER_BODIES = new Map([
   ['takeBoundedCompleteCodePoints', "{letaccepted='';letpendingHighSurrogate='';letoverflow=false;letinvalid=false;for(letindex=0;index<input.length;){constfirst=input.charCodeAt(index);letpoint=input[index]asstring;letwidth=1;if(first>=0xD800&&first<=0xDBFF){if(index+1>=input.length){pendingHighSurrogate=point;break;}constsecond=input.charCodeAt(index+1);if(second<0xDC00||second>0xDFFF){invalid=true;break;}point+=input[index+1];width=2;}elseif(first>=0xDC00&&first<=0xDFFF){invalid=true;break;}if(accepted.length+width>remainingCodeUnits){overflow=true;break;}accepted+=point;index+=width;}return{text:accepted,pendingHighSurrogate,overflow,invalid};}"],
 ]);
 
+const APPROVED_WRITER_CALL_COUNTS = new Map([
+  ['write(forwardedChunk)', 1],
+  ["write({type:'tool-input-start',toolCallId:chunk.toolCallId,toolName:'finalizeAnswer'})", 1],
+  ['write(chunkasUIMessageChunk)', 1],
+  ['write(chunk)', 5],
+  ["write({type:'error',errorText:'DMtooktoolongtoanswer.Pleasetryagain.'})", 2],
+  ["write({type:'finish'})", 6],
+  ["write({type:'error',errorText:'DMcouldnotsafelyfinishthisanswer.Pleasetryagain.'})", 1],
+  ["write({type:'data-dm-answer',data:finalizationResult})", 1],
+  ["write({type:'error',errorText:safeErrorMessage(error)})", 1],
+]);
+
+const APPROVED_METRICS_CALL_COUNTS = new Map([
+  ["setErrorCategory(abort.timedOut()?'timeout':'aborted')", 3],
+  ["error('unknown')", 3],
+  ['modelStarted()', 1],
+  ['setErrorCategory(category)', 1],
+  ['visibleOutput()', 3],
+  ["finish(abort.timedOut()?'timeout':'aborted')", 2],
+  ['setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,true)', 1],
+  ['setUsage(inputTokens,outputTokens)', 2],
+  ["setErrorCategory('finalization_validation')", 2],
+  ["error('finalization_validation')", 1],
+  ["setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,finalizationResult.status==='limited')", 1],
+  ["finish('completed')", 1],
+]);
+
+function directOwnedCall(node, owner) {
+  if (!ts.isIdentifier(node) || node.text !== owner) return null;
+  const access = node.parent;
+  if (!ts.isPropertyAccessExpression(access) || access.expression !== node) return null;
+  const call = access.parent;
+  return ts.isCallExpression(call) && call.expression === access ? call : null;
+}
+
+function closedSinkReferences(container, owner, approvedCalls, declaration) {
+  const counts = new Map();
+  let unexpectedReference = false;
+  walk(container, (node) => {
+    if (!ts.isIdentifier(node) || node.text !== owner) return;
+    if (node === declaration) return;
+    const call = directOwnedCall(node, owner);
+    if (!call) {
+      const parentCall = node.parent;
+      if (
+        owner === 'metrics'
+        && ts.isCallExpression(parentCall)
+        && parentCall.arguments[2] === node
+        && compactNode(parentCall, container.getSourceFile())
+          === 'createRuntimePublicTools(publicRun,artifacts,metrics,publicToolGate)'
+      ) return;
+      unexpectedReference = true;
+      return;
+    }
+    const key = `${call.expression.name.text}(${call.arguments.map((argument) => compactNode(argument, container.getSourceFile())).join(',')})`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  if (unexpectedReference) return false;
+  for (const [key, count] of counts) {
+    if (!approvedCalls.has(key) || count > approvedCalls.get(key)) return false;
+  }
+  return true;
+}
+
+function streamCompletionSinkFailures(sourceFile) {
+  const failure = 'src/lib/dm/runtime.ts: UI stream writer and metrics sinks must remain closed over approved completion paths';
+  const chatResponse = functionDeclaration(sourceFile, 'createDMChatResponse');
+  const streamExecutes = [];
+  walk(chatResponse ?? sourceFile, (node) => {
+    if (!ts.isMethodDeclaration(node) || propertyNameText(node.name) !== 'execute') return;
+    const options = node.parent;
+    const call = options?.parent;
+    if (
+      ts.isObjectLiteralExpression(options)
+      && ts.isCallExpression(call)
+      && call.expression.getText(sourceFile) === 'createUIMessageStream'
+      && call.arguments[0] === options
+    ) streamExecutes.push(node);
+  });
+  const execute = streamExecutes[0];
+  const writerBinding = execute?.parameters[0]?.name;
+  const writerIdentifier = writerBinding
+    && ts.isObjectBindingPattern(writerBinding)
+    && writerBinding.elements.length === 1
+    && !writerBinding.elements[0].propertyName
+    && ts.isIdentifier(writerBinding.elements[0].name)
+    && writerBinding.elements[0].name.text === 'writer'
+    ? writerBinding.elements[0].name
+    : null;
+  const metricDeclarations = [];
+  walk(chatResponse ?? sourceFile, (node) => {
+    if (ts.isVariableDeclaration(node) && bindingNameContains(node.name, 'metrics')) metricDeclarations.push(node);
+  });
+  const metrics = metricDeclarations[0];
+  const metricsStatement = metrics?.parent?.parent;
+  const validMetricsDeclaration = metricDeclarations.length === 1
+    && ts.isIdentifier(metrics.name)
+    && metrics.name.text === 'metrics'
+    && ts.isCallExpression(unwrapExpression(metrics.initializer))
+    && unwrapExpression(metrics.initializer).expression.getText(sourceFile) === 'createDMMetricsRecorder'
+    && ts.isVariableStatement(metricsStatement)
+    && (metrics.parent.flags & ts.NodeFlags.Const) !== 0;
+  if (
+    streamExecutes.length !== 1
+    || !execute.body
+    || !writerIdentifier
+    || !validMetricsDeclaration
+    || !closedSinkReferences(execute, 'writer', APPROVED_WRITER_CALL_COUNTS, writerIdentifier)
+    || !closedSinkReferences(chatResponse, 'metrics', APPROVED_METRICS_CALL_COUNTS, metrics.name)
+  ) return [failure];
+  return [];
+}
+
 function isNamedPropertyAccess(node, objectName, propertyName) {
   const expression = unwrapExpression(node);
   return ts.isPropertyAccessExpression(expression)
@@ -1620,6 +1733,9 @@ function finalizationCallSiteFailures(sourceFile) {
     const answerWriteIndex = terminalBlock?.statements.findIndex(
       (statement) => statement.pos <= answerWrites[0].pos && statement.end >= answerWrites[0].end,
     ) ?? -1;
+    const completionIndex = terminalBlock?.statements.findIndex(
+      (statement) => compactNode(statement, sourceFile) === "metrics.finish('completed');",
+    ) ?? -1;
     const fallbackIndex = terminalBlock?.statements.findIndex(
       (statement) => compactNode(statement, sourceFile) === 'finalizationResult??=limitedResult(finalizationAttempts>0);',
     ) ?? -1;
@@ -1631,10 +1747,17 @@ function finalizationCallSiteFailures(sourceFile) {
       "metrics.setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,finalizationResult.status==='limited');",
       'metrics.setUsage(inputTokens,outputTokens);',
       "writer.write({type:'data-dm-answer',data:finalizationResult});",
+      "if(contract==='v1')metrics.visibleOutput();",
+      "writer.write({type:'finish'});",
+      "metrics.finish('completed');",
     ];
-    const actualTerminalStatements = terminalBlock && fallbackIndex >= 0 && answerWriteIndex >= fallbackIndex
+    const actualTerminalStatements = terminalBlock
+      && fallbackIndex >= 0
+      && answerWriteIndex >= fallbackIndex
+      && completionIndex > answerWriteIndex
+      && completionIndex === terminalBlock.statements.length - 1
       ? terminalBlock.statements
-        .slice(fallbackIndex, answerWriteIndex + 1)
+        .slice(fallbackIndex, completionIndex + 1)
         .map((statement) => compactNode(statement, sourceFile))
       : [];
     if (actualTerminalStatements.join('\n') !== expectedTerminalStatements.join('\n')) {
@@ -1655,6 +1778,7 @@ export function finalizationBoundaryFailures(runtime) {
   failures.push(...sdkPrimitiveBindingFailures(sourceFile));
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...v2ProseEmissionFailures(sourceFile));
+  failures.push(...streamCompletionSinkFailures(sourceFile));
   failures.push(...finalizationCopyFailures(sourceFile));
   failures.push(...v2ContractFailures(sourceFile));
   failures.push(...v2ArtifactHelperFailures(sourceFile));

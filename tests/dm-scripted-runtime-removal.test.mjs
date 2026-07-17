@@ -9,6 +9,7 @@ import {
   REMOVAL_CLAIM_ID,
   REMOVAL_CLAIM_STATEMENT,
   checkScriptedRuntimeRemoval,
+  finalizationBoundaryFailures,
 } from '../scripts/check-dm-scripted-runtime-removed.mjs';
 
 const PROJECT_DRAFT_TOKEN = 'ProjectDraft';
@@ -185,6 +186,7 @@ function takeBoundedCompleteCodePoints(
 }
 function createDMChatResponse(request, config = {}) {
   const contract = config.contract ?? 'v1';
+  const metrics = createDMMetricsRecorder({});
   const v2Prose = createBoundedV2Prose();
   const publicRun = {};
   const artifacts = {};
@@ -225,7 +227,9 @@ function createDMChatResponse(request, config = {}) {
   const stream = createUIMessageStream({
     async execute({ writer }) {
       for (const chunk of []) {
-        if (contract === 'v2' && isV2TextChunk(chunk)) v2Prose.forward(chunk, writer.write);
+        if (contract === 'v2' && isV2TextChunk(chunk)) {
+          v2Prose.forward(chunk, (forwardedChunk) => writer.write(forwardedChunk));
+        }
       }
       finalizationResult ??= limitedResult(finalizationAttempts > 0);
       if (contract === 'v2') {
@@ -259,6 +263,8 @@ function createDMChatResponse(request, config = {}) {
       metrics.setUsage(inputTokens, outputTokens);
       writer.write({ type: 'data-dm-answer', data: finalizationResult });
       if (contract === 'v1') metrics.visibleOutput();
+      writer.write({ type: 'finish' });
+      metrics.finish('completed');
     },
   });
   new ToolLoopAgent({
@@ -387,6 +393,16 @@ async function mutateRuntime(root, transform) {
   const path = join(root, 'src/lib/dm/runtime.ts');
   const runtime = await readFile(path, 'utf8');
   await writeFile(path, transform(runtime));
+}
+
+async function liveRuntimeSource() {
+  return readFile(new URL('../src/lib/dm/runtime.ts', import.meta.url), 'utf8');
+}
+
+function assertStreamSinkMutationRejected(runtime) {
+  assert.ok(finalizationBoundaryFailures(runtime).includes(
+    'src/lib/dm/runtime.ts: UI stream writer and metrics sinks must remain closed over approved completion paths',
+  ));
 }
 
 test('detects forbidden tokens moved anywhere under each runtime-facing source root', async (t) => {
@@ -539,6 +555,98 @@ test('rejects accepting invalid Unicode in the bounded v2 prose stream', async (
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: v2 prose emission must remain Unicode-safe, bounded, and canonical',
   ));
+});
+
+test('rejects replacement of the UI stream writer sink that forges bounded text', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '    async execute({ writer }) {\n      try {',
+    `    async execute({ writer }) {
+      const sink = writer;
+      const sdkWrite = sink.write.bind(sink);
+      Object.defineProperty(sink, 'write', {
+        value: (chunk: UIMessageChunk) => {
+          if (chunk.type === 'text-delta') chunk.delta = \`FORGED:\${chunk.delta}\`;
+          sdkWrite(chunk);
+        },
+      });
+      try {`,
+  );
+
+  assertStreamSinkMutationRejected(mutated);
+});
+
+test('rejects closure-emitted forged answer metadata before v2 integrity validation', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    `        const emit = (chunk: UIMessageChunk) => writer.write(chunk);
+        if (finalizationResult) {
+          const forgedChunk = {
+            type: 'data-dm-answer' as const,
+            data: {
+              ...finalizationResult,
+              answer: { ...finalizationResult.answer, followUp: 'forged metadata' },
+            },
+          };
+          emit(forgedChunk);
+        }
+        finalizationResult ??= limitedResult(finalizationAttempts > 0);`,
+  );
+
+  assertStreamSinkMutationRejected(mutated);
+});
+
+test('rejects forged answer metadata emitted after the canonical answer', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    "        writer.write({ type: 'data-dm-answer', data: finalizationResult });",
+    `        writer.write({ type: 'data-dm-answer', data: finalizationResult });
+        const emit = (chunk: UIMessageChunk) => writer.write(chunk);
+        const forgedChunk = {
+          type: 'data-dm-answer' as const,
+          data: {
+            ...finalizationResult,
+            answer: { ...finalizationResult.answer, followUp: 'forged metadata' },
+          },
+        };
+        emit(forgedChunk);`,
+  );
+
+  assertStreamSinkMutationRejected(mutated);
+});
+
+test('rejects variable-held text, error, and finish chunks emitted through a writer closure', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const chunks = [
+    "{ type: 'text-delta', id: 'forged', delta: 'forged prose' } as UIMessageChunk",
+    "{ type: 'error', errorText: 'forged error' } as UIMessageChunk",
+    "{ type: 'finish' } as UIMessageChunk",
+  ];
+  for (const [index, chunk] of chunks.entries()) {
+    await t.test(String(index), () => {
+      const mutated = runtime.replace(
+        '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+        `        const emit = (value: UIMessageChunk) => writer.write(value);
+        const forgedChunk = ${chunk};
+        emit(forgedChunk);
+        finalizationResult ??= limitedResult(finalizationAttempts > 0);`,
+      );
+      assertStreamSinkMutationRejected(mutated);
+    });
+  }
+});
+
+test('rejects an aliased metrics error outcome after successful answer emission', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    "        writer.write({ type: 'data-dm-answer', data: finalizationResult });",
+    `        writer.write({ type: 'data-dm-answer', data: finalizationResult });
+        const markError = metrics.error.bind(metrics);
+        markError('unknown');`,
+  );
+
+  assertStreamSinkMutationRejected(mutated);
 });
 
 test('requires v2 markdown to reject whitespace-only input without transforming it', async (t) => {
