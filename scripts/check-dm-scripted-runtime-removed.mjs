@@ -402,6 +402,13 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const isCallableContainer = (path) => [...callableContainers].some((container) => (
     path === container || path.startsWith(`${container}.`)
   ));
+  const hasCallableDescendant = (path) => (
+    callableBindings.has(path)
+    || callablePaths.has(path)
+    || [...callablePaths].some((candidate) => candidate.startsWith(`${path}.`))
+    || isCallableContainer(path)
+    || [...callableContainers].some((candidate) => candidate.startsWith(`${path}.`))
+  );
   const containsCallableContainer = (node) => {
     let found = false;
     walk(node, (current) => {
@@ -412,6 +419,17 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const literalMemberValues = (node, key) => {
     const expression = unwrapExpression(node);
+    if (ts.isPropertyAccessExpression(expression)) {
+      return literalMemberValues(expression.expression, expression.name.text)
+        .flatMap((value) => literalMemberValues(value, key));
+    }
+    if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+      const member = computedName(expression.argumentExpression);
+      return member === null
+        ? []
+        : literalMemberValues(expression.expression, member)
+          .flatMap((value) => literalMemberValues(value, key));
+    }
     if (ts.isConditionalExpression(expression)) {
       return [
         ...literalMemberValues(expression.whenTrue, key),
@@ -452,6 +470,24 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const literalMemberPaths = (node, key) => {
     const expression = unwrapExpression(node);
+    if (ts.isPropertyAccessExpression(expression)) {
+      const member = expression.name.text;
+      return [
+        ...literalMemberValues(expression.expression, member)
+          .flatMap((value) => literalMemberPaths(value, key)),
+        ...literalMemberPaths(expression.expression, member).map((path) => `${path}.${key}`),
+      ];
+    }
+    if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+      const member = computedName(expression.argumentExpression);
+      if (member !== null) {
+        return [
+          ...literalMemberValues(expression.expression, member)
+            .flatMap((value) => literalMemberPaths(value, key)),
+          ...literalMemberPaths(expression.expression, member).map((path) => `${path}.${key}`),
+        ];
+      }
+    }
     if (ts.isConditionalExpression(expression)) {
       return [
         ...literalMemberPaths(expression.whenTrue, key),
@@ -522,6 +558,17 @@ function dynamicCodeExecutionFailures(sourceFile) {
     const propagateMember = (receiver, key) => {
       let changed = literalMemberValues(receiver, key)
         .some((value) => propagateCallableInitializer(target, value));
+      const receiverExpression = unwrapExpression(receiver);
+      const selectedIndex = /^\d+$/.test(key) ? Number(key) : null;
+      if (ts.isArrayLiteralExpression(receiverExpression) && selectedIndex !== null) {
+        for (const [index, element] of receiverExpression.elements.entries()) {
+          if (index > selectedIndex || !ts.isSpreadElement(element)) continue;
+          const spreadPath = staticPropertyPath(element.expression, constBindings)?.join('.');
+          if (spreadPath && hasCallableDescendant(spreadPath)) {
+            changed = recordCallableTarget(target) || changed;
+          }
+        }
+      }
       for (const memberPath of literalMemberPaths(receiver, key)) {
         if (callableBindings.has(memberPath) || callablePaths.has(memberPath)) {
           changed = recordCallableTarget(target) || changed;
@@ -1364,6 +1411,9 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     (path[0] === 'z' && path.length > 1)
     || (GOVERNED_INTRINSIC_PROTOTYPES.has(path[0]) && path[1] === 'prototype')
   );
+  const rawGovernedTarget = (node) => governed(
+    canonicalGlobalPath(staticPropertyPath(node, constBindings)),
+  );
   const possiblePrimitivePaths = (node) => {
     const expression = unwrapExpression(node);
     if (ts.isTaggedTemplateExpression(expression)) return possiblePrimitivePaths(expression.template);
@@ -1442,10 +1492,16 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       ts.isBinaryExpression(node)
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-      && !aliasAssignments.has(node)
       && (
-        governed(resolvePath(node.left))
-        || assignmentTargetExpressions(node.left).some((target) => governed(resolvePath(target)))
+        rawGovernedTarget(node.left)
+        || assignmentTargetExpressions(node.left).some(rawGovernedTarget)
+        || (
+          !aliasAssignments.has(node)
+          && (
+            governed(resolvePath(node.left))
+            || assignmentTargetExpressions(node.left).some((target) => governed(resolvePath(target)))
+          )
+        )
       )
     ) mutated = true;
     if (ts.isDeleteExpression(node) && governed(resolvePath(node.expression))) mutated = true;
@@ -1733,30 +1789,82 @@ function governedV2DependencyMutationFailures(sourceFile) {
     const branch = nearestAncestor(node, ts.isIfStatement);
     return branch ? compactNode(branch, sourceFile) === expected : false;
   };
+  const exactExecute = (node, expected) => (
+    compactNode(enclosingExecuteProperty(node), sourceFile) === compactSyntax(expected)
+  );
   const trustedArtifactWriteSpecs = [
     {
       text: 'artifacts.projects.set(project.id, project)',
       valid: (node) => executeBelongsToCall(node, 'tool', 'searchProjects')
-        && exactForOf(node, 'for(constprojectofresult.projects)artifacts.projects.set(project.id,project);'),
+        && exactForOf(node, 'for(constprojectofresult.projects)artifacts.projects.set(project.id,project);')
+        && exactExecute(node, `execute: (input, { abortSignal }) => {
+          const outcomeOrdinal = reserveToolOutcome(artifacts);
+          return gate.run(async () => {
+            metrics.tool();
+            const result = await run.searchProjects(input, { abortSignal });
+            artifacts.projectLookupCompleted = true;
+            for (const project of result.projects) artifacts.projects.set(project.id, project);
+            rememberToolOutcome(artifacts, 'searchProjects', outcomeOrdinal, result.status, result.limitations);
+            return result;
+          });
+        }`),
     },
     {
       text: 'artifacts.projects.set(result.project.id, result.project)',
       valid: (node) => executeBelongsToCall(node, 'tool', 'getProject')
-        && exactIf(node, 'if(result.project){artifacts.projects.set(result.project.id,result.project);artifacts.directProjectReads.add(result.project.id);}'),
+        && exactIf(node, 'if(result.project){artifacts.projects.set(result.project.id,result.project);artifacts.directProjectReads.add(result.project.id);}')
+        && exactExecute(node, `execute: (input, { abortSignal }) => {
+          const outcomeOrdinal = reserveToolOutcome(artifacts);
+          return gate.run(async () => {
+            metrics.tool();
+            const result = await run.getProject(input, { abortSignal });
+            artifacts.projectLookupCompleted = true;
+            if (result.project) {
+              artifacts.projects.set(result.project.id, result.project);
+              artifacts.directProjectReads.add(result.project.id);
+            }
+            rememberToolOutcome(artifacts, 'getProject', outcomeOrdinal, result.status, result.limitations);
+            return result;
+          });
+        }`),
     },
     {
       text: 'artifacts.resumeTracks.set(track.id, track)',
       valid: (node) => executeBelongsToCall(node, 'tool', 'readResume')
-        && exactForOf(node, 'for(consttrackofresult.tracks)artifacts.resumeTracks.set(track.id,track);'),
+        && exactForOf(node, 'for(consttrackofresult.tracks)artifacts.resumeTracks.set(track.id,track);')
+        && exactExecute(node, `execute: (input, { abortSignal }) => gate.run(async () => {
+          metrics.tool();
+          const result = await run.readResume(input, { abortSignal });
+          for (const track of result.tracks) artifacts.resumeTracks.set(track.id, track);
+          rememberLimitations(artifacts, result.limitations);
+          return result;
+        })`),
     },
     {
       text: 'artifacts.sources.set(source.id, source)',
       valid: (node) => executeBelongsToCall(node, 'tool', 'searchPublicSources')
-        && exactForOf(node, 'for(constsourceofresult.sources)artifacts.sources.set(source.id,source);'),
+        && exactForOf(node, 'for(constsourceofresult.sources)artifacts.sources.set(source.id,source);')
+        && exactExecute(node, `execute: (input, { abortSignal }) => {
+          const outcomeOrdinal = reserveToolOutcome(artifacts);
+          return gate.run(async () => {
+            metrics.tool();
+            const result = await run.searchPublicSources(input, { abortSignal });
+            for (const source of result.sources) artifacts.sources.set(source.id, source);
+            rememberToolOutcome(artifacts, 'searchPublicSources', outcomeOrdinal, result.status, result.limitations);
+            return result;
+          });
+        }`),
     },
     {
       text: 'artifacts.contact = result.contact',
-      valid: (node) => executeBelongsToCall(node, 'tool', 'getContact'),
+      valid: (node) => executeBelongsToCall(node, 'tool', 'getContact')
+        && exactExecute(node, `execute: (input, { abortSignal }) => gate.run(async () => {
+          metrics.tool();
+          const result = await run.getContact(input, { abortSignal });
+          artifacts.contact = result.contact;
+          rememberLimitations(artifacts, result.limitations);
+          return result;
+        })`),
     },
   ];
   const trustedArtifactWriteNodes = new Map(
@@ -2454,6 +2562,12 @@ function governedSchemaMutationFailures(sourceFile) {
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
       if (governedPaths(node.right).some(mutatesGovernedSchema)) mutated = true;
+      if (
+        possiblePropertyPaths(node.left).some(mutatesGovernedSchema)
+        || assignmentTargetExpressions(node.left).some((target) => (
+          possiblePropertyPaths(target).some(mutatesGovernedSchema)
+        ))
+      ) mutated = true;
       if (
         governedPaths(node.left).length === 0
         && assignmentTargetExpressions(node.left).some((target) => (
