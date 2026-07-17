@@ -876,6 +876,9 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `globalThis.Function(${JSON.stringify(hiddenWrite)})();`,
     `(async () => {}).constructor(${JSON.stringify(hiddenWrite)})();`,
     `Object.getPrototypeOf(function* () {}).constructor(${JSON.stringify(hiddenWrite)})();`,
+    `(async () => {})['con' + 'structor'](${JSON.stringify(hiddenWrite)})();`,
+    '(async () => {})[`con${"structor"}`]("return 1")();',
+    `Reflect.construct(Function, [${JSON.stringify(hiddenWrite)}])();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1319,6 +1322,52 @@ test('rejects governed schema and artifact stores hidden in array containers', a
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
   ));
+});
+
+test('rejects governed schema and artifact stores laundered through object containers', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const mutations = [
+    runtime.replace(
+      '  const siteBrief =',
+      '  const box = { projects: artifacts.projects };\n  box.projects.has = () => true;\n  const siteBrief =',
+    ),
+    runtime.replace(
+      "  const agentTools = contract === 'v2'",
+      "  const box = { schema: V2FinalAnswerInputSchema };\n  box.schema.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
+    ),
+  ];
+  const expected = [
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+  ];
+  for (const [index, mutated] of mutations.entries()) {
+    await t.test(String(index), () => {
+      assert.ok(finalizationBoundaryFailures(mutated).includes(expected[index]));
+    });
+  }
+});
+
+test('rejects poisoning governed Zod methods and intrinsic prototypes', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const mutations = [
+    runtime.replace(
+      'const ArtifactReferenceSchema =',
+      `const originalStrictObject = z.strictObject.bind(z);
+(z as any).strictObject = (shape: any) => originalStrictObject(shape).passthrough();
+const ArtifactReferenceSchema =`,
+    ),
+    runtime.replace('  const siteBrief =', "  Array.prototype.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  Map.prototype.has = () => true;\n  Map.prototype.get = () => ({ id: 'forged', links: [] });\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  String.prototype.charCodeAt = () => 65;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const mapPrototype = Map.prototype;\n  Reflect.set(mapPrototype, 'has', () => true);\n  const siteBrief ="),
+  ];
+  for (const [index, mutated] of mutations.entries()) {
+    await t.test(String(index), () => {
+      assert.ok(finalizationBoundaryFailures(mutated).includes(
+        'src/lib/dm/runtime.ts: governed Zod methods and intrinsic prototypes must not be mutated',
+      ));
+    });
+  }
 });
 
 test('rejects governed schema and artifact stores passed to helper parameters', async (t) => {

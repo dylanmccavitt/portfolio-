@@ -173,6 +173,26 @@ function propertyNameText(name) {
   return name.getText();
 }
 
+function staticStringValue(node) {
+  const expression = unwrapExpression(node);
+  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+  if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = staticStringValue(expression.left);
+    const right = staticStringValue(expression.right);
+    return left === null || right === null ? null : `${left}${right}`;
+  }
+  if (ts.isTemplateExpression(expression)) {
+    let value = expression.head.text;
+    for (const span of expression.templateSpans) {
+      const interpolation = staticStringValue(span.expression);
+      if (interpolation === null) return null;
+      value += interpolation + span.literal.text;
+    }
+    return value;
+  }
+  return null;
+}
+
 function callIsNamed(node, name) {
   return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name;
 }
@@ -297,11 +317,17 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (
       ts.isElementAccessExpression(node)
       && node.argumentExpression
-      && ts.isStringLiteral(unwrapExpression(node.argumentExpression))
       && (
-        DYNAMIC_CODE_NAMES.has(unwrapExpression(node.argumentExpression).text)
-        || unwrapExpression(node.argumentExpression).text === 'constructor'
+        DYNAMIC_CODE_NAMES.has(staticStringValue(node.argumentExpression))
+        || staticStringValue(node.argumentExpression) === 'constructor'
       )
+    ) unsafe = true;
+    if (
+      ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === 'Reflect'
+      && node.expression.name.text === 'construct'
     ) unsafe = true;
   });
   return unsafe
@@ -533,6 +559,67 @@ function possiblePropertyPaths(node) {
   return path ? [path] : [];
 }
 
+const GOVERNED_INTRINSIC_PROTOTYPES = new Set([
+  'Array',
+  'Map',
+  'Object',
+  'Set',
+  'String',
+  'WeakMap',
+  'WeakSet',
+]);
+
+function trustedPrimitiveMutationFailures(sourceFile) {
+  const aliases = new Map();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    walk(sourceFile, (node) => {
+      if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
+      const path = staticPropertyPath(node.initializer);
+      if (!path) return;
+      const replacement = aliases.get(path[0]);
+      const resolved = replacement ? [...replacement, ...path.slice(1)] : path;
+      if (!aliases.has(node.name.text)) {
+        aliases.set(node.name.text, resolved);
+        changed = true;
+      }
+    });
+  }
+  const resolvePath = (node) => {
+    const path = staticPropertyPath(node);
+    if (!path) return null;
+    const replacement = aliases.get(path[0]);
+    return replacement ? [...replacement, ...path.slice(1)] : path;
+  };
+  const governed = (path) => Boolean(path) && (
+    (path[0] === 'z' && path.length > 1)
+    || (GOVERNED_INTRINSIC_PROTOTYPES.has(path[0]) && path[1] === 'prototype')
+  );
+  let mutated = false;
+  walk(sourceFile, (node) => {
+    if (
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      && governed(resolvePath(node.left))
+    ) mutated = true;
+    if (ts.isDeleteExpression(node) && governed(resolvePath(node.expression))) mutated = true;
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
+    const owner = node.expression.expression;
+    const method = node.expression.name.text;
+    const ownerName = ts.isIdentifier(owner) ? owner.text : null;
+    if (
+      ((ownerName === 'Object' && ['defineProperty', 'defineProperties', 'setPrototypeOf', 'assign'].includes(method))
+        || (ownerName === 'Reflect' && ['set', 'setPrototypeOf'].includes(method)))
+      && governed(node.arguments[0] ? resolvePath(node.arguments[0]) : null)
+    ) mutated = true;
+  });
+  return mutated
+    ? ['src/lib/dm/runtime.ts: governed Zod methods and intrinsic prototypes must not be mutated']
+    : [];
+}
+
 const GOVERNED_V2_DEPENDENCY_PATHS = new Map([
   ['publicRun.evidenceLedger', ['publicRun', 'evidenceLedger']],
   ['publicToolGate.waitForIdle', ['publicToolGate', 'waitForIdle']],
@@ -550,14 +637,24 @@ function governedV2DependencyMutationFailures(sourceFile) {
     const resolved = [];
     while (pending.length > 0) {
       const candidate = pending.pop();
-      const replacements = aliases.get(candidate.path[0]);
-      if (!replacements || candidate.expanded.has(candidate.path[0])) {
+      let aliasKey = null;
+      let aliasLength = 0;
+      for (let length = candidate.path.length; length > 0; length -= 1) {
+        const key = candidate.path.slice(0, length).join('.');
+        if (aliases.has(key)) {
+          aliasKey = key;
+          aliasLength = length;
+          break;
+        }
+      }
+      const replacements = aliasKey ? aliases.get(aliasKey) : null;
+      if (!replacements || candidate.expanded.has(aliasKey)) {
         resolved.push(candidate.path);
         continue;
       }
-      const expanded = new Set(candidate.expanded).add(candidate.path[0]);
+      const expanded = new Set(candidate.expanded).add(aliasKey);
       for (const replacement of replacements) {
-        pending.push({ path: [...replacement, ...candidate.path.slice(1)], expanded });
+        pending.push({ path: [...replacement, ...candidate.path.slice(aliasLength)], expanded });
       }
     }
     return resolved;
@@ -650,6 +747,19 @@ function governedV2DependencyMutationFailures(sourceFile) {
   const recordAssignmentAliases = (name, initializer) => {
     const expression = unwrapExpression(initializer);
     const target = unwrapExpression(name);
+    if (ts.isIdentifier(target) && ts.isObjectLiteralExpression(expression)) {
+      let changed = false;
+      for (const property of expression.properties) {
+        if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
+        const propertyName = propertyNameText(property.name);
+        const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
+        changed = recordAlias(
+          `${target.text}.${propertyName}`,
+          resolveAliasPaths(possiblePropertyPaths(value)),
+        ) || changed;
+      }
+      return changed;
+    }
     if (
       (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target))
       && ts.isArrayLiteralExpression(expression)
@@ -1137,14 +1247,24 @@ function governedSchemaMutationFailures(sourceFile) {
     const resolved = [];
     while (pending.length > 0) {
       const candidate = pending.pop();
-      const replacements = aliases.get(candidate.path[0]);
-      if (!replacements || candidate.expanded.has(candidate.path[0])) {
+      let aliasKey = null;
+      let aliasLength = 0;
+      for (let length = candidate.path.length; length > 0; length -= 1) {
+        const key = candidate.path.slice(0, length).join('.');
+        if (aliases.has(key)) {
+          aliasKey = key;
+          aliasLength = length;
+          break;
+        }
+      }
+      const replacements = aliasKey ? aliases.get(aliasKey) : null;
+      if (!replacements || candidate.expanded.has(aliasKey)) {
         resolved.push(candidate.path);
         continue;
       }
-      const expanded = new Set(candidate.expanded).add(candidate.path[0]);
+      const expanded = new Set(candidate.expanded).add(aliasKey);
       for (const replacement of replacements) {
-        pending.push({ path: [...replacement, ...candidate.path.slice(1)], expanded });
+        pending.push({ path: [...replacement, ...candidate.path.slice(aliasLength)], expanded });
       }
     }
     return resolved;
@@ -1201,6 +1321,19 @@ function governedSchemaMutationFailures(sourceFile) {
   const recordAssignmentAliases = (name, initializer) => {
     const expression = unwrapExpression(initializer);
     const target = unwrapExpression(name);
+    if (ts.isIdentifier(target) && ts.isObjectLiteralExpression(expression)) {
+      let changed = false;
+      for (const property of expression.properties) {
+        if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
+        const propertyName = propertyNameText(property.name);
+        const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
+        changed = recordAlias(
+          `${target.text}.${propertyName}`,
+          resolveAliasPaths(possiblePropertyPaths(value)),
+        ) || changed;
+      }
+      return changed;
+    }
     if (
       (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target))
       && ts.isArrayLiteralExpression(expression)
@@ -2074,6 +2207,7 @@ export function finalizationBoundaryFailures(runtime) {
   failures.push(...sdkPrimitiveBindingFailures(sourceFile));
   failures.push(...metricsRecorderBindingFailures(sourceFile));
   failures.push(...dynamicCodeExecutionFailures(sourceFile));
+  failures.push(...trustedPrimitiveMutationFailures(sourceFile));
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...v2ProseEmissionFailures(sourceFile));
   failures.push(...streamCompletionSinkFailures(sourceFile));
