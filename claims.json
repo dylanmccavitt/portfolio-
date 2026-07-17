@@ -151,7 +151,7 @@
         "tests/dm-eval-report.test.ts",
         "package.json"
       ],
-      "check": "npm run test:eval-corpus"
+      "check": "npm run test:eval-report"
     },
     {
       "id": "dm-model-selection-release-gate",
