@@ -905,6 +905,9 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const outer: any = { inner: {} }; const prop = ['f', 'n'].join(''); outer.inner[prop] = fn; const carriers = new Map<string, any>(); carriers.set('h', outer.inner); const key = ['con', 'structor'].join(''); let C: any; [C] = [carriers.get('h').fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const expose = () => box; const carrier = expose(); const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const carrier = ({ value: box }).value; const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const carrier = await box; const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const carrier = (true ? { value: box } : { value: null }).value; const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box: any = {}; function seed(k: string) { box[k] = fn; } seed('fn'); const carrier = ({ ...{ value: box } }).value; const key = ['con', 'structor'].join(''); let C: any; [C] = [carrier.fn[key]]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1471,6 +1474,8 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  function expose(A = Array) { return A; } const C = expose(); const P = Reflect.get(C, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  class Carrier { value = Array; } const C = new Carrier().value; const P = Reflect.get(C, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const root: any = globalThis; const name = ['S', 'et'].join(''); const C = root[name]; const P = Reflect.get(C, 'prototype'); P.has = () => true;\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const C = await Array; const P = Reflect.get(C, 'prototype'); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const descriptors = Object.getOwnPropertyDescriptors(globalThis); const name = ['S', 'et'].join(''); const C = descriptors[name].value; const P = Reflect.get(C, 'prototype'); P.has = () => true;\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1584,6 +1589,14 @@ test('rejects governed dependency and schema escapes through property stores and
       "  const agentTools = contract === 'v2'",
       "  const id = (_parts: TemplateStringsArray, x: any) => x;\n  const escaped = id`${V2FinalAnswerInputSchema}`;\n  escaped.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
     ),
+    runtime.replace(
+      '  const siteBrief =',
+      '  const projects = await artifacts.projects;\n  projects.length = 0;\n  const siteBrief =',
+    ),
+    runtime.replace(
+      "  const agentTools = contract === 'v2'",
+      "  const schema = await V2FinalAnswerInputSchema;\n  schema.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
+    ),
   ];
   const expected = [
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
@@ -1593,6 +1606,8 @@ test('rejects governed dependency and schema escapes through property stores and
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',

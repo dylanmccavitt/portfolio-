@@ -410,6 +410,46 @@ function dynamicCodeExecutionFailures(sourceFile) {
     });
     return found;
   };
+  const literalMemberValues = (node, key) => {
+    const expression = unwrapExpression(node);
+    if (ts.isConditionalExpression(expression)) {
+      return [
+        ...literalMemberValues(expression.whenTrue, key),
+        ...literalMemberValues(expression.whenFalse, key),
+      ];
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        return literalMemberValues(expression.right, key);
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+        || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+        || expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) return [
+        ...literalMemberValues(expression.left, key),
+        ...literalMemberValues(expression.right, key),
+      ];
+    }
+    if (ts.isObjectLiteralExpression(expression)) {
+      const values = [];
+      for (const property of expression.properties) {
+        if (
+          (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property))
+          && propertyNameText(property.name) === key
+        ) values.push(ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer);
+        if (ts.isSpreadAssignment(property)) values.push(...literalMemberValues(property.expression, key));
+      }
+      return values;
+    }
+    if (ts.isArrayLiteralExpression(expression) && /^\d+$/.test(key)) {
+      const value = expression.elements[Number(key)];
+      return value && !ts.isOmittedExpression(value)
+        ? [ts.isSpreadElement(value) ? value.expression : value]
+        : [];
+    }
+    return [];
+  };
   const propagateCallableInitializer = (target, node) => {
     const expression = unwrapExpression(node);
     const source = staticPropertyPath(expression, constBindings)?.join('.');
@@ -418,38 +458,14 @@ function dynamicCodeExecutionFailures(sourceFile) {
       callableContainers.add(target);
       return true;
     }
-    if (ts.isPropertyAccessExpression(expression)) {
-      const receiver = unwrapExpression(expression.expression);
-      if (ts.isObjectLiteralExpression(receiver)) {
-        const property = receiver.properties.find((candidate) => (
-          (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
-          && propertyNameText(candidate.name) === expression.name.text
-        ));
-        if (property) {
-          const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
-          return propagateCallableInitializer(target, value);
-        }
-      }
-    }
+    if (ts.isPropertyAccessExpression(expression)) return literalMemberValues(
+      expression.expression,
+      expression.name.text,
+    ).some((value) => propagateCallableInitializer(target, value));
     if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
-      const receiver = unwrapExpression(expression.expression);
       const key = staticStringValue(expression.argumentExpression, constBindings);
-      if (ts.isObjectLiteralExpression(receiver) && key !== null) {
-        const property = receiver.properties.find((candidate) => (
-          (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
-          && propertyNameText(candidate.name) === key
-        ));
-        if (property) {
-          const value = ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer;
-          return propagateCallableInitializer(target, value);
-        }
-      }
-      if (ts.isArrayLiteralExpression(receiver) && /^\d+$/.test(key ?? '')) {
-        const value = receiver.elements[Number(key)];
-        if (value && !ts.isOmittedExpression(value)) {
-          return propagateCallableInitializer(target, ts.isSpreadElement(value) ? value.expression : value);
-        }
-      }
+      if (key !== null) return literalMemberValues(expression.expression, key)
+        .some((value) => propagateCallableInitializer(target, value));
     }
     let changed = false;
     if (ts.isArrayLiteralExpression(expression)) {
@@ -764,6 +780,7 @@ function unwrapExpression(node) {
     || ts.isTypeAssertionExpression(current)
     || ts.isNonNullExpression(current)
     || ts.isSatisfiesExpression(current)
+    || ts.isAwaitExpression(current)
   ) current = current.expression;
   return current;
 }
@@ -1013,8 +1030,12 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       ts.isCallExpression(expression)
       && resolvedCalleePath(expression.expression)?.join('.') === 'Object.getOwnPropertyDescriptors'
     ) {
-      const intrinsic = canonicalIntrinsic(expression.arguments[0] && resolvedCalleePath(expression.arguments[0]));
+      const targetPath = expression.arguments[0] && resolvedCalleePath(expression.arguments[0]);
+      const intrinsic = canonicalIntrinsic(targetPath);
       if (intrinsic) return [intrinsic, '$descriptors'];
+      if (targetPath?.every((segment) => segment === 'globalThis')) {
+        return ['UnknownIntrinsic', '$descriptors'];
+      }
     }
     const pluralDescriptorEntry = (member) => {
       if (
@@ -1084,6 +1105,12 @@ function trustedPrimitiveMutationFailures(sourceFile) {
         return [descriptorParent[0], 'prototype'];
       }
       const parent = resolveDirectPath(expression.expression);
+      if (
+        parent?.length === 2
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(parent[0])
+        && parent[1] === 'prototype'
+        && expression.name.text === 'value'
+      ) return parent;
       if (parent) return [...parent, expression.name.text];
     }
     if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
