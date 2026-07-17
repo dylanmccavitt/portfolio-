@@ -450,9 +450,36 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return [];
   };
+  const recordCallableTarget = (target) => {
+    const collection = target.includes('.') ? callablePaths : callableBindings;
+    if (collection.has(target)) return false;
+    collection.add(target);
+    return true;
+  };
   const propagateCallableInitializer = (target, node) => {
     const expression = unwrapExpression(node);
     const source = staticPropertyPath(expression, constBindings)?.join('.');
+    if (
+      ts.isFunctionExpression(expression)
+      || ts.isArrowFunction(expression)
+      || ts.isClassExpression(expression)
+      || (source && (callableBindings.has(source) || callablePaths.has(source)))
+    ) return recordCallableTarget(target);
+    if (ts.isConditionalExpression(expression)) {
+      return [expression.whenTrue, expression.whenFalse]
+        .some((value) => propagateCallableInitializer(target, value));
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        return propagateCallableInitializer(target, expression.right);
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+        || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+        || expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) return [expression.left, expression.right]
+        .some((value) => propagateCallableInitializer(target, value));
+    }
     if (source && isCallableContainer(source)) {
       if (callableContainers.has(target)) return false;
       callableContainers.add(target);
@@ -1291,6 +1318,7 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   const governedStoredValue = (node) => possiblePrimitivePaths(node).some((path) => (
     governed(path)
     || path.join('.') === 'z'
+    || path.join('.') === 'globalThis'
     || (path.length === 1 && GOVERNED_INTRINSIC_PROTOTYPES.has(path[0]))
     || (path.length === 2 && path[1] === '$descriptors')
     || intrinsicContainers.has(path.join('.'))
@@ -1336,6 +1364,7 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     const calleePath = resolvePath(node.expression);
     const method = calleePath?.at(-1);
     const ownerName = calleePath?.length === 2 ? calleePath[0] : null;
+    if (governed(calleePath?.slice(0, -1))) mutated = true;
     if (
       ((ownerName === 'Object' && ['defineProperty', 'defineProperties', 'setPrototypeOf', 'assign'].includes(method))
         || (ownerName === 'Reflect' && ['defineProperty', 'set', 'setPrototypeOf'].includes(method)))
@@ -1595,6 +1624,15 @@ function governedV2DependencyMutationFailures(sourceFile) {
     path.join('.') === 'artifacts.contact'
     && hasFunctionDeclarationAncestor(node, 'createRuntimePublicTools')
   );
+  const isAuthorizedArtifactCollectionWrite = (node, path, method) => (
+    method === 'set'
+    && [
+      'artifacts.projects',
+      'artifacts.resumeTracks',
+      'artifacts.sources',
+    ].includes(path.join('.'))
+    && hasFunctionDeclarationAncestor(node, 'createRuntimePublicTools')
+  );
 
   walk(sourceFile, (node) => {
     if (
@@ -1617,6 +1655,11 @@ function governedV2DependencyMutationFailures(sourceFile) {
     const owner = node.expression.expression;
     const method = node.expression.name.text;
     const ownerName = ts.isIdentifier(owner) ? owner.text : null;
+    if (['set', 'delete', 'clear'].includes(method)) {
+      for (const path of governedPaths(owner)) {
+        if (!isAuthorizedArtifactCollectionWrite(node, path, method)) recordPath(path);
+      }
+    }
     if ((ownerName === 'Object' || ownerName === 'Reflect') && method === 'defineProperty') {
       const objectPaths = node.arguments[0] ? governedPaths(node.arguments[0]) : [];
       const property = node.arguments[1] && unwrapExpression(node.arguments[1]);
