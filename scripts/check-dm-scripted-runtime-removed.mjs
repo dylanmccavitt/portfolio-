@@ -408,8 +408,28 @@ function strictObjectForKind(sourceFile, schemaName, kind) {
   return match;
 }
 
+function v2SchemaBindingFailures(sourceFile) {
+  const declarations = [];
+  let bindingWritten = false;
+  walk(sourceFile, (node) => {
+    if (declaresValueName(node, 'V2FinalAnswerInputSchema')) declarations.push(node);
+    if (writesValueName(node, 'V2FinalAnswerInputSchema')) bindingWritten = true;
+  });
+  const trustedDeclaration = declarations.find((node) => (
+    ts.isVariableDeclaration(node)
+    && ts.isVariableDeclarationList(node.parent)
+    && ts.isVariableStatement(node.parent.parent)
+    && node.parent.parent.parent === sourceFile
+    && (node.parent.flags & ts.NodeFlags.Const) !== 0
+  ));
+  if (declarations.length !== 1 || !trustedDeclaration || bindingWritten) {
+    return ['src/lib/dm/runtime.ts: v2 finalizer schema must retain one immutable, unshadowed top-level trusted declaration'];
+  }
+  return [];
+}
+
 function schemaBoundaryFailures(sourceFile) {
-  const failures = [];
+  const failures = v2SchemaBindingFailures(sourceFile);
   const compact = (node) => node?.getText(sourceFile).replace(/\s+/g, '') ?? '';
   const expectations = [
     ['conversational', 'act', 'ConversationalActSchema'],

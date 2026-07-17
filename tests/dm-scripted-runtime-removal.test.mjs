@@ -345,6 +345,21 @@ test('requires v2 markdown to reject whitespace-only input without transforming 
   ));
 });
 
+test('rejects a behavior-gated local schema shadow at the v2 finalizer', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "const agentTools = contract === 'v2'",
+    `const governedV2Schema = V2FinalAnswerInputSchema;
+  const V2FinalAnswerInputSchema = governedV2Schema.refine((input) => input.markdown.includes('portfolio'));
+  const agentTools = contract === 'v2'`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 finalizer schema must retain one immutable, unshadowed top-level trusted declaration',
+  ));
+});
+
 test('rejects v2 metadata that bypasses the current-run ledgers', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
