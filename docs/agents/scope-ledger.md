@@ -122,6 +122,9 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Constraint: DM public answers use only published DB project records, approved public RAG sources, and static résumé/contact data.
   - Deferred capability protected: Privacy-safe RAG and publish flow.
   - Verification evidence: Runtime/eval fixtures or PR review evidence prove drafts/private/candidate data stay excluded.
+- Constraint: Golden-conversation eval families with unapproved profile, project, RAG, or site facts remain checked source-gap cases.
+  - Deferred capability protected: #267 profile publication and later approved content can activate richer goldens without teaching the release harness to treat drafts or catalog migration data as public evidence.
+  - Verification evidence: `DM_GOLDEN_SOURCE_STATUS` covers all twelve families and corpus tests require honest limitations for every source gap.
 - Constraint: Do not resurrect Eve-specific runtime paths retired in AGE-818.
   - Deferred capability protected: DM remains the sole live agent runtime seam.
   - Verification evidence: Live stack uses `src/lib/dm/` and `/api/dm/chat`; Eve paths removed in AGE-818; root `agent/` removal is recorded in AGE-739.

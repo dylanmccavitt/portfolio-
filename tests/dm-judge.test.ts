@@ -21,6 +21,11 @@ import {
 
 const KEYS = { hasGatewayKey: true, hasOpenaiKey: true };
 const NO_OVERRIDES = {};
+const SCORE = {
+  grounded: 5, honest: 4, questionComprehension: 5, useful: 5, relevant: 5, direct: 5,
+  continuity: 5, nonRepetition: 5, naturalness: 5, awareness: 5, reasoningQuality: 5,
+  followUpAppropriate: true, privacyLimitationCorrect: null, notes: 'Concrete and correct.',
+};
 
 test('judge arg parses CLI presets, auto mode, and gateway model ids', () => {
   assert.deepEqual(parseJudgeArg('auto', KEYS, NO_OVERRIDES), { mode: 'auto' });
@@ -120,15 +125,21 @@ test('score extraction takes the last valid JSON object out of noisy CLI output'
     '[2026-07-09T02:00:00] codex exec session started',
     '{"event": "thinking", "tokens": 120}',
     'Here is my assessment.',
-    '{"grounded": 5, "honest": 4, "questionComprehension": 5, "useful": 5, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5, "followUpUseful": null, "notes": "Concrete and correct."}',
+    JSON.stringify(SCORE),
   ].join('\n');
-  assert.deepEqual(extractJudgeScore(noisy), { grounded: 5, honest: 4, questionComprehension: 5, useful: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null, notes: 'Concrete and correct.' });
+  assert.deepEqual(extractJudgeScore(noisy), SCORE);
 
-  const outOfRange = extractJudgeScore('{"grounded": 9, "honest": -2, "questionComprehension": 5, "useful": 3, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5, "followUpUseful": null}');
+  const outOfRange = extractJudgeScore(JSON.stringify({ ...SCORE, naturalness: 6 }));
   assert.ok('errorCategory' in outOfRange);
 
-  const fractional = extractJudgeScore('{"grounded": 3.6, "honest": 5, "questionComprehension": 5, "useful": 4, "relevant": 5, "direct": 5, "continuity": 5, "nonRepetition": 5, "followUpUseful": null}');
+  const fractional = extractJudgeScore(JSON.stringify({ ...SCORE, awareness: 3.6 }));
   assert.ok('errorCategory' in fractional);
+
+  for (const key of ['naturalness', 'awareness', 'reasoningQuality'] as const) {
+    const { [key]: _missing, ...missingField } = SCORE;
+    assert.ok('errorCategory' in extractJudgeScore(JSON.stringify(missingField)), `accepted missing ${key}`);
+  }
+  assert.ok('errorCategory' in extractJudgeScore(JSON.stringify({ ...SCORE, unexpected: 5 })));
 
   const missing = extractJudgeScore('no scores here');
   assert.ok('errorCategory' in missing);
@@ -139,9 +150,9 @@ test('runCliJudge captures scores from a real subprocess and reports failures', 
   const fake: DMCliJudge = {
     kind: 'cli',
     label: 'fake-cli',
-    command: ['node', '-e', 'console.log("noise"); console.log(JSON.stringify({grounded: 4, honest: 5, questionComprehension: 5, useful: 4, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null, notes: "ok"}))'],
+    command: ['node', '-e', `console.log("noise"); console.log(${JSON.stringify(JSON.stringify({ ...SCORE, grounded: 4, honest: 5, useful: 4, notes: 'ok' }))})`],
   };
-  assert.deepEqual(await runCliJudge(fake, 'prompt'), { grounded: 4, honest: 5, questionComprehension: 5, useful: 4, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null, notes: 'ok' });
+  assert.deepEqual(await runCliJudge(fake, 'prompt'), { ...SCORE, grounded: 4, honest: 5, useful: 4, notes: 'ok' });
 
   const failing: DMCliJudge = { kind: 'cli', label: 'fail-cli', command: ['node', '-e', 'process.exit(3)'] };
   const failed = await runCliJudge(failing, 'prompt');

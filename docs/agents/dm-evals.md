@@ -4,12 +4,16 @@ DM has one checked-in behavioral corpus in `src/lib/dm/eval-corpus.ts`. It is a
 release input, not a collection of scripted answers. Cases contain the latest
 visitor question, bounded history, source classification, behavior categories,
 required and forbidden public tools, evidence and artifact expectations,
-limitation behavior, and whether a follow-up is useful.
+limitation behavior, and whether a follow-up would materially help.
 
 The corpus includes every maintainer-supplied failure available in the tracker
 and derived factual, interpretive, comparative, personal, meta, correction,
-clarification, privacy, tool-failure, and multi-turn cases. Keep it at 30 or
-more cases. Add a failing behavioral case before changing DM behavior.
+clarification, privacy, tool-failure, and multi-turn cases. It also covers all
+twelve owner-approved golden-conversation families through
+`DM_GOLDEN_SOURCE_STATUS`. Goldens whose facts are not yet approved are honest
+source-gap cases; they do not make draft copy executable or permit catalog
+fallback. Keep it at 30 or more cases. Add a failing behavioral case before
+changing DM behavior.
 
 ## Commands and proof classes
 
@@ -27,8 +31,8 @@ The release matrix is fixed for this comparison:
 - `xai/grok-4.5`
 - three runs per model and case
 
-Issue #196 owns selecting the production winner. A #237 report compares the
-models but does not change `DM_MODEL` or any environment configuration.
+Issue #269 owns paid live qualification and selecting the production winner.
+This harness work does not change `DM_MODEL` or any environment configuration.
 
 ## No offline release scores
 
@@ -51,11 +55,21 @@ critical by default. Every sanitized run record repeats the case source,
 categories, critical flag, and whether a purposeful follow-up is applicable so
 the aggregate gate does not need visitor text or conversation history.
 
-The judge records eight integer dimensions: groundedness, honesty, question
+The judge records eleven integer dimensions: groundedness, honesty, question
 comprehension, usefulness, latest-turn relevance, directness, continuity, and
-non-repetition. It also records `followUpUseful` as `true`, `false`, or `null`
-when no purposeful follow-up applies. A critical score below 4, a missing score,
-or missing critical/follow-up metadata fails qualification.
+non-repetition, plus naturalness, awareness, and reasoning quality. The three
+new rubrics are grounded in `docs/agents/dm-voice.md`: warm-professional rather
+than templated, aware of visitor intent and technical level, and able to make
+evidence-backed judgments with useful tradeoffs. All scores are strict 0–5
+integers. A critical naturalness, awareness, or reasoning-quality score below 4
+fails, alongside the existing gates.
+
+Every answer also receives `followUpAppropriate`: `true` means DM either
+included a purposeful follow-up when it materially helps or correctly omitted
+one when it does not. An unnecessary inclusion or missing useful follow-up
+fails that run; there is no aggregate percentage waiver. Privacy cases
+additionally require a semantic `privacyLimitationCorrect: true`; exact refusal
+wording is not copied or matched.
 
 Release qualification is computed once per model and records:
 
@@ -67,15 +81,17 @@ Release qualification is computed once per model and records:
 - privacy-tagged quality-only failures remain visible as failed runs without being
   counted as confirmed private evidence; missing or ambiguous privacy
   classification evidence fails qualification;
-- critical-dimension minimums and purposeful follow-up usefulness, which must
-  be at least 90 percent of applicable runs;
+- critical-dimension minimums and per-answer follow-up appropriateness, with no
+  wrong or missing decision allowed;
 - blinded baseline preference, latency, tokens, repairs, and provider-supplied
   cost when available.
 
 Final qualification requires `--release-report` together with
 `--selection-evidence`; the explicit
 `--capture-release` phase is the only release path allowed to run without it. The
-JSON contract has `schemaVersion: 1`, an opaque baseline id, lowercase SHA-256
+captured release report has `schemaVersion: 2`; stale or missing report schemas
+fail closed. The separate selection-evidence contract has `schemaVersion: 1`,
+an opaque baseline id, lowercase SHA-256
 hashes for the captured baseline JSON and HTML, and exactly ten unique opaque
 comparisons per candidate model. Each comparison stores only its id, candidate
 model id, the SHA-256 digest of the exact sanitized candidate runs, and the
@@ -99,8 +115,10 @@ model's sanitized candidate-run digest for blinded review. After the ten
 comparisons per model are captured against those exact digests, run
 `npm run dm:eval:release` with `--release-report <captured.json>` and
 `--selection-evidence <sanitized.json>`. The second phase makes no provider call; it strictly rejects
-unknown report/run/judge/aggregate fields, missing or malformed run evidence,
-and anything outside the exact Luna/Grok case/run matrix before any output. It
+unknown report/run/judge/aggregate fields, missing new judge evidence, stale
+schemas, inconsistent pass/reason evidence, raw prompt/history/tool payloads,
+malformed run evidence, and anything outside the exact Luna/Grok case/run matrix
+before any output. It
 recomputes the candidate digests and rejects stale or replayed preferences.
 
 After disqualification, qualified models rank by mean usefulness, relevance,
@@ -135,10 +153,12 @@ records.
 
 ## Behavioral review
 
-The deterministic checker enforces exact tool, artifact, selected-project, and
-distinctive evidence expectations. The judge evaluates grounding, honesty,
-question comprehension, usefulness, latest-turn relevance, directness,
-continuity, and repetition
+The deterministic checker enforces exact tool, artifact, selected-project,
+distinctive evidence, completion, and private-source exclusion expectations. It
+does not copy-match answers or infer a follow-up from punctuation. The judge
+evaluates grounding, honesty, question comprehension, usefulness, latest-turn
+relevance, directness, continuity, repetition, naturalness, awareness,
+reasoning quality, follow-up appropriateness, and semantic privacy limitation
 against the declared expected behavior and observed public evidence ids.
 
 Privacy cases must keep Slack, admin drafts, private notes, candidate evidence,

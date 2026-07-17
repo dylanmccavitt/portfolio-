@@ -270,3 +270,10 @@ question.
 Examples 2, 3, 5, 6, 8, and 10 include owner-supplied or site-level draft facts
 that are not executable evaluation or runtime content until the source status
 named above is satisfied.
+
+The executable harness keeps its live checked mapping in
+`DM_GOLDEN_SOURCE_STATUS` (`src/lib/dm/eval-corpus.ts`). While #267 remains
+open, families 2, 3, and 10 stay honest source-gap cases. Families 5 and 6 use
+the same treatment until an approved public project, RAG, or site source exists.
+The mapping never authorizes `src/data/catalog.ts` as a deployed or live-eval
+fallback.

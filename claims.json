@@ -136,8 +136,10 @@
     },
     {
       "id": "dm-live-conversational-eval",
-      "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case, and canned unit answers cannot produce a release score",
+      "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case across all twelve source-gated golden families, and provider-free calibration rejects canned v1-style naturalness without producing a release score",
       "subjectRefs": [
+        "docs/agents/dm-voice.md",
+        "docs/agents/dm-evals.md",
         "src/lib/dm/eval-corpus.ts",
         "src/lib/dm/eval-runtime.ts",
         "src/lib/dm/eval-source.ts",
@@ -146,13 +148,14 @@
         "src/lib/dm/release-qualification.ts",
         "scripts/dm-eval.ts",
         "tests/dm-eval-corpus.test.ts",
+        "tests/dm-eval-report.test.ts",
         "package.json"
       ],
       "check": "npm run test:eval-corpus"
     },
     {
       "id": "dm-model-selection-release-gate",
-      "statement": "DM model selection fails closed unless one candidate satisfies complete three-run stability, corpus, privacy, grounding, fabrication, critical-score, follow-up, blinded-preference, and required tie-break evidence without changing runtime configuration",
+      "statement": "DM model selection fails closed unless one candidate satisfies complete three-run stability, corpus, semantic privacy, grounding, fabrication, critical naturalness/awareness/reasoning scores, every per-answer follow-up decision, blinded preference, and required tie-break evidence under the strict sanitized replay schema without changing runtime configuration",
       "subjectRefs": [
         "docs/agents/dm-evals.md",
         "src/lib/dm/eval-corpus.ts",

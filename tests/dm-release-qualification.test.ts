@@ -86,7 +86,8 @@ test('aggregate release qualification selects a fully qualifying winner without 
     assert.equal(aggregate.passRate, 1);
     assert.equal(aggregate.stableMaintainerCases, aggregate.maintainerCases);
     assert.equal(aggregate.blindedPreference.wins, 8);
-    assert.equal(aggregate.followUps.rate, 1);
+    assert.equal(aggregate.followUps.appropriate, aggregate.followUps.evaluated);
+    assert.equal(aggregate.followUps.inappropriate, 0);
     assert.equal(aggregate.privacyFailures, 0);
     assert.equal(aggregate.groundingFailures, 0);
     assert.equal(aggregate.fabricationFailures, 0);
@@ -308,7 +309,7 @@ test('release qualification fails closed on missing critical, follow-up, and bli
   critical.critical = undefined;
   const followUp = report.runs.find((run) => run.followUpApplicable)!;
   const judge = followUp.judge as DMEvalJudgeScore;
-  judge.followUpUseful = null;
+  delete (judge as Partial<DMEvalJudgeScore>).followUpAppropriate;
 
   const decision = selectDMReleaseWinner(report, null);
   assert.equal(decision.status, 'no-winner');
@@ -316,7 +317,7 @@ test('release qualification fails closed on missing critical, follow-up, and bli
     assert.equal(aggregate.qualified, false);
     assert.match(aggregate.disqualifications.join('\n'), /critical-case metadata|blinded-comparison evidence/);
   }
-  assert.match(decision.aggregates.find((item) => item.model === followUp.model)?.disqualifications.join('\n') ?? '', /follow-up usefulness evidence/);
+  assert.match(decision.aggregates.find((item) => item.model === followUp.model)?.disqualifications.join('\n') ?? '', /follow-up appropriateness evidence/);
 });
 
 test('release qualification rejects a missing question-comprehension score on a non-critical run', () => {
@@ -394,6 +395,9 @@ test('blinded comparisons are bound to the exact sanitized candidate-run digest'
 test('captured release report validation rejects raw or unknown fields before replay', () => {
   const report = releaseReport(() => 5);
   assert.deepEqual(validateDMReleaseReport(report), report);
+  assert.throws(() => validateDMReleaseReport({ ...report, schemaVersion: 1 }), /schemaVersion 2/);
+  const { schemaVersion: _schemaVersion, ...missingSchema } = report;
+  assert.throws(() => validateDMReleaseReport(missingSchema), /missing required fields: schemaVersion/);
   assert.throws(
     () => validateDMReleaseReport({ ...report, visitorPrompt: 'private prompt' }),
     /forbidden or unknown fields/,
@@ -425,6 +429,10 @@ test('captured release report validation rejects raw or unknown fields before re
     }),
     /forbidden or unknown fields/,
   );
+  const missingNaturalness = structuredClone(report);
+  const scoredJudge = missingNaturalness.runs[0]!.judge as Partial<DMEvalJudgeScore>;
+  delete scoredJudge.naturalness;
+  assert.throws(() => validateDMReleaseReport(missingNaturalness), /missing required fields: naturalness/);
 });
 
 test('captured release report rejects truthy non-boolean pass evidence', () => {
@@ -496,6 +504,16 @@ test('captured release report re-applies the live judge gate before qualificatio
   }
 });
 
+test('captured release report rejects tampered aggregate material', () => {
+  const report = releaseReport(() => 5);
+  report.releaseDecision = selectDMReleaseWinner(report, selectionEvidence(report));
+  assert.doesNotThrow(() => validateDMReleaseReport(report));
+
+  const tampered = structuredClone(report);
+  tampered.releaseDecision!.aggregates[0]!.candidateRunSha256 = '0'.repeat(64);
+  assert.throws(() => validateDMReleaseReport(tampered), /inconsistent with the exact sanitized runs/);
+});
+
 function releaseReport(usefulnessFor: (model: string) => number): DMEvalReport {
   const runs: DMEvalRunRecord[] = [];
   for (const model of DM_RELEASE_MODELS) {
@@ -527,13 +545,14 @@ function releaseReport(usefulnessFor: (model: string) => number): DMEvalReport {
           critical: testCase.critical,
           followUpApplicable,
           costUsd: null,
-          judge: judge(usefulnessFor(model), followUpApplicable),
+          judge: judge(usefulnessFor(model), testCase.categories.includes('privacy')),
           judgedBy: 'fixture-judge',
         });
       }
     }
   }
   return {
+    schemaVersion: 2,
     generatedAt: '2026-07-14T00:00:00.000Z',
     mode: 'live',
     scoreKind: 'release',
@@ -542,7 +561,7 @@ function releaseReport(usefulnessFor: (model: string) => number): DMEvalReport {
   };
 }
 
-function judge(useful: number, followUpApplicable: boolean): DMEvalJudgeScore {
+function judge(useful: number, privacyCase: boolean): DMEvalJudgeScore {
   return {
     grounded: 5,
     honest: 5,
@@ -552,7 +571,11 @@ function judge(useful: number, followUpApplicable: boolean): DMEvalJudgeScore {
     direct: 5,
     continuity: 5,
     nonRepetition: 5,
-    followUpUseful: followUpApplicable ? true : null,
+    naturalness: 5,
+    awareness: 5,
+    reasoningQuality: 5,
+    followUpAppropriate: true,
+    privacyLimitationCorrect: privacyCase ? true : null,
     notes: '',
   };
 }

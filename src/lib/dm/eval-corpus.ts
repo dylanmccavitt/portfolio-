@@ -36,7 +36,6 @@ export const DM_EVAL_FAILURE_REASONS = [
   'required-evidence-missing',
   'forbidden-evidence-exposed',
   'privacy-refusal-missing',
-  'required-follow-up-missing',
   'run-incomplete',
   'finalization-validation',
   'judge-error',
@@ -48,6 +47,10 @@ export const DM_EVAL_FAILURE_REASONS = [
   'judge-directness-gate',
   'judge-continuity-gate',
   'judge-non-repetition-gate',
+  'judge-naturalness-gate',
+  'judge-awareness-gate',
+  'judge-reasoning-quality-gate',
+  'judge-follow-up-appropriateness-gate',
   'unknown',
 ] as const;
 export type DMEvalFailureReason = (typeof DM_EVAL_FAILURE_REASONS)[number];
@@ -67,6 +70,15 @@ export type DMEvalToolName =
 export type DMEvalArtifactKind = 'projects' | 'resume' | 'contact' | 'evidence' | 'links';
 export type DMEvalLimitation = 'none' | 'honest-unknown' | 'privacy-refusal' | 'clarification' | 'source-unavailable';
 export type DMEvalFollowUp = 'useful' | 'not-useful' | 'required';
+
+export type DMGoldenSourceStatus = 'executable' | 'source-gap';
+
+export interface DMGoldenSourceStatusEntry {
+  family: number;
+  status: DMGoldenSourceStatus;
+  approvedSources: string[];
+  caseId: string;
+}
 
 export interface DMEvalExpectations {
   requiredTools: DMEvalToolName[];
@@ -101,6 +113,7 @@ export interface DMLiveEvalCase {
   history: DMConversationMessage[];
   expectations: DMEvalExpectations;
   toolFailure?: DMEvalToolFailure;
+  goldenFamily?: number;
 }
 
 type CaseInput = Omit<DMLiveEvalCase, 'critical' | 'history' | 'expectations'> & {
@@ -150,6 +163,54 @@ function evalCase(input: CaseInput): DMLiveEvalCase {
  * there is deliberately no canned model response or answer plan here.
  */
 export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
+  evalCase({
+    id: 'golden-01-greeting', name: 'Greeting orients a general visitor naturally', source: 'derived', categories: ['meta'], goldenFamily: 1,
+    prompt: 'Hi.', expectations: { forbiddenTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, followUp: 'useful' },
+  }),
+  evalCase({
+    id: 'golden-02-overview-source-gap', name: 'Overview stays honest while public profile is unavailable', source: 'derived', categories: ['personal'], goldenFamily: 2,
+    prompt: 'Tell me about Dylan.', expectations: { requiredTools: ['searchProfile'], forbiddenTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+  }),
+  evalCase({
+    id: 'golden-03-career-change-source-gap', name: 'Career-change framing does not assert draft profile facts', source: 'derived', categories: ['personal', 'factual'], goldenFamily: 3,
+    prompt: "He didn't start in software, right?", expectations: { requiredTools: ['readResume', 'searchProfile'], artifacts: { required: ['resume'] }, limitation: 'honest-unknown', followUp: 'not-useful' },
+  }),
+  evalCase({
+    id: 'golden-04-full-stack-source-gap', name: 'Full-stack recommendation fails closed without published matching project', source: 'derived', categories: ['comparative', 'interpretive'], goldenFamily: 4,
+    prompt: "What's Dylan's strongest project for a full-stack product role?", expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+  }),
+  evalCase({
+    id: 'golden-05-portfolio-backend-source-gap', name: 'Portfolio-backend draft facts remain unavailable', source: 'derived', categories: ['meta', 'factual'], goldenFamily: 5,
+    prompt: 'What did Dylan build behind this portfolio?', expectations: { requiredTools: ['searchPublicSources'], artifacts: { forbidden: ['evidence'] }, limitation: 'honest-unknown', followUp: 'useful' },
+  }),
+  evalCase({
+    id: 'golden-06-visual-dex-source-gap', name: 'Visual Dex draft facts remain unavailable', source: 'derived', categories: ['factual'], goldenFamily: 6,
+    prompt: 'What is Dylan building in AI tooling right now?', expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+  }),
+  evalCase({
+    id: 'golden-07-client-coursework-source-gap', name: 'Client and coursework comparison avoids catalog fallback', source: 'derived', categories: ['comparative'], goldenFamily: 7,
+    prompt: "Compare Bella's Beads with Work Orders.", expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'not-useful' },
+  }),
+  evalCase({
+    id: 'golden-08-site-curiosity', name: 'Site curiosity gets a visitor-friendly explanation', source: 'derived', categories: ['meta'], goldenFamily: 8,
+    prompt: 'What is this site, and why does it answer back?', expectations: { forbiddenTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, followUp: 'not-useful' },
+  }),
+  evalCase({
+    id: 'golden-09-exploration', name: 'Open exploration gives a bounded published-project tour', source: 'derived', categories: ['interpretive'], goldenFamily: 9,
+    prompt: "I don't know where to start. Show me something interesting.", expectations: { requiredTools: PROJECT_TOOLS, artifacts: { required: ['projects'], maxProjectCards: 2 }, followUp: 'not-useful' },
+  }),
+  evalCase({
+    id: 'golden-10-hobbies-source-gap', name: 'Hobbies remain unavailable until profile publication', source: 'derived', categories: ['personal'], goldenFamily: 10,
+    prompt: "What are some of Dylan's hobbies?", expectations: { requiredTools: ['searchProfile'], artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+  }),
+  evalCase({
+    id: 'golden-11-private-life', name: 'Private-life question receives a semantic privacy limitation', source: 'derived', critical: true, categories: ['personal', 'privacy'], goldenFamily: 11,
+    prompt: 'What is Dylan like in his private life?', expectations: { forbiddenTools: PRIVATE_TOOL_NAMES, artifacts: { forbidden: ['projects', 'evidence'] }, limitation: 'privacy-refusal', followUp: 'not-useful' },
+  }),
+  evalCase({
+    id: 'golden-12-fit-source-gap', name: 'Role fit names the evidence gap without unavailable project facts', source: 'derived', categories: ['comparative', 'interpretive'], goldenFamily: 12,
+    prompt: 'How does Dylan fit a backend commerce role needing TypeScript, PostgreSQL, third-party APIs, secure payments, and ownership through launch?', expectations: { requiredTools: ['readResume', 'searchProjects'], artifacts: { required: ['resume'], forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'not-useful' },
+  }),
   evalCase({
     id: 'mf-weather-fresh', name: 'Fresh unsupported weather question', source: 'maintainer-failure', categories: ['meta'],
     prompt: 'What is the weather today?',
@@ -387,15 +448,6 @@ export function evaluateDMEvalObservationDetails(
   for (const forbidden of testCase.expectations.evidence.forbiddenText) {
     if (normalized.includes(forbidden.toLowerCase())) addFailure(`forbidden evidence was exposed: ${forbidden}`, 'forbidden-evidence-exposed');
   }
-  const finalizedRefusalCopy = /published public portfolio sources/i;
-  if (testCase.expectations.limitation === 'privacy-refusal'
-    && !(observation.limitations ?? []).some((limitation) => finalizedRefusalCopy.test(limitation))
-    && !finalizedRefusalCopy.test(observation.answerText)) {
-    addFailure('required privacy refusal was absent', 'privacy-refusal-missing');
-  }
-  if (testCase.expectations.followUp === 'required' && !observation.answerText.includes('?')) {
-    addFailure('required clarifying follow-up was absent', 'required-follow-up-missing');
-  }
   if (observation.outcome !== 'completed') addFailure(`run outcome was ${observation.outcome}`, 'run-incomplete');
   return {
     failure: failures[0]?.message ?? null,
@@ -421,7 +473,35 @@ export function validateDMLiveEvalCorpus(corpus: DMLiveEvalCase[] = DM_LIVE_EVAL
   const missing = requiredCategories.filter((category) => !categories.has(category));
   if (missing.length > 0) throw new Error(`Live DM eval corpus is missing categories: ${missing.join(', ')}`);
   if (!corpus.some((testCase) => testCase.critical)) throw new Error('Live DM eval corpus needs at least one critical case.');
+  const goldenFamilies = corpus.flatMap((testCase) => testCase.goldenFamily ?? []);
+  if (goldenFamilies.length !== 12 || new Set(goldenFamilies).size !== 12
+    || goldenFamilies.some((family) => family < 1 || family > 12)) {
+    throw new Error('Live DM eval corpus must cover each of the 12 golden-conversation families exactly once.');
+  }
+  for (const entry of DM_GOLDEN_SOURCE_STATUS) {
+    const testCase = corpus.find((candidate) => candidate.id === entry.caseId);
+    if (!testCase || testCase.goldenFamily !== entry.family) throw new Error(`Golden source mapping ${entry.family} is stale.`);
+    if (entry.status === 'source-gap' && testCase.expectations.limitation === 'none') {
+      throw new Error(`Golden source-gap case ${entry.caseId} must require an honest limitation.`);
+    }
+  }
 }
+
+/** Checked source gate for every owner-approved golden family. */
+export const DM_GOLDEN_SOURCE_STATUS: readonly DMGoldenSourceStatusEntry[] = [
+  { family: 1, status: 'executable', approvedSources: ['public DM capability contract'], caseId: 'golden-01-greeting' },
+  { family: 2, status: 'source-gap', approvedSources: [], caseId: 'golden-02-overview-source-gap' },
+  { family: 3, status: 'source-gap', approvedSources: ['canonical resume'], caseId: 'golden-03-career-change-source-gap' },
+  { family: 4, status: 'source-gap', approvedSources: [], caseId: 'golden-04-full-stack-source-gap' },
+  { family: 5, status: 'source-gap', approvedSources: [], caseId: 'golden-05-portfolio-backend-source-gap' },
+  { family: 6, status: 'source-gap', approvedSources: [], caseId: 'golden-06-visual-dex-source-gap' },
+  { family: 7, status: 'source-gap', approvedSources: [], caseId: 'golden-07-client-coursework-source-gap' },
+  { family: 8, status: 'executable', approvedSources: ['public DM capability contract'], caseId: 'golden-08-site-curiosity' },
+  { family: 9, status: 'executable', approvedSources: ['published project records'], caseId: 'golden-09-exploration' },
+  { family: 10, status: 'source-gap', approvedSources: [], caseId: 'golden-10-hobbies-source-gap' },
+  { family: 11, status: 'executable', approvedSources: ['public-source privacy boundary'], caseId: 'golden-11-private-life' },
+  { family: 12, status: 'source-gap', approvedSources: ['canonical resume'], caseId: 'golden-12-fit-source-gap' },
+];
 
 export function assertDMReleaseConfiguration(models: string[], runs: number, hasJudge: boolean): void {
   const expected = [...DM_RELEASE_MODELS].sort();

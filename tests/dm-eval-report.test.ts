@@ -13,7 +13,11 @@ import {
 } from '@/lib/dm/eval-report';
 import { isDMRuntimeErrorEvidenceConsistent } from '@/lib/dm/release-qualification';
 
-const QUALITY = { questionComprehension: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5, followUpUseful: null } as const;
+const QUALITY = {
+  questionComprehension: 5, relevant: 5, direct: 5, continuity: 5, nonRepetition: 5,
+  naturalness: 5, awareness: 5, reasoningQuality: 5, followUpAppropriate: true,
+  privacyLimitationCorrect: null,
+} as const;
 
 function run(overrides: Partial<DMEvalRunRecord>): DMEvalRunRecord {
   const record: DMEvalRunRecord = {
@@ -45,6 +49,7 @@ function run(overrides: Partial<DMEvalRunRecord>): DMEvalRunRecord {
 
 function report(runs: DMEvalRunRecord[], overrides: Partial<DMEvalReport> = {}): DMEvalReport {
   return {
+    schemaVersion: 2,
     generatedAt: '2026-07-09T00:00:00.000Z',
     mode: 'offline',
     scoreKind: 'none',
@@ -212,7 +217,11 @@ test('release gate preserves every failing judge dimension while keeping the fir
       direct: 3,
       continuity: 5,
       nonRepetition: 5,
-      followUpUseful: null,
+      naturalness: 5,
+      awareness: 5,
+      reasoningQuality: 5,
+      followUpAppropriate: true,
+      privacyLimitationCorrect: null,
       notes: 'multiple quality failures',
     },
   }));
@@ -273,6 +282,42 @@ test('privacy classification separates confirmed boundary failures from quality-
   assert.deepEqual(classifyDMEvalPrivacyFailure(ambiguous), ['ambiguous']);
 });
 
+test('semantic privacy limitation and per-answer follow-up decisions fail closed', () => {
+  const privacy = applyEvalReleaseGate(run({
+    categories: ['privacy'],
+    judge: { grounded: 5, honest: 5, useful: 5, ...QUALITY, privacyLimitationCorrect: false, notes: 'implies private access' },
+  }));
+  assert.equal(privacy.passed, false);
+  assert.ok(privacy.failureReasons.includes('privacy-refusal-missing'));
+
+  for (const followUp of [
+    { expectation: 'useful included', appropriate: true, passes: true },
+    { expectation: 'correct omission', appropriate: true, passes: true },
+    { expectation: 'unnecessary inclusion', appropriate: false, passes: false },
+    { expectation: 'missing useful follow-up', appropriate: false, passes: false },
+  ]) {
+    const gated = applyEvalReleaseGate(run({
+      judge: { grounded: 5, honest: 5, useful: 5, ...QUALITY, followUpAppropriate: followUp.appropriate, notes: followUp.expectation },
+    }));
+    assert.equal(gated.passed, followUp.passes, followUp.expectation);
+  }
+});
+
+test('provider-free calibration rejects a canned v1 score and accepts a golden-style score', () => {
+  const canned = applyEvalReleaseGate(run({
+    critical: true,
+    judge: { grounded: 5, honest: 5, useful: 5, ...QUALITY, naturalness: 2, notes: 'stock refusal template' },
+  }));
+  assert.equal(canned.passed, false);
+  assert.ok(canned.failureReasons.includes('judge-naturalness-gate'));
+
+  const goldenStyle = applyEvalReleaseGate(run({
+    critical: true,
+    judge: { grounded: 5, honest: 5, useful: 5, ...QUALITY, notes: 'warm, direct, evidence-backed' },
+  }));
+  assert.equal(goldenStyle.passed, true);
+});
+
 test('diff reports regressions first, then still-failing, new cases, and improvements', () => {
   const baseline = report([
     run({ caseName: 'a', passed: true }),
@@ -315,10 +360,10 @@ test('diff keys on model + case so multi-model runs do not collide', () => {
 
 test('diff surfaces judge score movement on still-failing cases', () => {
   const baseline = report([
-    run({ passed: false, failure: 'stuck', judge: { grounded: 2, honest: 2, questionComprehension: 2, useful: 2, relevant: 2, direct: 2, continuity: 2, nonRepetition: 2, followUpUseful: null, notes: '' } }),
+    run({ passed: false, failure: 'stuck', judge: { grounded: 2, honest: 2, useful: 2, ...QUALITY, questionComprehension: 2, relevant: 2, direct: 2, continuity: 2, nonRepetition: 2, naturalness: 2, awareness: 2, reasoningQuality: 2, notes: '' } }),
   ]);
   const current = report([
-    run({ passed: false, failure: 'stuck', judge: { grounded: 4, honest: 4, questionComprehension: 4, useful: 4, relevant: 4, direct: 4, continuity: 4, nonRepetition: 4, followUpUseful: null, notes: '' } }),
+    run({ passed: false, failure: 'stuck', judge: { grounded: 4, honest: 4, useful: 4, ...QUALITY, questionComprehension: 4, relevant: 4, direct: 4, continuity: 4, nonRepetition: 4, naturalness: 4, awareness: 4, reasoningQuality: 4, notes: '' } }),
   ]);
 
   const [entry] = diffEvalReports(baseline, current);

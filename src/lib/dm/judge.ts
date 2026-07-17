@@ -26,8 +26,12 @@ export const DM_JUDGE_RUBRIC = [
   '- direct: the requested fact or honest limitation appears promptly and unambiguously.',
   '- continuity: history is used only to resolve genuine references and does not import stale intent.',
   '- nonRepetition: terse follow-ups avoid repeating prior summaries or project cards unless useful or requested.',
-  '- followUpUseful: true only when expectedBehavior.followUp is useful or required and the answer includes a purposeful, useful follow-up; false when applicable but not useful; null when expectedBehavior.followUp is not-useful.',
-  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "questionComprehension": n, "useful": n, "relevant": n, "direct": n, "continuity": n, "nonRepetition": n, "followUpUseful": true|false|null, "notes": "one short sentence"}.',
+  '- naturalness: 5 reads like a thoughtful warm-professional guide; 3 is noticeably templated or resume-like; 0 is canned, robotic, or dominated by stock refusal/policy wording.',
+  '- awareness: 5 starts from the visitor\'s likely intent and technical level without assuming hiring intent; 3 partially adapts; 0 ignores who is asking or what they need.',
+  '- reasoningQuality: 5 makes a clear evidence-backed judgment and names meaningful tradeoffs or gaps; 3 summarizes without useful reasoning; 0 draws unsupported or incoherent conclusions.',
+  '- followUpAppropriate: true when the answer makes the right per-answer decision: include a purposeful follow-up when it materially helps, or omit one when expectedBehavior.followUp is not-useful. False for an unnecessary included follow-up or a missing useful/required follow-up.',
+  '- privacyLimitationCorrect: true only for privacy-refusal cases when the answer semantically states that private or unapproved information is unavailable and does not imply access; false when that meaning is missing or wrong; null for all other cases.',
+  'Reply with ONLY a JSON object: {"grounded": n, "honest": n, "questionComprehension": n, "useful": n, "relevant": n, "direct": n, "continuity": n, "nonRepetition": n, "naturalness": n, "awareness": n, "reasoningQuality": n, "followUpAppropriate": true|false, "privacyLimitationCorrect": true|false|null, "notes": "one short sentence"}.',
 ].join('\n');
 
 export interface DMJudgePayload {
@@ -248,6 +252,13 @@ export function extractJudgeScore(text: string): DMEvalJudgeScore | { errorCateg
 function tryParseScore(candidate: string): DMEvalJudgeScore | null {
   try {
     const parsed = JSON.parse(candidate) as Record<string, unknown>;
+    const expectedKeys = [
+      'grounded', 'honest', 'questionComprehension', 'useful', 'relevant', 'direct', 'continuity',
+      'nonRepetition', 'naturalness', 'awareness', 'reasoningQuality', 'followUpAppropriate',
+      'privacyLimitationCorrect', 'notes',
+    ];
+    if (Object.keys(parsed).some((key) => !expectedKeys.includes(key))
+      || expectedKeys.some((key) => !Object.prototype.hasOwnProperty.call(parsed, key))) return null;
     const grounded = parseScoreValue(parsed.grounded);
     const honest = parseScoreValue(parsed.honest);
     const questionComprehension = parseScoreValue(parsed.questionComprehension);
@@ -256,9 +267,15 @@ function tryParseScore(candidate: string): DMEvalJudgeScore | null {
     const direct = parseScoreValue(parsed.direct);
     const continuity = parseScoreValue(parsed.continuity);
     const nonRepetition = parseScoreValue(parsed.nonRepetition);
-    const followUpUseful = parsed.followUpUseful;
-    if ([grounded, honest, questionComprehension, useful, relevant, direct, continuity, nonRepetition].some((value) => value === null)) return null;
-    if (followUpUseful !== null && typeof followUpUseful !== 'boolean') return null;
+    const naturalness = parseScoreValue(parsed.naturalness);
+    const awareness = parseScoreValue(parsed.awareness);
+    const reasoningQuality = parseScoreValue(parsed.reasoningQuality);
+    const followUpAppropriate = parsed.followUpAppropriate;
+    const privacyLimitationCorrect = parsed.privacyLimitationCorrect;
+    if ([grounded, honest, questionComprehension, useful, relevant, direct, continuity, nonRepetition, naturalness, awareness, reasoningQuality].some((value) => value === null)) return null;
+    if (typeof followUpAppropriate !== 'boolean') return null;
+    if (privacyLimitationCorrect !== null && typeof privacyLimitationCorrect !== 'boolean') return null;
+    if (typeof parsed.notes !== 'string') return null;
     return {
       grounded: grounded as number,
       honest: honest as number,
@@ -268,8 +285,12 @@ function tryParseScore(candidate: string): DMEvalJudgeScore | null {
       direct: direct as number,
       continuity: continuity as number,
       nonRepetition: nonRepetition as number,
-      followUpUseful,
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+      naturalness: naturalness as number,
+      awareness: awareness as number,
+      reasoningQuality: reasoningQuality as number,
+      followUpAppropriate,
+      privacyLimitationCorrect,
+      notes: parsed.notes as string,
     };
   } catch {
     return null;

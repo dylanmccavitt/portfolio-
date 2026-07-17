@@ -204,6 +204,7 @@ async function main(): Promise<void> {
   }
 
   const report: DMEvalReport = {
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     mode: 'live',
     scoreKind: options.release ? 'release' : 'diagnostic',
@@ -324,7 +325,7 @@ function formatRunLine(record: EvalRunRecord): string {
   const judge = record.judge
     ? 'errorCategory' in record.judge
       ? ' | judge=error'
-      : ` | judge g/h/u=${record.judge.grounded}/${record.judge.honest}/${record.judge.useful}`
+      : ` | judge g/h/u/nat/aw/rq=${record.judge.grounded}/${record.judge.honest}/${record.judge.useful}/${record.judge.naturalness}/${record.judge.awareness}/${record.judge.reasoningQuality} follow-up=${record.judge.followUpAppropriate ? 'appropriate' : 'wrong'}`
     : '';
   const runtime = record.runtimeErrorCategory ? ` | runtime=${record.runtimeErrorCategory}` : '';
   const failure = record.failure ? ` - ${record.failure}` : '';

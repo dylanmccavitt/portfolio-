@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   DM_LIVE_EVAL_CORPUS,
+  DM_GOLDEN_SOURCE_STATUS,
   DM_RELEASE_MODELS,
   DM_RELEASE_RUNS_PER_CASE,
   assertDMReleaseConfiguration,
@@ -151,7 +152,7 @@ test('privacy, honest personal unknown, correction, clarification, and tool fail
   assert.ok(DM_LIVE_EVAL_CORPUS.filter((item) => item.toolFailure).length >= 2);
 });
 
-test('deterministic observation checks enforce tools, evidence, artifacts, and follow-up shape', () => {
+test('deterministic observation checks enforce tools, evidence, artifacts, and completion without copying answer prose', () => {
   const projectCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-trading-automation')!;
   const passing = {
     answerText: 'agentic-trader is the published project that demonstrates brokerage workflow automation.',
@@ -164,11 +165,6 @@ test('deterministic observation checks enforce tools, evidence, artifacts, and f
   assert.match(evaluateDMEvalObservation(projectCase, { ...passing, tools: [] }) ?? '', /required tool/);
   assert.match(evaluateDMEvalObservation(projectCase, { ...passing, projectIds: [], blockKinds: [] }) ?? '', /required artifact/);
   assert.match(evaluateDMEvalObservation(projectCase, { ...passing, answerText: 'A trading project exists.' }) ?? '', /required evidence/);
-
-  const clarification = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'derived-ambiguous-clarification')!;
-  assert.match(evaluateDMEvalObservation(clarification, {
-    answerText: 'I need the project name.', tools: [], blockKinds: [], projectIds: [], outcome: 'completed',
-  }) ?? '', /clarifying follow-up/);
 
   const architecture = DM_LIVE_EVAL_CORPUS.find((item) => item.id === 'mf-loom-coreference')!;
   assert.match(evaluateDMEvalObservation(architecture, {
@@ -229,7 +225,7 @@ test('privacy observation checks retain every sanitized boundary reason', () => 
     outcome: 'completed',
     limitations: ['I can only use published public portfolio sources.'],
   });
-  assert.equal(passing.failure, null);
+  assert.equal(passing.failure, null, 'privacy wording is judged semantically, not copied deterministically');
   assert.deepEqual(passing.failureReasons, []);
 
   const mixed = evaluateDMEvalObservationDetails(privacyCase, {
@@ -244,7 +240,6 @@ test('privacy observation checks retain every sanitized boundary reason', () => 
     'forbidden-tool-used',
     'forbidden-private-evidence-artifact',
     'forbidden-evidence-exposed',
-    'privacy-refusal-missing',
     'run-incomplete',
   ]);
 
@@ -257,6 +252,23 @@ test('privacy observation checks retain every sanitized boundary reason', () => 
     outcome: 'completed',
   });
   assert.deepEqual(publicArtifactFailure.failureReasons, ['forbidden-artifact-emitted']);
+});
+
+test('all 12 golden families have a checked source status and source gaps stay honest', () => {
+  assert.deepEqual(DM_GOLDEN_SOURCE_STATUS.map((entry) => entry.family), Array.from({ length: 12 }, (_, index) => index + 1));
+  const byId = new Map(DM_LIVE_EVAL_CORPUS.map((item) => [item.id, item]));
+  for (const entry of DM_GOLDEN_SOURCE_STATUS) {
+    const item = byId.get(entry.caseId);
+    assert.equal(item?.goldenFamily, entry.family);
+    if (entry.status === 'source-gap') assert.notEqual(item?.expectations.limitation, 'none');
+  }
+  for (const family of [2, 3, 10]) assert.equal(DM_GOLDEN_SOURCE_STATUS[family - 1]?.status, 'source-gap');
+  for (const family of [5, 6]) assert.equal(DM_GOLDEN_SOURCE_STATUS[family - 1]?.status, 'source-gap');
+  assert.ok(DM_LIVE_EVAL_CORPUS.filter((item) => item.categories.includes('privacy')).length < DM_LIVE_EVAL_CORPUS.length / 3);
+  assert.throws(
+    () => validateDMLiveEvalCorpus(DM_LIVE_EVAL_CORPUS.map((item, index) => index === 12 ? { ...item, goldenFamily: 1 } : item)),
+    /12 golden-conversation families exactly once/,
+  );
 });
 
 test('multi-turn cases preserve history but send the latest question separately', () => {
