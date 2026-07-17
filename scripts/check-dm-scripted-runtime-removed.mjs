@@ -976,6 +976,115 @@ function governedSchemaDeclarationFailures(sourceFile) {
 
 function governedSchemaMutationFailures(sourceFile) {
   const governed = new Set(['V2FinalAnswerInputSchema', 'ArtifactReferenceSchema']);
+  const aliases = new Map();
+  const resolveAliasPaths = (paths) => {
+    const pending = paths.map((path) => ({ path, expanded: new Set() }));
+    const resolved = [];
+    while (pending.length > 0) {
+      const candidate = pending.pop();
+      const replacements = aliases.get(candidate.path[0]);
+      if (!replacements || candidate.expanded.has(candidate.path[0])) {
+        resolved.push(candidate.path);
+        continue;
+      }
+      const expanded = new Set(candidate.expanded).add(candidate.path[0]);
+      for (const replacement of replacements) {
+        pending.push({ path: [...replacement, ...candidate.path.slice(1)], expanded });
+      }
+    }
+    return resolved;
+  };
+  const recordAlias = (name, paths) => {
+    const existing = aliases.get(name) ?? [];
+    const existingKeys = new Set(existing.map((path) => path.join('.')));
+    const additions = resolveAliasPaths(paths).filter((path) => (
+      !(path.length === 1 && path[0] === name) && !existingKeys.has(path.join('.'))
+    ));
+    if (additions.length === 0) return false;
+    aliases.set(name, [...existing, ...additions]);
+    return true;
+  };
+  const recordBindingAliases = (name, paths) => {
+    if (paths.length === 0) return false;
+    const target = unwrapExpression(name);
+    if (ts.isIdentifier(target)) return recordAlias(target.text, paths);
+    if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      return recordBindingAliases(target.left, paths);
+    }
+
+    let changed = false;
+    if (ts.isObjectBindingPattern(target)) {
+      for (const element of target.elements) {
+        if (element.dotDotDotToken) {
+          changed = recordBindingAliases(element.name, paths) || changed;
+          continue;
+        }
+        const property = element.propertyName
+          ? propertyNameText(element.propertyName)
+          : ts.isIdentifier(element.name)
+            ? element.name.text
+            : null;
+        if (property !== null) {
+          changed = recordBindingAliases(element.name, paths.map((path) => [...path, property])) || changed;
+        }
+      }
+      return changed;
+    }
+    if (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target)) {
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const elementTarget = ts.isBindingElement(element)
+          ? element.name
+          : ts.isSpreadElement(element)
+            ? element.expression
+            : element;
+        changed = recordBindingAliases(elementTarget, paths.map((path) => [...path, String(index)])) || changed;
+      }
+    }
+    return changed;
+  };
+  const recordAssignmentAliases = (name, initializer) => {
+    const expression = unwrapExpression(initializer);
+    const target = unwrapExpression(name);
+    if (
+      (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target))
+      && ts.isArrayLiteralExpression(expression)
+    ) {
+      let changed = false;
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const source = expression.elements[index];
+        const sourcePaths = source && !ts.isOmittedExpression(source)
+          ? resolveAliasPaths(possiblePropertyPaths(ts.isSpreadElement(source) ? source.expression : source))
+          : [];
+        const elementTarget = ts.isBindingElement(element)
+          ? element.name
+          : ts.isSpreadElement(element)
+            ? element.expression
+            : element;
+        changed = recordBindingAliases(elementTarget, sourcePaths) || changed;
+      }
+      return changed;
+    }
+    return recordBindingAliases(target, resolveAliasPaths(possiblePropertyPaths(expression)));
+  };
+  const aliasAssignments = new Set();
+  let aliasesChanged = true;
+  while (aliasesChanged) {
+    aliasesChanged = false;
+    walk(sourceFile, (node) => {
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        aliasesChanged = recordAssignmentAliases(node.name, node.initializer) || aliasesChanged;
+        return;
+      }
+      if (!ts.isBinaryExpression(node) || node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return;
+      const changed = recordAssignmentAliases(node.left, node.right);
+      if (changed) aliasAssignments.add(node);
+      aliasesChanged = changed || aliasesChanged;
+    });
+  }
+  const governedPaths = (node) => resolveAliasPaths(possiblePropertyPaths(node));
+  const mutatesGovernedSchema = (path) => path && governed.has(path[0]);
   let mutated = false;
   walk(sourceFile, (node) => {
     if (
@@ -983,16 +1092,21 @@ function governedSchemaMutationFailures(sourceFile) {
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
-      const path = staticPropertyPath(node.left);
-      if (path && governed.has(path[0])) mutated = true;
+      if (aliasAssignments.has(node)) return;
+      if (governedPaths(node.left).some(mutatesGovernedSchema)) mutated = true;
+      return;
+    }
+    if (ts.isDeleteExpression(node)) {
+      if (governedPaths(node.expression).some(mutatesGovernedSchema)) mutated = true;
+      return;
     }
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
     const owner = node.expression.expression;
     if (!ts.isIdentifier(owner) || !['Object', 'Reflect'].includes(owner.text)) return;
     const method = node.expression.name.text;
-    if (!['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf'].includes(method)) return;
-    const path = node.arguments[0] ? staticPropertyPath(node.arguments[0]) : null;
-    if (path && governed.has(path[0])) mutated = true;
+    if (!['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf', 'set'].includes(method)) return;
+    const paths = node.arguments[0] ? governedPaths(node.arguments[0]) : [];
+    if (paths.some(mutatesGovernedSchema)) mutated = true;
   });
   return mutated
     ? ['src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated']

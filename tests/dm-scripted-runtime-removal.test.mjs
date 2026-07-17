@@ -530,6 +530,45 @@ test('rejects mutation of the governed v2 schema object', async (t) => {
   ));
 });
 
+test('rejects mutation of the governed v2 schema object through an alias', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "const agentTools = contract === 'v2'",
+    "const schemaAlias = V2FinalAnswerInputSchema;\n  (schemaAlias as any).parse = (value) => value;\n  const agentTools = contract === 'v2'",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+  ));
+});
+
+test('rejects Reflect.set mutation of the governed v2 schema object', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "const agentTools = contract === 'v2'",
+    "Reflect.set(V2FinalAnswerInputSchema, 'parse', (value) => value);\n  const agentTools = contract === 'v2'",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+  ));
+});
+
+test('rejects deletion from the governed v2 schema object', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "const agentTools = contract === 'v2'",
+    "delete (V2FinalAnswerInputSchema as any).parse;\n  const agentTools = contract === 'v2'",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+  ));
+});
+
 test('rejects a computed property that overrides the governed v2 finalizer execute', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
