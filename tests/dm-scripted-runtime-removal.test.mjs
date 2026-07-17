@@ -113,6 +113,7 @@ function createDMChatResponse(request, config = {}) {
   });
   new ToolLoopAgent({
     instructions: buildDMSystemInstructions(siteBrief, contract),
+    tools: agentTools,
     experimental_repairToolCall: async () => {
       if (contract === 'v2') {
         finalized = true;
@@ -121,6 +122,10 @@ function createDMChatResponse(request, config = {}) {
       finalizationAttempts += 1;
       return null;
     },
+  });
+  toUIMessageStream({
+    stream: {},
+    tools: agentTools,
   });
   createPublicAgentTools();
   return { agentTools, request, stream, finalized };
@@ -357,6 +362,58 @@ test('rejects swapping the v2 and v1 finalizers through the contract branch cond
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: agentTools must bind the governed v2 finalizer to the true branch of the exact contract === v2 conditional and the v1 finalizer to its false branch',
+  ));
+});
+
+test('rejects bypassing the governed finalizer at the ToolLoopAgent consumption site', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    '    tools: agentTools,',
+    '    tools: publicTools,',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: ToolLoopAgent and toUIMessageStream must each consume the exact immutable agentTools contract binding without option overrides',
+  ));
+});
+
+test('rejects bypassing the governed finalizer at the UI stream consumption site', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    '    tools: agentTools,\n  });\n  createPublicAgentTools();',
+    "    tools: contract === 'v2' ? publicTools : agentTools,\n  });\n  createPublicAgentTools();",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: ToolLoopAgent and toUIMessageStream must each consume the exact immutable agentTools contract binding without option overrides',
+  ));
+});
+
+test('rejects a spread override at an agentTools consumption site', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    '    tools: agentTools,\n    experimental_repairToolCall:',
+    '    tools: agentTools,\n    ...{ tools: publicTools },\n    experimental_repairToolCall:',
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: ToolLoopAgent and toUIMessageStream must each consume the exact immutable agentTools contract binding without option overrides',
+  ));
+});
+
+test('rejects a computed override at an agentTools consumption site', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    '    tools: agentTools,\n  });\n  createPublicAgentTools();',
+    "    tools: agentTools,\n    [('too' + 'ls')]: publicTools,\n  });\n  createPublicAgentTools();",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: ToolLoopAgent and toUIMessageStream must each consume the exact immutable agentTools contract binding without option overrides',
   ));
 });
 

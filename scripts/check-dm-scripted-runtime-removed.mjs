@@ -620,6 +620,64 @@ function contractBranchBindingFailures(sourceFile) {
   return [];
 }
 
+const AGENT_TOOLS_CONSUMPTION_FAILURE = 'src/lib/dm/runtime.ts: ToolLoopAgent and toUIMessageStream must each consume the exact immutable agentTools contract binding without option overrides';
+
+function agentToolsConsumptionFailures(sourceFile) {
+  const declarations = [];
+  let bindingWritten = false;
+  walk(sourceFile, (node) => {
+    if (declaresValueName(node, 'agentTools')) declarations.push(node);
+    if (writesValueName(node, 'agentTools')) bindingWritten = true;
+  });
+  const trustedDeclaration = declarations.find((node) => (
+    ts.isVariableDeclaration(node)
+    && ts.isVariableDeclarationList(node.parent)
+    && (node.parent.flags & ts.NodeFlags.Const) !== 0
+    && hasFunctionDeclarationAncestor(node, 'createDMChatResponse')
+  ));
+  if (declarations.length !== 1 || !trustedDeclaration || bindingWritten) {
+    return [AGENT_TOOLS_CONSUMPTION_FAILURE];
+  }
+
+  const optionsConsumeAgentTools = (options) => {
+    if (!ts.isObjectLiteralExpression(options)) return false;
+    if (options.properties.some((property) => (
+      ts.isSpreadAssignment(property)
+      || ('name' in property && ts.isComputedPropertyName(property.name))
+    ))) return false;
+    const toolsProperties = options.properties.filter((property) => (
+      'name' in property
+      && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+      && propertyNameText(property.name) === 'tools'
+    ));
+    return toolsProperties.length === 1
+      && ts.isPropertyAssignment(toolsProperties[0])
+      && ts.isIdentifier(toolsProperties[0].name)
+      && ts.isIdentifier(toolsProperties[0].initializer)
+      && toolsProperties[0].initializer.text === 'agentTools';
+  };
+
+  const toolLoopCalls = [];
+  const uiStreamCalls = [];
+  walk(sourceFile, (node) => {
+    if (
+      ts.isNewExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === 'ToolLoopAgent'
+    ) toolLoopCalls.push(node);
+    if (callIsNamed(node, 'toUIMessageStream')) uiStreamCalls.push(node);
+  });
+  if (
+    toolLoopCalls.length !== 1
+    || toolLoopCalls[0].arguments?.length !== 1
+    || !optionsConsumeAgentTools(toolLoopCalls[0].arguments[0])
+    || uiStreamCalls.length !== 1
+    || uiStreamCalls[0].arguments.length !== 1
+    || !optionsConsumeAgentTools(uiStreamCalls[0].arguments[0])
+  ) return [AGENT_TOOLS_CONSUMPTION_FAILURE];
+  return [];
+}
+
 function strictObjectForKind(sourceFile, schemaName, kind) {
   const declaration = variableDeclaration(sourceFile, schemaName);
   if (!declaration?.initializer) return null;
@@ -1025,6 +1083,7 @@ export function finalizationBoundaryFailures(runtime) {
   failures.push(...finalizationCopyFailures(sourceFile));
   failures.push(...v2ContractFailures(sourceFile));
   failures.push(...v2ArtifactHelperFailures(sourceFile));
+  failures.push(...agentToolsConsumptionFailures(sourceFile));
   failures.push(...finalizationCallSiteFailures(sourceFile));
   const validate = functionDeclaration(sourceFile, 'validateFinalAnswer');
   if (!validate) failures.push('src/lib/dm/runtime.ts: validateFinalAnswer boundary is missing');
