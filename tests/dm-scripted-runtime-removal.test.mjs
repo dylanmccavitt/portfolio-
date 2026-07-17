@@ -17,6 +17,7 @@ const READ_NDJSON_TOKEN = 'readNdjson';
 const NDJSON_MEDIA_TYPE = 'application/x-ndjson';
 
 const CLEAN_RUNTIME_FIXTURE = `
+import { tool } from 'ai';
 function readDMRuntimeConfig(env) {
   const configuredContract = env.DM_CONTRACT?.trim();
   const contract: DMContractVersion = configuredContract === 'v2' ? 'v2' : 'v1';
@@ -362,6 +363,29 @@ test('the governed v2 finalization allowlist accepts the structural resolver pat
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
 
   assert.deepEqual(result.failures, []);
+});
+
+test('rejects an aliased SDK tool hidden behind a behavior-mutating local wrapper', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime
+    .replace("import { tool } from 'ai';", "import { tool as sdkTool } from 'ai';")
+    .replace(
+      'function createDMChatResponse(request, config = {}) {',
+      `function createDMChatResponse(request, config = {}) {
+  const tool = (options) => {
+    const wrappedExecute = async (input) => {
+      const result = await options.execute(input);
+      result.answer.followUp = 'Would you like a polished project walkthrough?';
+      return result;
+    };
+    return sdkTool({ ...options, execute: wrappedExecute });
+  };`,
+    ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: governed finalizer tool calls must retain the unaliased, unshadowed, immutable top-level ai tool import',
+  ));
 });
 
 test('rejects a newly named v2 behavior validator even when historical names are avoided', async (t) => {

@@ -131,6 +131,38 @@ function callIsNamed(node, name) {
   return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === name;
 }
 
+function toolBindingFailures(sourceFile) {
+  const importedToolBindings = [];
+  const shadowDeclarations = [];
+  let bindingWritten = false;
+
+  walk(sourceFile, (node) => {
+    if (ts.isImportSpecifier(node)) {
+      const importedName = node.propertyName?.text ?? node.name.text;
+      if (importedName === 'tool') {
+        const declaration = node.parent.parent.parent;
+        importedToolBindings.push({
+          localName: node.name.text,
+          moduleName: ts.isImportDeclaration(declaration) && ts.isStringLiteral(declaration.moduleSpecifier)
+            ? declaration.moduleSpecifier.text
+            : null,
+        });
+      }
+      return;
+    }
+    if (declaresValueName(node, 'tool')) shadowDeclarations.push(node);
+    if (writesValueName(node, 'tool')) bindingWritten = true;
+  });
+
+  const trustedImport = importedToolBindings.length === 1
+    && importedToolBindings[0].localName === 'tool'
+    && importedToolBindings[0].moduleName === 'ai';
+  if (!trustedImport || shadowDeclarations.length > 0 || bindingWritten) {
+    return ['src/lib/dm/runtime.ts: governed finalizer tool calls must retain the unaliased, unshadowed, immutable top-level ai tool import'];
+  }
+  return [];
+}
+
 function walk(node, visit) {
   visit(node);
   ts.forEachChild(node, (child) => walk(child, visit));
@@ -725,6 +757,7 @@ export function finalizationBoundaryFailures(runtime) {
     failures.push('src/lib/dm/runtime.ts: TypeScript parse failed during finalization-boundary proof');
     return failures;
   }
+  failures.push(...toolBindingFailures(sourceFile));
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...finalizationCopyFailures(sourceFile));
   failures.push(...v2ContractFailures(sourceFile));
