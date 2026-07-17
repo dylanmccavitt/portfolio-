@@ -700,6 +700,7 @@ const GOVERNED_INTRINSIC_PROTOTYPES = new Set([
   'Object',
   'Set',
   'String',
+  'UnknownIntrinsic',
   'WeakMap',
   'WeakSet',
 ]);
@@ -762,7 +763,7 @@ function trustedPrimitiveMutationFailures(sourceFile) {
         staticPropertyPath(expression.expression, constBindings)?.join('.'),
       )
       && expression.arguments.length === 1
-    ) return intrinsicPrototypeForValue(expression.arguments[0]);
+    ) return intrinsicPrototypeForValue(expression.arguments[0]) ?? ['UnknownIntrinsic', 'prototype'];
     if (
       (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
       && propertyNameText(expression.name ?? expression.argumentExpression) === '__proto__'
@@ -865,6 +866,10 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     if (
       ts.isPropertyAssignment(node)
       && governedStoredValue(node.initializer)
+    ) mutated = true;
+    if (
+      (ts.isCallExpression(node) || ts.isNewExpression(node))
+      && node.arguments?.some((argument) => governedStoredValue(argument))
     ) mutated = true;
     if (
       ts.isBinaryExpression(node)
@@ -1144,6 +1149,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
+      recordGovernedEscape(node.right);
       if (aliasAssignments.has(node)) return;
       for (const path of governedPaths(node.left)) {
         if (!isAuthorizedArtifactContactWrite(node, path)) recordPath(path);
@@ -1755,6 +1761,7 @@ function governedSchemaMutationFailures(sourceFile) {
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
+      if (governedPaths(node.right).some(mutatesGovernedSchema)) mutated = true;
       if (aliasAssignments.has(node)) return;
       if (governedPaths(node.left).some(mutatesGovernedSchema)) mutated = true;
       return;

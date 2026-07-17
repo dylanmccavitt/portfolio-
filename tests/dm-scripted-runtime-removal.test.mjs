@@ -1413,6 +1413,11 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const box = [Map.prototype]; box[0].has = () => true;\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const value: any = []; const P = Object.getPrototypeOf(value); P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const box: any = {}; box.Z = z; box.Z.strictObject = () => ({});\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.strictObject = () => ({}); }; mutate(z);\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.has = () => true; }; mutate(Map.prototype);\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.strictObject = () => ({}); }; const box = { z }; mutate(box['z']);\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const box = { value: [] }; const P = Object.getPrototypeOf(box.value); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const make = () => []; const P = Object.getPrototypeOf(make()); P.flatMap = () => [];\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1502,9 +1507,19 @@ test('rejects governed dependency and schema escapes through property stores and
       "  const agentTools = contract === 'v2'",
       "  let schema: any;\n  try { throw V2FinalAnswerInputSchema; } catch (value) { schema = value; }\n  schema.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
     ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  const box: any = {};\n  const key = 'projects';\n  box[key] = artifacts.projects;\n  box[key].has = () => true;\n  const siteBrief =",
+    ),
+    runtime.replace(
+      "  const agentTools = contract === 'v2'",
+      "  const box: any = {};\n  const key = ['sch', 'ema'].join('');\n  box[key] = V2FinalAnswerInputSchema;\n  box[key].parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
+    ),
   ];
   const expected = [
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
