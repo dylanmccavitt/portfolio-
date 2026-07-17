@@ -399,6 +399,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return changed;
   };
+  const isCallableContainer = (path) => [...callableContainers].some((container) => (
+    path === container || path.startsWith(`${container}.`)
+  ));
   let callableChanged = true;
   while (callableChanged) {
     callableChanged = false;
@@ -412,7 +415,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
         if (
           target
           && source
-          && (callableBindings.has(source) || callablePaths.has(source))
+          && (callableBindings.has(source) || callablePaths.has(source) || isCallableContainer(source))
           && !callablePaths.has(target)
         ) {
           callablePaths.add(target);
@@ -439,6 +442,20 @@ function dynamicCodeExecutionFailures(sourceFile) {
       const path = staticPropertyPath(node.initializer, constBindings)?.join('.');
       if (path) {
         callableChanged = propagateCallableContainers(node.name.text, path) || callableChanged;
+      }
+      const initializer = unwrapExpression(node.initializer);
+      if (ts.isArrayLiteralExpression(initializer)) {
+        for (const [index, element] of initializer.elements.entries()) {
+          if (ts.isOmittedExpression(element)) continue;
+          const source = staticPropertyPath(ts.isSpreadElement(element) ? element.expression : element, constBindings)?.join('.');
+          if (source && isCallableContainer(source)) {
+            const target = `${node.name.text}.${index}`;
+            if (!callableContainers.has(target)) {
+              callableContainers.add(target);
+              callableChanged = true;
+            }
+          }
+        }
       }
       if (
         path
@@ -795,6 +812,7 @@ const GOVERNED_INTRINSIC_PROTOTYPES = new Set([
 function trustedPrimitiveMutationFailures(sourceFile) {
   const aliases = new Map();
   const intrinsicContainers = new Map();
+  const intrinsicContainerAliases = new Map();
   const constBindings = immutableConstBindings(sourceFile);
   const aliasAssignments = new Set();
   const intrinsicValues = new Map();
@@ -859,7 +877,19 @@ function trustedPrimitiveMutationFailures(sourceFile) {
             expanded = true;
             break;
           }
-          const carrier = intrinsicContainers.get(path.slice(0, length).join('.'));
+          const containerKey = path.slice(0, length).join('.');
+          if (intrinsicContainerAliases.has(containerKey) && path.length > length) {
+            const container = intrinsicContainerAliases.get(containerKey);
+            if (!container) {
+              return path.length > length + 1
+                ? ['UnknownIntrinsic', ...path.slice(length + 2)]
+                : path;
+            }
+            path = [...container, ...path.slice(length + 1)];
+            expanded = true;
+            break;
+          }
+          const carrier = intrinsicContainers.get(containerKey);
           if (carrier && path.length > length) {
             return [...carrier, ...path.slice(length + 1)];
           }
@@ -899,6 +929,14 @@ function trustedPrimitiveMutationFailures(sourceFile) {
         && targetPath[1] === 'prototype'
         && property === 'value'
       ) return targetPath;
+      if (
+        expectedCallee === 'Reflect.get'
+        && targetPath?.length === 2
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(targetPath[0])
+        && targetPath[1] === 'prototype'
+        && property === null
+      ) return targetPath;
+      if (intrinsic && property === null) return ['UnknownIntrinsic', 'prototype'];
       return intrinsic
         && GOVERNED_INTRINSIC_PROTOTYPES.has(intrinsic)
         && property === 'prototype'
@@ -1010,6 +1048,21 @@ function trustedPrimitiveMutationFailures(sourceFile) {
           : carrier;
         if (existing?.join('.') === next.join('.')) return false;
         intrinsicContainers.set(container, next);
+        return true;
+      }
+      const sourceContainer = source?.join('.');
+      if (
+        container
+        && sourceContainer
+        && (intrinsicContainers.has(sourceContainer) || intrinsicContainerAliases.has(sourceContainer))
+      ) {
+        if (!intrinsicContainerAliases.has(container)) {
+          intrinsicContainerAliases.set(container, source);
+          return true;
+        }
+        const existing = intrinsicContainerAliases.get(container);
+        if (existing === null || existing.join('.') === source.join('.')) return false;
+        intrinsicContainerAliases.set(container, null);
         return true;
       }
     }
