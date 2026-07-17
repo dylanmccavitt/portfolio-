@@ -154,6 +154,23 @@ function functionDeclaration(sourceFile, name) {
   return match;
 }
 
+function bindingNameContains(name, expected) {
+  if (ts.isIdentifier(name)) return name.text === expected;
+  return name.elements.some((element) => (
+    ts.isOmittedExpression(element) ? false : bindingNameContains(element.name, expected)
+  ));
+}
+
+function declaresValueName(node, name) {
+  if (ts.isVariableDeclaration(node) || ts.isParameter(node)) {
+    return bindingNameContains(node.name, name);
+  }
+  return (
+    (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isClassDeclaration(node))
+    && node.name?.text === name
+  );
+}
+
 function hasFunctionDeclarationAncestor(node, name) {
   for (let current = node.parent; current; current = current.parent) {
     if (ts.isFunctionDeclaration(current) && current.name?.text === name) return true;
@@ -481,8 +498,15 @@ function v2ContractFailures(sourceFile) {
   }
 
   const resolveCalls = callExpressionsNamed(sourceFile, 'resolveV2FinalAnswer');
+  let locallyShadowedResolver = false;
+  walk(chatResponse ?? sourceFile, (node) => {
+    if (node !== chatResponse && declaresValueName(node, 'resolveV2FinalAnswer')) {
+      locallyShadowedResolver = true;
+    }
+  });
   if (
-    resolveCalls.length !== 1
+    locallyShadowedResolver
+    || resolveCalls.length !== 1
     || resolveCalls[0].arguments.map((argument) => argument.getText(sourceFile)).join(',') !== 'input,publicRun,artifacts'
     || !executeBelongsToCall(resolveCalls[0], 'tool', 'finalizeAnswer')
   ) {
