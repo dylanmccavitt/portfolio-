@@ -430,6 +430,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
       && computedName(node.argumentExpression) === null
       && (
         couldProduceCallable(node.expression)
+        || ts.isElementAccessExpression(unwrapExpression(node.expression))
         || (ts.isCallExpression(node.parent) && node.parent.expression === node)
       )
     ) unsafe = true;
@@ -661,6 +662,10 @@ function staticPropertyPath(node, stringBindings = new Map()) {
 
 function possiblePropertyPaths(node) {
   const expression = unwrapExpression(node);
+  if (ts.isTaggedTemplateExpression(expression)) return possiblePropertyPaths(expression.template);
+  if (ts.isTemplateExpression(expression)) {
+    return expression.templateSpans.flatMap((span) => possiblePropertyPaths(span.expression));
+  }
   if (ts.isConditionalExpression(expression)) {
     return [
       ...possiblePropertyPaths(expression.whenTrue),
@@ -797,12 +802,14 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     const reflectionPrototype = (call, expectedCallee) => {
       if (!ts.isCallExpression(call) || resolvedCalleePath(call.expression)?.join('.') !== expectedCallee) return null;
       const target = call.arguments[0] && unwrapExpression(call.arguments[0]);
+      const targetPath = target && resolvedCalleePath(target);
+      const intrinsic = targetPath?.length === 1 ? targetPath[0] : null;
       const property = call.arguments[1] && staticStringValue(call.arguments[1], constBindings);
-      return ts.isIdentifier(target)
-        && GOVERNED_INTRINSIC_PROTOTYPES.has(target.text)
-        && target.text !== 'UnknownIntrinsic'
+      return intrinsic
+        && GOVERNED_INTRINSIC_PROTOTYPES.has(intrinsic)
+        && intrinsic !== 'UnknownIntrinsic'
         && property === 'prototype'
-        ? [target.text, 'prototype']
+        ? [intrinsic, 'prototype']
         : null;
     };
     const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
@@ -811,16 +818,30 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       ts.isPropertyAccessExpression(expression)
       && expression.name.text === 'value'
     ) {
-      const descriptorPrototype = reflectionPrototype(
-        unwrapExpression(expression.expression),
-        'Object.getOwnPropertyDescriptor',
-      );
+      const descriptorCall = unwrapExpression(expression.expression);
+      const descriptorPrototype = reflectionPrototype(descriptorCall, 'Object.getOwnPropertyDescriptor')
+        ?? reflectionPrototype(descriptorCall, 'Reflect.getOwnPropertyDescriptor');
       if (descriptorPrototype) return descriptorPrototype;
+      if (
+        ts.isPropertyAccessExpression(descriptorCall)
+        && descriptorCall.name.text === 'prototype'
+        && ts.isCallExpression(unwrapExpression(descriptorCall.expression))
+      ) {
+        const descriptorsCall = unwrapExpression(descriptorCall.expression);
+        const target = descriptorsCall.arguments[0] && resolvedCalleePath(descriptorsCall.arguments[0]);
+        const intrinsic = target?.length === 1 ? target[0] : null;
+        if (
+          resolvedCalleePath(descriptorsCall.expression)?.join('.') === 'Object.getOwnPropertyDescriptors'
+          && intrinsic
+          && GOVERNED_INTRINSIC_PROTOTYPES.has(intrinsic)
+          && intrinsic !== 'UnknownIntrinsic'
+        ) return [intrinsic, 'prototype'];
+      }
     }
     if (
       ts.isCallExpression(expression)
       && ['Object.getPrototypeOf', 'Reflect.getPrototypeOf'].includes(
-        staticPropertyPath(expression.expression, constBindings)?.join('.'),
+        resolvedCalleePath(expression.expression)?.join('.'),
       )
       && expression.arguments.length === 1
     ) return intrinsicPrototypeForValue(expression.arguments[0]) ?? ['UnknownIntrinsic', 'prototype'];
@@ -914,6 +935,10 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   );
   const possiblePrimitivePaths = (node) => {
     const expression = unwrapExpression(node);
+    if (ts.isTaggedTemplateExpression(expression)) return possiblePrimitivePaths(expression.template);
+    if (ts.isTemplateExpression(expression)) {
+      return expression.templateSpans.flatMap((span) => possiblePrimitivePaths(span.expression));
+    }
     if (ts.isConditionalExpression(expression)) {
       return [...possiblePrimitivePaths(expression.whenTrue), ...possiblePrimitivePaths(expression.whenFalse)];
     }
