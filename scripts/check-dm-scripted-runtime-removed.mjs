@@ -360,6 +360,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const callableBindings = new Set();
   const callablePaths = new Set();
   const callableContainers = new Set();
+  const callableResultBindings = new Set();
+  const callableYieldBindings = new Set();
   walk(sourceFile, (node) => {
     if (
       (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node))
@@ -526,7 +528,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     collection.add(target);
     return true;
   };
-  const propagateCallableInitializer = (target, node) => {
+  const isTrackedCallableExpression = (node) => {
     const expression = unwrapExpression(node);
     const source = staticPropertyPath(expression, constBindings)?.join('.');
     if (
@@ -534,7 +536,59 @@ function dynamicCodeExecutionFailures(sourceFile) {
       || ts.isArrowFunction(expression)
       || ts.isClassExpression(expression)
       || (source && (callableBindings.has(source) || callablePaths.has(source)))
-    ) return recordCallableTarget(target);
+    ) return true;
+    if (ts.isConditionalExpression(expression)) {
+      return isTrackedCallableExpression(expression.whenTrue)
+        || isTrackedCallableExpression(expression.whenFalse);
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        return isTrackedCallableExpression(expression.right);
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+        || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+        || expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) return isTrackedCallableExpression(expression.left)
+        || isTrackedCallableExpression(expression.right);
+    }
+    const selectedMember = (receiver, key) => (
+      literalMemberValues(receiver, key).some(isTrackedCallableExpression)
+      || literalMemberPaths(receiver, key).some((path) => (
+        callableBindings.has(path) || callablePaths.has(path)
+      ))
+    );
+    if (ts.isPropertyAccessExpression(expression)) {
+      if (selectedMember(expression.expression, expression.name.text)) return true;
+      if (expression.name.text === 'value') {
+        const nextCall = unwrapExpression(expression.expression);
+        if (
+          ts.isCallExpression(nextCall)
+          && ts.isPropertyAccessExpression(nextCall.expression)
+          && nextCall.expression.name.text === 'next'
+        ) {
+          const generatorCall = unwrapExpression(nextCall.expression.expression);
+          const generator = ts.isCallExpression(generatorCall)
+            ? staticPropertyPath(generatorCall.expression, constBindings)?.join('.')
+            : null;
+          if (generator && callableYieldBindings.has(generator)) return true;
+        }
+      }
+    }
+    if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+      const key = computedName(expression.argumentExpression);
+      if (key !== null && selectedMember(expression.expression, key)) return true;
+    }
+    if (ts.isCallExpression(expression)) {
+      const callee = staticPropertyPath(expression.expression, constBindings)?.join('.');
+      return Boolean(callee && callableResultBindings.has(callee));
+    }
+    return false;
+  };
+  const propagateCallableInitializer = (target, node) => {
+    const expression = unwrapExpression(node);
+    const source = staticPropertyPath(expression, constBindings)?.join('.');
+    if (isTrackedCallableExpression(expression)) return recordCallableTarget(target);
     if (ts.isConditionalExpression(expression)) {
       return [expression.whenTrue, expression.whenFalse]
         .some((value) => propagateCallableInitializer(target, value));
@@ -611,6 +665,96 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return changed;
   };
+  const propagateCallableBinding = (name, initializer) => {
+    const target = unwrapExpression(name);
+    const expression = unwrapExpression(initializer);
+    if (ts.isIdentifier(target)) return propagateCallableInitializer(target.text, expression);
+    let changed = false;
+    if (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target)) {
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const elementTarget = ts.isBindingElement(element)
+          ? element.name
+          : ts.isSpreadElement(element)
+            ? element.expression
+            : element;
+        if (ts.isArrayLiteralExpression(expression)) {
+          const value = expression.elements[index];
+          if (value && !ts.isOmittedExpression(value)) {
+            changed = propagateCallableBinding(
+              elementTarget,
+              ts.isSpreadElement(value) ? value.expression : value,
+            ) || changed;
+          }
+        } else {
+          for (const path of literalMemberPaths(expression, String(index))) {
+            if (callableBindings.has(path) || callablePaths.has(path)) {
+              const binding = unwrapExpression(elementTarget);
+              if (ts.isIdentifier(binding)) changed = recordCallableTarget(binding.text) || changed;
+            }
+          }
+        }
+      }
+      return changed;
+    }
+    if (ts.isObjectBindingPattern(target) || ts.isObjectLiteralExpression(target)) {
+      for (const property of target.properties ?? target.elements) {
+        if (ts.isBindingElement(property)) {
+          if (property.dotDotDotToken) continue;
+          const key = property.propertyName
+            ? propertyNameText(property.propertyName)
+            : ts.isIdentifier(property.name)
+              ? property.name.text
+              : null;
+          if (key === null) continue;
+          for (const value of literalMemberValues(expression, key)) {
+            changed = propagateCallableBinding(property.name, value) || changed;
+          }
+          for (const path of literalMemberPaths(expression, key)) {
+            const binding = unwrapExpression(property.name);
+            if (
+              ts.isIdentifier(binding)
+              && (callableBindings.has(path) || callablePaths.has(path))
+            ) changed = recordCallableTarget(binding.text) || changed;
+          }
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          for (const value of literalMemberValues(expression, property.name.text)) {
+            changed = propagateCallableBinding(property.name, value) || changed;
+          }
+        } else if (ts.isPropertyAssignment(property)) {
+          const key = propertyNameText(property.name);
+          for (const value of literalMemberValues(expression, key)) {
+            changed = propagateCallableBinding(property.initializer, value) || changed;
+          }
+        }
+      }
+    }
+    return changed;
+  };
+  const functionBindingName = (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name) return node.name.text;
+    if (
+      (ts.isFunctionExpression(node) || ts.isArrowFunction(node))
+      && ts.isVariableDeclaration(node.parent)
+      && ts.isIdentifier(node.parent.name)
+    ) return node.parent.name.text;
+    return null;
+  };
+  const directFunctionOutputs = (node) => {
+    if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
+      return { returns: [node.body], yields: [] };
+    }
+    const returns = [];
+    const yields = [];
+    const visit = (current) => {
+      if (current !== node && ts.isFunctionLike(current)) return;
+      if (ts.isReturnStatement(current) && current.expression) returns.push(current.expression);
+      if (ts.isYieldExpression(current) && current.expression) yields.push(current.expression);
+      ts.forEachChild(current, visit);
+    };
+    if (node.body) visit(node.body);
+    return { returns, yields };
+  };
   let callableChanged = true;
   while (callableChanged) {
     callableChanged = false;
@@ -619,6 +763,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
         ts.isBinaryExpression(node)
         && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
       ) {
+        callableChanged = propagateCallableBinding(node.left, node.right) || callableChanged;
         const target = staticPropertyPath(node.left, constBindings)?.join('.');
         const source = staticPropertyPath(node.right, constBindings)?.join('.');
         if (
@@ -647,7 +792,33 @@ function dynamicCodeExecutionFailures(sourceFile) {
         }
         return;
       }
-      if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
+      if (ts.isParameter(node) && node.initializer) {
+        callableChanged = propagateCallableBinding(node.name, node.initializer) || callableChanged;
+        return;
+      }
+      if (ts.isFunctionLike(node)) {
+        const name = functionBindingName(node);
+        if (name) {
+          const outputs = directFunctionOutputs(node);
+          if (
+            outputs.returns.some(isTrackedCallableExpression)
+            && !callableResultBindings.has(name)
+          ) {
+            callableResultBindings.add(name);
+            callableChanged = true;
+          }
+          if (
+            outputs.yields.some(isTrackedCallableExpression)
+            && !callableYieldBindings.has(name)
+          ) {
+            callableYieldBindings.add(name);
+            callableChanged = true;
+          }
+        }
+      }
+      if (!ts.isVariableDeclaration(node) || !node.initializer) return;
+      callableChanged = propagateCallableBinding(node.name, node.initializer) || callableChanged;
+      if (!ts.isIdentifier(node.name)) return;
       const path = staticPropertyPath(node.initializer, constBindings)?.join('.');
       if (path) {
         callableChanged = propagateCallableContainers(node.name.text, path) || callableChanged;
@@ -684,6 +855,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (ts.isYieldExpression(node) && node.expression && containsCallableContainer(node.expression)) unsafe = true;
     if (ts.isParameter(node) && node.initializer && containsCallableContainer(node.initializer)) unsafe = true;
     if (ts.isPropertyDeclaration(node) && node.initializer && containsCallableContainer(node.initializer)) unsafe = true;
+    if (ts.isParameter(node) && node.initializer && isTrackedCallableExpression(node.initializer)) unsafe = true;
+    if (ts.isPropertyDeclaration(node) && node.initializer && isTrackedCallableExpression(node.initializer)) unsafe = true;
     if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
     if (
       ts.isPropertyAccessExpression(node)
@@ -1414,6 +1587,23 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   const rawGovernedTarget = (node) => governed(
     canonicalGlobalPath(staticPropertyPath(node, constBindings)),
   );
+  const unresolvedComputedTargetIsGoverned = (node) => {
+    let found = false;
+    const visit = (current) => {
+      const expression = unwrapExpression(current);
+      if (
+        ts.isElementAccessExpression(expression)
+        && expression.argumentExpression
+        && staticStringValue(expression.argumentExpression, constBindings) === null
+      ) {
+        const owner = resolvePath(expression.expression);
+        if (governed(owner) || owner?.join('.') === 'z') found = true;
+      }
+      ts.forEachChild(expression, visit);
+    };
+    visit(node);
+    return found;
+  };
   const possiblePrimitivePaths = (node) => {
     const expression = unwrapExpression(node);
     if (ts.isTaggedTemplateExpression(expression)) return possiblePrimitivePaths(expression.template);
@@ -1493,6 +1683,8 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
       && (
+        unresolvedComputedTargetIsGoverned(node.left)
+        ||
         rawGovernedTarget(node.left)
         || assignmentTargetExpressions(node.left).some(rawGovernedTarget)
         || (
@@ -1504,16 +1696,27 @@ function trustedPrimitiveMutationFailures(sourceFile) {
         )
       )
     ) mutated = true;
-    if (ts.isDeleteExpression(node) && governed(resolvePath(node.expression))) mutated = true;
+    if (
+      ts.isDeleteExpression(node)
+      && (
+        unresolvedComputedTargetIsGoverned(node.expression)
+        || governed(resolvePath(node.expression))
+      )
+    ) mutated = true;
     if (
       (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
       && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)
-      && governed(resolvePath(node.operand))
+      && (
+        unresolvedComputedTargetIsGoverned(node.operand)
+        || governed(resolvePath(node.operand))
+      )
     ) mutated = true;
     if (
       (ts.isForInStatement(node) || ts.isForOfStatement(node))
       && !ts.isVariableDeclarationList(node.initializer)
-      && assignmentTargetExpressions(node.initializer).some((target) => governed(resolvePath(target)))
+      && assignmentTargetExpressions(node.initializer).some((target) => (
+        unresolvedComputedTargetIsGoverned(target) || governed(resolvePath(target))
+      ))
     ) mutated = true;
     if (!ts.isCallExpression(node)) return;
     const calleePath = resolvePath(node.expression);
@@ -1536,6 +1739,11 @@ function trustedPrimitiveMutationFailures(sourceFile) {
 
 const GOVERNED_V2_DEPENDENCY_PATHS = new Map([
   ['publicRun.evidenceLedger', ['publicRun', 'evidenceLedger']],
+  ['publicRun.searchProjects', ['publicRun', 'searchProjects']],
+  ['publicRun.getProject', ['publicRun', 'getProject']],
+  ['publicRun.readResume', ['publicRun', 'readResume']],
+  ['publicRun.getContact', ['publicRun', 'getContact']],
+  ['publicRun.searchPublicSources', ['publicRun', 'searchPublicSources']],
   ['publicToolGate.waitForIdle', ['publicToolGate', 'waitForIdle']],
   ['artifacts.projects', ['artifacts', 'projects']],
   ['artifacts.resumeTracks', ['artifacts', 'resumeTracks']],
@@ -1545,7 +1753,7 @@ const GOVERNED_V2_DEPENDENCY_PATHS = new Map([
 
 function governedV2DependencyMutationFailures(sourceFile) {
   const mutated = new Set();
-  const aliases = new Map();
+  const aliases = new Map([['run', [['publicRun']]]]);
   const resolveAliasPaths = (paths) => {
     const pending = paths.map((path) => ({ path, expanded: new Set() }));
     const resolved = [];
@@ -1722,6 +1930,20 @@ function governedV2DependencyMutationFailures(sourceFile) {
     });
   }
   const governedPaths = (node) => resolveAliasPaths(possiblePropertyPaths(node));
+  const unresolvedComputedOwnerPaths = (node) => {
+    const paths = [];
+    const visit = (current) => {
+      const expression = unwrapExpression(current);
+      if (
+        ts.isElementAccessExpression(expression)
+        && expression.argumentExpression
+        && staticStringValue(expression.argumentExpression) === null
+      ) paths.push(...governedPaths(expression.expression));
+      ts.forEachChild(expression, visit);
+    };
+    visit(node);
+    return paths;
+  };
   const recordGovernedEscape = (node) => {
     for (const path of governedPaths(node)) {
       for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
@@ -1902,6 +2124,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
       recordGovernedEscape(node.right);
+      for (const path of unresolvedComputedOwnerPaths(node.left)) recordPath(path, true);
       const directPaths = [
         ...new Map(
           [...possiblePropertyPaths(node.left), ...governedPaths(node.left)]
@@ -1928,6 +2151,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
       return;
     }
     if (ts.isDeleteExpression(node)) {
+      for (const path of unresolvedComputedOwnerPaths(node.expression)) recordPath(path, true);
       for (const path of governedPaths(node.expression)) recordPath(path);
       return;
     }
@@ -1935,6 +2159,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
       (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
       && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)
     ) {
+      for (const path of unresolvedComputedOwnerPaths(node.operand)) recordPath(path, true);
       for (const path of governedPaths(node.operand)) recordPath(path);
       return;
     }
@@ -1943,6 +2168,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
       && !ts.isVariableDeclarationList(node.initializer)
     ) {
       for (const target of assignmentTargetExpressions(node.initializer)) {
+        for (const path of unresolvedComputedOwnerPaths(target)) recordPath(path, true);
         for (const path of governedPaths(target)) recordPath(path);
       }
       return;
@@ -2509,6 +2735,21 @@ function governedSchemaMutationFailures(sourceFile) {
   }
   const governedPaths = (node) => resolveAliasPaths(possiblePropertyPaths(node));
   const mutatesGovernedSchema = (path) => path && governed.has(path[0]);
+  const unresolvedComputedTargetIsGoverned = (node) => {
+    let found = false;
+    const visit = (current) => {
+      const expression = unwrapExpression(current);
+      if (
+        ts.isElementAccessExpression(expression)
+        && expression.argumentExpression
+        && staticStringValue(expression.argumentExpression) === null
+        && governedPaths(expression.expression).some(mutatesGovernedSchema)
+      ) found = true;
+      ts.forEachChild(expression, visit);
+    };
+    visit(node);
+    return found;
+  };
   let mutated = false;
   walk(sourceFile, (node) => {
     if (ts.isReturnStatement(node) && node.expression && governedPaths(node.expression).some(mutatesGovernedSchema)) {
@@ -2562,6 +2803,7 @@ function governedSchemaMutationFailures(sourceFile) {
       && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
       if (governedPaths(node.right).some(mutatesGovernedSchema)) mutated = true;
+      if (unresolvedComputedTargetIsGoverned(node.left)) mutated = true;
       if (
         possiblePropertyPaths(node.left).some(mutatesGovernedSchema)
         || assignmentTargetExpressions(node.left).some((target) => (
@@ -2579,19 +2821,26 @@ function governedSchemaMutationFailures(sourceFile) {
       return;
     }
     if (ts.isDeleteExpression(node)) {
-      if (governedPaths(node.expression).some(mutatesGovernedSchema)) mutated = true;
+      if (
+        unresolvedComputedTargetIsGoverned(node.expression)
+        || governedPaths(node.expression).some(mutatesGovernedSchema)
+      ) mutated = true;
       return;
     }
     if (
       (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
       && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)
-      && governedPaths(node.operand).some(mutatesGovernedSchema)
+      && (
+        unresolvedComputedTargetIsGoverned(node.operand)
+        || governedPaths(node.operand).some(mutatesGovernedSchema)
+      )
     ) mutated = true;
     if (
       (ts.isForInStatement(node) || ts.isForOfStatement(node))
       && !ts.isVariableDeclarationList(node.initializer)
       && assignmentTargetExpressions(node.initializer).some((target) => (
-        governedPaths(target).some(mutatesGovernedSchema)
+        unresolvedComputedTargetIsGoverned(target)
+        || governedPaths(target).some(mutatesGovernedSchema)
       ))
     ) mutated = true;
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
