@@ -495,6 +495,13 @@ function dynamicCodeExecutionFailures(sourceFile) {
       || (path && path.some((_, index) => callableContainers.has(path.slice(0, index + 1).join('.'))));
   };
   walk(sourceFile, (node) => {
+    if (
+      (ts.isCallExpression(node) || ts.isNewExpression(node))
+      && node.arguments?.some((argument) => {
+        const path = staticPropertyPath(argument, constBindings)?.join('.');
+        return path ? isCallableContainer(path) : false;
+      })
+    ) unsafe = true;
     if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
     if (
       ts.isPropertyAccessExpression(node)
@@ -981,6 +988,12 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     };
     const pluralEntry = pluralDescriptorEntry(expression);
     if (pluralEntry) return pluralEntry;
+    if (
+      ts.isCallExpression(expression)
+      && resolvedCalleePath(expression.expression)?.join('.') === 'Reflect.get'
+      && resolvedCalleePath(expression.arguments[0])?.join('.') === 'globalThis'
+      && staticStringValue(expression.arguments[1], constBindings) === null
+    ) return ['UnknownIntrinsic'];
     const reflectedPrototype = reflectionPrototype(expression, 'Reflect.get');
     if (reflectedPrototype) return reflectedPrototype;
     const directDescriptorPrototype = reflectionPrototype(expression, 'Object.getOwnPropertyDescriptor')
@@ -1194,6 +1207,8 @@ function trustedPrimitiveMutationFailures(sourceFile) {
   const governedStoredValue = (node) => possiblePrimitivePaths(node).some((path) => (
     governed(path)
     || path.join('.') === 'z'
+    || (path.length === 1 && GOVERNED_INTRINSIC_PROTOTYPES.has(path[0]))
+    || (path.length === 2 && path[1] === '$descriptors')
     || intrinsicContainers.has(path.join('.'))
     || intrinsicContainerAliases.has(path.join('.'))
   ));
