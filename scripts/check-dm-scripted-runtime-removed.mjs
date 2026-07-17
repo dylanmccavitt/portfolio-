@@ -173,24 +173,52 @@ function propertyNameText(name) {
   return name.getText();
 }
 
-function staticStringValue(node) {
+function staticStringValue(node, bindings = new Map(), seen = new Set()) {
   const expression = unwrapExpression(node);
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+  if (ts.isIdentifier(expression) && bindings.has(expression.text) && !seen.has(expression.text)) {
+    return staticStringValue(
+      bindings.get(expression.text),
+      bindings,
+      new Set(seen).add(expression.text),
+    );
+  }
   if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-    const left = staticStringValue(expression.left);
-    const right = staticStringValue(expression.right);
+    const left = staticStringValue(expression.left, bindings, seen);
+    const right = staticStringValue(expression.right, bindings, seen);
     return left === null || right === null ? null : `${left}${right}`;
   }
   if (ts.isTemplateExpression(expression)) {
     let value = expression.head.text;
     for (const span of expression.templateSpans) {
-      const interpolation = staticStringValue(span.expression);
+      const interpolation = staticStringValue(span.expression, bindings, seen);
       if (interpolation === null) return null;
       value += interpolation + span.literal.text;
     }
     return value;
   }
   return null;
+}
+
+function immutableConstBindings(sourceFile) {
+  const bindings = new Map();
+  walk(sourceFile, (node) => {
+    if (
+      ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.initializer
+      && ts.isVariableDeclarationList(node.parent)
+      && (node.parent.flags & ts.NodeFlags.Const) !== 0
+    ) bindings.set(node.name.text, node.initializer);
+  });
+  for (const name of [...bindings.keys()]) {
+    let written = false;
+    walk(sourceFile, (node) => {
+      if (writesValueName(node, name)) written = true;
+    });
+    if (written) bindings.delete(name);
+  }
+  return bindings;
 }
 
 function callIsNamed(node, name) {
@@ -308,6 +336,7 @@ const DYNAMIC_CODE_NAMES = new Set([
 
 function dynamicCodeExecutionFailures(sourceFile) {
   let unsafe = false;
+  const constBindings = immutableConstBindings(sourceFile);
   walk(sourceFile, (node) => {
     if (ts.isIdentifier(node) && DYNAMIC_CODE_NAMES.has(node.text)) unsafe = true;
     if (
@@ -318,8 +347,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
       ts.isElementAccessExpression(node)
       && node.argumentExpression
       && (
-        DYNAMIC_CODE_NAMES.has(staticStringValue(node.argumentExpression))
-        || staticStringValue(node.argumentExpression) === 'constructor'
+        DYNAMIC_CODE_NAMES.has(staticStringValue(node.argumentExpression, constBindings))
+        || staticStringValue(node.argumentExpression, constBindings) === 'constructor'
       )
     ) unsafe = true;
     if (
@@ -504,25 +533,28 @@ function unwrapExpression(node) {
   return current;
 }
 
-function staticPropertyPath(node) {
+function staticPropertyPath(node, stringBindings = new Map()) {
   const expression = unwrapExpression(node);
   if (ts.isIdentifier(expression)) return [expression.text];
   if (ts.isPropertyAccessExpression(expression)) {
-    const parentPath = staticPropertyPath(expression.expression);
+    const parentPath = staticPropertyPath(expression.expression, stringBindings);
     return parentPath ? [...parentPath, expression.name.text] : null;
   }
   if (ts.isElementAccessExpression(expression)) {
     const argument = expression.argumentExpression && unwrapExpression(expression.argumentExpression);
-    if (!argument || (!ts.isStringLiteral(argument) && !ts.isNumericLiteral(argument))) return null;
+    const property = argument && (ts.isNumericLiteral(argument)
+      ? argument.text
+      : staticStringValue(argument, stringBindings));
+    if (property === null || property === undefined) return null;
     const container = unwrapExpression(expression.expression);
-    if (ts.isArrayLiteralExpression(container) && ts.isNumericLiteral(argument)) {
-      const element = container.elements[Number(argument.text)];
+    if (ts.isArrayLiteralExpression(container) && /^\d+$/.test(property)) {
+      const element = container.elements[Number(property)];
       if (!element || ts.isOmittedExpression(element)) return null;
-      return staticPropertyPath(ts.isSpreadElement(element) ? element.expression : element);
+      return staticPropertyPath(ts.isSpreadElement(element) ? element.expression : element, stringBindings);
     }
-    const parentPath = staticPropertyPath(container);
+    const parentPath = staticPropertyPath(container, stringBindings);
     if (!parentPath) return null;
-    return [...parentPath, argument.text];
+    return [...parentPath, property];
   }
   return null;
 }
@@ -559,6 +591,36 @@ function possiblePropertyPaths(node) {
   return path ? [path] : [];
 }
 
+function containedPropertyPaths(node) {
+  const paths = [];
+  const visit = (current) => {
+    if (current !== node && ts.isFunctionLike(current)) return;
+    if (current !== node) {
+      const isNestedPropertyBase = (
+        (ts.isPropertyAccessExpression(current.parent) || ts.isElementAccessExpression(current.parent))
+        && current.parent.expression === current
+      );
+      const isApprovedArtifactArrayArgument = (
+        ts.isIdentifier(current)
+        && current.text === 'ArtifactReferenceSchema'
+        && ts.isCallExpression(current.parent)
+        && current.parent.arguments.includes(current)
+        && ts.isPropertyAccessExpression(current.parent.expression)
+        && ts.isIdentifier(current.parent.expression.expression)
+        && current.parent.expression.expression.text === 'z'
+        && current.parent.expression.name.text === 'array'
+      );
+      const path = !isNestedPropertyBase && !isApprovedArtifactArrayArgument
+        ? staticPropertyPath(current)
+        : null;
+      if (path) paths.push(path);
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return paths;
+}
+
 const GOVERNED_INTRINSIC_PROTOTYPES = new Set([
   'Array',
   'Map',
@@ -571,12 +633,13 @@ const GOVERNED_INTRINSIC_PROTOTYPES = new Set([
 
 function trustedPrimitiveMutationFailures(sourceFile) {
   const aliases = new Map();
+  const constBindings = immutableConstBindings(sourceFile);
   let changed = true;
   while (changed) {
     changed = false;
     walk(sourceFile, (node) => {
       if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
-      const path = staticPropertyPath(node.initializer);
+      const path = staticPropertyPath(node.initializer, constBindings);
       if (!path) return;
       const replacement = aliases.get(path[0]);
       const resolved = replacement ? [...replacement, ...path.slice(1)] : path;
@@ -587,7 +650,7 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     });
   }
   const resolvePath = (node) => {
-    const path = staticPropertyPath(node);
+    const path = staticPropertyPath(node, constBindings);
     if (!path) return null;
     const replacement = aliases.get(path[0]);
     return replacement ? [...replacement, ...path.slice(1)] : path;
@@ -608,11 +671,15 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
     const owner = node.expression.expression;
     const method = node.expression.name.text;
-    const ownerName = ts.isIdentifier(owner) ? owner.text : null;
+    const ownerPath = resolvePath(owner);
+    const ownerName = ownerPath?.length === 1 ? ownerPath[0] : null;
     if (
       ((ownerName === 'Object' && ['defineProperty', 'defineProperties', 'setPrototypeOf', 'assign'].includes(method))
-        || (ownerName === 'Reflect' && ['set', 'setPrototypeOf'].includes(method)))
-      && governed(node.arguments[0] ? resolvePath(node.arguments[0]) : null)
+        || (ownerName === 'Reflect' && ['defineProperty', 'set', 'setPrototypeOf'].includes(method)))
+      && (() => {
+        const target = node.arguments[0] ? resolvePath(node.arguments[0]) : null;
+        return governed(target) || target?.[0] === 'z';
+      })()
     ) mutated = true;
   });
   return mutated
@@ -801,6 +868,25 @@ function governedV2DependencyMutationFailures(sourceFile) {
     });
   }
   const governedPaths = (node) => resolveAliasPaths(possiblePropertyPaths(node));
+  walk(sourceFile, (node) => {
+    if (
+      !ts.isObjectLiteralExpression(node)
+      && !ts.isArrayLiteralExpression(node)
+      && !ts.isNewExpression(node)
+    ) return;
+    if (
+      hasFunctionDeclarationAncestor(node, 'artifactAvailable')
+      || hasFunctionDeclarationAncestor(node, 'resolveArtifact')
+    ) return;
+    for (const path of resolveAliasPaths(containedPropertyPaths(node))) {
+      for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
+        if (
+          path.length === governedPath.length
+          && governedPath.every((part, index) => path[index] === part)
+        ) mutated.add(`${label} must not escape through an unapproved helper parameter`);
+      }
+    }
+  });
   const recordPath = (path, affectsDescendants = false) => {
     if (!path) return;
     for (const [label, governedPath] of GOVERNED_V2_DEPENDENCY_PATHS) {
@@ -1374,6 +1460,32 @@ function governedSchemaMutationFailures(sourceFile) {
   const governedPaths = (node) => resolveAliasPaths(possiblePropertyPaths(node));
   const mutatesGovernedSchema = (path) => path && governed.has(path[0]);
   let mutated = false;
+  walk(sourceFile, (node) => {
+    if (
+      !ts.isObjectLiteralExpression(node)
+      && !ts.isArrayLiteralExpression(node)
+      && !ts.isNewExpression(node)
+    ) return;
+    let approvedToolOptions = false;
+    let governedDeclarationContainer = false;
+    for (let current = node.parent; current && current !== sourceFile; current = current.parent) {
+      if (
+        ts.isVariableDeclaration(current)
+        && ts.isIdentifier(current.name)
+        && (governed.has(current.name.text) || current.name.text === 'agentTools')
+      ) governedDeclarationContainer = true;
+      if (ts.isCallExpression(current) && callIsNamed(current, 'tool') && current.arguments[0]) {
+        approvedToolOptions = current.arguments[0].pos <= node.pos && current.arguments[0].end >= node.end;
+        break;
+      }
+      if (ts.isStatement(current)) break;
+    }
+    if (
+      !approvedToolOptions
+      && !governedDeclarationContainer
+      && resolveAliasPaths(containedPropertyPaths(node)).some(mutatesGovernedSchema)
+    ) mutated = true;
+  });
   walk(sourceFile, (node) => {
     if (
       ts.isBinaryExpression(node)

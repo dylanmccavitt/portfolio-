@@ -879,6 +879,8 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `(async () => {})['con' + 'structor'](${JSON.stringify(hiddenWrite)})();`,
     '(async () => {})[`con${"structor"}`]("return 1")();',
     `Reflect.construct(Function, [${JSON.stringify(hiddenWrite)}])();`,
+    `const suffix = 'structor'; (async () => {})['con' + suffix](${JSON.stringify(hiddenWrite)})();`,
+    `const R = Reflect; R['con' + 'struct'](Function, [${JSON.stringify(hiddenWrite)}])();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1335,10 +1337,35 @@ test('rejects governed schema and artifact stores laundered through object conta
       "  const agentTools = contract === 'v2'",
       "  const box = { schema: V2FinalAnswerInputSchema };\n  box.schema.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
     ),
+    runtime.replace(
+      '  const siteBrief =',
+      '  const box = { nested: { projects: artifacts.projects } };\n  box.nested.projects.has = () => true;\n  const siteBrief =',
+    ),
+    runtime.replace(
+      "  const agentTools = contract === 'v2'",
+      "  const box = { nested: { schema: V2FinalAnswerInputSchema } };\n  box.nested.schema.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      '  const box = { ...{ projects: artifacts.projects } };\n  box.projects.has = () => true;\n  const siteBrief =',
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      "  const box = new Map([['projects', artifacts.projects]]);\n  box.get('projects')!.has = () => true;\n  const siteBrief =",
+    ),
+    runtime.replace(
+      '  const siteBrief =',
+      '  const mutate = (value: unknown) => value;\n  mutate({ projects: artifacts.projects });\n  const siteBrief =',
+    ),
   ];
   const expected = [
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1360,6 +1387,10 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  Map.prototype.has = () => true;\n  Map.prototype.get = () => ({ id: 'forged', links: [] });\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  String.prototype.charCodeAt = () => 65;\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const mapPrototype = Map.prototype;\n  Reflect.set(mapPrototype, 'has', () => true);\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  (z as any)['strict' + 'Object'] = () => ({});\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  Array['proto' + 'type'].flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const R = Reflect;\n  R.set(Map.prototype, 'has', () => true);\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  Reflect.defineProperty(z, 'strictObject', { value: () => ({}) });\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
