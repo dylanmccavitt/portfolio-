@@ -133,6 +133,40 @@ function resolveV2FinalAnswer(input, run, artifacts) {
     ...(input.followUp ? { followUp: input.followUp } : {}),
   };
 }
+function deduplicateArtifactReferences(references: ArtifactReference[]): ArtifactReference[] {
+  const seen = new Set<string>();
+  return references.filter((reference) => {
+    const key = \`\${reference.kind}:\${reference.id}\`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+function artifactAvailable(reference: ArtifactReference, artifacts: RunArtifacts): boolean {
+  if (reference.kind === 'project' || reference.kind === 'links') return artifacts.projects.has(reference.id);
+  if (reference.kind === 'resume') return artifacts.resumeTracks.has(reference.id);
+  if (reference.kind === 'contact') return artifacts.contact !== null;
+  return artifacts.sources.has(reference.id);
+}
+function resolveArtifact(reference: ArtifactReference, artifacts: RunArtifacts): DMAnswerArtifact[] {
+  if (reference.kind === 'project') {
+    const project = artifacts.projects.get(reference.id);
+    return project ? [{ kind: 'project', id: project.id, project }] : [];
+  }
+  if (reference.kind === 'resume') {
+    const track = artifacts.resumeTracks.get(reference.id);
+    return track ? [{ kind: 'resume', id: track.id, track }] : [];
+  }
+  if (reference.kind === 'contact') {
+    return artifacts.contact ? [{ kind: 'contact', id: 'contact', contact: artifacts.contact }] : [];
+  }
+  if (reference.kind === 'evidence') {
+    const source = artifacts.sources.get(reference.id);
+    return source ? [{ kind: 'evidence', id: source.id, source }] : [];
+  }
+  const project = artifacts.projects.get(reference.id);
+  return project ? [{ kind: 'links', id: \`links:\${project.id}\`, projectId: project.id, items: project.links }] : [];
+}
 function validateFinalAnswer(input, run, artifacts) {
   const segments = input.segments.map((segment) => {
     if (segment.kind === 'conversational') return FINALIZATION_ENUM_COPY.conversational[segment.act];
@@ -395,6 +429,45 @@ test('rejects assignment rebinding of the governed v2 resolver', async (t) => {
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
   assert.ok(result.failures.includes(
     'src/lib/dm/runtime.ts: v2 finalization must receive the untouched tool input and current-run ledgers exactly once',
+  ));
+});
+
+test('rejects mutation of a governed v2 artifact helper body', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "function artifactAvailable(reference: ArtifactReference, artifacts: RunArtifacts): boolean {",
+    "function artifactAvailable(reference: ArtifactReference, artifacts: RunArtifacts): boolean {\n  if (reference.kind === 'project') return false;",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 artifact helper artifactAvailable must retain its trusted declaration, body, and binding',
+  ));
+});
+
+test('rejects assignment rebinding of a governed v2 artifact helper', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "const agentTools = contract === 'v2'",
+    "artifactAvailable = () => false;\n  const agentTools = contract === 'v2'",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 artifact helper artifactAvailable must retain its trusted declaration, body, and binding',
+  ));
+});
+
+test('rejects local shadowing of a governed v2 artifact helper', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    "const agentTools = contract === 'v2'",
+    "const artifactAvailable = () => false;\n  const agentTools = contract === 'v2'",
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 artifact helper artifactAvailable must retain its trusted declaration, body, and binding',
   ));
 });
 

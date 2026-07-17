@@ -268,6 +268,79 @@ function compactNode(node, sourceFile) {
   return node?.getText(sourceFile).replace(/\s+/g, '').replace(/,([}\]])/g, '$1') ?? '';
 }
 
+function compactSyntax(source) {
+  return source.replace(/\s+/g, '').replace(/,([}\]])/g, '$1');
+}
+
+const V2_ARTIFACT_HELPER_DECLARATIONS = new Map([
+  ['deduplicateArtifactReferences', compactSyntax(`
+    function deduplicateArtifactReferences(references: ArtifactReference[]): ArtifactReference[] {
+      const seen = new Set<string>();
+      return references.filter((reference) => {
+        const key = \`${'${reference.kind}:${reference.id}'}\`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+  `)],
+  ['artifactAvailable', compactSyntax(`
+    function artifactAvailable(reference: ArtifactReference, artifacts: RunArtifacts): boolean {
+      if (reference.kind === 'project' || reference.kind === 'links') return artifacts.projects.has(reference.id);
+      if (reference.kind === 'resume') return artifacts.resumeTracks.has(reference.id);
+      if (reference.kind === 'contact') return artifacts.contact !== null;
+      return artifacts.sources.has(reference.id);
+    }
+  `)],
+  ['resolveArtifact', compactSyntax(`
+    function resolveArtifact(reference: ArtifactReference, artifacts: RunArtifacts): DMAnswerArtifact[] {
+      if (reference.kind === 'project') {
+        const project = artifacts.projects.get(reference.id);
+        return project ? [{ kind: 'project', id: project.id, project }] : [];
+      }
+      if (reference.kind === 'resume') {
+        const track = artifacts.resumeTracks.get(reference.id);
+        return track ? [{ kind: 'resume', id: track.id, track }] : [];
+      }
+      if (reference.kind === 'contact') {
+        return artifacts.contact ? [{ kind: 'contact', id: 'contact', contact: artifacts.contact }] : [];
+      }
+      if (reference.kind === 'evidence') {
+        const source = artifacts.sources.get(reference.id);
+        return source ? [{ kind: 'evidence', id: source.id, source }] : [];
+      }
+      const project = artifacts.projects.get(reference.id);
+      return project ? [{ kind: 'links', id: \`links:${'${project.id}'}\`, projectId: project.id, items: project.links }] : [];
+    }
+  `)],
+]);
+
+function v2ArtifactHelperFailures(sourceFile) {
+  const failures = [];
+  for (const [name, expectedDeclaration] of V2_ARTIFACT_HELPER_DECLARATIONS) {
+    const declarations = [];
+    walk(sourceFile, (node) => {
+      if (declaresValueName(node, name)) declarations.push(node);
+    });
+    const trustedDeclaration = declarations.find((node) => (
+      ts.isFunctionDeclaration(node) && node.parent === sourceFile
+    ));
+    let bindingWritten = false;
+    walk(sourceFile, (node) => {
+      if (writesValueName(node, name)) bindingWritten = true;
+    });
+    if (
+      declarations.length !== 1
+      || !trustedDeclaration
+      || compactNode(trustedDeclaration, sourceFile) !== expectedDeclaration
+      || bindingWritten
+    ) {
+      failures.push(`src/lib/dm/runtime.ts: v2 artifact helper ${name} must retain its trusted declaration, body, and binding`);
+    }
+  }
+  return failures;
+}
+
 function finalizeExecuteForSchema(root, sourceFile, schemaName) {
   let match = null;
   walk(root, (node) => {
@@ -655,6 +728,7 @@ export function finalizationBoundaryFailures(runtime) {
   failures.push(...schemaBoundaryFailures(sourceFile));
   failures.push(...finalizationCopyFailures(sourceFile));
   failures.push(...v2ContractFailures(sourceFile));
+  failures.push(...v2ArtifactHelperFailures(sourceFile));
   failures.push(...finalizationCallSiteFailures(sourceFile));
   const validate = functionDeclaration(sourceFile, 'validateFinalAnswer');
   if (!validate) failures.push('src/lib/dm/runtime.ts: validateFinalAnswer boundary is missing');
