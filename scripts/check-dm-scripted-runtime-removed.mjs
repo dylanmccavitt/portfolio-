@@ -171,6 +171,59 @@ function declaresValueName(node, name) {
   );
 }
 
+function assignmentTargetContainsValueName(target, name) {
+  if (ts.isIdentifier(target)) return target.text === name;
+  if (ts.isParenthesizedExpression(target)) {
+    return assignmentTargetContainsValueName(target.expression, name);
+  }
+  if (ts.isBinaryExpression(target) && target.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    return assignmentTargetContainsValueName(target.left, name);
+  }
+  if (ts.isArrayLiteralExpression(target)) {
+    return target.elements.some((element) => (
+      ts.isOmittedExpression(element)
+        ? false
+        : assignmentTargetContainsValueName(
+          ts.isSpreadElement(element) ? element.expression : element,
+          name,
+        )
+    ));
+  }
+  if (ts.isObjectLiteralExpression(target)) {
+    return target.properties.some((property) => {
+      if (ts.isShorthandPropertyAssignment(property)) return property.name.text === name;
+      if (ts.isPropertyAssignment(property)) {
+        return assignmentTargetContainsValueName(property.initializer, name);
+      }
+      if (ts.isSpreadAssignment(property)) {
+        return assignmentTargetContainsValueName(property.expression, name);
+      }
+      return false;
+    });
+  }
+  return false;
+}
+
+function writesValueName(node, name) {
+  if (
+    ts.isBinaryExpression(node)
+    && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+    && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  ) {
+    return assignmentTargetContainsValueName(node.left, name);
+  }
+  if (
+    (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+    && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+  ) {
+    return assignmentTargetContainsValueName(node.operand, name);
+  }
+  if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) {
+    return assignmentTargetContainsValueName(node.initializer, name);
+  }
+  return false;
+}
+
 function hasFunctionDeclarationAncestor(node, name) {
   for (let current = node.parent; current; current = current.parent) {
     if (ts.isFunctionDeclaration(current) && current.name?.text === name) return true;
@@ -499,13 +552,18 @@ function v2ContractFailures(sourceFile) {
 
   const resolveCalls = callExpressionsNamed(sourceFile, 'resolveV2FinalAnswer');
   let locallyShadowedResolver = false;
+  let resolverBindingWritten = false;
   walk(chatResponse ?? sourceFile, (node) => {
     if (node !== chatResponse && declaresValueName(node, 'resolveV2FinalAnswer')) {
       locallyShadowedResolver = true;
     }
   });
+  walk(sourceFile, (node) => {
+    if (writesValueName(node, 'resolveV2FinalAnswer')) resolverBindingWritten = true;
+  });
   if (
     locallyShadowedResolver
+    || resolverBindingWritten
     || resolveCalls.length !== 1
     || resolveCalls[0].arguments.map((argument) => argument.getText(sourceFile)).join(',') !== 'input,publicRun,artifacts'
     || !executeBelongsToCall(resolveCalls[0], 'tool', 'finalizeAnswer')

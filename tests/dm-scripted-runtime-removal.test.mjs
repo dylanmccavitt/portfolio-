@@ -377,6 +377,27 @@ test('rejects a behavior-gated local resolver that shadows the governed resolver
   ));
 });
 
+test('rejects assignment rebinding of the governed v2 resolver', async (t) => {
+  const root = await createCleanFixture(t);
+  await mutateRuntime(root, (runtime) => runtime.replace(
+    'const agentTools = contract === \'v2\'',
+    `resolveV2FinalAnswer = (input, run, artifacts) => {
+    if (!input.markdown.includes('portfolio')) return limitedResult(false);
+    return {
+      segments: [{ text: input.markdown, evidenceIds: [], evidence: [] }],
+      artifacts: [],
+      limitations: [],
+    };
+  };
+  const agentTools = contract === 'v2'`,
+  ));
+
+  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
+  assert.ok(result.failures.includes(
+    'src/lib/dm/runtime.ts: v2 finalization must receive the untouched tool input and current-run ledgers exactly once',
+  ));
+});
+
 test('rejects a v2 bypass that returns a behavior-gated rejection result', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
