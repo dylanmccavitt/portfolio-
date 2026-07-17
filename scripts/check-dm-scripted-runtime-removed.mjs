@@ -342,6 +342,12 @@ const DYNAMIC_CODE_NAMES = new Set([
 function dynamicCodeExecutionFailures(sourceFile) {
   let unsafe = false;
   const constBindings = immutableConstBindings(sourceFile);
+  const directlyInvokedBindings = new Set();
+  walk(sourceFile, (node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      directlyInvokedBindings.add(node.expression.text);
+    }
+  });
   const computedName = (node) => {
     const expression = unwrapExpression(node);
     return ts.isNumericLiteral(expression)
@@ -423,6 +429,15 @@ function dynamicCodeExecutionFailures(sourceFile) {
         couldProduceCallable(node.expression)
         || (ts.isCallExpression(node.parent) && node.parent.expression === node)
       )
+    ) unsafe = true;
+    if (
+      ts.isElementAccessExpression(node)
+      && node.argumentExpression
+      && computedName(node.argumentExpression) === null
+      && ts.isVariableDeclaration(node.parent)
+      && node.parent.initializer === node
+      && ts.isIdentifier(node.parent.name)
+      && directlyInvokedBindings.has(node.parent.name.text)
     ) unsafe = true;
     if (
       ts.isCallExpression(node)
@@ -653,6 +668,10 @@ function possiblePropertyPaths(node) {
       ...possiblePropertyPaths(expression.right),
     ];
   }
+  if (
+    ts.isBinaryExpression(expression)
+    && expression.operatorToken.kind === ts.SyntaxKind.CommaToken
+  ) return possiblePropertyPaths(expression.right);
   if (ts.isArrayLiteralExpression(expression)) {
     return expression.elements.flatMap((element) => (
       ts.isOmittedExpression(element)
@@ -768,6 +787,18 @@ function trustedPrimitiveMutationFailures(sourceFile) {
       (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
       && propertyNameText(expression.name ?? expression.argumentExpression) === '__proto__'
     ) return intrinsicPrototypeForValue(expression.expression);
+    if (ts.isPropertyAccessExpression(expression)) {
+      const parent = resolveDirectPath(expression.expression);
+      if (parent) return [...parent, expression.name.text];
+    }
+    if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+      const argument = unwrapExpression(expression.argumentExpression);
+      const property = ts.isNumericLiteral(argument)
+        ? argument.text
+        : staticStringValue(argument, constBindings);
+      const parent = property === null ? null : resolveDirectPath(expression.expression);
+      if (parent && property !== null) return [...parent, property];
+    }
     return staticPropertyPath(expression, constBindings);
   };
   const expandAlias = (path) => {
@@ -840,10 +871,42 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     (path[0] === 'z' && path.length > 1)
     || (GOVERNED_INTRINSIC_PROTOTYPES.has(path[0]) && path[1] === 'prototype')
   );
-  const governedStoredValue = (node) => {
-    const path = resolvePath(node);
-    return governed(path) || path?.join('.') === 'z';
+  const possiblePrimitivePaths = (node) => {
+    const expression = unwrapExpression(node);
+    if (ts.isConditionalExpression(expression)) {
+      return [...possiblePrimitivePaths(expression.whenTrue), ...possiblePrimitivePaths(expression.whenFalse)];
+    }
+    if (ts.isBinaryExpression(expression)) {
+      if (expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        return possiblePrimitivePaths(expression.right);
+      }
+      if (
+        expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+        || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+        || expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+      ) return [...possiblePrimitivePaths(expression.left), ...possiblePrimitivePaths(expression.right)];
+    }
+    if (ts.isArrayLiteralExpression(expression)) {
+      return expression.elements.flatMap((element) => (
+        ts.isOmittedExpression(element)
+          ? []
+          : possiblePrimitivePaths(ts.isSpreadElement(element) ? element.expression : element)
+      ));
+    }
+    if (ts.isObjectLiteralExpression(expression)) {
+      return expression.properties.flatMap((property) => {
+        if (ts.isShorthandPropertyAssignment(property)) return possiblePrimitivePaths(property.name);
+        if (ts.isPropertyAssignment(property)) return possiblePrimitivePaths(property.initializer);
+        if (ts.isSpreadAssignment(property)) return possiblePrimitivePaths(property.expression);
+        return [];
+      });
+    }
+    const path = resolvePath(expression);
+    return path ? [path] : [];
   };
+  const governedStoredValue = (node) => possiblePrimitivePaths(node).some((path) => (
+    governed(path) || path.join('.') === 'z'
+  ));
   let mutated = false;
   walk(sourceFile, (node) => {
     const escapesZ = (expression) => resolvePath(expression)?.join('.') === 'z';

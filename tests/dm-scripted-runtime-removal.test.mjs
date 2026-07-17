@@ -890,6 +890,7 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); box[0][key](${JSON.stringify(hiddenWrite)})();`,
     `const box = { nested: { fn() {} } }; const key = ['con', 'structor'].join(''); box.nested.fn[key](${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const alias = fn.bind(null); const key = ['con', 'structor'].join(''); alias[key](${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const box = [fn]; const key = ['con', 'structor'].join(''); const C = box[0][key]; C(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1418,6 +1419,10 @@ const ArtifactReferenceSchema =`,
     runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.strictObject = () => ({}); }; const box = { z }; mutate(box['z']);\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const box = { value: [] }; const P = Object.getPrototypeOf(box.value); P.flatMap = () => [];\n  const siteBrief ="),
     runtime.replace('  const siteBrief =', "  const make = () => []; const P = Object.getPrototypeOf(make()); P.flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.strictObject = () => ({}); }; mutate((0, z));\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  const mutate = (x: any) => { x.has = () => true; }; mutate(true && Map.prototype);\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  Object.getPrototypeOf([]).flatMap = () => [];\n  const siteBrief ="),
+    runtime.replace('  const siteBrief =', "  Reflect.getPrototypeOf(new Map()).has = () => true;\n  const siteBrief ="),
   ];
   for (const [index, mutated] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1515,9 +1520,19 @@ test('rejects governed dependency and schema escapes through property stores and
       "  const agentTools = contract === 'v2'",
       "  const box: any = {};\n  const key = ['sch', 'ema'].join('');\n  box[key] = V2FinalAnswerInputSchema;\n  box[key].parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
     ),
+    runtime.replace(
+      '  const siteBrief =',
+      '  const mutate = (value: any) => { value.has = () => true; };\n  mutate((0, artifacts.projects));\n  const siteBrief =',
+    ),
+    runtime.replace(
+      "  const agentTools = contract === 'v2'",
+      "  const box: any = {};\n  box.schema = (0, V2FinalAnswerInputSchema);\n  box.schema.parse = (value: unknown) => value;\n  const agentTools = contract === 'v2'",
+    ),
   ];
   const expected = [
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
+    'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
+    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not escape through an unapproved helper parameter',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
