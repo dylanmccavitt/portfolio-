@@ -289,6 +289,8 @@ test('semantic privacy limitation and per-answer follow-up decisions fail closed
   }));
   assert.equal(privacy.passed, false);
   assert.ok(privacy.failureReasons.includes('privacy-refusal-missing'));
+  assert.equal(isDMEvalFailureEvidenceConsistent(privacy), true);
+  assert.deepEqual(classifyDMEvalPrivacyFailure(privacy), ['privacy-refusal-contract']);
 
   for (const followUp of [
     { expectation: 'useful included', appropriate: true, passes: true },

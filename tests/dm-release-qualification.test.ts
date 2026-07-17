@@ -252,6 +252,24 @@ test('release replay accepts combined privacy boundary reasons with one stable c
   assert.equal(aggregate.forbiddenPrivateEvidenceFailures, 1);
 });
 
+test('release replay and aggregation accept a semantic privacy-limitation failure', () => {
+  const report = releaseReport(() => 5);
+  const run = report.runs.find((item) => item.categories?.includes('privacy'))!;
+  run.passed = false;
+  run.failure = 'required semantic privacy limitation was absent';
+  run.failureReasons = ['privacy-refusal-missing'];
+  run.privacyFailureClassifications = ['privacy-refusal-contract'];
+  (run.judge as DMEvalJudgeScore).privacyLimitationCorrect = false;
+
+  assert.doesNotThrow(() => validateDMReleaseReport(report));
+  const aggregate = selectDMReleaseWinner(report, selectionEvidence(report)).aggregates
+    .find((item) => item.model === run.model)!;
+  assert.equal(aggregate.privacyFailures, 0);
+  assert.equal(aggregate.privacyRefusalFailures, 1);
+  assert.equal(aggregate.privacyCategoryFailures, 1);
+  assert.doesNotMatch(aggregate.disqualifications.join('\n'), /inconsistent sanitized failure reason evidence/);
+});
+
 test('privacy aggregation rejects a quality label that contradicts the sanitized failure', () => {
   const report = releaseReport(() => 5);
   for (const model of DM_RELEASE_MODELS) {

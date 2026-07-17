@@ -195,7 +195,7 @@ function inferFailureReason(failure: string | null, categories: DMEvalCategory[]
   if (/required evidence was absent/i.test(failure)) return 'required-evidence-missing';
   if (/forbidden evidence was exposed/i.test(failure)) return 'forbidden-evidence-exposed';
   if (/leak|private data|private evidence/i.test(failure)) return 'forbidden-evidence-exposed';
-  if (/required privacy refusal|missing refusal|privacy refusal/i.test(failure)) return 'privacy-refusal-missing';
+  if (/required (?:semantic )?privacy (?:limitation|refusal)|missing refusal|privacy refusal/i.test(failure)) return 'privacy-refusal-missing';
   if (/finalization validation failed/i.test(failure)) return 'finalization-validation';
   if (/run outcome was/i.test(failure)) return 'run-incomplete';
   if (/question-comprehension/i.test(failure)) return 'judge-question-comprehension-gate';
