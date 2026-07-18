@@ -456,23 +456,39 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (!ts.isIdentifier(value) || seen.has(value.text) || !initializerNodes.has(value.text)) return value;
     return resolveInitializerNode(initializerNodes.get(value.text), new Set(seen).add(value.text));
   };
-  const resolveSafeInitializerNode = (node, seen = new Set()) => {
-    const value = unwrapExpression(node);
-    if (!ts.isIdentifier(value) || seen.has(value.text)) return value;
-    const visible = (initializerDeclarations.get(value.text) ?? [])
+  const visibleInitializerDeclaration = (identifier) => (
+    (initializerDeclarations.get(identifier.text) ?? [])
       .filter(({ scope }) => {
-        for (let current = value; current; current = current.parent) {
+        for (let current = identifier; current; current = current.parent) {
           if (current === scope) return true;
         }
         return false;
       })
       .sort((left, right) => (
         (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
-      ));
-    const initializer = visible[0]?.initializer;
+      ))[0]
+  );
+  const resolveSafeInitializerNode = (node, seen = new Set()) => {
+    const value = unwrapExpression(node);
+    if (!ts.isIdentifier(value) || seen.has(value.text)) return value;
+    const initializer = visibleInitializerDeclaration(value)?.initializer;
     return initializer
       ? resolveSafeInitializerNode(initializer, new Set(seen).add(value.text))
       : value;
+  };
+  const isScopedCallableIdentifier = (identifier) => {
+    const initializer = visibleInitializerDeclaration(identifier)?.initializer;
+    if (!initializer) return callableBindings.has(identifier.text);
+    const value = unwrapExpression(initializer);
+    if (
+      ts.isFunctionExpression(value)
+      || ts.isArrowFunction(value)
+      || ts.isClassExpression(value)
+    ) return true;
+    const path = staticPropertyPath(value, constBindings)?.join('.');
+    return Boolean(path && path !== identifier.text && (
+      callableBindings.has(path) || callablePaths.has(path)
+    ));
   };
   const classLineage = (name, seen = new Set()) => {
     if (!name || seen.has(name)) return [];
@@ -515,15 +531,29 @@ function dynamicCodeExecutionFailures(sourceFile) {
       const fn = calleePath && functionNodes.get(calleePath);
       if (fn) {
         const returns = [];
+        const localAliases = new Map();
         const visit = (current) => {
           if (current !== fn && ts.isFunctionLike(current)) return;
           if (ts.isReturnStatement(current) && current.expression) returns.push(current.expression);
+          if (
+            ts.isVariableDeclaration(current)
+            && ts.isIdentifier(current.name)
+            && current.initializer
+          ) {
+            const aliasPath = staticPropertyPath(current.initializer, constBindings);
+            if (aliasPath) localAliases.set(current.name.text, aliasPath);
+          }
           ts.forEachChild(current, visit);
         };
         if (ts.isArrowFunction(fn) && !ts.isBlock(fn.body)) returns.push(fn.body);
         else if (fn.body) visit(fn.body);
         for (const returned of returns) {
-          const returnedPath = staticPropertyPath(returned, constBindings);
+          let returnedPath = staticPropertyPath(returned, constBindings);
+          const expanded = new Set();
+          while (returnedPath && localAliases.has(returnedPath[0]) && !expanded.has(returnedPath[0])) {
+            expanded.add(returnedPath[0]);
+            returnedPath = [...localAliases.get(returnedPath[0]), ...returnedPath.slice(1)];
+          }
           const parameterIndex = returnedPath && fn.parameters.findIndex((parameter) => (
             ts.isIdentifier(parameter.name) && parameter.name.text === returnedPath[0]
           ));
@@ -536,8 +566,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return new Set();
   };
-  const recordClassAliasPath = (name, initializer) => {
-    const sources = classAliasSources(initializer);
+  const recordClassAliasSources = (name, sources) => {
     if (sources.size === 0) return false;
     const existing = classAliases.get(name) ?? new Set();
     const before = existing.size;
@@ -546,6 +575,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
     classNames.add(name);
     return existing.size !== before;
   };
+  const recordClassAliasPath = (name, initializer) => (
+    recordClassAliasSources(name, classAliasSources(initializer))
+  );
   const recordClassAlias = (target, initializer) => {
     const name = unwrapExpression(target);
     if (ts.isIdentifier(name)) {
@@ -563,7 +595,6 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     if (
       (ts.isObjectBindingPattern(name) || ts.isObjectLiteralExpression(name))
-      && ts.isObjectLiteralExpression(unwrapExpression(initializer))
     ) {
       let changed = false;
       for (const property of name.elements ?? name.properties) {
@@ -574,6 +605,16 @@ function dynamicCodeExecutionFailures(sourceFile) {
         if (key === null) continue;
         for (const value of literalMemberValues(initializer, key)) {
           changed = recordClassAlias(property.name, value) || changed;
+        }
+        if (ts.isIdentifier(property.name)) {
+          for (const path of literalMemberPaths(initializer, key)) {
+            if (classNames.has(path)) {
+              changed = recordClassAliasSources(
+                property.name.text,
+                new Set([path]),
+              ) || changed;
+            }
+          }
         }
       }
       return changed;
@@ -1217,6 +1258,19 @@ function dynamicCodeExecutionFailures(sourceFile) {
     return values;
   };
   const invocationArguments = (call) => {
+    const expandArguments = (argumentsList, seen = new Set()) => argumentsList.flatMap((argument) => {
+      if (!ts.isSpreadElement(argument)) return [argument];
+      const spreadExpression = unwrapExpression(argument.expression);
+      const spreadName = ts.isIdentifier(spreadExpression) ? spreadExpression.text : null;
+      if (spreadName && seen.has(spreadName)) return [argument.expression];
+      const spread = resolveInitializerNode(spreadExpression);
+      if (!ts.isArrayLiteralExpression(spread)) return [argument.expression];
+      const nextSeen = spreadName ? new Set(seen).add(spreadName) : seen;
+      return expandArguments(
+        spread.elements.filter((element) => !ts.isOmittedExpression(element)),
+        nextSeen,
+      );
+    });
     const callee = unwrapExpression(call.expression);
     if (ts.isPropertyAccessExpression(callee) || ts.isElementAccessExpression(callee)) {
       const method = ts.isPropertyAccessExpression(callee)
@@ -1237,15 +1291,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return {
       callee: call.expression,
-      argumentsList: call.arguments.flatMap((argument) => {
-        if (!ts.isSpreadElement(argument)) return [argument];
-        const spread = resolveInitializerNode(argument.expression);
-        return ts.isArrayLiteralExpression(spread)
-          ? spread.elements.filter((element) => !ts.isOmittedExpression(element)).map((element) => (
-            ts.isSpreadElement(element) ? element.expression : element
-          ))
-          : [argument.expression];
-      }),
+      argumentsList: expandArguments(call.arguments),
     };
   };
   const passthroughArgumentValues = (call) => {
@@ -1272,7 +1318,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
       || ts.isArrowFunction(expression)
       || ts.isClassExpression(expression)
       || (source && (
-        callableBindings.has(source)
+        (ts.isIdentifier(expression)
+          ? isScopedCallableIdentifier(expression)
+          : callableBindings.has(source))
         || callablePaths.has(source)
         || callableAccessorBindings.has(source)
       ))
@@ -1392,6 +1440,13 @@ function dynamicCodeExecutionFailures(sourceFile) {
                 && !callableResultWildcards.has(target)
               ) {
                 callableResultWildcards.add(target);
+                changed = true;
+              }
+              if (
+                isTrackedCallableExpression(resolvedValue)
+                && !callableAccessorWildcards.has(target)
+              ) {
+                callableAccessorWildcards.add(target);
                 changed = true;
               }
             }

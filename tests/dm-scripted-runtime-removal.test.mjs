@@ -1006,6 +1006,10 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const expose = () => fn; const name = getPublicToolName(); const holder: any = Object.fromEntries([[name, expose]]); const callable = holder[name](); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; class Holder { expose() { return fn; } } const { C } = { C: Holder }; const callable = new C().expose(); const key = ['con', 'structor'].join(''); let Constructor: any; [Constructor] = [callable[key]]; Constructor(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const dynamicName = getPublicToolName(); const holder = { [dynamicName]() { return fn; }, expose() { const result = fn; return result; } }; const result = { safe: true }; const callable: any = holder.expose(); const key = ['con', 'structor'].join(''); callable[key](${JSON.stringify(hiddenWrite)})(); void result;`,
+    `const fn = () => {}; const identity = (value: any) => value; const args = [fn]; const nested = [...args]; const callable = identity(...nested); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const name = getPublicToolName(); const holder: any = Object.fromEntries([[name, fn]]); const callable = holder[name]; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; class Holder { expose() { return fn; } } const namespace = { C: Holder }; const { C } = namespace; const callable = new C().expose(); const key = ['con', 'structor'].join(''); let Constructor: any; [Constructor] = [callable[key]]; Constructor(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; class Holder { expose() { return fn; } } const identity = (value: any) => { const alias = value; return alias; }; const C = identity(Holder); const callable = new C().expose(); const key = ['con', 'structor'].join(''); let Constructor: any; [Constructor] = [callable[key]]; Constructor(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1069,6 +1073,17 @@ test('allows explicit safe callable members with structured and local outputs', 
   const mutated = runtime.replace(
     '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
     "        const fn = () => 'callable'; const dynamicName = getPublicToolName(); const safeConstant = { safe: true }; const holder = { [dynamicName]() { return fn; }, object() { return { safe: true }; }, array() { return ['safe']; }, missing() { return undefined; }, constant() { return safeConstant; } }; const objectValue: any = holder.object(); const arrayValue: any = holder.array(); const missingValue: any = holder.missing(); const constantValue: any = holder.constant(); const safeKey = getPublicToolName(); void objectValue[safeKey]; void arrayValue[safeKey]; void missingValue?.[safeKey]; void constantValue[safeKey];\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
+  );
+  assert.ok(!finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+  ));
+});
+
+test('keeps unrelated callable local names from overriding scoped safe results', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    "        function unrelated() { const value = () => 'callable'; void value; } const fn = () => 'callable'; const dynamicName = getPublicToolName(); const holder = { [dynamicName]() { return fn; }, safe() { const value = { safe: true }; return value; } }; const ordinary: any = holder.safe(); const safeKey = getPublicToolName(); void ordinary[safeKey]; void unrelated;\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
   );
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
