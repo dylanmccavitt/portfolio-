@@ -1019,6 +1019,10 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; let callable: any = { safe: true }; [callable] = [fn]; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; const identity = (value: any) => value; let bound: any; bound = identity.bind(null, fn); const callable = bound(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
     `const fn = () => {}; class Holder { expose() { return fn; } } class Other {} const choose = (value: any) => getPublicToolName() ? value : Other; const C = choose(Holder); const callable = new C().expose(); const key = ['con', 'structor'].join(''); let Constructor: any; [Constructor] = [callable[key]]; Constructor(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; let callable: any = null; callable ??= fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; let callable: any = null; callable ||= fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; let callable: any = fn; callable &&= fn; const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; class Holder { expose() { return fn; } } const pick = (box: any) => box.C; const C = pick({ C: Holder }); const callable = new C().expose(); const key = ['con', 'structor'].join(''); let Constructor: any; [Constructor] = [callable[key]]; Constructor(${JSON.stringify(hiddenWrite)})();`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1104,6 +1108,17 @@ test('keeps unrelated callable names from tainting scoped safe dynamic reads', a
   const mutated = runtime.replace(
     '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
     "        function unrelated() { const value = () => 'callable'; void value; } { const value: any = { safe: true }; const safeKey = getPublicToolName(); void value[safeKey]; } void unrelated;\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
+  );
+  assert.ok(!finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+  ));
+});
+
+test('keeps unrelated callable names from tainting safe destructured bindings', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    "        function unrelated() { const value = () => 'callable'; void value; } { const { value } = { value: { safe: true } }; const [item] = [{ safe: true }]; const safeKey = getPublicToolName(); void (value as any)[safeKey]; void (item as any)[safeKey]; } void unrelated;\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
   );
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
@@ -2227,6 +2242,23 @@ test('does not apply the global governed run alias to a shadowing parameter', as
   );
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed v2 dependency publicRun.evidenceLedger must not escape through an unapproved helper parameter',
+  ));
+});
+
+test('keeps catch-scoped run shadowing from suppressing authenticated run governance', async () => {
+  const runtime = await liveRuntimeSource();
+  const helperStart = `function createRuntimePublicTools(
+  run: PublicAgentToolRun,
+  artifacts: RunArtifacts,
+  metrics: ReturnType<typeof createDMMetricsRecorder>,
+  gate: PublicToolGate,
+) {`;
+  const mutated = runtime.replace(
+    helperStart,
+    `${helperStart}\n  try { throw { evidenceLedger: { safe: true } }; } catch (run) { void run; }\n  run.evidenceLedger = { ...run.evidenceLedger };`,
+  );
+  assert.ok(finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed v2 dependency publicRun.evidenceLedger must not be replaced or redefined',
   ));
 });
 

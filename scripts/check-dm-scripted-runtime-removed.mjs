@@ -380,6 +380,12 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const parameterDeclarations = new Map();
   const catchDeclarations = new Map();
   const assignmentDeclarations = new Map();
+  const callableAssignmentTokens = new Set([
+    ts.SyntaxKind.EqualsToken,
+    ts.SyntaxKind.QuestionQuestionEqualsToken,
+    ts.SyntaxKind.BarBarEqualsToken,
+    ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+  ]);
   const anonymousOwnerPath = (node, kind = 'owner') => `@${kind}:${node.pos}`;
   const classBindingName = (node) => {
     if ((ts.isClassDeclaration(node) || ts.isClassExpression(node)) && node.name) return node.name.text;
@@ -407,6 +413,45 @@ function dynamicCodeExecutionFailures(sourceFile) {
       }
     }
     return sourceFile;
+  };
+  const bindingInitializers = (name, initializer, entries = []) => {
+    const target = unwrapExpression(name);
+    const value = unwrapExpression(initializer);
+    if (ts.isIdentifier(target)) {
+      entries.push({ name: target.text, initializer: value });
+      return entries;
+    }
+    if (ts.isObjectBindingPattern(target) && ts.isObjectLiteralExpression(value)) {
+      for (const element of target.elements) {
+        if (element.dotDotDotToken) continue;
+        const key = element.propertyName
+          ? propertyNameText(element.propertyName)
+          : ts.isIdentifier(element.name) ? element.name.text : null;
+        if (key === null) continue;
+        const property = value.properties.find((candidate) => (
+          (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+          && propertyNameText(candidate.name) === key
+        ));
+        if (!property) continue;
+        const selected = ts.isShorthandPropertyAssignment(property)
+          ? property.name
+          : property.initializer;
+        bindingInitializers(element.name, selected, entries);
+      }
+    }
+    if (ts.isArrayBindingPattern(target) && ts.isArrayLiteralExpression(value)) {
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const selected = value.elements[index];
+        if (!selected || ts.isOmittedExpression(selected)) continue;
+        bindingInitializers(
+          element.name,
+          ts.isSpreadElement(selected) ? selected.expression : selected,
+          entries,
+        );
+      }
+    }
+    return entries;
   };
   walk(sourceFile, (node) => {
     if (
@@ -440,7 +485,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     if (
       ts.isBinaryExpression(node)
-      && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && callableAssignmentTokens.has(node.operatorToken.kind)
       && ts.isIdentifier(unwrapExpression(node.left))
     ) {
       const name = unwrapExpression(node.left).text;
@@ -448,12 +493,16 @@ function dynamicCodeExecutionFailures(sourceFile) {
       declarations.push({ value: node.right, scope: lexicalScopeNode(node), position: node.pos });
       assignmentDeclarations.set(name, declarations);
     }
-    if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name) || !node.initializer) return;
+    if (!ts.isVariableDeclaration(node) || !node.initializer) return;
     const initializer = unwrapExpression(node.initializer);
+    const scope = initializerScopeNode(node);
+    for (const binding of bindingInitializers(node.name, initializer)) {
+      const declarations = initializerDeclarations.get(binding.name) ?? [];
+      declarations.push({ initializer: binding.initializer, scope });
+      initializerDeclarations.set(binding.name, declarations);
+    }
+    if (!ts.isIdentifier(node.name)) return;
     initializerNodes.set(node.name.text, initializer);
-    const declarations = initializerDeclarations.get(node.name.text) ?? [];
-    declarations.push({ initializer, scope: initializerScopeNode(node) });
-    initializerDeclarations.set(node.name.text, declarations);
     if (
       ts.isFunctionExpression(initializer)
       || ts.isArrowFunction(initializer)
@@ -595,9 +644,19 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const classAliasSources = (node, substitutions = new Map(), seenCalls = new Set()) => {
     const expression = unwrapExpression(node);
-    const path = staticPropertyPath(expression, constBindings)?.join('.');
+    const propertyPath = staticPropertyPath(expression, constBindings);
+    const path = propertyPath?.join('.');
     if (path && substitutions.has(path)) {
       return classAliasSources(substitutions.get(path), substitutions, seenCalls);
+    }
+    if (propertyPath?.length > 1 && substitutions.has(propertyPath[0])) {
+      let selected = [substitutions.get(propertyPath[0])];
+      for (const key of propertyPath.slice(1)) {
+        selected = selected.flatMap((value) => literalMemberValues(value, key));
+      }
+      return new Set(selected.flatMap((value) => (
+        [...classAliasSources(value, substitutions, seenCalls)]
+      )));
     }
     if (path && classNames.has(path)) return new Set([path]);
     if (ts.isClassExpression(expression)) {
@@ -676,10 +735,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
             const delegated = classAliasSources(returned, callSubstitutions, nextSeenCalls);
             if (delegated.size > 0) return delegated;
           }
-          if (ts.isConditionalExpression(unwrapExpression(returned))) {
-            const selected = classAliasSources(returned, callSubstitutions, nextSeenCalls);
-            if (selected.size > 0) return selected;
-          }
+          const selected = classAliasSources(returned, callSubstitutions, nextSeenCalls);
+          if (selected.size > 0) return selected;
         }
       }
     }
@@ -2107,7 +2164,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
       callableChanged = propagateCallableInstaller(node) || callableChanged;
       if (
         ts.isBinaryExpression(node)
-        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && callableAssignmentTokens.has(node.operatorToken.kind)
       ) {
         const assignedTarget = unwrapExpression(node.left);
         const assignedValue = unwrapExpression(node.right);
@@ -3184,6 +3241,7 @@ function governedV2DependencyMutationFailures(sourceFile) {
     let current = node;
     while (current && current !== sourceFile) {
       if (ts.isBlock(current)) scopes.push(`block:${current.pos}`);
+      if (ts.isCatchClause(current)) scopes.push(`catch:${current.pos}`);
       if (ts.isFunctionLike(current)) scopes.push(`function:${current.pos}`);
       current = current.parent;
     }
