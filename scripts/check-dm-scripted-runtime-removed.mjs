@@ -619,6 +619,67 @@ function dynamicCodeExecutionFailures(sourceFile) {
     return paths;
   };
   const parameterCallableKey = (parameter, binding) => `${parameter.pos}:${binding}`;
+  const assignmentIsUnconditional = (node, scope) => {
+    for (let current = node.parent; current && current !== scope; current = current.parent) {
+      if (
+        ts.isIfStatement(current)
+        || ts.isConditionalExpression(current)
+        || ts.isIterationStatement(current, false)
+        || ts.isCaseClause(current)
+        || ts.isDefaultClause(current)
+        || ts.isCatchClause(current)
+        || ts.isTryStatement(current)
+        || (
+          ts.isBinaryExpression(current)
+          && (
+            current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+            || current.operatorToken.kind === ts.SyntaxKind.BarBarToken
+            || current.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+          )
+        )
+      ) return false;
+    }
+    return true;
+  };
+  const assignmentBindingInitializers = (name, initializer, entries = []) => {
+    const target = unwrapExpression(name);
+    const value = unwrapExpression(initializer);
+    if (ts.isIdentifier(target)) {
+      entries.push({ name: target.text, initializer: value });
+      return entries;
+    }
+    if (ts.isArrayLiteralExpression(target) && ts.isArrayLiteralExpression(value)) {
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element)) continue;
+        const selected = value.elements[index];
+        if (!selected || ts.isOmittedExpression(selected)) continue;
+        assignmentBindingInitializers(
+          ts.isSpreadElement(element) ? element.expression : element,
+          ts.isSpreadElement(selected) ? selected.expression : selected,
+          entries,
+        );
+      }
+    }
+    if (ts.isObjectLiteralExpression(target) && ts.isObjectLiteralExpression(value)) {
+      for (const property of target.properties) {
+        if (!(ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property))) {
+          continue;
+        }
+        const key = propertyNameText(property.name);
+        const selected = value.properties.find((candidate) => (
+          (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+          && propertyNameText(candidate.name) === key
+        ));
+        if (!selected) continue;
+        assignmentBindingInitializers(
+          ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer,
+          ts.isShorthandPropertyAssignment(selected) ? selected.name : selected.initializer,
+          entries,
+        );
+      }
+    }
+    return entries;
+  };
   walk(sourceFile, (node) => {
     if (
       (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node))
@@ -654,20 +715,19 @@ function dynamicCodeExecutionFailures(sourceFile) {
       declarations.push({ declaration: node.variableDeclaration, scope: node });
       catchDeclarations.set(name, declarations);
     }
-    if (
-      ts.isBinaryExpression(node)
-      && callableAssignmentTokens.has(node.operatorToken.kind)
-      && ts.isIdentifier(unwrapExpression(node.left))
-    ) {
-      const name = unwrapExpression(node.left).text;
-      const declarations = assignmentDeclarations.get(name) ?? [];
-      declarations.push({
-        value: node.right,
-        scope: lexicalScopeNode(node),
-        position: node.pos,
-        operator: node.operatorToken.kind,
-      });
-      assignmentDeclarations.set(name, declarations);
+    if (ts.isBinaryExpression(node) && callableAssignmentTokens.has(node.operatorToken.kind)) {
+      const scope = lexicalScopeNode(node);
+      for (const binding of assignmentBindingInitializers(node.left, node.right)) {
+        const declarations = assignmentDeclarations.get(binding.name) ?? [];
+        declarations.push({
+          value: binding.initializer,
+          scope,
+          position: node.pos,
+          operator: node.operatorToken.kind,
+          unconditional: assignmentIsUnconditional(node, scope),
+        });
+        assignmentDeclarations.set(binding.name, declarations);
+      }
     }
     if (!ts.isVariableDeclaration(node) || !node.initializer) return;
     const initializer = unwrapExpression(node.initializer);
@@ -798,6 +858,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (
       assignment
       && assignment.operator === ts.SyntaxKind.EqualsToken
+      && assignment.unconditional
       && assignment.position > declarationPosition
     ) {
       const value = unwrapExpression(assignment.value);
@@ -1791,10 +1852,25 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (ts.isIdentifier(callee)) {
       const resolveInvocationInitializers = (identifier, seen = new Set()) => {
         if (seen.has(identifier.text)) return [identifier];
-        const initializers = visibleInitializerDeclarations(identifier)
-          .map((declaration) => declaration.initializer);
-        const assigned = visibleAssignedValue(identifier)?.value;
-        const values = initializers.length > 0 ? initializers : assigned ? [assigned] : [];
+        const declarations = visibleInitializerDeclarations(identifier);
+        const declarationPosition = declarations.length > 0
+          ? Math.max(...declarations.map(({ position }) => position))
+          : Number.NEGATIVE_INFINITY;
+        const assignment = visibleAssignedValue(identifier);
+        const assignmentReplacesDeclaration = Boolean(
+          assignment
+          && assignment.operator === ts.SyntaxKind.EqualsToken
+          && assignment.unconditional
+          && assignment.position > declarationPosition
+        );
+        const values = assignmentReplacesDeclaration
+          ? [assignment.value]
+          : [
+              ...declarations.map((declaration) => declaration.initializer),
+              ...(assignment && assignment.position >= declarationPosition
+                ? [assignment.value]
+                : []),
+            ];
         return values.flatMap((initializer) => {
           const value = unwrapExpression(initializer);
           return ts.isIdentifier(value)
@@ -1803,14 +1879,16 @@ function dynamicCodeExecutionFailures(sourceFile) {
         });
       };
       const initializers = resolveInvocationInitializers(callee);
-      const boundCalls = (node, seenFunctions = new Set()) => {
+      const invocationSources = (node, seenFunctions = new Set()) => {
         const value = node && unwrapExpression(node);
-        if (!value) return [];
+        if (!value) return { direct: [], bound: [] };
         if (ts.isConditionalExpression(value)) {
-          return [
-            ...boundCalls(value.whenTrue, seenFunctions),
-            ...boundCalls(value.whenFalse, seenFunctions),
-          ];
+          const whenTrue = invocationSources(value.whenTrue, seenFunctions);
+          const whenFalse = invocationSources(value.whenFalse, seenFunctions);
+          return {
+            direct: [...whenTrue.direct, ...whenFalse.direct],
+            bound: [...whenTrue.bound, ...whenFalse.bound],
+          };
         }
         if (
           ts.isBinaryExpression(value)
@@ -1819,35 +1897,42 @@ function dynamicCodeExecutionFailures(sourceFile) {
             || value.operatorToken.kind === ts.SyntaxKind.BarBarToken
             || value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
           )
-        ) return [
-          ...boundCalls(value.left, seenFunctions),
-          ...boundCalls(value.right, seenFunctions),
-        ];
-        if (!ts.isCallExpression(value)) return [];
-        const calls = [value];
+        ) {
+          const left = invocationSources(value.left, seenFunctions);
+          const right = invocationSources(value.right, seenFunctions);
+          return {
+            direct: [...left.direct, ...right.direct],
+            bound: [...left.bound, ...right.bound],
+          };
+        }
+        if (!ts.isCallExpression(value)) return {
+          direct: callableFunctionsForCallee(value).length > 0 ? [value] : [],
+          bound: [],
+        };
+        const valueCallee = unwrapExpression(value.expression);
+        const method = ts.isPropertyAccessExpression(valueCallee)
+          ? valueCallee.name.text
+          : ts.isElementAccessExpression(valueCallee)
+            ? valueCallee.argumentExpression && computedName(valueCallee.argumentExpression)
+            : null;
+        const sources = {
+          direct: [],
+          bound: method === 'bind' ? [value] : [],
+        };
         for (const fn of callableFunctionsForCallee(value.expression)) {
           if (seenFunctions.has(fn.pos)) continue;
           const nextSeen = new Set(seenFunctions).add(fn.pos);
           for (const returned of functionReturnInitializers(fn)) {
-            calls.push(...boundCalls(returned, nextSeen));
+            const nested = invocationSources(returned, nextSeen);
+            sources.direct.push(...nested.direct);
+            sources.bound.push(...nested.bound);
           }
         }
-        return calls;
+        return sources;
       };
-      const bindCandidates = initializers.flatMap((initializer) => boundCalls(initializer))
-        .filter((candidate) => {
-        const boundCallee = unwrapExpression(candidate.expression);
-        if (!(ts.isPropertyAccessExpression(boundCallee) || ts.isElementAccessExpression(boundCallee))) {
-          return false;
-        }
-        const method = ts.isPropertyAccessExpression(boundCallee)
-          ? boundCallee.name.text
-          : boundCallee.argumentExpression && computedName(boundCallee.argumentExpression);
-        return method === 'bind';
-        });
-      const directCandidates = initializers
-        .flatMap(returnInitializerBranches)
-        .filter((candidate) => callableFunctionsForCallee(candidate).length > 0)
+      const sources = initializers.map((initializer) => invocationSources(initializer));
+      const bindCandidates = sources.flatMap((source) => source.bound);
+      const directCandidates = sources.flatMap((source) => source.direct)
         .map((candidate) => ({
           callee: candidate,
           argumentsList: expandArguments(call.arguments),
@@ -2303,10 +2388,69 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return null;
   };
+  const destructuredTargetPathForSource = (source) => {
+    const parent = source.parent;
+    if (
+      ts.isBinaryExpression(parent)
+      && callableAssignmentTokens.has(parent.operatorToken.kind)
+      && parent.right === source
+    ) return staticPropertyPath(parent.left, constBindings)?.join('.') ?? null;
+    if (ts.isArrayLiteralExpression(parent)) {
+      const target = destructuredTargetForSource(parent);
+      if (!(target && (ts.isArrayLiteralExpression(target) || ts.isArrayBindingPattern(target)))) {
+        return null;
+      }
+      const index = parent.elements.indexOf(source);
+      const selected = target.elements[index];
+      if (selected && !ts.isOmittedExpression(selected)) {
+        const selectedTarget = ts.isBindingElement(selected)
+          ? selected.name
+          : ts.isSpreadElement(selected)
+            ? selected.expression
+            : selected;
+        const path = staticPropertyPath(selectedTarget, constBindings)?.join('.');
+        if (path) return ts.isSpreadElement(selected) ? `${path}.0` : path;
+      }
+      const restIndex = target.elements.findIndex((element) => ts.isSpreadElement(element));
+      if (restIndex >= 0 && index >= restIndex) {
+        const rest = target.elements[restIndex];
+        const path = staticPropertyPath(rest.expression, constBindings)?.join('.');
+        return path ? `${path}.${index - restIndex}` : null;
+      }
+      return null;
+    }
+    if (ts.isPropertyAssignment(parent) && ts.isObjectLiteralExpression(parent.parent)) {
+      const target = destructuredTargetForSource(parent.parent);
+      if (!(target && (ts.isObjectLiteralExpression(target) || ts.isObjectBindingPattern(target)))) {
+        return null;
+      }
+      const key = propertyNameText(parent.name);
+      const selected = (target.properties ?? target.elements).find((property) => (
+        (ts.isPropertyAssignment(property)
+          || ts.isShorthandPropertyAssignment(property)
+          || ts.isBindingElement(property))
+        && propertyNameText(property.propertyName ?? property.name) === key
+      ));
+      if (selected) {
+        const selectedTarget = ts.isBindingElement(selected)
+          ? selected.name
+          : ts.isShorthandPropertyAssignment(selected)
+            ? selected.name
+            : selected.initializer;
+        return staticPropertyPath(selectedTarget, constBindings)?.join('.') ?? null;
+      }
+      const rest = (target.properties ?? target.elements).find((property) => (
+        ts.isSpreadAssignment(property)
+        || (ts.isBindingElement(property) && property.dotDotDotToken)
+      ));
+      const restTarget = rest && (ts.isSpreadAssignment(rest) ? rest.expression : rest.name);
+      const path = restTarget && staticPropertyPath(restTarget, constBindings)?.join('.');
+      return path ? `${path}.${key}` : null;
+    }
+    return null;
+  };
   const objectLiteralBindingPath = (object) => {
-    const destructuredTarget = destructuredTargetForSource(object);
-    const destructuredPath = destructuredTarget
-      && staticPropertyPath(destructuredTarget, constBindings)?.join('.');
+    const destructuredPath = destructuredTargetPathForSource(object);
     if (destructuredPath) return destructuredPath;
     if (
       ts.isVariableDeclaration(object.parent)

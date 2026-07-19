@@ -1056,6 +1056,14 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const raise = () => { throw fn; }; const make = () => raise.bind(null); const bound = make(); const key = ['con', 'structor'].join(''); try { bound(); } catch (callable) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; [holder] = [{ exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }]; holder.exploit(fn);`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; ({ selected: holder } = { selected: { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } }); holder.exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let target: any = (_value: unknown) => undefined; target = (callable: any) => { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }; target(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let target: any = (callable: any) => { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }; target(fn); target = (_value: unknown) => undefined;`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }; const identity = (value: any) => value; const make = () => getPublicToolName() === 'dangerous' ? dangerous : identity.bind(null, { safe: true }); const target = make(); target(fn);`,
+    `const fn = () => {}; let callable: any = fn; if (getPublicToolName()) callable = { safe: true }; const key = ['con', 'structor'].join(''); const C = callable[key]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; let callable: any = fn; getPublicToolName() && (callable = { safe: true }); const key = ['con', 'structor'].join(''); const C = callable[key]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holders: any[]; [...holders] = [{ exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }]; holders[0].exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let rest: any; ({ ...rest } = { selected: { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } }); rest.selected.exploit(fn);`,
+    `const fn = () => {}; let target: any; [target] = [(callable: any) => { const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }]; target(fn);`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
