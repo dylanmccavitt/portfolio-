@@ -1052,6 +1052,10 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; holder ||= { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; holder ??= { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any = {}; holder &&= { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }; const identity = (value: any) => value; const target = getPublicToolName() === 'dangerous' ? dangerous : identity.bind(null, { safe: true }); target(fn);`,
+    `const fn = () => {}; const raise = () => { throw fn; }; const make = () => raise.bind(null); const bound = make(); const key = ['con', 'structor'].join(''); try { bound(); } catch (callable) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; [holder] = [{ exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }]; holder.exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; ({ selected: holder } = { selected: { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } }); holder.exploit(fn);`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1247,6 +1251,17 @@ test('uses only the latest reaching var initializer for a safe read', async () =
   const mutated = runtime.replace(
     '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
     "        var value: any = () => 'earlier'; var value: any = { safe: true }; const safeKey = getPublicToolName(); void value[safeKey];\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
+  );
+  assert.ok(!finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+  ));
+});
+
+test('uses a later safe assignment instead of an earlier callable initializer', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    "        const fn = () => 'callable'; let value: any = fn; value = { safe: true }; const safeKey = getPublicToolName(); void value[safeKey];\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
   );
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',

@@ -661,7 +661,12 @@ function dynamicCodeExecutionFailures(sourceFile) {
     ) {
       const name = unwrapExpression(node.left).text;
       const declarations = assignmentDeclarations.get(name) ?? [];
-      declarations.push({ value: node.right, scope: lexicalScopeNode(node), position: node.pos });
+      declarations.push({
+        value: node.right,
+        scope: lexicalScopeNode(node),
+        position: node.pos,
+        operator: node.operatorToken.kind,
+      });
       assignmentDeclarations.set(name, declarations);
     }
     if (!ts.isVariableDeclaration(node) || !node.initializer) return;
@@ -786,6 +791,34 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const isScopedCallableIdentifier = (identifier) => {
     const declarations = visibleInitializerDeclarations(identifier);
+    const assignment = visibleAssignedValue(identifier);
+    const declarationPosition = declarations.length > 0
+      ? Math.max(...declarations.map(({ position }) => position))
+      : Number.NEGATIVE_INFINITY;
+    if (
+      assignment
+      && assignment.operator === ts.SyntaxKind.EqualsToken
+      && assignment.position > declarationPosition
+    ) {
+      const value = unwrapExpression(assignment.value);
+      if (
+        ts.isFunctionExpression(value)
+        || ts.isArrowFunction(value)
+        || ts.isClassExpression(value)
+      ) return true;
+      const path = staticPropertyPath(value, constBindings)?.join('.');
+      if (path && path !== identifier.text && (
+        callableBindings.has(path) || callablePaths.has(path)
+      )) return true;
+      const key = `assignment:${assignment.scope.pos}:${assignment.position}`;
+      if (scopedCallableResolution.has(key)) return false;
+      scopedCallableResolution.add(key);
+      try {
+        return isTrackedCallableExpression(value);
+      } finally {
+        scopedCallableResolution.delete(key);
+      }
+    }
     if (declarations.length === 0) {
       const parameter = visibleParameterDeclaration(identifier)?.parameter;
       if (parameter) {
@@ -1812,13 +1845,23 @@ function dynamicCodeExecutionFailures(sourceFile) {
           : boundCallee.argumentExpression && computedName(boundCallee.argumentExpression);
         return method === 'bind';
         });
-      if (bindCandidates.length > 0) return bindCandidates.map((boundCall) => {
+      const directCandidates = initializers
+        .flatMap(returnInitializerBranches)
+        .filter((candidate) => callableFunctionsForCallee(candidate).length > 0)
+        .map((candidate) => ({
+          callee: candidate,
+          argumentsList: expandArguments(call.arguments),
+        }));
+      const boundCandidates = bindCandidates.map((boundCall) => {
         const boundCallee = unwrapExpression(boundCall.expression);
         return {
           callee: boundCallee.expression,
           argumentsList: [...boundCall.arguments.slice(1), ...call.arguments],
         };
       });
+      if (directCandidates.length > 0 || boundCandidates.length > 0) {
+        return [...directCandidates, ...boundCandidates];
+      }
     }
     if (ts.isPropertyAccessExpression(callee) || ts.isElementAccessExpression(callee)) {
       const method = ts.isPropertyAccessExpression(callee)
@@ -2222,7 +2265,49 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return changed;
   };
+  const destructuredTargetForSource = (source) => {
+    const parent = source.parent;
+    if (
+      ts.isBinaryExpression(parent)
+      && callableAssignmentTokens.has(parent.operatorToken.kind)
+      && parent.right === source
+    ) return unwrapExpression(parent.left);
+    if (ts.isArrayLiteralExpression(parent)) {
+      const target = destructuredTargetForSource(parent);
+      if (!(target && (ts.isArrayLiteralExpression(target) || ts.isArrayBindingPattern(target)))) {
+        return null;
+      }
+      const index = parent.elements.indexOf(source);
+      const selected = target.elements[index];
+      if (!selected || ts.isOmittedExpression(selected)) return null;
+      if (ts.isBindingElement(selected)) return unwrapExpression(selected.name);
+      if (ts.isSpreadElement(selected)) return unwrapExpression(selected.expression);
+      return unwrapExpression(selected);
+    }
+    if (ts.isPropertyAssignment(parent) && ts.isObjectLiteralExpression(parent.parent)) {
+      const target = destructuredTargetForSource(parent.parent);
+      if (!(target && (ts.isObjectLiteralExpression(target) || ts.isObjectBindingPattern(target)))) {
+        return null;
+      }
+      const key = propertyNameText(parent.name);
+      const selected = (target.properties ?? target.elements).find((property) => (
+        (ts.isPropertyAssignment(property)
+          || ts.isShorthandPropertyAssignment(property)
+          || ts.isBindingElement(property))
+        && propertyNameText(property.propertyName ?? property.name) === key
+      ));
+      if (!selected) return null;
+      if (ts.isBindingElement(selected)) return unwrapExpression(selected.name);
+      if (ts.isShorthandPropertyAssignment(selected)) return selected.name;
+      return unwrapExpression(selected.initializer);
+    }
+    return null;
+  };
   const objectLiteralBindingPath = (object) => {
+    const destructuredTarget = destructuredTargetForSource(object);
+    const destructuredPath = destructuredTarget
+      && staticPropertyPath(destructuredTarget, constBindings)?.join('.');
+    if (destructuredPath) return destructuredPath;
     if (
       ts.isVariableDeclaration(object.parent)
       && object.parent.initializer === object
@@ -2578,8 +2663,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
               && isTrackedCallableExpression(current.expression)
             ) trackedThrow = true;
             if (ts.isCallExpression(current)) {
-              for (const called of callableFunctionsForCallee(current.expression)) {
-                visitFunctionThrows(called, nextSeen);
+              for (const invocation of invocationCandidates(current)) {
+                for (const called of callableFunctionsForCallee(invocation.callee)) {
+                  visitFunctionThrows(called, nextSeen);
+                }
               }
             }
             ts.forEachChild(current, visit);
@@ -2594,8 +2681,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
             && isTrackedCallableExpression(current.expression)
           ) trackedThrow = true;
           if (ts.isCallExpression(current)) {
-            for (const fn of callableFunctionsForCallee(current.expression)) {
-              visitFunctionThrows(fn);
+            for (const invocation of invocationCandidates(current)) {
+              for (const fn of callableFunctionsForCallee(invocation.callee)) {
+                visitFunctionThrows(fn);
+              }
             }
           }
           ts.forEachChild(current, visitThrows);
