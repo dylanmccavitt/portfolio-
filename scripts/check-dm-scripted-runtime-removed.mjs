@@ -653,8 +653,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
         if (ts.isOmittedExpression(element)) continue;
         const selected = value.elements[index];
         if (!selected || ts.isOmittedExpression(selected)) continue;
+        if (ts.isSpreadElement(element)) continue;
         assignmentBindingInitializers(
-          ts.isSpreadElement(element) ? element.expression : element,
+          element,
           ts.isSpreadElement(selected) ? selected.expression : selected,
           entries,
         );
@@ -826,8 +827,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
         return false;
       })[0]
   );
-  const visibleAssignedValue = (identifier) => (
-    (assignmentDeclarations.get(identifier.text) ?? [])
+  const visibleAssignedValues = (identifier) => {
+    const declarations = (assignmentDeclarations.get(identifier.text) ?? [])
       .filter(({ scope, position }) => {
         if (position >= identifier.pos) return false;
         for (let current = identifier; current; current = current.parent) {
@@ -838,8 +839,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
       .sort((left, right) => (
         (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
         || right.position - left.position
-      ))[0]
-  );
+      ));
+    const nearestScope = declarations[0]?.scope;
+    return nearestScope ? declarations.filter(({ scope }) => scope === nearestScope) : [];
+  };
   const resolveSafeInitializerNode = (node, seen = new Set()) => {
     const value = unwrapExpression(node);
     if (!ts.isIdentifier(value) || seen.has(value.text)) return value;
@@ -851,34 +854,37 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const isScopedCallableIdentifier = (identifier) => {
     const declarations = visibleInitializerDeclarations(identifier);
-    const assignment = visibleAssignedValue(identifier);
     const declarationPosition = declarations.length > 0
       ? Math.max(...declarations.map(({ position }) => position))
       : Number.NEGATIVE_INFINITY;
-    if (
-      assignment
-      && assignment.operator === ts.SyntaxKind.EqualsToken
+    const assignments = visibleAssignedValues(identifier);
+    const safeKill = assignments.find((assignment) => (
+      assignment.operator === ts.SyntaxKind.EqualsToken
       && assignment.unconditional
       && assignment.position > declarationPosition
-    ) {
-      const value = unwrapExpression(assignment.value);
-      if (
-        ts.isFunctionExpression(value)
-        || ts.isArrowFunction(value)
-        || ts.isClassExpression(value)
-      ) return true;
-      const path = staticPropertyPath(value, constBindings)?.join('.');
-      if (path && path !== identifier.text && (
-        callableBindings.has(path) || callablePaths.has(path)
-      )) return true;
-      const key = `assignment:${assignment.scope.pos}:${assignment.position}`;
-      if (scopedCallableResolution.has(key)) return false;
-      scopedCallableResolution.add(key);
-      try {
-        return isTrackedCallableExpression(value);
-      } finally {
-        scopedCallableResolution.delete(key);
-      }
+    ));
+    if (safeKill) {
+      const reachingAssignments = assignments.filter(({ position }) => position >= safeKill.position);
+      return reachingAssignments.some((assignment) => {
+        const value = unwrapExpression(assignment.value);
+        if (
+          ts.isFunctionExpression(value)
+          || ts.isArrowFunction(value)
+          || ts.isClassExpression(value)
+        ) return true;
+        const path = staticPropertyPath(value, constBindings)?.join('.');
+        if (path && path !== identifier.text && (
+          callableBindings.has(path) || callablePaths.has(path)
+        )) return true;
+        const key = `assignment:${assignment.scope.pos}:${assignment.position}`;
+        if (scopedCallableResolution.has(key)) return false;
+        scopedCallableResolution.add(key);
+        try {
+          return isTrackedCallableExpression(value);
+        } finally {
+          scopedCallableResolution.delete(key);
+        }
+      });
     }
     if (declarations.length === 0) {
       const parameter = visibleParameterDeclaration(identifier)?.parameter;
@@ -1849,6 +1855,27 @@ function dynamicCodeExecutionFailures(sourceFile) {
       );
     });
     const callee = unwrapExpression(call.expression);
+    const calleePath = staticPropertyPath(callee, constBindings)?.join('.');
+    if (calleePath === 'Reflect.apply' || calleePath === 'Reflect.construct') {
+      const target = call.arguments[0];
+      const listArgument = call.arguments[calleePath === 'Reflect.apply' ? 2 : 1];
+      const list = listArgument && resolveInitializerNode(listArgument);
+      if (target && list && ts.isArrayLiteralExpression(list)) {
+        let invocationTarget = target;
+        if (calleePath === 'Reflect.construct') {
+          const resolvedTarget = resolveInitializerNode(target);
+          if (ts.isClassExpression(resolvedTarget) || ts.isClassDeclaration(resolvedTarget)) {
+            invocationTarget = resolvedTarget.members.find(ts.isConstructorDeclaration) ?? target;
+          }
+        }
+        return [{
+          callee: invocationTarget,
+          argumentsList: expandArguments(
+            list.elements.filter((item) => !ts.isOmittedExpression(item)),
+          ),
+        }];
+      }
+    }
     if (ts.isIdentifier(callee)) {
       const resolveInvocationInitializers = (identifier, seen = new Set()) => {
         if (seen.has(identifier.text)) return [identifier];
@@ -1856,20 +1883,21 @@ function dynamicCodeExecutionFailures(sourceFile) {
         const declarationPosition = declarations.length > 0
           ? Math.max(...declarations.map(({ position }) => position))
           : Number.NEGATIVE_INFINITY;
-        const assignment = visibleAssignedValue(identifier);
-        const assignmentReplacesDeclaration = Boolean(
-          assignment
-          && assignment.operator === ts.SyntaxKind.EqualsToken
+        const assignments = visibleAssignedValues(identifier);
+        const assignmentKill = assignments.find((assignment) => (
+          assignment.operator === ts.SyntaxKind.EqualsToken
           && assignment.unconditional
           && assignment.position > declarationPosition
-        );
-        const values = assignmentReplacesDeclaration
-          ? [assignment.value]
+        ));
+        const values = assignmentKill
+          ? assignments
+              .filter(({ position }) => position >= assignmentKill.position)
+              .map(({ value }) => value)
           : [
               ...declarations.map((declaration) => declaration.initializer),
-              ...(assignment && assignment.position >= declarationPosition
-                ? [assignment.value]
-                : []),
+              ...assignments
+                .filter(({ position }) => position >= declarationPosition)
+                .map(({ value }) => value),
             ];
         return values.flatMap((initializer) => {
           const value = unwrapExpression(initializer);
@@ -1879,12 +1907,25 @@ function dynamicCodeExecutionFailures(sourceFile) {
         });
       };
       const initializers = resolveInvocationInitializers(callee);
-      const invocationSources = (node, seenFunctions = new Set()) => {
+      const invocationSources = (node, seenFunctions = new Set(), substitutions = new Map()) => {
         const value = node && unwrapExpression(node);
         if (!value) return { direct: [], bound: [] };
+        if (ts.isIdentifier(value) && substitutions.has(value.text)) {
+          const replacements = substitutions.get(value.text)
+            .filter((replacement) => {
+              const candidate = unwrapExpression(replacement);
+              return !(ts.isIdentifier(candidate) && candidate.text === value.text);
+            });
+          return replacements.reduce((sources, replacement) => {
+            const nested = invocationSources(replacement, seenFunctions, substitutions);
+            sources.direct.push(...nested.direct);
+            sources.bound.push(...nested.bound);
+            return sources;
+          }, { direct: [], bound: [] });
+        }
         if (ts.isConditionalExpression(value)) {
-          const whenTrue = invocationSources(value.whenTrue, seenFunctions);
-          const whenFalse = invocationSources(value.whenFalse, seenFunctions);
+          const whenTrue = invocationSources(value.whenTrue, seenFunctions, substitutions);
+          const whenFalse = invocationSources(value.whenFalse, seenFunctions, substitutions);
           return {
             direct: [...whenTrue.direct, ...whenFalse.direct],
             bound: [...whenTrue.bound, ...whenFalse.bound],
@@ -1898,8 +1939,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
             || value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
           )
         ) {
-          const left = invocationSources(value.left, seenFunctions);
-          const right = invocationSources(value.right, seenFunctions);
+          const left = invocationSources(value.left, seenFunctions, substitutions);
+          const right = invocationSources(value.right, seenFunctions, substitutions);
           return {
             direct: [...left.direct, ...right.direct],
             bound: [...left.bound, ...right.bound],
@@ -1919,11 +1960,34 @@ function dynamicCodeExecutionFailures(sourceFile) {
           direct: [],
           bound: method === 'bind' ? [value] : [],
         };
+        const argumentsList = expandArguments(value.arguments).flatMap((argument) => {
+          const candidate = unwrapExpression(argument);
+          return ts.isIdentifier(candidate) && substitutions.has(candidate.text)
+            ? substitutions.get(candidate.text)
+            : [argument];
+        });
         for (const fn of callableFunctionsForCallee(value.expression)) {
           if (seenFunctions.has(fn.pos)) continue;
           const nextSeen = new Set(seenFunctions).add(fn.pos);
+          const nestedSubstitutions = new Map(substitutions);
+          for (const [index, parameter] of fn.parameters.entries()) {
+            const argument = argumentsList[index];
+            if (!argument) continue;
+            for (const [binding, selection] of parameterBindingPaths(parameter.name)) {
+              let selected = [argument];
+              for (const key of selection) {
+                selected = selected.flatMap((candidate) => literalMemberValues(candidate, key));
+              }
+              if (selected.length > 0) nestedSubstitutions.set(binding, selected);
+            }
+          }
           for (const returned of functionReturnInitializers(fn)) {
-            const nested = invocationSources(returned, nextSeen);
+            for (const selected of outputSelectedArguments(returned, fn, argumentsList)) {
+              const nested = invocationSources(selected, nextSeen, nestedSubstitutions);
+              sources.direct.push(...nested.direct);
+              sources.bound.push(...nested.bound);
+            }
+            const nested = invocationSources(returned, nextSeen, nestedSubstitutions);
             sources.direct.push(...nested.direct);
             sources.bound.push(...nested.bound);
           }
@@ -2278,6 +2342,18 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target)) {
       for (const [index, element] of target.elements.entries()) {
         if (ts.isOmittedExpression(element)) continue;
+        if (ts.isSpreadElement(element) && ts.isArrayLiteralExpression(expression)) {
+          const restTarget = staticPropertyPath(element.expression, constBindings)?.join('.');
+          if (!restTarget) continue;
+          for (const [offset, value] of expression.elements.slice(index).entries()) {
+            if (ts.isOmittedExpression(value)) continue;
+            changed = propagateCallableInitializer(
+              `${restTarget}.${offset}`,
+              ts.isSpreadElement(value) ? value.expression : value,
+            ) || changed;
+          }
+          continue;
+        }
         const elementTarget = ts.isBindingElement(element)
           ? element.name
           : ts.isSpreadElement(element)
@@ -2339,6 +2415,21 @@ function dynamicCodeExecutionFailures(sourceFile) {
         } else if (ts.isShorthandPropertyAssignment(property)) {
           for (const value of literalMemberValues(expression, property.name.text)) {
             changed = propagateCallableBinding(property.name, value) || changed;
+          }
+        } else if (ts.isSpreadAssignment(property)) {
+          const restTarget = staticPropertyPath(property.expression, constBindings)?.join('.');
+          if (!restTarget) continue;
+          const excluded = target.properties
+            .filter((candidate) => !ts.isSpreadAssignment(candidate))
+            .map((candidate) => propertyNameText(candidate.name));
+          for (const entry of objectRestEntries(
+            expression,
+            `${objectRestPrefix}${JSON.stringify(excluded)}`,
+          )) {
+            changed = propagateCallableInitializer(
+              `${restTarget}.${entry.path.join('.')}`,
+              entry.value,
+            ) || changed;
           }
         } else if (ts.isPropertyAssignment(property)) {
           const key = propertyNameText(property.name);

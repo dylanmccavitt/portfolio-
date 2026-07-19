@@ -1064,6 +1064,12 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holders: any[]; [...holders] = [{ exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }]; holders[0].exploit(fn);`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let rest: any; ({ ...rest } = { selected: { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } }); rest.selected.exploit(fn);`,
     `const fn = () => {}; let target: any; [target] = [(callable: any) => { const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }]; target(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { const C = callable[key]; C(${JSON.stringify(hiddenWrite)})(); }; const identity = (value: any) => value; const target = identity(dangerous); target(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { const C = callable[key]; C(${JSON.stringify(hiddenWrite)})(); }; const identity = (value: any) => value; const delegate = (value: any) => identity(value); const target = delegate(dangerous); target(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { const C = callable[key]; C(${JSON.stringify(hiddenWrite)})(); }; Reflect.apply(dangerous, null, [fn]);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const Dangerous = class { constructor(callable: any) { const C = callable[key]; C(${JSON.stringify(hiddenWrite)})(); } }; Reflect.construct(Dangerous, [fn]);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { const C = callable[key]; C(${JSON.stringify(hiddenWrite)})(); }; let targets: any[]; [...targets] = [dangerous]; targets[0](fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const dangerous = (callable: any) => { const C = callable[key]; C(${JSON.stringify(hiddenWrite)})(); }; let rest: any; ({ ...rest } = { target: dangerous }); rest.target(fn);`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1270,6 +1276,17 @@ test('uses a later safe assignment instead of an earlier callable initializer', 
   const mutated = runtime.replace(
     '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
     "        const fn = () => 'callable'; let value: any = fn; value = { safe: true }; const safeKey = getPublicToolName(); void value[safeKey];\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
+  );
+  assert.ok(!finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+  ));
+});
+
+test('keeps an unconditional safe kill across a later conditional safe write', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    "        const fn = () => 'callable'; let value: any = fn; value = { safe: true }; if (getPublicToolName()) value = { alsoSafe: true }; const safeKey = getPublicToolName(); void value[safeKey];\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
   );
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
