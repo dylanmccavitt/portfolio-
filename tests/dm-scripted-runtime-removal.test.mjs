@@ -1047,6 +1047,11 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; holder = { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); class Holder { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } new Holder().exploit(fn);`,
     `const fn = () => {}; const key = ['con', 'structor'].join(''); class Holder { static exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } Holder.exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); const safe = (value: any) => ({ value }); const identity = (value: any) => value; const make = () => getPublicToolName() === 'safe' ? safe.bind(null, fn) : identity.bind(null, fn); const bound = make(); const callable = bound(); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; holder = { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn); holder = { exploit(_value: unknown) {} };`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; holder ||= { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any; holder ??= { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
+    `const fn = () => {}; const key = ['con', 'structor'].join(''); let holder: any = {}; holder &&= { exploit(callable: any) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } }; holder.exploit(fn);`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -1231,6 +1236,28 @@ test('does not use future var redeclarations as callable evidence for earlier re
   const mutated = runtime.replace(
     '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
     "        var value: any = { safe: true }; const safeKey = getPublicToolName(); void value[safeKey]; var value = () => 'later';\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
+  );
+  assert.ok(!finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+  ));
+});
+
+test('uses only the latest reaching var initializer for a safe read', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    "        var value: any = () => 'earlier'; var value: any = { safe: true }; const safeKey = getPublicToolName(); void value[safeKey];\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
+  );
+  assert.ok(!finalizationBoundaryFailures(mutated).includes(
+    'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',
+  ));
+});
+
+test('does not resolve a future function expression for an earlier safe call', async () => {
+  const runtime = await liveRuntimeSource();
+  const mutated = runtime.replace(
+    '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+    "        var consume: any = (_value: unknown) => undefined; consume({ safe: true }); var consume = (callable: any) => { const key = ['con', 'structor'].join(''); void callable[key]; };\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);",
   );
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed runtime source must not use dynamic code evaluation or function construction',

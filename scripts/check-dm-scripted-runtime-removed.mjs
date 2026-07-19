@@ -443,14 +443,22 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const recordFunctionDeclaration = (name, node, scope) => {
     const declarations = functionDeclarations.get(name) ?? [];
     if (!declarations.some((declaration) => declaration.node === node)) {
-      declarations.push({ node, scope });
+      declarations.push({
+        node,
+        scope,
+        position: node.pos,
+        hoisted: ts.isFunctionDeclaration(node),
+      });
     }
     functionDeclarations.set(name, declarations);
   };
   const visibleFunctionNode = (path, reference) => {
     if (!path) return null;
     const declaration = (functionDeclarations.get(path) ?? [])
-      .filter(({ scope }) => scopeContainsNode(scope, reference))
+      .filter(({ scope, position, hoisted }) => (
+        scopeContainsNode(scope, reference)
+        && (hoisted || position < reference.pos)
+      ))
       .sort((left, right) => (
         (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
         || right.node.pos - left.node.pos
@@ -724,9 +732,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
         (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
       ));
     const nearestScope = declarations[0]?.scope;
-    return nearestScope
-      ? declarations.filter(({ scope }) => scope === nearestScope)
-      : [];
+    if (!nearestScope) return [];
+    const scoped = declarations.filter(({ scope }) => scope === nearestScope);
+    const latestPosition = Math.max(...scoped.map(({ position }) => position));
+    return scoped.filter(({ position }) => position === latestPosition);
   };
   const visibleInitializerDeclaration = (identifier) => (
     visibleInitializerDeclarations(identifier)[0]
@@ -1731,7 +1740,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return values;
   };
-  const invocationArguments = (call) => {
+  const invocationCandidates = (call) => {
     const expandArguments = (argumentsList, seen = new Set()) => argumentsList.flatMap((argument) => {
       if (!ts.isSpreadElement(argument)) return [argument];
       const spreadExpression = unwrapExpression(argument.expression);
@@ -1803,51 +1812,52 @@ function dynamicCodeExecutionFailures(sourceFile) {
           : boundCallee.argumentExpression && computedName(boundCallee.argumentExpression);
         return method === 'bind';
         });
-      const boundCall = bindCandidates.find((candidate) => (
-        candidate.arguments.slice(1).some(isTrackedCallableExpression)
-      )) ?? bindCandidates[0];
-      if (boundCall) {
+      if (bindCandidates.length > 0) return bindCandidates.map((boundCall) => {
         const boundCallee = unwrapExpression(boundCall.expression);
         return {
           callee: boundCallee.expression,
           argumentsList: [...boundCall.arguments.slice(1), ...call.arguments],
         };
-      }
+      });
     }
     if (ts.isPropertyAccessExpression(callee) || ts.isElementAccessExpression(callee)) {
       const method = ts.isPropertyAccessExpression(callee)
         ? callee.name.text
         : callee.argumentExpression && computedName(callee.argumentExpression);
-      if (method === 'call') return { callee: callee.expression, argumentsList: call.arguments.slice(1) };
+      if (method === 'call') return [{
+        callee: callee.expression,
+        argumentsList: call.arguments.slice(1),
+      }];
       if (method === 'apply') {
         const list = call.arguments[1] && resolveInitializerNode(call.arguments[1]);
         if (list && ts.isArrayLiteralExpression(list)) {
-          return {
+          return [{
             callee: callee.expression,
             argumentsList: expandArguments(
               list.elements.filter((item) => !ts.isOmittedExpression(item)),
             ),
-          };
+          }];
         }
       }
     }
-    return {
+    return [{
       callee: call.expression,
       argumentsList: expandArguments(call.arguments),
-    };
+    }];
   };
   const passthroughArgumentValues = (call) => {
-    const invocation = invocationArguments(call);
-    const functions = callableFunctionsForCallee(invocation.callee);
-    return functions.flatMap((fn) => directFunctionOutputs(fn).returns.flatMap((output) => {
-      const direct = outputSelectedArguments(output, fn, invocation.argumentsList);
-      if (direct.length > 0) return direct;
-      const returned = unwrapExpression(output);
-      if (!ts.isCallExpression(returned)) return [];
-      return passthroughArgumentValues(returned).flatMap((value) => (
-        outputSelectedArguments(value, fn, invocation.argumentsList)
-      ));
-    }));
+    return invocationCandidates(call).flatMap((invocation) => {
+      const functions = callableFunctionsForCallee(invocation.callee);
+      return functions.flatMap((fn) => directFunctionOutputs(fn).returns.flatMap((output) => {
+        const direct = outputSelectedArguments(output, fn, invocation.argumentsList);
+        if (direct.length > 0) return direct;
+        const returned = unwrapExpression(output);
+        if (!ts.isCallExpression(returned)) return [];
+        return passthroughArgumentValues(returned).flatMap((value) => (
+          outputSelectedArguments(value, fn, invocation.argumentsList)
+        ));
+      }));
+    });
   };
   const callReturnsTrackedArgument = (call) => {
     return passthroughArgumentValues(call).some(isTrackedCallableExpression);
@@ -2220,7 +2230,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     ) return object.parent.name.text;
     if (
       ts.isBinaryExpression(object.parent)
-      && object.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && callableAssignmentTokens.has(object.parent.operatorToken.kind)
       && object.parent.right === object
     ) return staticPropertyPath(object.parent.left, constBindings)?.join('.') ?? null;
     if (
@@ -2511,8 +2521,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
     walk(sourceFile, (node) => {
       callableChanged = propagateCallableInstaller(node) || callableChanged;
       if (ts.isCallExpression(node)) {
-        const invocation = invocationArguments(node);
-        for (const fn of callableFunctionsForCallee(invocation.callee)) {
+        for (const invocation of invocationCandidates(node)) {
+          for (const fn of callableFunctionsForCallee(invocation.callee)) {
           for (const [index, parameter] of fn.parameters.entries()) {
             const argument = invocation.argumentsList[index];
             if (!argument) continue;
@@ -2547,6 +2557,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
                 callableChanged = true;
               }
             }
+          }
           }
         }
       }
