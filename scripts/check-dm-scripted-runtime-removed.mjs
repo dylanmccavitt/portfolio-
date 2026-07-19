@@ -385,6 +385,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const catchDeclarations = new Map();
   const bindingDeclarations = new Map();
   const assignmentDeclarations = new Map();
+  const reflectAdapterNames = new Set();
   const callableAssignmentTokens = new Set([
     ts.SyntaxKind.EqualsToken,
     ts.SyntaxKind.QuestionQuestionEqualsToken,
@@ -430,6 +431,12 @@ function dynamicCodeExecutionFailures(sourceFile) {
       ) {
         return current;
       }
+    }
+    return sourceFile;
+  };
+  const executionContextNode = (node) => {
+    for (let current = node; current; current = current.parent) {
+      if (ts.isFunctionLike(current) || ts.isSourceFile(current)) return current;
     }
     return sourceFile;
   };
@@ -800,6 +807,36 @@ function dynamicCodeExecutionFailures(sourceFile) {
       }
     }
   });
+  let reflectAdapterChanged = true;
+  while (reflectAdapterChanged) {
+    reflectAdapterChanged = false;
+    for (const [name, declarations] of initializerDeclarations) {
+      if (reflectAdapterNames.has(name)) continue;
+      if (declarations.some(({ initializer }) => {
+        const value = unwrapExpression(initializer);
+        const path = staticPropertyPath(value, constBindings)?.join('.');
+        return path === 'Reflect.apply'
+          || path === 'Reflect.construct'
+          || (ts.isIdentifier(value) && reflectAdapterNames.has(value.text));
+      })) {
+        reflectAdapterNames.add(name);
+        reflectAdapterChanged = true;
+      }
+    }
+    for (const [name, assignments] of assignmentDeclarations) {
+      if (reflectAdapterNames.has(name)) continue;
+      if (assignments.some(({ value: assigned }) => {
+        const value = unwrapExpression(assigned);
+        const path = staticPropertyPath(value, constBindings)?.join('.');
+        return path === 'Reflect.apply'
+          || path === 'Reflect.construct'
+          || (ts.isIdentifier(value) && reflectAdapterNames.has(value.text));
+      })) {
+        reflectAdapterNames.add(name);
+        reflectAdapterChanged = true;
+      }
+    }
+  }
   const resolveInitializerNode = (node, seen = new Set()) => {
     const value = unwrapExpression(node);
     if (!ts.isIdentifier(value) || seen.has(value.text) || !initializerNodes.has(value.text)) return value;
@@ -847,7 +884,10 @@ function dynamicCodeExecutionFailures(sourceFile) {
         return false;
       })[0]
   );
+  const visibleBindingIdentityCache = new WeakMap();
   const visibleBindingIdentity = (identifier) => {
+    const cached = visibleBindingIdentityCache.get(identifier);
+    if (cached) return cached;
     const candidates = [];
     for (const declaration of bindingDeclarations.get(identifier.text) ?? []) {
       if (!scopeContainsNode(declaration.scope, identifier)) continue;
@@ -873,19 +913,25 @@ function dynamicCodeExecutionFailures(sourceFile) {
         scope: declaration.scope,
       });
     }
-    return candidates.sort((left, right) => (
+    const identity = candidates.sort((left, right) => (
       (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
     ))[0] ?? {
       key: `implicit:${lexicalScopeNode(identifier).pos}:${identifier.text}`,
       scope: lexicalScopeNode(identifier),
     };
+    visibleBindingIdentityCache.set(identifier, identity);
+    return identity;
   };
+  const visibleAssignedValuesCache = new WeakMap();
   const visibleAssignedValues = (identifier) => {
+    const cached = visibleAssignedValuesCache.get(identifier);
+    if (cached) return cached;
     const binding = visibleBindingIdentity(identifier);
     const declarations = (assignmentDeclarations.get(identifier.text) ?? [])
       .filter(({ identifier: target, position }) => {
         if (position >= identifier.pos) return false;
-        return visibleBindingIdentity(target).key === binding.key;
+        return visibleBindingIdentity(target).key === binding.key
+          && scopeContainsNode(executionContextNode(target), identifier);
       })
       .map((declaration) => ({
         ...declaration,
@@ -894,7 +940,66 @@ function dynamicCodeExecutionFailures(sourceFile) {
       .sort((left, right) => (
         right.position - left.position
       ));
+    visibleAssignedValuesCache.set(identifier, declarations);
     return declarations;
+  };
+  const reachingIdentifierValuesCache = new WeakMap();
+  const reachingIdentifierValues = (identifier) => {
+    const cached = reachingIdentifierValuesCache.get(identifier);
+    if (cached) return cached;
+    const declarations = visibleInitializerDeclarations(identifier);
+    const declarationPosition = declarations.length > 0
+      ? Math.max(...declarations.map(({ position }) => position))
+      : Number.NEGATIVE_INFINITY;
+    const assignments = visibleAssignedValues(identifier);
+    const assignmentKill = assignments.find((assignment) => (
+      assignment.operator === ts.SyntaxKind.EqualsToken
+      && assignment.unconditional
+      && assignment.position > declarationPosition
+    ));
+    const values = assignmentKill
+      ? assignments
+          .filter(({ position }) => position >= assignmentKill.position)
+          .map(({ value }) => value)
+      : [
+          ...declarations.map((declaration) => declaration.initializer),
+          ...assignments
+            .filter(({ position }) => position >= declarationPosition)
+            .map(({ value }) => value),
+        ];
+    reachingIdentifierValuesCache.set(identifier, values);
+    return values;
+  };
+  const reachingNodesCache = new WeakMap();
+  const resolveReachingNodes = (node, seen = new Set()) => {
+    const value = unwrapExpression(node);
+    if (!ts.isIdentifier(value)) return [value];
+    if (seen.size === 0) {
+      const cached = reachingNodesCache.get(value);
+      if (cached) return cached;
+    }
+    const bindingKey = visibleBindingIdentity(value).key;
+    if (seen.has(bindingKey)) return [value];
+    const reaching = reachingIdentifierValues(value);
+    if (reaching.length === 0) return [value];
+    const nextSeen = new Set(seen).add(bindingKey);
+    const resolved = reaching.flatMap((candidate) => resolveReachingNodes(candidate, nextSeen));
+    if (seen.size === 0) reachingNodesCache.set(value, resolved);
+    return resolved;
+  };
+  const reachingReflectAdapterPaths = (node, seen = new Set()) => {
+    const value = unwrapExpression(node);
+    const directPath = staticPropertyPath(value, constBindings)?.join('.');
+    if (directPath === 'Reflect.apply' || directPath === 'Reflect.construct') {
+      return [directPath];
+    }
+    if (!ts.isIdentifier(value) || !reflectAdapterNames.has(value.text)) return [];
+    const bindingKey = visibleBindingIdentity(value).key;
+    if (seen.has(bindingKey)) return [];
+    const nextSeen = new Set(seen).add(bindingKey);
+    return reachingIdentifierValues(value).flatMap((candidate) => (
+      reachingReflectAdapterPaths(candidate, nextSeen)
+    ));
   };
   const resolveSafeInitializerNode = (node, seen = new Set()) => {
     const value = unwrapExpression(node);
@@ -1913,58 +2018,59 @@ function dynamicCodeExecutionFailures(sourceFile) {
       );
     });
     const callee = unwrapExpression(call.expression);
-    const resolvedCallee = resolveSafeInitializerNode(callee);
-    const calleePath = staticPropertyPath(resolvedCallee, constBindings)?.join('.');
-    if (
-      ts.isCallExpression(call)
-      && (calleePath === 'Reflect.apply' || calleePath === 'Reflect.construct')
-    ) {
+    const reflectiveCandidates = [];
+    let adapterPaths = [];
+    if (ts.isCallExpression(call)) {
       const target = callArguments[0];
-      const listArgument = callArguments[calleePath === 'Reflect.apply' ? 2 : 1];
-      const list = listArgument && resolveInitializerNode(listArgument);
-      if (target && list && ts.isArrayLiteralExpression(list)) {
-        let invocationTarget = target;
-        if (calleePath === 'Reflect.construct') {
-          const resolvedTarget = resolveInitializerNode(target);
-          if (ts.isClassExpression(resolvedTarget) || ts.isClassDeclaration(resolvedTarget)) {
-            invocationTarget = resolvedTarget.members.find(ts.isConstructorDeclaration) ?? target;
+      adapterPaths = reachingReflectAdapterPaths(callee);
+      for (const adapterPath of adapterPaths) {
+        const listArgument = callArguments[adapterPath === 'Reflect.apply' ? 2 : 1];
+        if (!target || !listArgument) continue;
+        for (const list of resolveReachingNodes(listArgument)) {
+          if (!ts.isArrayLiteralExpression(list)) continue;
+          for (const resolvedTarget of resolveReachingNodes(target)) {
+            let invocationTarget = resolvedTarget;
+            if (
+              adapterPath === 'Reflect.construct'
+              && (ts.isClassExpression(resolvedTarget) || ts.isClassDeclaration(resolvedTarget))
+            ) {
+              invocationTarget = resolvedTarget.members.find(ts.isConstructorDeclaration)
+                ?? resolvedTarget;
+            }
+            reflectiveCandidates.push({
+              callee: invocationTarget,
+              argumentsList: expandArguments(
+                list.elements.filter((item) => !ts.isOmittedExpression(item)),
+              ),
+            });
           }
         }
-        return [{
-          callee: invocationTarget,
-          argumentsList: expandArguments(
-            list.elements.filter((item) => !ts.isOmittedExpression(item)),
-          ),
-        }];
       }
+    }
+    if (reflectiveCandidates.length > 0) return reflectiveCandidates;
+    if (
+      ts.isCallExpression(call)
+      && ts.isIdentifier(callee)
+      && reflectAdapterNames.has(callee.text)
+      && adapterPaths.length === 0
+    ) {
+      return resolveReachingNodes(callee).map((resolved) => ({
+        callee: resolved,
+        argumentsList: expandArguments(callArguments),
+      }));
     }
     if (ts.isIdentifier(callee)) {
       const resolveInvocationInitializers = (identifier, seen = new Set()) => {
-        if (seen.has(identifier.text)) return [identifier];
-        const declarations = visibleInitializerDeclarations(identifier);
-        const declarationPosition = declarations.length > 0
-          ? Math.max(...declarations.map(({ position }) => position))
-          : Number.NEGATIVE_INFINITY;
-        const assignments = visibleAssignedValues(identifier);
-        const assignmentKill = assignments.find((assignment) => (
-          assignment.operator === ts.SyntaxKind.EqualsToken
-          && assignment.unconditional
-          && assignment.position > declarationPosition
-        ));
-        const values = assignmentKill
-          ? assignments
-              .filter(({ position }) => position >= assignmentKill.position)
-              .map(({ value }) => value)
-          : [
-              ...declarations.map((declaration) => declaration.initializer),
-              ...assignments
-                .filter(({ position }) => position >= declarationPosition)
-                .map(({ value }) => value),
-            ];
+        const bindingKey = visibleBindingIdentity(identifier).key;
+        if (seen.has(bindingKey)) return [identifier];
+        const values = reachingIdentifierValues(identifier);
+        if (values.length === 0) {
+          return callableFunctionsForCallee(identifier).length > 0 ? [identifier] : [];
+        }
         return values.flatMap((initializer) => {
           const value = unwrapExpression(initializer);
           return ts.isIdentifier(value)
-            ? resolveInvocationInitializers(value, new Set(seen).add(identifier.text))
+            ? resolveInvocationInitializers(value, new Set(seen).add(bindingKey))
             : [value];
         });
       };
@@ -2402,31 +2508,36 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     let changed = false;
     if (ts.isArrayBindingPattern(target) || ts.isArrayLiteralExpression(target)) {
-      const expandArrayValues = (node, seen = new Set()) => {
+      const expandArrayCandidates = (node, seen = new Set()) => {
         const candidate = unwrapExpression(node);
-        const identifier = ts.isIdentifier(candidate) ? candidate.text : null;
-        if (identifier && seen.has(identifier)) return null;
-        const resolved = resolveSafeInitializerNode(candidate);
-        const nextSeen = identifier ? new Set(seen).add(identifier) : seen;
-        if (resolved !== candidate) return expandArrayValues(resolved, nextSeen);
-        if (!ts.isArrayLiteralExpression(resolved)) return null;
-        const values = [];
-        for (const element of resolved.elements) {
+        if (ts.isIdentifier(candidate)) {
+          const bindingKey = visibleBindingIdentity(candidate).key;
+          if (seen.has(bindingKey)) return [];
+          const reaching = reachingIdentifierValues(candidate);
+          if (reaching.length === 0) return [];
+          const nextSeen = new Set(seen).add(bindingKey);
+          return reaching.flatMap((value) => expandArrayCandidates(value, nextSeen));
+        }
+        if (!ts.isArrayLiteralExpression(candidate)) return [];
+        let candidates = [[]];
+        for (const element of candidate.elements) {
           if (ts.isOmittedExpression(element)) {
-            values.push(element);
+            candidates = candidates.map((values) => [...values, element]);
             continue;
           }
           if (!ts.isSpreadElement(element)) {
-            values.push(element);
+            candidates = candidates.map((values) => [...values, element]);
             continue;
           }
-          const spread = expandArrayValues(element.expression, nextSeen);
-          if (!spread) return null;
-          values.push(...spread);
+          const spreadCandidates = expandArrayCandidates(element.expression, seen);
+          if (spreadCandidates.length === 0) return [];
+          candidates = candidates.flatMap((values) => (
+            spreadCandidates.map((spread) => [...values, ...spread])
+          ));
         }
-        return values;
+        return candidates;
       };
-      const expandedValues = expandArrayValues(expression);
+      const expandedCandidates = expandArrayCandidates(expression);
       for (const [index, element] of target.elements.entries()) {
         if (ts.isOmittedExpression(element)) continue;
         const restElement = ts.isSpreadElement(element)
@@ -2434,15 +2545,17 @@ function dynamicCodeExecutionFailures(sourceFile) {
           : ts.isBindingElement(element) && element.dotDotDotToken
             ? element.name
             : null;
-        if (restElement && expandedValues) {
+        if (restElement && expandedCandidates.length > 0) {
           const restTarget = staticPropertyPath(restElement, constBindings)?.join('.');
           if (!restTarget) continue;
-          for (const [offset, value] of expandedValues.slice(index).entries()) {
-            if (ts.isOmittedExpression(value)) continue;
-            changed = propagateCallableInitializer(
-              `${restTarget}.${offset}`,
-              value,
-            ) || changed;
+          for (const expandedValues of expandedCandidates) {
+            for (const [offset, value] of expandedValues.slice(index).entries()) {
+              if (ts.isOmittedExpression(value)) continue;
+              changed = propagateCallableInitializer(
+                `${restTarget}.${offset}`,
+                value,
+              ) || changed;
+            }
           }
           continue;
         }
@@ -2451,13 +2564,15 @@ function dynamicCodeExecutionFailures(sourceFile) {
           : ts.isSpreadElement(element)
             ? element.expression
             : element;
-        if (expandedValues) {
-          const value = expandedValues[index];
-          if (value && !ts.isOmittedExpression(value)) {
-            changed = propagateCallableBinding(
-              elementTarget,
-              value,
-            ) || changed;
+        if (expandedCandidates.length > 0) {
+          for (const expandedValues of expandedCandidates) {
+            const value = expandedValues[index];
+            if (value && !ts.isOmittedExpression(value)) {
+              changed = propagateCallableBinding(
+                elementTarget,
+                value,
+              ) || changed;
+            }
           }
         } else {
           if (restElement) {
@@ -3052,15 +3167,26 @@ function dynamicCodeExecutionFailures(sourceFile) {
         callableChanged = propagateClassInstanceBinding(assignedTarget, assignedValue)
           || callableChanged;
         activeCallableDeclarations = new Map();
+        let crossesExecutionContext = false;
         for (const identifier of assignmentTargetIdentifiers(node.left)) {
           const declaration = visibleInitializerDeclaration(identifier);
           if (!declaration) continue;
+          if (
+            executionContextNode(identifier)
+            !== executionContextNode(declaration.initializer)
+          ) {
+            crossesExecutionContext = true;
+            continue;
+          }
           activeCallableDeclarations.set(identifier.text, new Set([
             `${declaration.scope.pos}:${declaration.initializer.pos}:${identifier.text}`,
           ]));
         }
-        callableChanged = propagateCallableBinding(node.left, node.right) || callableChanged;
+        if (!crossesExecutionContext) {
+          callableChanged = propagateCallableBinding(node.left, node.right) || callableChanged;
+        }
         activeCallableDeclarations = new Map();
+        if (crossesExecutionContext) return;
         const target = staticPropertyPath(node.left, constBindings)?.join('.');
         const source = staticPropertyPath(node.right, constBindings)?.join('.');
         if (
@@ -3248,8 +3374,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
     ) unsafe = true;
     if (
       ts.isCallExpression(node)
-      && staticPropertyPath(resolveSafeInitializerNode(node.expression), constBindings)?.join('.')
-        === 'Reflect.construct'
+      && (
+        reachingReflectAdapterPaths(node.expression).includes('Reflect.construct')
+      )
     ) unsafe = true;
   });
   return unsafe
@@ -3818,8 +3945,23 @@ function trustedPrimitiveMutationFailures(sourceFile) {
     }
     return path;
   };
+  const aliasRisk = (path) => {
+    if (!path) return 0;
+    if (
+      path[0] === 'UnknownIntrinsic'
+      || path[0] === 'z'
+      || path[0] === 'globalThis'
+      || GOVERNED_INTRINSIC_PROTOTYPES.has(path[0])
+      || path.at(-1) === '$descriptors'
+      || intrinsicContainers.has(path.join('.'))
+      || intrinsicContainerAliases.has(path.join('.'))
+    ) return 1;
+    return 0;
+  };
   const storeAlias = (name, path) => {
-    if (aliases.get(name)?.join('.') === path.join('.')) return false;
+    const existing = aliases.get(name);
+    if (existing?.join('.') === path.join('.')) return false;
+    if (existing && aliasRisk(existing) >= aliasRisk(path)) return false;
     aliases.set(name, path);
     return true;
   };
