@@ -405,14 +405,28 @@ function dynamicCodeExecutionFailures(sourceFile) {
       && (declaration.parent.flags & ts.NodeFlags.BlockScoped) === 0;
     for (let current = declaration.parent; current; current = current.parent) {
       if (isVar && ts.isFunctionLike(current)) return current;
-      if (!isVar && (ts.isBlock(current) || ts.isFunctionLike(current))) return current;
+      if (
+        !isVar
+        && (
+          ts.isBlock(current)
+          || ts.isCaseBlock(current)
+          || ts.isClassStaticBlockDeclaration(current)
+          || ts.isFunctionLike(current)
+        )
+      ) return current;
       if (ts.isSourceFile(current)) return current;
     }
     return sourceFile;
   };
   const lexicalScopeNode = (node) => {
     for (let current = node.parent; current; current = current.parent) {
-      if (ts.isBlock(current) || ts.isFunctionLike(current) || ts.isSourceFile(current)) {
+      if (
+        ts.isBlock(current)
+        || ts.isCaseBlock(current)
+        || ts.isClassStaticBlockDeclaration(current)
+        || ts.isFunctionLike(current)
+        || ts.isSourceFile(current)
+      ) {
         return current;
       }
     }
@@ -433,15 +447,13 @@ function dynamicCodeExecutionFailures(sourceFile) {
   };
   const visibleFunctionNode = (path, reference) => {
     if (!path) return null;
-    if (!path.includes('.')) {
-      const declaration = (functionDeclarations.get(path) ?? [])
-        .filter(({ scope }) => scopeContainsNode(scope, reference))
-        .sort((left, right) => (
-          (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
-          || right.node.pos - left.node.pos
-        ))[0];
-      if (declaration) return declaration.node;
-    }
+    const declaration = (functionDeclarations.get(path) ?? [])
+      .filter(({ scope }) => scopeContainsNode(scope, reference))
+      .sort((left, right) => (
+        (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
+        || right.node.pos - left.node.pos
+      ))[0];
+    if (declaration) return declaration.node;
     return functionNodes.get(path) ?? null;
   };
   const functionReturnInitializers = (fn) => {
@@ -673,6 +685,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
           const path = `${node.name.text}.${propertyNameText(property.name)}`;
           callablePaths.add(path);
           functionNodes.set(path, property);
+          recordFunctionDeclaration(path, property, scope);
         }
         if (
           ts.isPropertyAssignment(property)
@@ -684,7 +697,9 @@ function dynamicCodeExecutionFailures(sourceFile) {
         ) {
           const path = `${node.name.text}.${propertyNameText(property.name)}`;
           callablePaths.add(path);
-          functionNodes.set(path, unwrapExpression(property.initializer));
+          const callable = unwrapExpression(property.initializer);
+          functionNodes.set(path, callable);
+          recordFunctionDeclaration(path, callable, scope);
         }
       }
     }
@@ -694,8 +709,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (!ts.isIdentifier(value) || seen.has(value.text) || !initializerNodes.has(value.text)) return value;
     return resolveInitializerNode(initializerNodes.get(value.text), new Set(seen).add(value.text));
   };
-  const visibleInitializerDeclaration = (identifier) => (
-    (initializerDeclarations.get(identifier.text) ?? [])
+  const visibleInitializerDeclarations = (identifier) => {
+    const declarations = (initializerDeclarations.get(identifier.text) ?? [])
       .filter(({ scope }) => {
         for (let current = identifier; current; current = current.parent) {
           if (current === scope) return true;
@@ -704,7 +719,14 @@ function dynamicCodeExecutionFailures(sourceFile) {
       })
       .sort((left, right) => (
         (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
-      ))[0]
+      ));
+    const nearestScope = declarations[0]?.scope;
+    return nearestScope
+      ? declarations.filter(({ scope }) => scope === nearestScope)
+      : [];
+  };
+  const visibleInitializerDeclaration = (identifier) => (
+    visibleInitializerDeclarations(identifier)[0]
   );
   const visibleParameterDeclaration = (identifier) => (
     (parameterDeclarations.get(identifier.text) ?? [])
@@ -744,15 +766,15 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const resolveSafeInitializerNode = (node, seen = new Set()) => {
     const value = unwrapExpression(node);
     if (!ts.isIdentifier(value) || seen.has(value.text)) return value;
-    const initializer = visibleInitializerDeclaration(value)?.initializer;
+    const declarations = visibleInitializerDeclarations(value);
+    const initializer = declarations.length === 1 ? declarations[0].initializer : null;
     return initializer
       ? resolveSafeInitializerNode(initializer, new Set(seen).add(value.text))
       : value;
   };
   const isScopedCallableIdentifier = (identifier) => {
-    const declaration = visibleInitializerDeclaration(identifier);
-    const initializer = declaration?.initializer;
-    if (!initializer) {
+    const declarations = visibleInitializerDeclarations(identifier);
+    if (declarations.length === 0) {
       const parameter = visibleParameterDeclaration(identifier)?.parameter;
       if (parameter) {
         return scopedCallableParameters.has(parameterCallableKey(parameter, identifier.text))
@@ -762,26 +784,29 @@ function dynamicCodeExecutionFailures(sourceFile) {
       if (catchDeclaration) return scopedCallableCatches.has(catchDeclaration.pos);
       return callableBindings.has(identifier.text);
     }
-    const declarationKey = `${declaration.scope.pos}:${initializer.pos}:${identifier.text}`;
-    if (scopedCallableBindings.has(declarationKey)) return true;
-    const value = unwrapExpression(initializer);
-    if (
-      ts.isFunctionExpression(value)
-      || ts.isArrowFunction(value)
-      || ts.isClassExpression(value)
-    ) return true;
-    const path = staticPropertyPath(value, constBindings)?.join('.');
-    if (path && path !== identifier.text && (
-      callableBindings.has(path) || callablePaths.has(path)
-    )) return true;
-    const key = `${declaration.scope.pos}:${initializer.pos}`;
-    if (scopedCallableResolution.has(key)) return false;
-    scopedCallableResolution.add(key);
-    try {
-      return isTrackedCallableExpression(value);
-    } finally {
-      scopedCallableResolution.delete(key);
-    }
+    return declarations.some((declaration) => {
+      const { initializer } = declaration;
+      const declarationKey = `${declaration.scope.pos}:${initializer.pos}:${identifier.text}`;
+      if (scopedCallableBindings.has(declarationKey)) return true;
+      const value = unwrapExpression(initializer);
+      if (
+        ts.isFunctionExpression(value)
+        || ts.isArrowFunction(value)
+        || ts.isClassExpression(value)
+      ) return true;
+      const path = staticPropertyPath(value, constBindings)?.join('.');
+      if (path && path !== identifier.text && (
+        callableBindings.has(path) || callablePaths.has(path)
+      )) return true;
+      const key = `${declaration.scope.pos}:${initializer.pos}`;
+      if (scopedCallableResolution.has(key)) return false;
+      scopedCallableResolution.add(key);
+      try {
+        return isTrackedCallableExpression(value);
+      } finally {
+        scopedCallableResolution.delete(key);
+      }
+    });
   };
   const classLineage = (name, seen = new Set()) => {
     if (!name || seen.has(name)) return [];
@@ -3654,14 +3679,19 @@ function governedV2DependencyMutationFailures(sourceFile) {
     return [];
   };
   walk(sourceFile, (node) => {
-    if (!ts.isVariableDeclaration(node) && !ts.isParameter(node)) return;
+    const declaration = ts.isVariableDeclaration(node) || ts.isParameter(node);
+    const namedDeclaration = (
+      ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)
+    ) && node.name;
+    if (!declaration && !namedDeclaration) return;
     const isFunctionScopedVar = ts.isVariableDeclaration(node)
       && ts.isVariableDeclarationList(node.parent)
       && (node.parent.flags & ts.NodeFlags.BlockScoped) === 0;
     const scope = ts.isParameter(node) || isFunctionScopedVar
       ? functionScopeKey(node)
       : lexicalScopeKey(node.parent);
-    for (const identifier of bindingIdentifiers(node.name)) {
+    const identifiers = namedDeclaration ? [node.name] : bindingIdentifiers(node.name);
+    for (const identifier of identifiers) {
       const scopes = bindingScopes.get(identifier.text) ?? new Set();
       scopes.add(scope);
       bindingScopes.set(identifier.text, scopes);

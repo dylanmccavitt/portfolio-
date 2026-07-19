@@ -1039,6 +1039,10 @@ test('rejects dynamic evaluation and function construction in the governed runti
     `const fn = () => {}; const raise = () => { throw fn; }; const alias = raise; const key = ['con', 'structor'].join(''); try { alias(); } catch (callable) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }`,
     `const fn = () => {}; const raise = () => { throw fn; }; const delegate = () => raise(); const key = ['con', 'structor'].join(''); try { delegate(); } catch (callable) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }`,
     `const fn = () => {}; const identity = (value: any) => value; const makeBound = () => identity.bind(null, fn); const bound = makeBound(); const callable = bound(); const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; const safe = { value: { safe: true } }; const bad = { value: fn }; const make = () => getPublicToolName() === 'safe' ? safe : bad; const { value } = make(); const key = ['con', 'structor'].join(''); let C: any; [C] = [value[key]]; C(${JSON.stringify(hiddenWrite)})();`,
+    `const fn = () => {}; { const holder = { raise() { throw fn; } }; const key = ['con', 'structor'].join(''); try { holder.raise(); } catch (callable) { let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } } { const holder = { raise() {} }; void holder; }`,
+    `const fn = () => {}; class Scope { static { function consume(callable: any) { const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); } consume(fn); } } function consume(_value: unknown) {} void Scope; void consume;`,
+    `const fn = () => {}; switch (getPublicToolName()) { case 'safe': const consume = (callable: any) => { const key = ['con', 'structor'].join(''); let C: any; [C] = [callable[key]]; C(${JSON.stringify(hiddenWrite)})(); }; consume(fn); break; } const consume = (_value: unknown) => undefined; void consume;`,
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => {
@@ -2314,6 +2318,25 @@ test('does not apply the global governed run alias to a shadowing parameter', as
   assert.ok(!finalizationBoundaryFailures(mutated).includes(
     'src/lib/dm/runtime.ts: governed v2 dependency publicRun.evidenceLedger must not escape through an unapproved helper parameter',
   ));
+});
+
+test('does not govern block-scoped function or class declarations named run', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const mutations = [
+    "        { function run() {} (run as any).evidenceLedger = { safe: true }; }",
+    "        { class run { static evidenceLedger = { safe: true }; } run.evidenceLedger = { safe: true }; }",
+  ];
+  for (const [index, mutation] of mutations.entries()) {
+    await t.test(String(index), () => {
+      const mutated = runtime.replace(
+        '        finalizationResult ??= limitedResult(finalizationAttempts > 0);',
+        `${mutation}\n        finalizationResult ??= limitedResult(finalizationAttempts > 0);`,
+      );
+      assert.ok(!finalizationBoundaryFailures(mutated).includes(
+        'src/lib/dm/runtime.ts: governed v2 dependency publicRun.evidenceLedger must not be replaced or redefined',
+      ));
+    });
+  }
 });
 
 test('keeps catch-scoped run shadowing from suppressing authenticated run governance', async () => {
