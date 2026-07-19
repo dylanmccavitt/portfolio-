@@ -385,6 +385,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
   const catchDeclarations = new Map();
   const bindingDeclarations = new Map();
   const assignmentDeclarations = new Map();
+  let effectiveInvocationReferences = () => [];
   const reflectAdapterNames = new Set();
   const callableAssignmentTokens = new Set([
     ts.SyntaxKind.EqualsToken,
@@ -448,31 +449,52 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
     return false;
   };
-  const recordFunctionDeclaration = (name, node, scope) => {
+  const recordFunctionDeclaration = (
+    name,
+    node,
+    scope,
+    position = node.pos,
+    executionContext = executionContextNode(node),
+  ) => {
     const declarations = functionDeclarations.get(name) ?? [];
-    if (!declarations.some((declaration) => declaration.node === node)) {
+    if (!declarations.some((declaration) => (
+      declaration.node === node
+      && declaration.position === position
+      && declaration.scope === scope
+    ))) {
       declarations.push({
         node,
         scope,
-        position: node.pos,
-        hoisted: ts.isFunctionDeclaration(node),
+        position,
+        executionContext,
+        hoisted: ts.isFunctionDeclaration(node) && position === node.pos,
       });
     }
     functionDeclarations.set(name, declarations);
   };
   const visibleFunctionNode = (path, reference) => {
     if (!path) return null;
-    const declaration = (functionDeclarations.get(path) ?? [])
-      .filter(({ scope, position, hoisted }) => (
-        scopeContainsNode(scope, reference)
-        && (hoisted || position < reference.pos)
-      ))
+    const declarations = functionDeclarations.get(path) ?? [];
+    const declaration = declarations
+      .flatMap((candidate) => {
+        const { scope, position, hoisted, executionContext } = candidate;
+        if (scopeContainsNode(scope, reference) && (hoisted || position < reference.pos)) {
+          return [{ ...candidate, effectivePosition: position }];
+        }
+        if (!path.includes('.') || hoisted) return [];
+        return effectiveInvocationReferences(executionContext, reference)
+          .filter((invocation) => invocation.pos < reference.pos)
+          .map((invocation) => ({ ...candidate, effectivePosition: invocation.pos }));
+      })
       .sort((left, right) => (
-        (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
-        || right.node.pos - left.node.pos
+        path.includes('.')
+          ? right.effectivePosition - left.effectivePosition
+            || (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
+          : (left.scope.end - left.scope.pos) - (right.scope.end - right.scope.pos)
+            || right.effectivePosition - left.effectivePosition
       ))[0];
     if (declaration) return declaration.node;
-    return functionNodes.get(path) ?? null;
+    return declarations.length === 0 ? functionNodes.get(path) ?? null : null;
   };
   const functionReturnInitializers = (fn) => {
     if (ts.isArrowFunction(fn) && !ts.isBlock(fn.body)) return [fn.body];
@@ -838,15 +860,6 @@ function dynamicCodeExecutionFailures(sourceFile) {
     }
   }
   const invocationReferences = new Map();
-  walk(sourceFile, (node) => {
-    if (!ts.isCallExpression(node) && !ts.isNewExpression(node)) return;
-    const path = staticPropertyPath(node.expression, constBindings)?.join('.');
-    const fn = visibleFunctionNode(path, node);
-    if (!fn) return;
-    const references = invocationReferences.get(fn) ?? [];
-    references.push(node);
-    invocationReferences.set(fn, references);
-  });
   const resolveInitializerNode = (node, seen = new Set()) => {
     const value = unwrapExpression(node);
     if (!ts.isIdentifier(value) || seen.has(value.text) || !initializerNodes.has(value.text)) return value;
@@ -936,7 +949,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
     const binding = visibleBindingIdentity(identifier);
     const identifierContext = executionContextNode(identifier);
     if (identifierContext === executionContextNode(binding.scope)) return [identifier];
-    return invocationReferences.get(identifierContext) ?? [identifier];
+    const references = effectiveInvocationReferences(identifierContext, identifier);
+    return references.length > 0 ? references : [identifier];
   };
   const visibleAssignedValuesCache = new WeakMap();
   const visibleAssignedValues = (identifier, reference = identifier) => {
@@ -945,10 +959,15 @@ function dynamicCodeExecutionFailures(sourceFile) {
     if (cached) return cached;
     const binding = visibleBindingIdentity(identifier);
     const declarations = (assignmentDeclarations.get(identifier.text) ?? [])
-      .filter(({ identifier: target, position }) => {
-        if (position >= reference.pos) return false;
-        return visibleBindingIdentity(target).key === binding.key
-          && scopeContainsNode(executionContextNode(target), reference);
+      .filter(({ identifier: target }) => visibleBindingIdentity(target).key === binding.key)
+      .flatMap((declaration) => {
+        const targetContext = executionContextNode(declaration.identifier);
+        if (scopeContainsNode(targetContext, reference)) {
+          return declaration.position < reference.pos ? [declaration] : [];
+        }
+        return effectiveInvocationReferences(targetContext, reference)
+          .filter((invocation) => invocation.pos < reference.pos)
+          .map((invocation) => ({ ...declaration, position: invocation.pos }));
       })
       .map((declaration) => ({
         ...declaration,
@@ -961,7 +980,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     visibleAssignedValuesCache.set(identifier, identifierCache);
     return declarations;
   };
-  const reachingIdentifierValuesCache = new WeakMap();
+  let reachingIdentifierValuesCache = new WeakMap();
   const reachingIdentifierValues = (identifier) => {
     const cached = reachingIdentifierValuesCache.get(identifier);
     if (cached) return cached;
@@ -990,7 +1009,7 @@ function dynamicCodeExecutionFailures(sourceFile) {
     reachingIdentifierValuesCache.set(identifier, values);
     return values;
   };
-  const reachingNodesCache = new WeakMap();
+  let reachingNodesCache = new WeakMap();
   const resolveReachingNodes = (node, seen = new Set()) => {
     const value = unwrapExpression(node);
     if (!ts.isIdentifier(value)) return [value];
@@ -1031,6 +1050,27 @@ function dynamicCodeExecutionFailures(sourceFile) {
       : value;
   };
   const isScopedCallableIdentifier = (identifier) => {
+    const callTimeReferences = reachingReferencesForIdentifier(identifier);
+    if (callTimeReferences.some((reference) => reference !== identifier)) {
+      const resolutionKey = `call-time:${visibleBindingIdentity(identifier).key}`;
+      if (scopedCallableResolution.has(resolutionKey)) return false;
+      scopedCallableResolution.add(resolutionKey);
+      try {
+        return reachingIdentifierValues(identifier).some((candidate) => {
+          const value = unwrapExpression(candidate);
+          if (ts.isFunctionExpression(value) || ts.isArrowFunction(value) || ts.isClassExpression(value)) {
+            return true;
+          }
+          const path = staticPropertyPath(value, constBindings)?.join('.');
+          if (path && path !== identifier.text && (
+            callableBindings.has(path) || callablePaths.has(path)
+          )) return true;
+          return !ts.isIdentifier(value) && isTrackedCallableExpression(value);
+        });
+      } finally {
+        scopedCallableResolution.delete(resolutionKey);
+      }
+    }
     const declarations = visibleInitializerDeclarations(identifier);
     const declarationPosition = declarations.length > 0
       ? Math.max(...declarations.map(({ position }) => position))
@@ -1919,6 +1959,8 @@ function dynamicCodeExecutionFailures(sourceFile) {
     const target = unwrapExpression(node);
     if (ts.isIdentifier(target)) {
       identifiers.push(target);
+    } else if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
+      assignmentTargetIdentifiers(target.expression, identifiers);
     } else if (ts.isArrayLiteralExpression(target)) {
       for (const element of target.elements) {
         if (ts.isOmittedExpression(element)) continue;
@@ -1939,6 +1981,55 @@ function dynamicCodeExecutionFailures(sourceFile) {
       }
     }
     return identifiers;
+  };
+  const resolvedAssignmentBindingInitializers = (name, initializer, entries = []) => {
+    const target = unwrapExpression(name);
+    if (ts.isIdentifier(target)) {
+      for (const value of resolveReachingNodes(initializer)) {
+        entries.push({ name: target.text, identifier: target, initializer: value });
+      }
+      return entries;
+    }
+    if (ts.isArrayLiteralExpression(target)) {
+      const expand = (value, seen = new Set()) => resolveReachingNodes(value).flatMap((candidate) => {
+        const expression = unwrapExpression(candidate);
+        if (!ts.isArrayLiteralExpression(expression)) return [expression];
+        if (seen.has(expression)) return [];
+        const nextSeen = new Set(seen).add(expression);
+        return expression.elements.flatMap((element) => {
+          if (ts.isOmittedExpression(element)) return [element];
+          return ts.isSpreadElement(element)
+            ? expand(element.expression, nextSeen)
+            : [element];
+        });
+      });
+      const values = expand(initializer);
+      for (const [index, element] of target.elements.entries()) {
+        if (ts.isOmittedExpression(element) || ts.isSpreadElement(element)) continue;
+        const selected = values[index];
+        if (!selected || ts.isOmittedExpression(selected)) continue;
+        resolvedAssignmentBindingInitializers(element, selected, entries);
+      }
+      return entries;
+    }
+    if (ts.isObjectLiteralExpression(target)) {
+      for (const property of target.properties) {
+        if (!(ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property))) {
+          continue;
+        }
+        const key = propertyNameText(property.name);
+        for (const value of resolveReachingNodes(initializer)) {
+          for (const selected of literalMemberValues(value, key)) {
+            resolvedAssignmentBindingInitializers(
+              ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer,
+              selected,
+              entries,
+            );
+          }
+        }
+      }
+    }
+    return entries;
   };
   const localFunctionAliases = (fn) => {
     const aliases = new Map();
@@ -2902,6 +2993,83 @@ function dynamicCodeExecutionFailures(sourceFile) {
     functionNodes.set(name, node);
     recordFunctionDeclaration(name, node, lexicalScopeNode(node));
   });
+  walk(sourceFile, (node) => {
+    if (
+      !ts.isBinaryExpression(node)
+      || !callableAssignmentTokens.has(node.operatorToken.kind)
+    ) return;
+    const target = staticPropertyPath(node.left, constBindings)?.join('.');
+    if (!target || !target.includes('.')) return;
+    for (const fn of callableFunctionsForCallee(node.right)) {
+      recordFunctionDeclaration(
+        target,
+        fn,
+        lexicalScopeNode(node),
+        node.pos,
+        executionContextNode(node),
+      );
+    }
+  });
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node) && !ts.isNewExpression(node)) return;
+    const expression = unwrapExpression(node.expression);
+    if (
+      ts.isCallExpression(node)
+      && (
+        (ts.isPropertyAccessExpression(expression) && expression.name.text === 'bind')
+        || (
+          ts.isElementAccessExpression(expression)
+          && expression.argumentExpression
+          && computedName(expression.argumentExpression) === 'bind'
+        )
+      )
+    ) return;
+    for (const invocation of invocationCandidates(node)) {
+      for (const fn of callableFunctionsForCallee(invocation.callee)) {
+        const references = invocationReferences.get(fn) ?? [];
+        if (!references.includes(node)) references.push(node);
+        invocationReferences.set(fn, references);
+      }
+    }
+  });
+  const invocationScale = Math.max(sourceFile.end + 1, 2);
+  const effectiveInvocationCache = new Map();
+  effectiveInvocationReferences = (fn, _reference, seen = new Set()) => {
+    if (!fn || seen.has(fn)) return [];
+    if (seen.size === 0 && effectiveInvocationCache.has(fn)) {
+      return effectiveInvocationCache.get(fn);
+    }
+    const nextSeen = new Set(seen).add(fn);
+    const references = (invocationReferences.get(fn) ?? []).flatMap((invocation) => {
+      const caller = executionContextNode(invocation);
+      if (ts.isSourceFile(caller)) return [invocation];
+      const outerReferences = effectiveInvocationReferences(caller, invocation, nextSeen);
+      if (
+        outerReferences.length === 0
+        && (
+          ts.isSourceFile(executionContextNode(caller.parent))
+          || ts.isMethodDeclaration(caller)
+          || ts.isGetAccessorDeclaration(caller)
+          || ts.isSetAccessorDeclaration(caller)
+          || (
+            (ts.isFunctionExpression(caller) || ts.isArrowFunction(caller))
+            && (
+              ts.isPropertyAssignment(caller.parent)
+              || ts.isMethodDeclaration(caller.parent)
+            )
+          )
+        )
+      ) return [invocation];
+      return outerReferences.map((outer) => ({
+        ...outer,
+        pos: outer.pos + (invocation.pos / (invocationScale ** nextSeen.size)),
+      }));
+    });
+    if (seen.size === 0) effectiveInvocationCache.set(fn, references);
+    return references;
+  };
+  reachingIdentifierValuesCache = new WeakMap();
+  reachingNodesCache = new WeakMap();
   const unknownCallableMemberOwner = (node) => {
     if (
       (ts.isFunctionExpression(node) || ts.isArrowFunction(node))
@@ -3196,9 +3364,14 @@ function dynamicCodeExecutionFailures(sourceFile) {
             `${declaration.scope.pos}:${declaration.initializer.pos}:${identifier.text}`,
           ]));
         }
-        const crossesExecutionContext = localTargets.size !== targetIdentifiers.length;
+        const memberTarget = ts.isPropertyAccessExpression(assignedTarget)
+          || ts.isElementAccessExpression(assignedTarget);
+        const invokedMemberEffect = memberTarget
+          && effectiveInvocationReferences(executionContextNode(node), node).length > 0;
+        const crossesExecutionContext = localTargets.size !== targetIdentifiers.length
+          && !invokedMemberEffect;
         if (crossesExecutionContext) {
-          for (const binding of assignmentBindingInitializers(node.left, node.right)) {
+          for (const binding of resolvedAssignmentBindingInitializers(node.left, node.right)) {
             if (!localTargets.has(binding.identifier)) continue;
             callableChanged = recordClassAlias(binding.identifier, binding.initializer)
               || callableChanged;
