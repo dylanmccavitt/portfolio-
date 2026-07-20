@@ -80,6 +80,7 @@
     },
     {
       "id": "dm-finalization-contract-boundary",
+      "revision": 2,
       "statement": "the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 preserves Unicode-safe bounded canonical prose across narrowly equivalent, finalize-only, prose-only, and material-drift terminal states without attaching rejected metadata",
       "subjectRefs": [
         "astro.config.mjs",
