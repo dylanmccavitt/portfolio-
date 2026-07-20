@@ -153,6 +153,7 @@
     },
     {
       "id": "dm-live-conversational-eval",
+      "revision": 2,
       "statement": "the DM release command consumes live Luna and Grok conversations for three runs per case across all twelve source-gated golden families, and provider-free calibration rejects canned v1-style naturalness without producing a release score",
       "subjectRefs": [
         "docs/agents/dm-voice.md",
