@@ -551,7 +551,8 @@ export function createDMChatResponse(
           }
           if (
             v2Prose.failed
-            || (v2Prose.text && (!finalizationResult || finalizationResult.status !== 'accepted'))
+            || !finalizationResult
+            || finalizationResult.status !== 'accepted'
           ) {
             const evidence = publicRun.evidenceLedger.snapshot();
             metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, true);

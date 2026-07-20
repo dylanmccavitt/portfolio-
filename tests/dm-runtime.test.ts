@@ -3716,6 +3716,45 @@ test('v2 accepts structurally complete prose-only output with empty metadata', a
   assert.deepEqual(observation.errors, []);
 });
 
+test('v2 retains hard finalization failure for empty output without a finalizer', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: proseOnlyModel(''),
+  }), request);
+
+  assert.equal(observation.answerText, '');
+  assert.equal(observation.result, null);
+  assert.match(observation.errors.join(' '), /safely finish/i);
+  assert.equal(observation.timedChunks.some(({ chunk }) => chunk.type === 'data-dm-answer'), false);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+});
+
+test('v2 retains hard finalization failure for schema-invalid finalize-only output', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    metricsLogger: (line) => metricsLines.push(line),
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown: '',
+      evidenceIds: [],
+      artifacts: [],
+    } }]),
+  }), request);
+
+  assert.equal(observation.answerText, '');
+  assert.equal(observation.result, null);
+  assert.match(observation.errors.join(' '), /safely finish/i);
+  assert.equal(observation.timedChunks.some(({ chunk }) => chunk.type === 'data-dm-answer'), false);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
+});
+
 test('v2 does not promote prose-only output stopped by the output-token limit', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');

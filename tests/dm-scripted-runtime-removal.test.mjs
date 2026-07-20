@@ -555,6 +555,10 @@ test('the terminal proof rejects mismatched metadata attachment and unsafe prose
       '            && finalizationAttempts === 0\n            && !v2FinalizationValidationFailed',
       '',
     ),
+    runtime.replace(
+      "            || !finalizationResult\n            || finalizationResult.status !== 'accepted'",
+      "            || (v2Prose.text && (!finalizationResult || finalizationResult.status !== 'accepted'))",
+    ),
   ];
   for (const [index, mutation] of mutations.entries()) {
     await t.test(String(index), () => assert.ok(finalizationBoundaryFailures(mutation).includes(
