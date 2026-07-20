@@ -3752,6 +3752,34 @@ test('v2 accepts structurally complete prose-only output with empty metadata', a
   assert.deepEqual(observation.errors, []);
 });
 
+test('v2 does not promote prose before an unfinished non-finalizer tool call at the step limit', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Show the agentic trader project.');
+  const prose = 'I am still gathering the requested public project details.';
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    budgets: { deadlineMs: 45_000, maxOutputTokens: 1_200, maxSteps: 1 },
+    metricsLogger: (line) => metricsLines.push(line),
+    model: toolSequenceModel([{
+      toolName: 'getProject',
+      input: { id: 'agentic-trader' },
+      prose,
+    }]),
+  }), request);
+
+  assert.equal(observation.answerText, prose);
+  assert.deepEqual(observation.tools, ['getProject']);
+  assert.equal(observation.result, null);
+  assert.equal(observation.outcome, 'error');
+  assert.deepEqual(observation.errors, ['DM could not safely finish this answer. Please try again.']);
+  assert.equal(observation.timedChunks.some(({ chunk }) => chunk.type === 'data-dm-answer'), false);
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
+  assert.doesNotMatch(metricsLines.join('\n'), /gathering|agentic trader/i);
+});
+
 test('v2 retains hard finalization failure for empty output without a finalizer', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');

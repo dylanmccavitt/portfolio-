@@ -547,19 +547,23 @@ test('the v2 comparison proof rejects broader normalization', async (t) => {
 test('the terminal proof rejects noncanonical metadata attachment and unsafe prose-only promotion', async (t) => {
   const runtime = await liveRuntimeSource();
   const mutations = [
-    runtime.replace(
+    [runtime.replace(
       'finalizationResult = acceptedV2ProseOnlyResult(v2Prose.text);\n            metrics.setErrorCategory',
       'metrics.setErrorCategory',
-    ),
-    runtime.replace(
+    ), 'src/lib/dm/runtime.ts: terminal v2 finalization must remain closed from structural fallback through the sole approved answer write'],
+    [runtime.replace(
       '            && finalizationAttempts === 0\n            && !v2FinalizationValidationFailed',
       '',
-    ),
-    runtime.replace(
+    ), 'src/lib/dm/runtime.ts: terminal v2 finalization must remain closed from structural fallback through the sole approved answer write'],
+    [runtime.replace(
+      "return reason === 'stop';",
+      "return reason === 'stop' || reason === 'tool-calls';",
+    ), 'src/lib/dm/runtime.ts: v2 prose emission must remain Unicode-safe, bounded, and canonical'],
+    [runtime.replace(
       "            || !finalizationResult\n            || finalizationResult.status !== 'accepted'",
       "            || (v2Prose.text && (!finalizationResult || finalizationResult.status !== 'accepted'))",
-    ),
-    runtime.replace(
+    ), 'src/lib/dm/runtime.ts: terminal v2 finalization must remain closed from structural fallback through the sole approved answer write'],
+    [runtime.replace(
       `          } else if (!v2Prose.failed && v2Prose.text && terminalMarkdown) {
             finalizationResult = {
               ...finalizationResult!,
@@ -573,12 +577,10 @@ test('the terminal proof rejects noncanonical metadata attachment and unsafe pro
             };
 `,
       '',
-    ),
+    ), 'src/lib/dm/runtime.ts: terminal v2 finalization must remain closed from structural fallback through the sole approved answer write'],
   ];
-  for (const [index, mutation] of mutations.entries()) {
-    await t.test(String(index), () => assert.ok(finalizationBoundaryFailures(mutation).includes(
-      'src/lib/dm/runtime.ts: terminal v2 finalization must remain closed from structural fallback through the sole approved answer write',
-    )));
+  for (const [index, [mutation, expectedFailure]] of mutations.entries()) {
+    await t.test(String(index), () => assert.ok(finalizationBoundaryFailures(mutation).includes(expectedFailure)));
   }
 });
 

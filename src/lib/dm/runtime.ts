@@ -1768,7 +1768,7 @@ function acceptedV2ProseOnlyResult(
 }
 
 function isSafeV2ProseOnlyFinishReason(reason: string | null): boolean {
-  return reason === 'stop' || reason === 'tool-calls';
+  return reason === 'stop';
 }
 
 const LATEST_TURN_CONTROL = [
