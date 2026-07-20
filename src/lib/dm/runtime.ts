@@ -548,6 +548,17 @@ export function createDMChatResponse(
               category: 'finalization_validation',
               reason: 'markdown_mismatch',
             });
+          } else if (!v2Prose.failed && v2Prose.text && terminalMarkdown) {
+            finalizationResult = {
+              ...finalizationResult!,
+              answer: {
+                ...finalizationResult!.answer,
+                segments: [{
+                  ...finalizationResult!.answer.segments[0]!,
+                  text: v2Prose.text,
+                }],
+              },
+            };
           }
           if (
             v2Prose.failed

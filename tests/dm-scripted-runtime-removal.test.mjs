@@ -544,7 +544,7 @@ test('the v2 comparison proof rejects broader normalization', async (t) => {
   }
 });
 
-test('the terminal proof rejects mismatched metadata attachment and unsafe prose-only promotion', async (t) => {
+test('the terminal proof rejects noncanonical metadata attachment and unsafe prose-only promotion', async (t) => {
   const runtime = await liveRuntimeSource();
   const mutations = [
     runtime.replace(
@@ -558,6 +558,21 @@ test('the terminal proof rejects mismatched metadata attachment and unsafe prose
     runtime.replace(
       "            || !finalizationResult\n            || finalizationResult.status !== 'accepted'",
       "            || (v2Prose.text && (!finalizationResult || finalizationResult.status !== 'accepted'))",
+    ),
+    runtime.replace(
+      `          } else if (!v2Prose.failed && v2Prose.text && terminalMarkdown) {
+            finalizationResult = {
+              ...finalizationResult!,
+              answer: {
+                ...finalizationResult!.answer,
+                segments: [{
+                  ...finalizationResult!.answer.segments[0]!,
+                  text: v2Prose.text,
+                }],
+              },
+            };
+`,
+      '',
     ),
   ];
   for (const [index, mutation] of mutations.entries()) {

@@ -233,6 +233,42 @@ test('v2 preserves leading and trailing finalizer whitespace in an exact prose e
   assert.deepEqual(observation.errors, []);
 });
 
+test('v2 emits streamed canonical bytes with narrowly equivalent finalizer metadata', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Show the agentic trader project.');
+  const prose = 'Canonical first line.\n\nCanonical last line.';
+  const followUp = 'Want a concise walkthrough?';
+  const finalizerMarkdown = `\r\n \r\n${prose.replaceAll('\n', '\r\n')}\r\n\t\r\n`;
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'agentic-trader' } },
+      { toolName: 'finalizeAnswer', input: {
+        markdown: finalizerMarkdown,
+        evidenceIds: ['agentic-trader:identity'],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        followUp,
+      }, prose },
+    ]),
+  }), request);
+  const terminalData = observation.timedChunks.flatMap(({ chunk }) => (
+    chunk.type === 'data-dm-answer' ? [chunk.data] : []
+  ));
+
+  assert.equal(terminalData.length, 1);
+  const clientResult = validateFinalizationResult(terminalData[0]);
+  assert.ok(clientResult && clientResult.status === 'accepted');
+  assert.equal(clientResult.answer.segments[0]?.text, prose);
+  assert.notEqual(clientResult.answer.segments[0]?.text, finalizerMarkdown);
+  assert.equal(observation.result?.answer.segments[0]?.text, prose);
+  assert.equal(observation.answerText, `${prose}\n${followUp}`);
+  assert.deepEqual(observation.evidenceIds, ['agentic-trader:identity']);
+  assert.deepEqual(observation.projectIds, ['agentic-trader']);
+  assert.equal(observation.result?.answer.followUp, followUp);
+  assert.deepEqual(observation.errors, []);
+});
+
 test('v2 rejects finalizer markdown above 6000 raw UTF-16 units before integrity matching', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');
