@@ -52,6 +52,7 @@ import {
   normalizeDMSiteBriefProjectReference,
   type DMSiteBrief,
 } from './site-brief';
+import { v2FinalizationMarkdownsMatch } from './finalization';
 
 export interface DMRuntimeConfig {
   provider: 'gateway' | 'openai';
@@ -340,6 +341,7 @@ export function createDMChatResponse(
   let finalized = false;
   let inputTokens = 0;
   let outputTokens = 0;
+  let lastFinishReason: string | null = null;
   const v2Prose = createBoundedV2Prose();
 
   const publicTools = createRuntimePublicTools(publicRun, artifacts, metrics, publicToolGate);
@@ -449,6 +451,7 @@ export function createDMChatResponse(
           onStepEnd(step) {
             inputTokens += step.usage.inputTokens ?? 0;
             outputTokens += step.usage.outputTokens ?? 0;
+            lastFinishReason = step.finishReason;
           },
         } satisfies Parameters<typeof agent.stream>[0] & { onError: StreamTextOnErrorCallback };
         const result = await agent.stream(agentStreamOptions);
@@ -515,14 +518,41 @@ export function createDMChatResponse(
           return;
         }
 
-        finalizationResult ??= limitedResult(finalizationAttempts > 0);
         if (contract === 'v2') {
           v2Prose.close((chunk) => writer.write(chunk));
-          const terminalMarkdown = finalizationResult.status === 'accepted'
+          const terminalMarkdown = finalizationResult?.status === 'accepted'
             && finalizationResult.answer.segments.length === 1
             ? finalizationResult.answer.segments[0]?.text
             : null;
-          if (v2Prose.failed || terminalMarkdown !== v2Prose.text) {
+          if (!v2Prose.failed && terminalMarkdown && !v2Prose.text) {
+            v2Prose.synthesize(terminalMarkdown, (chunk) => writer.write(chunk));
+            if (!v2Prose.failed) metrics.visibleOutput();
+          } else if (
+            !v2Prose.failed
+            && v2Prose.text
+            && !terminalMarkdown
+            && finalizationAttempts === 0
+            && !v2FinalizationValidationFailed
+            && isSafeV2ProseOnlyFinishReason(lastFinishReason)
+          ) {
+            finalizationResult = acceptedV2ProseOnlyResult(v2Prose.text);
+          } else if (
+            !v2Prose.failed
+            && v2Prose.text
+            && terminalMarkdown
+            && !v2FinalizationMarkdownsMatch(v2Prose.text, terminalMarkdown)
+          ) {
+            finalizationResult = acceptedV2ProseOnlyResult(v2Prose.text);
+            metrics.setErrorCategory('finalization_validation');
+            console.error('[dm] finalization validation failure', {
+              category: 'finalization_validation',
+              reason: 'markdown_mismatch',
+            });
+          }
+          if (
+            v2Prose.failed
+            || (v2Prose.text && (!finalizationResult || finalizationResult.status !== 'accepted'))
+          ) {
             const evidence = publicRun.evidenceLedger.snapshot();
             metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, true);
             metrics.setUsage(inputTokens, outputTokens);
@@ -536,6 +566,7 @@ export function createDMChatResponse(
             return;
           }
         }
+        finalizationResult ??= limitedResult(finalizationAttempts > 0);
         if (
           finalizationResult.status === 'limited'
           && (finalizationAttempts > 0 || v2FinalizationValidationFailed)
@@ -590,6 +621,7 @@ interface BoundedV2Prose {
   readonly failed: boolean;
   forward(chunk: V2TextChunk, write: (chunk: UIMessageChunk) => void): boolean;
   close(write: (chunk: UIMessageChunk) => void): void;
+  synthesize(text: string, write: (chunk: UIMessageChunk) => void): void;
 }
 
 function isV2TextChunk(chunk: UIMessageChunk): chunk is V2TextChunk {
@@ -598,8 +630,9 @@ function isV2TextChunk(chunk: UIMessageChunk): chunk is V2TextChunk {
 
 function createBoundedV2Prose(): BoundedV2Prose {
   const sourceOpen = new Set<string>();
-  const forwardedOpen = new Set<string>();
   const pendingHighSurrogate = new Map<string, string>();
+  const outputId = 'dm-v2-answer';
+  let outputOpen = false;
   let text = '';
   let failed = false;
 
@@ -623,9 +656,6 @@ function createBoundedV2Prose(): BoundedV2Prose {
       if (pendingHighSurrogate.has(chunk.id)) fail();
       pendingHighSurrogate.delete(chunk.id);
       sourceOpen.delete(chunk.id);
-      if (forwardedOpen.delete(chunk.id)) {
-        write({ type: 'text-end', id: chunk.id });
-      }
       return false;
     }
 
@@ -636,12 +666,12 @@ function createBoundedV2Prose(): BoundedV2Prose {
     if (bounded.pendingHighSurrogate) pendingHighSurrogate.set(chunk.id, bounded.pendingHighSurrogate);
     if (bounded.invalid || bounded.overflow) fail();
     if (!bounded.text) return false;
-    if (!forwardedOpen.has(chunk.id)) {
-      forwardedOpen.add(chunk.id);
-      write({ type: 'text-start', id: chunk.id });
+    if (!outputOpen) {
+      outputOpen = true;
+      write({ type: 'text-start', id: outputId });
     }
     text += bounded.text;
-    write({ type: 'text-delta', id: chunk.id, delta: bounded.text });
+    write({ type: 'text-delta', id: outputId, delta: bounded.text });
     return true;
   };
 
@@ -655,10 +685,31 @@ function createBoundedV2Prose(): BoundedV2Prose {
     forward,
     close(write) {
       if (sourceOpen.size > 0 || pendingHighSurrogate.size > 0) fail();
-      for (const id of forwardedOpen) write({ type: 'text-end', id });
+      if (outputOpen) write({ type: 'text-end', id: outputId });
       sourceOpen.clear();
-      forwardedOpen.clear();
       pendingHighSurrogate.clear();
+      outputOpen = false;
+    },
+    synthesize(finalizedText, write) {
+      if (text || outputOpen || sourceOpen.size > 0 || pendingHighSurrogate.size > 0) {
+        fail();
+        return;
+      }
+      const bounded = takeBoundedCompleteCodePoints(finalizedText, MAX_V2_PROSE_CODE_UNITS);
+      if (
+        bounded.invalid
+        || bounded.overflow
+        || bounded.pendingHighSurrogate
+        || bounded.text !== finalizedText
+        || !bounded.text
+      ) {
+        fail();
+        return;
+      }
+      text = bounded.text;
+      write({ type: 'text-start', id: outputId });
+      write({ type: 'text-delta', id: outputId, delta: text });
+      write({ type: 'text-end', id: outputId });
     },
   };
 }
@@ -1690,6 +1741,24 @@ function limitedResult(repairAttempted: boolean): Extract<DMFinalizationResult, 
   };
 }
 
+function acceptedV2ProseOnlyResult(
+  text: string,
+): Extract<DMFinalizationResult, { status: 'accepted' }> {
+  return {
+    status: 'accepted',
+    answer: {
+      segments: [{ text, evidenceIds: [], evidence: [] }],
+      artifacts: [],
+      limitations: [],
+    },
+    repairAttempted: false,
+  };
+}
+
+function isSafeV2ProseOnlyFinishReason(reason: string | null): boolean {
+  return reason === 'stop' || reason === 'tool-calls';
+}
+
 const LATEST_TURN_CONTROL = [
   'Latest-turn control: the latest user message below is the only active request.',
   'Earlier messages are reference context only: use them to resolve the project subject, never as factual evidence.',
@@ -1863,9 +1932,9 @@ const DM_V2_SYSTEM_INSTRUCTIONS = [
   'If a requested public source is partial, empty, or unavailable, preserve the supported answer in your own words and state the bounded limitation without exposing internal error details.',
   'Unknown personal details require searchProfile and an honest explanation when its public result is empty.',
   FORBIDDEN_SOURCE_INSTRUCTION,
-  'Emit the complete visitor-facing markdown through the standard response text stream, then call finalizeAnswer exactly once with markdown that exactly equals that streamed text plus any optional model-authored follow-up, answer-level evidenceIds, and artifact references.',
+  'Emit the complete visitor-facing markdown through the standard response text stream, then call finalizeAnswer exactly once with markdown that matches that streamed text after only line-ending and blank-boundary-line normalization, plus any optional model-authored follow-up, answer-level evidenceIds, and artifact references.',
   'Every evidence id and artifact reference must come from a typed public tool in this same run. The server removes unknown or duplicate metadata while preserving otherwise valid markdown.',
-  'Do not emit any additional visitor-facing prose before or after the streamed markdown. finalizeAnswer.markdown is an integrity echo, not a second answer.',
+  'Do not emit any additional visitor-facing prose before or after the streamed markdown. finalizeAnswer.markdown is an integrity echo and metadata envelope, not a second answer.',
 ];
 
 export function buildDMSystemInstructions(

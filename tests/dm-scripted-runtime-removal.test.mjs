@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { URL } from 'node:url';
 
 import {
   FORBIDDEN_TOKENS,
@@ -10,6 +11,7 @@ import {
   REMOVAL_CLAIM_STATEMENT,
   checkScriptedRuntimeRemoval,
   finalizationBoundaryFailures,
+  v2FinalizationComparisonFailures,
 } from '../scripts/check-dm-scripted-runtime-removed.mjs';
 
 const PROJECT_DRAFT_TOKEN = 'ProjectDraft';
@@ -27,7 +29,11 @@ const GOVERNANCE_DOCUMENT_FIXTURES = {
 - strict bounded schema types and sizes;
 - current-run provenance by filtering unknown evidence ids;
 - deterministic exclusion of forbidden/private sources and tools;
-- exact streamed-prose/finalizer integrity;
+- streamed-prose/finalizer integrity with only CRLF/CR line-ending canonicalization;
+
+## Terminal reconciliation
+
+Material finalizer drift preserves the streamed prose.
 
 ## Behavior stays out of runtime rejection
 
@@ -448,12 +454,19 @@ async function writeFixtureFile(root, path, contents) {
 async function createCleanFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'dm-scripted-runtime-removal-'));
   t.after(() => rm(root, { recursive: true, force: true }));
+  assert.match(CLEAN_RUNTIME_FIXTURE, /createDMChatResponse/);
+  const runtimeFixture = await liveRuntimeSource();
 
   await Promise.all([
     writeFixtureFile(
       root,
       'src/lib/dm/runtime.ts',
-      CLEAN_RUNTIME_FIXTURE,
+      runtimeFixture,
+    ),
+    writeFixtureFile(
+      root,
+      'src/lib/dm/finalization.ts',
+      await readFile(new URL('../src/lib/dm/finalization.ts', import.meta.url), 'utf8'),
     ),
     writeFixtureFile(root, 'claims.json', `${JSON.stringify({
       claims: [{ id: REMOVAL_CLAIM_ID, statement: REMOVAL_CLAIM_STATEMENT }, {
@@ -463,6 +476,7 @@ async function createCleanFixture(t) {
           'docs/agents/dm-validator-governance.md',
           'docs/agents/dm-evals.md',
           'docs/agents/scope-ledger.md',
+          'src/lib/dm/finalization.ts',
           'src/lib/dm/runtime.ts',
           'scripts/check-dm-scripted-runtime-removed.mjs',
           'tests/dm-scripted-runtime-removal.test.mjs',
@@ -492,7 +506,9 @@ async function createCleanFixture(t) {
 async function mutateRuntime(root, transform) {
   const path = join(root, 'src/lib/dm/runtime.ts');
   const runtime = await readFile(path, 'utf8');
-  await writeFile(path, transform(runtime));
+  const mutated = transform(runtime);
+  assert.notEqual(mutated, runtime, 'runtime mutation must change the live fixture');
+  await writeFile(path, mutated);
 }
 
 async function liveRuntimeSource() {
@@ -513,6 +529,38 @@ function replaceLast(text, needle, replacement) {
 
 test('the live runtime satisfies the finalization boundary proof', async () => {
   assert.deepEqual(finalizationBoundaryFailures(await liveRuntimeSource()), []);
+});
+
+test('the v2 comparison proof rejects broader normalization', async (t) => {
+  const source = await readFile(new URL('../src/lib/dm/finalization.ts', import.meta.url), 'utf8');
+  assert.deepEqual(v2FinalizationComparisonFailures(source), []);
+  const mutations = [
+    source.replace("return /^[\\t ]*$/.test(line);", 'return /^\\s*$/.test(line);'),
+    source.replace(".join('\\n');", ".join('\\n').trim();"),
+    source.replace('normalizeV2FinalizationMarkdown(finalized)', 'normalizeV2FinalizationMarkdown(finalized).toLowerCase()'),
+  ];
+  for (const [index, mutation] of mutations.entries()) {
+    await t.test(String(index), () => assert.ok(v2FinalizationComparisonFailures(mutation).length > 0));
+  }
+});
+
+test('the terminal proof rejects mismatched metadata attachment and unsafe prose-only promotion', async (t) => {
+  const runtime = await liveRuntimeSource();
+  const mutations = [
+    runtime.replace(
+      'finalizationResult = acceptedV2ProseOnlyResult(v2Prose.text);\n            metrics.setErrorCategory',
+      'metrics.setErrorCategory',
+    ),
+    runtime.replace(
+      '            && finalizationAttempts === 0\n            && !v2FinalizationValidationFailed',
+      '',
+    ),
+  ];
+  for (const [index, mutation] of mutations.entries()) {
+    await t.test(String(index), () => assert.ok(finalizationBoundaryFailures(mutation).includes(
+      'src/lib/dm/runtime.ts: terminal v2 finalization must remain closed from structural fallback through the sole approved answer write',
+    )));
+  }
 });
 
 test('detects forbidden tokens moved anywhere under each runtime-facing source root', async (t) => {
@@ -671,8 +719,8 @@ test('rejects an unbounded v2 prose schema', async (t) => {
 test('rejects forwarding raw v2 deltas instead of bounded canonical prose', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    "write({ type: 'text-delta', id: chunk.id, delta: bounded.text });",
-    "write({ type: 'text-delta', id: chunk.id, delta: chunk.delta });",
+    "write({ type: 'text-delta', id: outputId, delta: bounded.text });",
+    "write({ type: 'text-delta', id: outputId, delta: chunk.delta });",
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -684,8 +732,8 @@ test('rejects forwarding raw v2 deltas instead of bounded canonical prose', asyn
 test('rejects forged v2 emitted prose that diverges from the accumulator', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    "write({ type: 'text-delta', id: chunk.id, delta: bounded.text });",
-    "write({ type: 'text-delta', id: chunk.id, delta: `FORGED:${bounded.text}` });",
+    "write({ type: 'text-delta', id: outputId, delta: bounded.text });",
+    "write({ type: 'text-delta', id: outputId, delta: `FORGED:${bounded.text}` });",
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -842,8 +890,8 @@ test('rejects deletion of v2 stream-failure finish and metrics completion', asyn
       "          }\n          metrics.error('unknown');",
     ),
     runtime.replace(
-      "          metrics.error('unknown');\n          return;\n        }\n\n        finalizationResult ??=",
-      '          return;\n        }\n\n        finalizationResult ??=',
+      "          metrics.error('unknown');\n          return;\n        }\n\n        if (contract === 'v2')",
+      "          return;\n        }\n\n        if (contract === 'v2')",
     ),
   ];
   for (const [index, mutated] of mutations.entries()) {
@@ -1527,8 +1575,8 @@ test('rejects bypassing the governed finalizer at the ToolLoopAgent consumption 
 test('rejects bypassing the governed finalizer at the UI stream consumption site', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    '    tools: agentTools,\n  });\n  createPublicAgentTools();',
-    "    tools: contract === 'v2' ? publicTools : agentTools,\n  });\n  createPublicAgentTools();",
+    '          stream: result.stream,\n          tools: agentTools,',
+    "          stream: result.stream,\n          tools: contract === 'v2' ? publicTools : agentTools,",
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -1540,8 +1588,8 @@ test('rejects bypassing the governed finalizer at the UI stream consumption site
 test('rejects a spread override at an agentTools consumption site', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    '    tools: agentTools,\n    experimental_repairToolCall:',
-    '    tools: agentTools,\n    ...{ tools: publicTools },\n    experimental_repairToolCall:',
+    '          tools: agentTools,\n          stopWhen:',
+    '          tools: agentTools,\n          ...{ tools: publicTools },\n          stopWhen:',
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -1553,8 +1601,8 @@ test('rejects a spread override at an agentTools consumption site', async (t) =>
 test('rejects a computed override at an agentTools consumption site', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    '    tools: agentTools,\n  });\n  createPublicAgentTools();',
-    "    tools: agentTools,\n    [('too' + 'ls')]: publicTools,\n  });\n  createPublicAgentTools();",
+    '          stream: result.stream,\n          tools: agentTools,',
+    "          stream: result.stream,\n          tools: agentTools,\n          [('too' + 'ls')]: publicTools,",
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -1733,8 +1781,8 @@ test('rejects duplicate finalizer option keys across equivalent static names', a
 test('rejects a finalizer method in place of the governed execute property', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    '          execute: async (input) => {',
-    '          async execute(input) {',
+    '          execute: async (input: V2FinalAnswerInput) => {',
+    '          async execute(input: V2FinalAnswerInput) {',
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -1759,12 +1807,12 @@ test('rejects v2 metadata that bypasses the current-run ledgers', async (t) => {
 test('rejects replacement of the current-run evidence ledger semantics', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    'const artifacts = {};',
+    '  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));',
     `publicRun.evidenceLedger = {
     ...publicRun.evidenceLedger,
     has: (id) => id.includes('approved'),
   };
-  const artifacts = {};`,
+  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));`,
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -2746,11 +2794,11 @@ test('rejects Object.defineProperties replacement of the public tool idle gate',
 test('rejects replacement of the current-run project map with subclass semantics', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    'const siteBrief = {};',
+    '  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));',
     `artifacts.projects = new class extends Map {
     has() { return true; }
   }();
-  const siteBrief = {};`,
+  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));`,
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -2764,11 +2812,11 @@ test('rejects Object and Reflect prototype replacement of current-run project ma
     await t.test(mutator, async (t) => {
       const root = await createCleanFixture(t);
       await mutateRuntime(root, (runtime) => runtime.replace(
-        'const siteBrief = {};',
+        '  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));',
         `${mutator}(artifacts.projects, {
     has: () => true,
   });
-  const siteBrief = {};`,
+  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));`,
       ));
 
       const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -2808,18 +2856,18 @@ for (const [name, mutation] of [
 test('rejects an aliased SDK tool hidden behind a behavior-mutating local wrapper', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime
-    .replace("import { tool } from 'ai';", "import { tool as sdkTool } from 'ai';")
+    .replace('  tool,', '  tool as sdkTool,')
     .replace(
-      'function createDMChatResponse(request, config = {}) {',
-      `function createDMChatResponse(request, config = {}) {
-  const tool = (options) => {
+      "  const contract = config.contract ?? 'v1';",
+      `  const tool = (options) => {
     const wrappedExecute = async (input) => {
       const result = await options.execute(input);
       result.answer.followUp = 'Would you like a polished project walkthrough?';
       return result;
     };
     return sdkTool({ ...options, execute: wrappedExecute });
-  };`,
+  };
+  const contract = config.contract ?? 'v1';`,
     ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -3036,8 +3084,8 @@ test('rejects model-authored free text in the no-evidence finalization schema', 
 test('rejects request-routed access to server-controlled finalization copy', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    'function createDMChatResponse(request, config = {}) {',
-    'function createDMChatResponse(request, config = {}) {\n  const routed = FINALIZATION_ENUM_COPY.conversational[request.act];',
+    "  const contract = config.contract ?? 'v1';",
+    "  const routed = FINALIZATION_ENUM_COPY.conversational[request.act];\n  const contract = config.contract ?? 'v1';",
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
@@ -3049,8 +3097,8 @@ test('rejects request-routed access to server-controlled finalization copy', asy
 test('rejects request-routed validation and limited-answer call sites', async (t) => {
   const root = await createCleanFixture(t);
   await mutateRuntime(root, (runtime) => runtime.replace(
-    'const publicRun = {};',
-    'const publicRun = {};\n  if (request.messages) validateFinalAnswer(input, publicRun, artifacts);\n  if (request.empty) limitedResult(false);',
+    '  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));',
+    '  if (request.messages) validateFinalAnswer(input, publicRun, artifacts);\n  if (request.empty) limitedResult(false);\n  const artifacts = emptyArtifacts(requestedArtifactRequirements(request));',
   ));
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });

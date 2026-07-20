@@ -7,6 +7,7 @@ import type {
   DMFinalizationResult,
   DMValidatedAnswer,
 } from './contract';
+import { v2FinalizationMarkdownsMatch } from './finalization';
 export {
   FIT_CHECK_CONTEXT_LIMIT,
   FIT_CHECK_INPUT_LIMIT,
@@ -66,7 +67,7 @@ export function matchesStreamedV2Finalization(
   return prose.length > 0
     && result.status === 'accepted'
     && result.answer.segments.length === 1
-    && result.answer.segments[0]?.text === prose;
+    && v2FinalizationMarkdownsMatch(prose, result.answer.segments[0]?.text ?? '');
 }
 
 export function completedAssistantHistoryText(prose: string, completed: boolean): string | null {

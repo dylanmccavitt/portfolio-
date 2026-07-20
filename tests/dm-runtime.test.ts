@@ -79,7 +79,7 @@ test('runtime budgets remain bounded', () => {
   assert.throws(() => readDMBudgetConfig({ DM_REQUEST_DEADLINE_MS: '500000' }), /safeguards/);
 });
 
-test('v2 instructions require standard streamed prose and an exact finalizer integrity echo', () => {
+test('v2 instructions require standard streamed prose and a narrowly normalized integrity echo', () => {
   const instructions = buildDMSystemInstructions({
     content: {
       version: 1,
@@ -96,8 +96,8 @@ test('v2 instructions require standard streamed prose and an exact finalizer int
   }, 'v2');
 
   assert.match(instructions, /standard response text stream/);
-  assert.match(instructions, /exactly equals that streamed text/);
-  assert.match(instructions, /integrity echo, not a second answer/);
+  assert.match(instructions, /line-ending and blank-boundary-line normalization/);
+  assert.match(instructions, /integrity echo and metadata envelope, not a second answer/);
   assert.doesNotMatch(instructions, /Do not emit visitor-facing prose outside finalizeAnswer/);
 });
 
@@ -3619,27 +3619,116 @@ test('the endpoint streams canonical v2 prose once before attaching the matching
   assert.equal(body.match(/data-dm-answer/g)?.length, 1);
 });
 
-test('v2 rejects terminal metadata when the finalizer markdown does not exactly echo streamed prose', async () => {
+test('v2 reconciles boundary-only whitespace drift and keeps streamed bytes canonical', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('What can you help with?');
-  const prose = 'This bounded prose remains visible.';
+  const prose = 'Canonical streamed bytes.\nSecond line.';
   const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
     db: source.db,
     projectLoader: source.projectLoader,
     model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
-      markdown: `${prose} changed`,
+      markdown: `\r\n\t\r\n${prose.replaceAll('\n', '\r\n')}\r\n  `,
       evidenceIds: [],
       artifacts: [],
-      followUp: 'This must not attach.',
+      followUp: 'Metadata still attaches.',
     }, prose }]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.answer.followUp, 'Metadata still attaches.');
+  assert.equal(observation.answerText, `${prose}\nMetadata still attaches.`);
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-delta').length, 1);
+});
+
+test('v2 preserves streamed prose but strips terminal metadata when finalizer markdown drifts materially', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = 'This bounded prose remains visible.';
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    metricsLogger: (line) => metricsLines.push(line),
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'agentic-trader' } },
+      { toolName: 'finalizeAnswer', input: {
+        markdown: `${prose} changed`,
+        evidenceIds: ['agentic-trader:identity'],
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        followUp: 'This must not attach.',
+      }, prose },
+    ]),
+  }), request);
+
+  assert.equal(observation.answerText, prose);
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.result?.answer.artifacts, []);
+  assert.deepEqual(observation.result?.answer.segments[0]?.evidenceIds, []);
+  assert.deepEqual(observation.result?.answer.segments[0]?.evidence, []);
+  assert.equal(observation.result?.answer.followUp, undefined);
+  assert.equal(observation.projectIds.length, 0);
+  assert.doesNotMatch(observation.answerText, /must not attach/);
+  assert.deepEqual(observation.errors, []);
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
+  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
+});
+
+test('v2 emits finalize-only markdown once through the canonical lifecycle with metadata', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const markdown = 'Finalize-only bounded answer.';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([{ toolName: 'finalizeAnswer', input: {
+      markdown,
+      evidenceIds: [],
+      artifacts: [],
+      followUp: 'Late metadata.',
+    } }]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.answerText, `${markdown}\nLate metadata.`);
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-start').length, 1);
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-delta').length, 1);
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'text-end').length, 1);
+  assert.equal(observation.timedChunks.filter(({ chunk }) => chunk.type === 'data-dm-answer').length, 1);
+});
+
+test('v2 accepts structurally complete prose-only output with empty metadata', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = 'Complete bounded prose without terminal metadata.';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: proseOnlyModel(prose),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.answerText, prose);
+  assert.deepEqual(observation.result?.answer, {
+    segments: [{ text: prose, evidenceIds: [], evidence: [] }],
+    artifacts: [],
+    limitations: [],
+  });
+  assert.deepEqual(observation.errors, []);
+});
+
+test('v2 does not promote prose-only output stopped by the output-token limit', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('What can you help with?');
+  const prose = 'A token-limited prefix.';
+  const observation = await observeDMResponse(createDMChatResponse(request, v2Config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: proseOnlyModel(prose, 'length'),
   }), request);
 
   assert.equal(observation.answerText, prose);
   assert.equal(observation.result, null);
-  assert.equal(observation.projectIds.length, 0);
-  assert.doesNotMatch(observation.answerText, /must not attach/);
   assert.match(observation.errors.join(' '), /safely finish/i);
-  assert.equal(observation.timedChunks.at(-1)?.chunk.type, 'finish');
 });
 
 test('v2 treats a partial text lifecycle as incomplete and withholds terminal metadata', async () => {
@@ -3749,6 +3838,28 @@ function parseMetricsRecord(lines: string[]): DMMetricsRecord {
 }
 
 type MockToolCall = { toolName: string; input: unknown; prose?: string | string[]; omitTextEnd?: boolean };
+
+function proseOnlyModel(prose: string, finishReason: 'stop' | 'length' = 'stop'): LanguageModel {
+  return new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: simulateReadableStream({ chunks: [
+        { type: 'stream-start' as const, warnings: [] },
+        { type: 'response-metadata' as const, id: 'prose-only', modelId: 'mock-prose-only', timestamp: new Date(0) },
+        { type: 'text-start' as const, id: 'prose-only-text' },
+        { type: 'text-delta' as const, id: 'prose-only-text', delta: prose },
+        { type: 'text-end' as const, id: 'prose-only-text' },
+        {
+          type: 'finish' as const,
+          finishReason: { unified: finishReason, raw: finishReason },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 8, text: 8, reasoning: undefined },
+          },
+        },
+      ] }),
+    }),
+  });
+}
 
 function evalCase(id: string) {
   const testCase = DM_LIVE_EVAL_CORPUS.find((item) => item.id === id);

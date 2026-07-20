@@ -80,7 +80,7 @@
     },
     {
       "id": "dm-finalization-contract-boundary",
-      "statement": "the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 streams Unicode-safe bounded canonical prose and attaches only an exact matching finalizer plus current-run evidence and artifact metadata at the terminal boundary",
+      "statement": "the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 preserves Unicode-safe bounded canonical prose across narrowly equivalent, finalize-only, prose-only, and material-drift terminal states without attaching rejected metadata",
       "subjectRefs": [
         "astro.config.mjs",
         "src/lib/dm/benchmark.ts",
@@ -91,6 +91,7 @@
         "src/lib/dm/eval-report.ts",
         "src/lib/dm/eval-runtime.ts",
         "src/lib/dm/eval-source.ts",
+        "src/lib/dm/finalization.ts",
         "src/lib/dm/fit-check.ts",
         "src/lib/dm/judge.ts",
         "src/lib/dm/metrics.ts",
@@ -117,6 +118,7 @@
         "docs/agents/dm-validator-governance.md",
         "docs/agents/dm-evals.md",
         "docs/agents/scope-ledger.md",
+        "src/lib/dm/finalization.ts",
         "src/lib/dm/runtime.ts",
         "scripts/check-dm-scripted-runtime-removed.mjs",
         "tests/dm-scripted-runtime-removal.test.mjs",

@@ -21,19 +21,37 @@ function finalization(markdown: string, overrides: Record<string, unknown> = {})
   };
 }
 
-test('the client accepts only an exact matching v2 terminal integrity echo', () => {
+test('the client accepts only narrowly equivalent v2 terminal integrity echoes', () => {
   const prose = 'Canonical streamed prose.';
   const matching = validateFinalizationResult(finalization(prose));
-  const mismatch = validateFinalizationResult(finalization(`${prose} changed`));
+  const equivalent = validateFinalizationResult(finalization(`\r\n\t\r\n${prose}\r\n   \r\n`));
   const limited = validateFinalizationResult({ ...finalization(prose), status: 'limited' });
 
   assert.ok(matching && matching.status !== 'rejected');
-  assert.ok(mismatch && mismatch.status !== 'rejected');
+  assert.ok(equivalent && equivalent.status !== 'rejected');
   assert.ok(limited && limited.status !== 'rejected');
   assert.equal(matchesStreamedV2Finalization(prose, matching), true);
-  assert.equal(matchesStreamedV2Finalization(prose, mismatch), false);
+  assert.equal(matchesStreamedV2Finalization(prose, equivalent), true);
   assert.equal(matchesStreamedV2Finalization(prose, limited), false);
   assert.equal(matchesStreamedV2Finalization('', matching), false);
+});
+
+test('v2 integrity comparison keeps meaningful whitespace and text differences material', () => {
+  const prose = 'First line\n  indented line\n\nLast line';
+  const mismatches = [
+    'First line\n indented line\n\nLast line',
+    'First  line\n  indented line\n\nLast line',
+    'First line\n  indented line\nLast line',
+    'First line\n  indented line\n\u00a0\nLast line',
+    'First line\n  indented line\n\nLast line.',
+    'first line\n  indented line\n\nLast line',
+  ];
+
+  for (const markdown of mismatches) {
+    const candidate = validateFinalizationResult(finalization(markdown));
+    assert.ok(candidate && candidate.status !== 'rejected');
+    assert.equal(matchesStreamedV2Finalization(prose, candidate), false, markdown);
+  }
 });
 
 test('the client keeps streamed model markup inert and excludes incomplete turns from history', async () => {

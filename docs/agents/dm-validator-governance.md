@@ -13,7 +13,8 @@ The v2 runtime may enforce only structural or operational controls:
 - current-run provenance by filtering unknown evidence ids and references to
   artifacts that the same run did not return;
 - deterministic exclusion of forbidden/private sources and tools;
-- exact streamed-prose/finalizer integrity;
+- streamed-prose/finalizer integrity with only CRLF/CR line-ending
+  canonicalization and completely blank boundary-line removal;
 - provider and configuration validity, cancellation, timeout, rate limits,
   step/token/resource budgets, and other availability bounds.
 
@@ -22,6 +23,22 @@ and artifact ledgers, deduplicate and filter those metadata references, preserve
 the model-authored markdown and optional follow-up, and attach resolved
 same-run public evidence and artifacts. Invalid metadata degrades by omission;
 it does not replace otherwise valid prose with boilerplate.
+
+## Terminal reconciliation
+
+V2 has one deterministic terminal state machine. Streamed prose bytes remain
+canonical when a finalizer is exact or narrowly equivalent. A valid
+finalize-only result is emitted once through the standard text lifecycle before
+its metadata. Structurally complete prose with no finalization attempt completes
+with empty metadata. Material finalizer drift preserves the streamed prose,
+discards all finalizer evidence, artifacts, limitations, and follow-up, and
+records only a content-free `finalization_validation` diagnostic.
+
+Normalization never rewrites output and never changes indentation, intra-line
+spacing, interior blank lines, Unicode whitespace, punctuation, case, or
+Markdown meaning. Partial or malformed text lifecycles, provider errors,
+cancellation, timeout, overflow, invalid Unicode, and attempted invalid
+finalization retain bounded safe termination and cannot enter completed history.
 
 ## Behavior stays out of runtime rejection
 
@@ -58,6 +75,9 @@ proof. An annotation or behavioral preference is not exception evidence.
 - Confirm known v1 validation and any rejection-result route fail the proof.
 - Prove bounded markdown and optional follow-up remain model-authored, while
   unknown evidence ids and unavailable artifact references are stripped.
+- Prove exact, narrowly equivalent, finalize-only, prose-only, material-drift,
+  and unsafe lifecycle routes share the same canonical prose and metadata rules
+  across the server, client, and response observer.
 - Confirm v1 behavior is unchanged and `DM_CONTRACT` still defaults to v1.
 - Re-run DM, eval, metrics, benchmark, proof, repository verification, and
   attest at the exact candidate head with zero stale or unverified claims.

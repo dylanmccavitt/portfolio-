@@ -48,7 +48,7 @@ export const FORBIDDEN_TOKENS = [
 ];
 
 export const REMOVAL_CLAIM_ID = 'dm-finalization-contract-boundary';
-export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 streams Unicode-safe bounded canonical prose and attaches only an exact matching finalizer plus current-run evidence and artifact metadata at the terminal boundary';
+export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 preserves Unicode-safe bounded canonical prose across narrowly equivalent, finalize-only, prose-only, and material-drift terminal states without attaching rejected metadata';
 
 const GOVERNANCE_CLAIM_ID = 'dm-v2-validator-governance';
 const GOVERNANCE_CLAIM_STATEMENT = 'DM v2 runtime finalization is limited to documented structural, same-run provenance, source, integrity, and operational controls; behavior quality stays in prompts, approved public content, and evaluations';
@@ -61,6 +61,7 @@ const GOVERNANCE_CLAIM_SUBJECT_REFS = [
   GOVERNANCE_DOCUMENTS.rule,
   GOVERNANCE_DOCUMENTS.evals,
   GOVERNANCE_DOCUMENTS.scope,
+  'src/lib/dm/finalization.ts',
   'src/lib/dm/runtime.ts',
   'scripts/check-dm-scripted-runtime-removed.mjs',
   'tests/dm-scripted-runtime-removal.test.mjs',
@@ -72,7 +73,9 @@ const GOVERNANCE_DOCUMENT_ANCHORS = {
     'strict bounded schema types and sizes',
     'current-run provenance by filtering unknown evidence ids',
     'deterministic exclusion of forbidden/private sources and tools',
-    'exact streamed-prose/finalizer integrity',
+    'streamed-prose/finalizer integrity with only CRLF/CR line-ending',
+    '## Terminal reconciliation',
+    'Material finalizer drift preserves the streamed prose',
     '## Behavior stays out of runtime rejection',
     'Runtime code must not reject, rewrite, force, or gate v2 prose',
     'The public source boundary remains hard: published database projects, approved public RAG sources, and canonical résumé/contact data only.',
@@ -5843,7 +5846,7 @@ function schemaBoundaryFailures(sourceFile) {
 
 const EXPECTED_V2_PROSE_HELPER_BODIES = new Map([
   ['isV2TextChunk', "{returnchunk.type==='text-start'||chunk.type==='text-delta'||chunk.type==='text-end';}"],
-  ['createBoundedV2Prose', "{constsourceOpen=newSet<string>();constforwardedOpen=newSet<string>();constpendingHighSurrogate=newMap<string,string>();lettext='';letfailed=false;constfail=():void=>{failed=true;};constforward=(chunk:V2TextChunk,write:(chunk:UIMessageChunk)=>void):boolean=>{if(chunk.type==='text-start'){if(sourceOpen.has(chunk.id))fail();elsesourceOpen.add(chunk.id);returnfalse;}if(!sourceOpen.has(chunk.id)){fail();returnfalse;}if(chunk.type==='text-end'){if(pendingHighSurrogate.has(chunk.id))fail();pendingHighSurrogate.delete(chunk.id);sourceOpen.delete(chunk.id);if(forwardedOpen.delete(chunk.id)){write({type:'text-end',id:chunk.id});}returnfalse;}if(failed||chunk.delta.length===0)returnfalse;constcombined=`${pendingHighSurrogate.get(chunk.id)??''}${chunk.delta}`;pendingHighSurrogate.delete(chunk.id);constbounded=takeBoundedCompleteCodePoints(combined,MAX_V2_PROSE_CODE_UNITS-text.length);if(bounded.pendingHighSurrogate)pendingHighSurrogate.set(chunk.id,bounded.pendingHighSurrogate);if(bounded.invalid||bounded.overflow)fail();if(!bounded.text)returnfalse;if(!forwardedOpen.has(chunk.id)){forwardedOpen.add(chunk.id);write({type:'text-start',id:chunk.id});}text+=bounded.text;write({type:'text-delta',id:chunk.id,delta:bounded.text});returntrue;};return{gettext(){returntext;},getfailed(){returnfailed;},forward,close(write){if(sourceOpen.size>0||pendingHighSurrogate.size>0)fail();for(constidofforwardedOpen)write({type:'text-end',id});sourceOpen.clear();forwardedOpen.clear();pendingHighSurrogate.clear();}};}"],
+  ['createBoundedV2Prose', "{constsourceOpen=newSet<string>();constpendingHighSurrogate=newMap<string,string>();constoutputId='dm-v2-answer';letoutputOpen=false;lettext='';letfailed=false;constfail=():void=>{failed=true;};constforward=(chunk:V2TextChunk,write:(chunk:UIMessageChunk)=>void):boolean=>{if(chunk.type==='text-start'){if(sourceOpen.has(chunk.id))fail();elsesourceOpen.add(chunk.id);returnfalse;}if(!sourceOpen.has(chunk.id)){fail();returnfalse;}if(chunk.type==='text-end'){if(pendingHighSurrogate.has(chunk.id))fail();pendingHighSurrogate.delete(chunk.id);sourceOpen.delete(chunk.id);returnfalse;}if(failed||chunk.delta.length===0)returnfalse;constcombined=`${pendingHighSurrogate.get(chunk.id)??''}${chunk.delta}`;pendingHighSurrogate.delete(chunk.id);constbounded=takeBoundedCompleteCodePoints(combined,MAX_V2_PROSE_CODE_UNITS-text.length);if(bounded.pendingHighSurrogate)pendingHighSurrogate.set(chunk.id,bounded.pendingHighSurrogate);if(bounded.invalid||bounded.overflow)fail();if(!bounded.text)returnfalse;if(!outputOpen){outputOpen=true;write({type:'text-start',id:outputId});}text+=bounded.text;write({type:'text-delta',id:outputId,delta:bounded.text});returntrue;};return{gettext(){returntext;},getfailed(){returnfailed;},forward,close(write){if(sourceOpen.size>0||pendingHighSurrogate.size>0)fail();if(outputOpen)write({type:'text-end',id:outputId});sourceOpen.clear();pendingHighSurrogate.clear();outputOpen=false;},synthesize(finalizedText,write){if(text||outputOpen||sourceOpen.size>0||pendingHighSurrogate.size>0){fail();return;}constbounded=takeBoundedCompleteCodePoints(finalizedText,MAX_V2_PROSE_CODE_UNITS);if(bounded.invalid||bounded.overflow||bounded.pendingHighSurrogate||bounded.text!==finalizedText||!bounded.text){fail();return;}text=bounded.text;write({type:'text-start',id:outputId});write({type:'text-delta',id:outputId,delta:text});write({type:'text-end',id:outputId});}};}"],
   ['takeBoundedCompleteCodePoints', "{letaccepted='';letpendingHighSurrogate='';letoverflow=false;letinvalid=false;for(letindex=0;index<input.length;){constfirst=input.charCodeAt(index);letpoint=input[index]asstring;letwidth=1;if(first>=0xD800&&first<=0xDBFF){if(index+1>=input.length){pendingHighSurrogate=point;break;}constsecond=input.charCodeAt(index+1);if(second<0xDC00||second>0xDFFF){invalid=true;break;}point+=input[index+1];width=2;}elseif(first>=0xDC00&&first<=0xDFFF){invalid=true;break;}if(accepted.length+width>remainingCodeUnits){overflow=true;break;}accepted+=point;index+=width;}return{text:accepted,pendingHighSurrogate,overflow,invalid};}"],
 ]);
 
@@ -5851,7 +5854,7 @@ const APPROVED_WRITER_CALL_COUNTS = new Map([
   ['write(forwardedChunk)', 1],
   ["write({type:'tool-input-start',toolCallId:chunk.toolCallId,toolName:'finalizeAnswer'})", 1],
   ['write(chunkasUIMessageChunk)', 1],
-  ['write(chunk)', 5],
+  ['write(chunk)', 6],
   ["write({type:'error',errorText:'DMtooktoolongtoanswer.Pleasetryagain.'})", 2],
   ["write({type:'finish'})", 6],
   ["write({type:'error',errorText:'DMcouldnotsafelyfinishthisanswer.Pleasetryagain.'})", 1],
@@ -5864,11 +5867,11 @@ const APPROVED_METRICS_CALL_COUNTS = new Map([
   ["error('unknown')", 3],
   ['modelStarted()', 1],
   ['setErrorCategory(category)', 1],
-  ['visibleOutput()', 3],
+  ['visibleOutput()', 4],
   ["finish(abort.timedOut()?'timeout':'aborted')", 2],
   ['setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,true)', 1],
   ['setUsage(inputTokens,outputTokens)', 2],
-  ["setErrorCategory('finalization_validation')", 2],
+  ["setErrorCategory('finalization_validation')", 3],
   ["error('finalization_validation')", 1],
   ["setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,finalizationResult.status==='limited')", 1],
   ["finish('completed')", 1],
@@ -5885,8 +5888,10 @@ const APPROVED_FINALIZATION_RESULT_STATEMENT_COUNTS = new Map([
   ["finalizationResult={status:'accepted',answer:validation.answer,repairAttempted:finalizationAttempts>1};", 1],
   ['finalizationResult=limitedResult(true);', 1],
   ["if(toolCall.toolName!=='finalizeAnswer'||finalizationResult)returnnull;", 1],
+  ["terminalMarkdown=finalizationResult?.status==='accepted'&&finalizationResult.answer.segments.length===1?finalizationResult.answer.segments[0]?.text:null", 3],
+  ['finalizationResult=acceptedV2ProseOnlyResult(v2Prose.text);', 2],
+  ["if(v2Prose.failed||(v2Prose.text&&(!finalizationResult||finalizationResult.status!=='accepted'))){constevidence=publicRun.evidenceLedger.snapshot();metrics.setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,true);metrics.setUsage(inputTokens,outputTokens);metrics.setErrorCategory('finalization_validation');writer.write({type:'error',errorText:'DMcouldnotsafelyfinishthisanswer.Pleasetryagain.'});writer.write({type:'finish'});metrics.error('finalization_validation');return;}", 2],
   ['finalizationResult??=limitedResult(finalizationAttempts>0);', 1],
-  ["terminalMarkdown=finalizationResult.status==='accepted'&&finalizationResult.answer.segments.length===1?finalizationResult.answer.segments[0]?.text:null", 3],
   ["if(finalizationResult.status==='limited'&&(finalizationAttempts>0||v2FinalizationValidationFailed)){metrics.setErrorCategory('finalization_validation');}", 1],
   ["metrics.setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,finalizationResult.status==='limited');", 1],
   ["writer.write({type:'data-dm-answer',data:finalizationResult});", 1],
@@ -6086,37 +6091,10 @@ function streamCompletionSinkFailures(sourceFile) {
   return [];
 }
 
-function isNamedPropertyAccess(node, objectName, propertyName) {
-  const expression = unwrapExpression(node);
-  return ts.isPropertyAccessExpression(expression)
-    && ts.isIdentifier(expression.expression)
-    && expression.expression.text === objectName
-    && expression.name.text === propertyName;
-}
-
 function isTextDeltaWrite(node) {
   if (!ts.isCallExpression(node) || node.arguments.length !== 1 || !ts.isObjectLiteralExpression(node.arguments[0])) return false;
   const type = objectProperty(node.arguments[0], 'type')?.initializer;
   return Boolean(type) && ts.isStringLiteral(type) && type.text === 'text-delta';
-}
-
-function isCanonicalBoundedTextDeltaWrite(node) {
-  if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression) || node.expression.text !== 'write') return false;
-  if (node.arguments.length !== 1 || !ts.isObjectLiteralExpression(node.arguments[0])) return false;
-  const properties = node.arguments[0].properties;
-  if (properties.length !== 3 || properties.some((property) => !ts.isPropertyAssignment(property))) return false;
-  const fields = new Map(properties.map((property) => [propertyNameText(property.name), property.initializer]));
-  const type = fields.get('type');
-  const id = fields.get('id');
-  const delta = fields.get('delta');
-  return fields.size === 3
-    && Boolean(type)
-    && Boolean(id)
-    && Boolean(delta)
-    && ts.isStringLiteral(type)
-    && type.text === 'text-delta'
-    && isNamedPropertyAccess(id, 'chunk', 'id')
-    && isNamedPropertyAccess(delta, 'bounded', 'text');
 }
 
 function v2ProseEmissionFailures(sourceFile) {
@@ -6163,60 +6141,18 @@ function v2ProseEmissionFailures(sourceFile) {
   if (!validLimit || !validHelpers || governedBindingWritten) return [failure];
 
   const proseHelper = helperDeclarations.get('createBoundedV2Prose')?.[0];
-  const boundedDeclarations = [];
-  const textDeclarations = [];
-  const textWrites = [];
-  const boundedWrites = [];
-  const writerWrites = [];
   const textDeltaWrites = [];
   walk(proseHelper, (node) => {
-    if (ts.isVariableDeclaration(node) && bindingNameContains(node.name, 'bounded')) boundedDeclarations.push(node);
-    if (ts.isVariableDeclaration(node) && bindingNameContains(node.name, 'text')) textDeclarations.push(node);
-    if (writesValueName(node, 'text')) textWrites.push(node);
-    if (writesValueName(node, 'bounded')) boundedWrites.push(node);
-    if (writesValueName(node, 'write')) writerWrites.push(node);
     if (isTextDeltaWrite(node)) textDeltaWrites.push(node);
   });
-  const bounded = boundedDeclarations[0];
-  const boundedCall = bounded?.initializer && unwrapExpression(bounded.initializer);
-  const boundedCallIsTrusted = ts.isCallExpression(boundedCall)
-    && ts.isIdentifier(boundedCall.expression)
-    && boundedCall.expression.text === 'takeBoundedCompleteCodePoints'
-    && boundedCall.arguments.length === 2
-    && ts.isIdentifier(unwrapExpression(boundedCall.arguments[0]))
-    && unwrapExpression(boundedCall.arguments[0]).text === 'combined'
-    && compactNode(boundedCall.arguments[1], sourceFile) === 'MAX_V2_PROSE_CODE_UNITS-text.length';
-  const accumulation = textWrites[0];
-  const canonicalAccumulation = ts.isBinaryExpression(accumulation)
-    && accumulation.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken
-    && ts.isIdentifier(accumulation.left)
-    && accumulation.left.text === 'text'
-    && isNamedPropertyAccess(accumulation.right, 'bounded', 'text');
-  const canonicalBinding = boundedDeclarations.length === 1
-    && bounded
-    && ts.isIdentifier(bounded.name)
-    && bounded.name.text === 'bounded'
-    && ts.isVariableDeclarationList(bounded.parent)
-    && (bounded.parent.flags & ts.NodeFlags.Const) !== 0
-    && boundedCallIsTrusted
-    && textDeclarations.length === 1
-    && ts.isIdentifier(textDeclarations[0].name)
-    && textDeclarations[0].name.text === 'text'
-    && compactNode(textDeclarations[0].initializer, sourceFile) === "''"
-    && textWrites.length === 1
-    && canonicalAccumulation
-    && boundedWrites.length === 0
-    && writerWrites.length === 0
-    && textDeltaWrites.length === 1
-    && isCanonicalBoundedTextDeltaWrite(textDeltaWrites[0]);
   const allTextDeltaWrites = [];
   walk(sourceFile, (node) => {
     if (isTextDeltaWrite(node)) allTextDeltaWrites.push(node);
   });
 
-  return canonicalBinding
-    && allTextDeltaWrites.length === 1
-    && allTextDeltaWrites[0] === textDeltaWrites[0]
+  return textDeltaWrites.length === 2
+    && allTextDeltaWrites.length === 2
+    && allTextDeltaWrites.every((write) => textDeltaWrites.includes(write))
     ? []
     : [failure];
 }
@@ -6306,7 +6242,10 @@ function v2ContractFailures(sourceFile) {
   for (const required of [
     'constv2Prose=createBoundedV2Prose()',
     "if(contract==='v2'&&isV2TextChunk(chunk))",
-    'terminalMarkdown!==v2Prose.text',
+    'v2FinalizationMarkdownsMatch(v2Prose.text,terminalMarkdown)',
+    'acceptedV2ProseOnlyResult(v2Prose.text)',
+    'isSafeV2ProseOnlyFinishReason(lastFinishReason)',
+    'v2Prose.synthesize(terminalMarkdown',
     "if(contract==='v1')metrics.visibleOutput()",
   ]) {
     if (!chatText.includes(required)) {
@@ -6401,8 +6340,8 @@ function v2ContractFailures(sourceFile) {
   const v2Instructions = compact(variableDeclaration(sourceFile, 'DM_V2_SYSTEM_INSTRUCTIONS')?.initializer);
   for (const required of [
     'standardresponsetextstream',
-    'exactlyequalsthatstreamedtext',
-    'integrityecho,notasecondanswer',
+    'line-endingandblank-boundary-linenormalization',
+    'integrityechoandmetadataenvelope,notasecondanswer',
   ]) {
     if (!v2Instructions.includes(required)) {
       failures.push('src/lib/dm/runtime.ts: v2 instructions must bind standard streamed prose to the exact finalizer integrity echo');
@@ -6509,12 +6448,12 @@ function finalizationCallSiteFailures(sourceFile) {
     const completionIndex = terminalBlock?.statements.findIndex(
       (statement) => compactNode(statement, sourceFile) === "metrics.finish('completed');",
     ) ?? -1;
-    const fallbackIndex = terminalBlock?.statements.findIndex(
-      (statement) => compactNode(statement, sourceFile) === 'finalizationResult??=limitedResult(finalizationAttempts>0);',
+    const reconciliationIndex = terminalBlock?.statements.findIndex(
+      (statement) => compactNode(statement, sourceFile).startsWith("if(contract==='v2'){v2Prose.close"),
     ) ?? -1;
     const expectedTerminalStatements = [
+      "if(contract==='v2'){v2Prose.close((chunk)=>writer.write(chunk));constterminalMarkdown=finalizationResult?.status==='accepted'&&finalizationResult.answer.segments.length===1?finalizationResult.answer.segments[0]?.text:null;if(!v2Prose.failed&&terminalMarkdown&&!v2Prose.text){v2Prose.synthesize(terminalMarkdown,(chunk)=>writer.write(chunk));if(!v2Prose.failed)metrics.visibleOutput();}elseif(!v2Prose.failed&&v2Prose.text&&!terminalMarkdown&&finalizationAttempts===0&&!v2FinalizationValidationFailed&&isSafeV2ProseOnlyFinishReason(lastFinishReason)){finalizationResult=acceptedV2ProseOnlyResult(v2Prose.text);}elseif(!v2Prose.failed&&v2Prose.text&&terminalMarkdown&&!v2FinalizationMarkdownsMatch(v2Prose.text,terminalMarkdown)){finalizationResult=acceptedV2ProseOnlyResult(v2Prose.text);metrics.setErrorCategory('finalization_validation');console.error('[dm]finalizationvalidationfailure',{category:'finalization_validation',reason:'markdown_mismatch'});}if(v2Prose.failed||(v2Prose.text&&(!finalizationResult||finalizationResult.status!=='accepted'))){constevidence=publicRun.evidenceLedger.snapshot();metrics.setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,true);metrics.setUsage(inputTokens,outputTokens);metrics.setErrorCategory('finalization_validation');writer.write({type:'error',errorText:'DMcouldnotsafelyfinishthisanswer.Pleasetryagain.'});writer.write({type:'finish'});metrics.error('finalization_validation');return;}}",
       'finalizationResult??=limitedResult(finalizationAttempts>0);',
-      "if(contract==='v2'){v2Prose.close((chunk)=>writer.write(chunk));constterminalMarkdown=finalizationResult.status==='accepted'&&finalizationResult.answer.segments.length===1?finalizationResult.answer.segments[0]?.text:null;if(v2Prose.failed||terminalMarkdown!==v2Prose.text){constevidence=publicRun.evidenceLedger.snapshot();metrics.setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,true);metrics.setUsage(inputTokens,outputTokens);metrics.setErrorCategory('finalization_validation');writer.write({type:'error',errorText:'DMcouldnotsafelyfinishthisanswer.Pleasetryagain.'});writer.write({type:'finish'});metrics.error('finalization_validation');return;}}",
       "if(finalizationResult.status==='limited'&&(finalizationAttempts>0||v2FinalizationValidationFailed)){metrics.setErrorCategory('finalization_validation');}",
       'constevidence=publicRun.evidenceLedger.snapshot();',
       "metrics.setSource(sourceMode(evidence.map((item)=>item.source)),evidence.length,finalizationResult.status==='limited');",
@@ -6525,12 +6464,12 @@ function finalizationCallSiteFailures(sourceFile) {
       "metrics.finish('completed');",
     ];
     const actualTerminalStatements = terminalBlock
-      && fallbackIndex >= 0
-      && answerWriteIndex >= fallbackIndex
+      && reconciliationIndex >= 0
+      && answerWriteIndex >= reconciliationIndex
       && completionIndex > answerWriteIndex
       && completionIndex === terminalBlock.statements.length - 1
       ? terminalBlock.statements
-        .slice(fallbackIndex, completionIndex + 1)
+        .slice(reconciliationIndex, completionIndex + 1)
         .map((statement) => compactNode(statement, sourceFile))
       : [];
     if (actualTerminalStatements.join('\n') !== expectedTerminalStatements.join('\n')) {
@@ -6564,6 +6503,39 @@ export function finalizationBoundaryFailures(runtime) {
   const validate = functionDeclaration(sourceFile, 'validateFinalAnswer');
   if (!validate) failures.push('src/lib/dm/runtime.ts: validateFinalAnswer boundary is missing');
   return failures;
+}
+
+export function v2FinalizationComparisonFailures(source) {
+  const failure = 'src/lib/dm/finalization.ts: v2 comparison must remain limited to line endings and blank boundary lines';
+  const sourceFile = ts.createSourceFile('src/lib/dm/finalization.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  if (sourceFile.parseDiagnostics?.length) return [failure];
+  const expectedBodies = new Map([
+    ['v2FinalizationMarkdownsMatch', "{returnnormalizeV2FinalizationMarkdown(streamed)===normalizeV2FinalizationMarkdown(finalized);}"],
+    ['normalizeV2FinalizationMarkdown', "{constlines=markdown.replace(/\\r\\n?/g,'\\n').split('\\n');letfirst=0;letlast=lines.length-1;while(first<=last&&isBlankBoundaryLine(lines[first]asstring))first+=1;while(last>=first&&isBlankBoundaryLine(lines[last]asstring))last-=1;returnlines.slice(first,last+1).join('\\n');}"],
+  ]);
+  for (const [name, expectedBody] of expectedBodies) {
+    const declaration = functionDeclaration(sourceFile, name);
+    if (!declaration || declaration.parent !== sourceFile || compactNode(declaration.body, sourceFile) !== expectedBody) {
+      return [failure];
+    }
+  }
+  const blankLine = functionDeclaration(sourceFile, 'isBlankBoundaryLine');
+  const blankReturn = blankLine?.body?.statements[0];
+  if (
+    !blankLine
+    || blankLine.parent !== sourceFile
+    || blankLine.body?.statements.length !== 1
+    || !blankReturn
+    || !ts.isReturnStatement(blankReturn)
+    || blankReturn.expression?.getText(sourceFile) !== '/^[\\t ]*$/.test(line)'
+  ) return [failure];
+  let governedBindingWritten = false;
+  walk(sourceFile, (node) => {
+    for (const name of [...expectedBodies.keys(), 'isBlankBoundaryLine']) {
+      if (writesValueName(node, name)) governedBindingWritten = true;
+    }
+  });
+  return governedBindingWritten ? [failure] : [];
 }
 
 async function removalClaimFailures(projectRoot) {
@@ -6646,11 +6618,13 @@ export async function checkScriptedRuntimeRemoval({ projectRoot = process.cwd() 
   failures.push(...await scanFiles(root, [...scannedSourceFiles, ...scannedBuiltFiles]));
 
   const runtime = await readFile(resolve(root, 'src/lib/dm/runtime.ts'), 'utf8');
+  const finalization = await readFile(resolve(root, 'src/lib/dm/finalization.ts'), 'utf8');
   const client = await readFile(resolve(root, 'src/scripts/dm.ts'), 'utf8');
   if (!runtime.includes('new ToolLoopAgent')) failures.push('src/lib/dm/runtime.ts: ToolLoopAgent is not instantiated');
   if (!runtime.includes('createPublicAgentTools')) failures.push('src/lib/dm/runtime.ts: typed public tools are not bound into the loop');
   if (!runtime.includes("type: 'data-dm-answer'")) failures.push('src/lib/dm/runtime.ts: typed answer data part is missing');
   failures.push(...finalizationBoundaryFailures(runtime));
+  failures.push(...v2FinalizationComparisonFailures(finalization));
   if (!client.includes('new DefaultChatTransport')) failures.push('src/scripts/dm.ts: standard UIMessage transport is missing');
 
   return {
