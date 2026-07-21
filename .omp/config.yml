@@ -1,6 +1,0 @@
-# Project-local Oh My Pi settings.
-# Launch Oh My Pi from the repo root for this file to apply.
-skills:
-  enableAgentsProject: true
-commands:
-  enableAgentsProject: true

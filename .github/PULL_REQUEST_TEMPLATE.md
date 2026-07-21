@@ -1,51 +1,47 @@
 ## Summary
 
 
-## Issue
+## Canonical leaf issue
 
-Fixes AGE-<n>
+Refs #<issue>
 
-<!-- The branch name carries the Linear issue id, so this PR auto-links to the
-issue and the merge auto-closes it through Linear's GitHub bridge. -->
-<!-- Linear/AGE remains the default outside the bounded production-readiness
-program. For GitHub issues #184-#196, use branch
-`codex/gh-<issue>-<slug>` and replace the issue line above with exactly:
-Fixes #<issue>
--->
+<!-- Link the GitHub issue that contains the approved gepetto-research contract.
+Do not use a closing keyword unless issue-closure authority was explicitly granted. -->
 
+## Exact delivery refs
 
-## Base branch
+- Base branch:
+- Approved base SHA:
+- Head branch:
+- Live PR head SHA:
 
-Use the issue's stack parent branch. Agent-first redesign work roots at
-`preview/agent-first-redesign`; never target `main` unless a maintainer changes
-the plan.
+## Changed files
 
-## Verification evidence
+-
+
+## Checks
+
+| Command | Result |
+| --- | --- |
+|  |  |
+
+## Acceptance evidence
 
 | Acceptance criterion | Expected evidence | Actual evidence |
 | --- | --- | --- |
 |  |  |  |
+
+## Risks and caveats
+
+-
 
 ## Continuity constraints checked
 
 - Constraint:
   - Result:
   - Evidence:
-- Did not preclude deferred capabilities:
-- Open questions unchanged or answered with evidence:
-
-## Deferred scope
-
-- Scope ledger updated or linked:
-- Explicitly deferred scope preserved:
-- Do not preclude constraints respected:
-- Future issue candidates affected:
-- Deferred capability preserved:
-
-## Risks
-
--
 
 ## Handoff
 
--
+- Persisted implementation proof:
+- Writer handoff:

@@ -16,7 +16,7 @@ Default to zero client JS: static `.astro` pages everywhere. Client JS only for 
 
 ## Design Direction
 
-> DM is the public portfolio agent (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`, `src/styles/dm.css`). The authoritative product/design direction is `.agents/envelope/domain.md` plus `docs/agents/scope-ledger.md`. The retired Spotify **player shell** (sidebar + bottom player bar) is not extended — `/player` and other legacy routes 301 via `vercel.json`.
+> DM is the public portfolio agent (`src/lib/dm/`, `/api/dm/chat`, `src/scripts/dm.ts`, `src/styles/dm.css`). The authoritative product/design direction and deferred-scope custody live in `docs/agents/scope-ledger.md`. The retired Spotify **player shell** (sidebar + bottom player bar) is not extended — `/player` and other legacy routes 301 via `vercel.json`.
 
 Current preview-branch UI:
 
@@ -47,36 +47,24 @@ the full Loom proof and operational cutover in GitHub **#190**.
 
 - Zero client JS by default — progressive enhancement only where needed
 - No jargon in project descriptions — write for someone with no coding background
+- Use the canonical product names: **DM**, **agent-first portfolio**, **Split-canvas landing**, **Typographic project card**, **Editorial project detail**, **answer block**, **tool trace**, and **artifact card**. **Eve** is historical only and must not be restored as a live product seam.
+- Public DM answers may use only published DB project records, approved public RAG sources, and static résumé/contact data. Hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor chats, and unsupported/generated claims are not public sources.
 
 ## Workflow
 
 - **No co-author lines** on commits
 - **Don't commit** spec/plan docs (`docs/superpowers/`) — those are working files, not repo artifacts
 - Dev environment runs inside a Distrobox container
-- **Tracker default:** Linear team `dmcc` / `AGE`, project **Portfolio**.
-- **Bounded production-readiness exception:** GitHub issues `#184`–`#196` are
-  authoritative for that program. Implement them on
-  `codex/gh-<issue>-<slug>` branches and close them from PRs with
-  `Fixes #<issue>`. Linear/AGE remains the default outside that issue range.
-
-## Agent skills
-
-This repo runs the Factorio workflow kit. The per-repo envelope is the single
-binding point — read it before planning or building:
-
-- `.agents/envelope/linear-map.md` — Linear team (`dmcc`/AGE) + Portfolio project, labels, states, the inserter triage map, and the bounded GitHub program exception.
-- `.agents/envelope/domain.md` — domain glossary (DM, Split-canvas landing, Typographic card, Editorial detail, answer block, artifact card).
-- `.agents/envelope/commands.md` — build/test/lint/run + default branch and the redesign stack.
-- `.agents/envelope/templates/` — PR / issue / project-doc templates.
-
-Repo-specific skills live in `.agents/skills/`.
-Continuity for the agent-first redesign is tracked in `docs/agents/scope-ledger.md`.
+- GitHub issues are the durable contract surface for tracked repository delivery. Gepetto is the sole coordinator: implementation begins only from an approved contract persisted under the `gepetto-research` marker.
+- Deliver one independently reviewable leaf with one writer, one dedicated worktree, one branch, and one linked PR. Bind implementation proof and review to the exact live PR head.
+- Agent-first redesign PRs target the approved stack parent rooted at `preview/agent-first-redesign`, never `main`, unless the persisted contract says otherwise.
+- Merge, deploy, publish, migrations, issue/PR closure, review-thread resolution, and destructive cleanup require their explicit authority gates.
+- Preserve continuity and deferred scope in `docs/agents/scope-ledger.md`; keep active operator procedures under `docs/agents/` current.
 
 ## Cursor Cloud specific instructions
 
-Standard build/test/lint/run commands live in `package.json` and
-`.agents/envelope/commands.md` — use those, this section only records the
-non-obvious cloud caveats.
+The executable build, test, lint, and run commands live in `package.json`. Use
+those scripts directly; this section records only the non-obvious cloud caveats.
 
 - **Node 24 is required** (`engines: 24.x`, `.node-version`, `.nvmrc`, `mise.toml`).
   The nvm default alias is set to `24`, so tmux / interactive login shells (where

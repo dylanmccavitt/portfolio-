@@ -1,60 +1,45 @@
 # Issue Tracker
 
-Issues are tracked in **Linear** — team `dmcc` (key `AGE`), project **Portfolio**.
-The authoritative team/project/label/state map and the GitHub bridge are defined in
-`.agents/envelope/linear-map.md`; read it first.
+GitHub issues in `DylanMcCavitt/portfolio-` are the durable contract surface for
+Gepetto-managed repository delivery. Pull requests live in the same repository.
 
-PRs live in GitHub repo `DylanMcCavitt/portfolio-`. The branch name carries the
-Linear issue id, so the PR auto-links to the issue and the merge auto-closes it
-through Linear's GitHub bridge.
+## Contract and delivery
 
-The bounded production-readiness program is the exception: GitHub issues
-`#184`–`#196` are authoritative for that program. Use
-`codex/gh-<issue>-<slug>` for each implementation branch and `Fixes #<issue>` in
-its PR. Linear/AGE remains the default for all work outside that issue range.
+- Gepetto persists the approved research and acceptance contract on the leaf
+  issue under the `gepetto-research` marker.
+- Implementation starts from the contract's exact approved base and uses one
+  writer, one dedicated worktree, one branch, and one linked PR per leaf.
+- The implementer persists criterion-by-criterion proof under the
+  `gepetto-implementation` marker and binds it to the live PR head SHA.
+- Independent review and finalization operate on that same exact head. A head
+  change makes earlier head-bound proof stale.
+- Merge, deployment, publication, migrations, issue/PR closure, review-thread
+  resolution, and destructive cleanup remain behind their explicit gates.
 
-## Working with issues and PRs
+## Required issue contract
 
-- Issues: create/triage/update in Linear by default (see `.agents/envelope/linear-map.md` for states/labels). Stamp Linear issues from `.agents/envelope/templates/linear-issue.md`. Create and maintain issues `#184`–`#196` in GitHub for the bounded program.
-- PRs (GitHub, run from inside the repo): `gh pr view`, `gh pr create`. Use `.agents/envelope/templates/pull-request.md`; reference default Linear work with `Fixes AGE-<n>` and program issues `#184`–`#196` with `Fixes #<issue>`.
+The persisted contract names the problem, exact file scope, dependencies,
+acceptance criteria and evidence, validation, risks, non-goals, desired base,
+exact base SHA, branch convention, continuity constraints, and authority limits.
+Treat it as complete scope; material conflicts return to Gepetto instead of being
+resolved by widening the leaf.
 
-## Branch and agent routing
+## Pull requests
 
-- New DM implementation roots at preview branch `preview/agent-first-redesign` unless an issue names a different stack parent.
-- Do not target `main` for redesign implementation PRs unless a maintainer explicitly changes the plan.
-- Each implementation issue must name an Owner engine: `Claude` or `GLM` (labels `claude`/`glm`) for UI work, `Codex` (label `codex`) for DM runtime/data/plumbing/test/cleanup work.
-- Each implementation issue should be executed as one issue / one worktree / one branch / one PR.
-- Default Linear branch shape: `<engine>/age-<n>-<slug>` (e.g. `codex/age-726-supersede-eve-with-dm`).
-- GitHub production-readiness program (`#184`–`#196`) branch shape:
-  `codex/gh-<issue>-<slug>`; use `Fixes #<issue>` in the matching PR.
-- GitHub closing keywords do not close an issue when its PR merges only into the
-  non-default preview branch. Reconcile preview-landed program issues manually;
-  do not interpret an open issue as proof that its implementation is absent.
+Use `.github/PULL_REQUEST_TEMPLATE.md`. Link the canonical leaf issue, record
+exact base and head evidence, map checks and actual evidence to every acceptance
+criterion, and document risks and continuity constraints. Do not use a closing
+keyword unless issue-closure authority is explicit. An open issue is not, by
+itself, evidence that a preview-targeted implementation is absent.
 
-## Issue packet fields
+Agent-first redesign PRs target the contract's approved stack parent rooted at
+`preview/agent-first-redesign`, never `main`, unless the persisted contract says
+otherwise.
 
-Each issue packet must include:
-
-- Source PRD
-- Owner engine
-- Parent issue and dependencies
-- Problem
-- Acceptance criteria with expected verification evidence
-- Non-goals
-- Relevant files
-- Verification
-- Risks
-- Desired base branch
-- Deferred scope custody
-- Future issue candidates preserved
-- Continuity constraints checked
-
-Every issue created from a PRD or grilled plan must either update `docs/agents/scope-ledger.md` or link to the ledger section that owns deferred scope.
-
-## Scope continuity
+## Continuity
 
 - Use the scope ledger to preserve product north star, Next, Later, Explicitly deferred, Do not preclude, Naming anchors, Open questions, and Future issue candidates.
 - Do not collapse deferred capabilities into vague "future work"; name the long-term capability, why it is deferred, where it is tracked, and the constraint it imposes on V1.
 - Open questions must stay explicit until answered by a human or by cited repo evidence.
 - PRs and handoffs must record continuity constraints checked plus evidence.
-- Triage changes must preserve Source PRD, Parent issue, dependencies, deferred scope custody, open questions, and do-not-preclude constraints.
+- Contract changes must preserve the parent issue, dependencies, deferred-scope custody, open questions, and do-not-preclude constraints.
