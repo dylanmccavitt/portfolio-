@@ -351,6 +351,19 @@ test('the reviewed static profile source exposes exactly the nine approved entri
   assert.equal(privateLife.status, 'empty');
   assert.deepEqual(privateLife.profiles, []);
 
+  for (const query of [
+    'How does Dylan work in private life?',
+    'How does Dylan work in his private-life?',
+    'How does Dylan work in his personal life?',
+    'What does Dylan value in private life?',
+    'What are his interests and hobbies?',
+    'What is his home address?',
+  ]) {
+    const unsupported = await run.searchProfile({ query });
+    assert.equal(unsupported.status, 'empty', query);
+    assert.deepEqual(unsupported.profiles, [], query);
+  }
+
   assert.deepEqual(
     (await run.searchProfile({ query: 'How does Dylan work?' })).profiles.map((entry) => entry.id),
     ['working-style'],
@@ -358,6 +371,10 @@ test('the reviewed static profile source exposes exactly the nine approved entri
   assert.deepEqual(
     (await run.searchProfile({ query: 'Does Dylan require sponsorship?' })).profiles.map((entry) => entry.id),
     ['recruiter-faq'],
+  );
+  assert.deepEqual(
+    (await run.searchProfile({ query: 'private funds legal work' })).profiles.map((entry) => entry.id),
+    ['career-change'],
   );
 });
 

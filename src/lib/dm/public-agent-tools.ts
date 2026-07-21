@@ -869,6 +869,7 @@ function profileHaystack(entry: PublicProfileSourceEntry): string {
 }
 
 function profileSearchScore(entry: PublicProfileSourceEntry, query: string): number {
+  if (UNSUPPORTED_PERSONAL_PROFILE_QUERY.test(query)) return 0;
   const biographyIntent = /\b(?:about|bio|biography|background)\b/i.test(query);
   const careerIntent = /\b(?:career (?:change|path|transition)|changed careers|start(?:ed)? in software)\b/i.test(query);
   const workingStyleIntent = /\b(?:working style|work style|how\b.{0,40}\bwork|values?|collaborat\w*|communicat\w*|reliab\w*)\b/i.test(query);
@@ -904,6 +905,8 @@ const PROFILE_SEARCH_STOP_WORDS = new Set([
   'his', 'how', 'in', 'into', 'is', 'life', 'like', 'of', 'private', 'some', 'tell', 'that', 'the',
   'this', 'was', 'what', 'when', 'where', 'which', 'who', 'with', 'would',
 ]);
+
+const UNSUPPORTED_PERSONAL_PROFILE_QUERY = /\b(?:(?:private|personal)\W+life|hobbies?|favourites?|favorites?|family|families|relationships?|health|beliefs?|religion|religious|politics?|political|home\W+(?:address|location)|street\W+address|address)\b/i;
 
 function safePublicHref(value: string | undefined): string | undefined {
   if (!value) return undefined;
