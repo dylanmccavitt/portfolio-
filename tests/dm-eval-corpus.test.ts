@@ -98,6 +98,7 @@ test('artifact-cardinality cases declare deterministic project-card bounds', () 
     const testCase = byId.get(id);
     assert.ok(testCase, `missing ${id}`);
     assert.ok(testCase.expectations.artifacts.required.includes('projects'), id);
+    assert.deepEqual(testCase.expectations.requiredTools, ['searchProjects', 'getProject'], id);
     assert.equal(testCase.expectations.artifacts.maxProjectCards, 1, id);
   }
 
@@ -105,8 +106,20 @@ test('artifact-cardinality cases declare deterministic project-card bounds', () 
     const testCase = byId.get(id);
     assert.ok(testCase, `missing ${id}`);
     assert.ok(testCase.expectations.artifacts.required.includes('projects'), id);
+    assert.deepEqual(testCase.expectations.requiredTools, ['searchProjects', 'getProject'], id);
     assert.equal(testCase.expectations.artifacts.maxProjectCards, 4, id);
   }
+});
+
+test('discovery-only source gaps and title-resolved detail reads keep deterministic tool boundaries', () => {
+  const byId = new Map(DM_LIVE_EVAL_CORPUS.map((item) => [item.id, item]));
+  for (const id of ['golden-04-full-stack-source-gap', 'mf-unmatched-quantum', 'mf-empty-in-progress']) {
+    assert.deepEqual(byId.get(id)?.expectations.requiredTools, ['searchProjects'], id);
+  }
+  for (const id of ['mf-trading-automation', 'mf-broad-project-overview']) {
+    assert.deepEqual(byId.get(id)?.expectations.requiredTools, ['searchProjects', 'getProject'], id);
+  }
+  assert.deepEqual(byId.get('mf-db-only-loom')?.expectations.requiredTools, ['getProject']);
 });
 
 test('release corpus is declarative and contains no canned model output or answer plans', () => {

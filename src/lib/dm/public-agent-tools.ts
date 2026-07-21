@@ -57,6 +57,20 @@ export interface PublicProjectToolRecord {
   evidenceIds: string[];
 }
 
+export interface PublicProjectDiscoveryRecord {
+  id: string;
+  slug: string;
+  title: string;
+  area: string;
+  status: string[];
+  year: number;
+  activity: string;
+  tagline: string;
+  summary: string;
+  href: string;
+  evidenceIds: string[];
+}
+
 export interface PublicResumeTrackRecord {
   id: string;
   title: string;
@@ -167,7 +181,7 @@ export type SearchProfileInput = z.infer<typeof SearchProfileInputSchema>;
 
 export interface SearchProjectsResult extends PublicToolResult {
   query: string;
-  projects: PublicProjectToolRecord[];
+  projects: PublicProjectDiscoveryRecord[];
 }
 
 export interface GetProjectResult extends PublicToolResult {
@@ -268,7 +282,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   };
 
   const searchProjects = createTool(
-    'Search published portfolio projects only when discovering by topic or resolving a title-only project name whose stable public id or slug is unknown. Never use this broad search to rediscover a stable id or slug already present in the latest turn, page context, or an earlier returned project record; use getProject for that direct read. Use the area, status, or year filter for a question about that exact published-project aspect.',
+    'Search compact published-project discovery records only when ranking by topic or resolving a title-only project name whose stable public id or slug is unknown. The result supports identity and concise discovery prose only: call getProject for every detailed project answer, project artifact, or links artifact. Never use this broad search to rediscover a stable id or slug already present in the latest turn, page context, or an earlier returned project record; use getProject for that direct read. Use the area, status, or year filter for a question about that exact published-project aspect.',
     SearchProjectsInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
@@ -279,14 +293,14 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
         .map((project) => ({ project, score: searchScore(projectHaystack(project), input.query) }))
         .filter(({ score }) => score > 0)
         .sort((a, b) => b.score - a.score || a.project.slug.localeCompare(b.project.slug));
-      const selected = scored.slice(0, input.limit ?? 4).map(({ project }) => projectRecord(project));
-      const evidence = selected.flatMap((record) => projectEvidence(record));
+      const selected = scored.slice(0, input.limit ?? 4).map(({ project }) => projectDiscoveryRecord(project));
+      const evidence = selected.flatMap((record) => projectDiscoveryEvidence(record));
       return resultWithEvidence({
         status: selected.length === 0 ? 'empty' : selected.length < scored.length ? 'partial' : 'complete',
         query: input.query,
         projects: selected,
         evidence,
-        artifactIds: selected.map((record) => record.artifactId),
+        artifactIds: [],
         limitations: selected.length === 0
           ? [hasProjectFilters(input.filters) && filtered.length === 0
             ? 'no_matching_published_project_filters'
@@ -300,7 +314,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   );
 
   const getProject = createTool(
-    'Directly read one already-identified published portfolio project when its stable public id or slug is known. Use this for resolved subject corrections and follow-up references, including ids supplied by page context; a search result is not a substitute for this direct read. If only a public title is known and its stable id or slug is unresolved, call searchProjects first, once. When the visitor explicitly asks for approved public-source evidence about that project, also call searchPublicSources with the returned project id; project metadata is not a substitute for the requested source evidence.',
+    'Directly read one already-identified published portfolio project when its stable public id or slug is known. A successful same-run getProject is required for every detailed project answer, project artifact, or links artifact; a search result is never a substitute. Use this for resolved subject corrections and follow-up references, including ids supplied by page context. If only a public title is known and its stable id or slug is unresolved, call searchProjects first, once, then call getProject with the resolved id. When the visitor explicitly asks for approved public-source evidence about that project, also call searchPublicSources with the returned project id; project metadata is not a substitute for the requested source evidence.',
     GetProjectInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
@@ -614,6 +628,38 @@ function projectRecord(project: ProjectDetailReadModel): PublicProjectToolRecord
   };
   record.evidenceIds = projectEvidence(record).map((entry) => entry.id);
   return record;
+}
+
+function projectDiscoveryRecord(project: ProjectDetailReadModel): PublicProjectDiscoveryRecord {
+  const record: PublicProjectDiscoveryRecord = {
+    id: project.id,
+    slug: project.slug,
+    title: project.title,
+    area: project.area,
+    status: project.status.filter((value): value is string => Boolean(value)),
+    year: project.year,
+    activity: project.activity,
+    tagline: project.line,
+    summary: project.summary,
+    href: project.dmArtifact.href,
+    evidenceIds: [],
+  };
+  record.evidenceIds = projectDiscoveryEvidence(record).map((entry) => entry.id);
+  return record;
+}
+
+function projectDiscoveryEvidence(project: PublicProjectDiscoveryRecord): PublicToolEvidence[] {
+  return [
+    evidenceAtom(`${project.id}:identity`, 'project', project.id, 'identity', 'Project', project.title),
+    evidenceAtom(`${project.id}:slug`, 'project', project.id, 'slug', 'Project slug', project.slug),
+    evidenceAtom(`${project.id}:href`, 'project', project.id, 'href', 'Project page', project.href),
+    evidenceAtom(`${project.id}:area`, 'project', project.id, 'area', 'Area', project.area),
+    evidenceAtom(`${project.id}:status`, 'project', project.id, 'status', 'Status', project.status.join(' / ')),
+    evidenceAtom(`${project.id}:year`, 'project', project.id, 'year', 'Year', String(project.year)),
+    evidenceAtom(`${project.id}:activity`, 'project', project.id, 'activity', 'Activity', project.activity),
+    evidenceAtom(`${project.id}:tagline`, 'project', project.id, 'tagline', 'Tagline', project.tagline),
+    evidenceAtom(`${project.id}:summary`, 'project', project.id, 'summary', 'Summary', project.summary),
+  ].filter((entry) => entry.value.trim().length > 0);
 }
 
 function projectEvidence(project: PublicProjectToolRecord): PublicToolEvidence[] {

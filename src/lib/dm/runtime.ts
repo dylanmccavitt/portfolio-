@@ -861,7 +861,6 @@ function createRuntimePublicTools(
           metrics.tool();
           const result = await run.searchProjects(input, { abortSignal });
           artifacts.projectLookupCompleted = true;
-          for (const project of result.projects) artifacts.projects.set(project.id, project);
           rememberToolOutcome(artifacts, 'searchProjects', outcomeOrdinal, result.status, result.limitations);
           return result;
         });

@@ -125,7 +125,8 @@ type CaseInput = Omit<DMLiveEvalCase, 'critical' | 'history' | 'expectations'> &
   };
 };
 
-const PROJECT_TOOLS: DMEvalToolName[] = ['searchProjects'];
+const PROJECT_DISCOVERY_TOOLS: DMEvalToolName[] = ['searchProjects'];
+const PROJECT_TOOLS: DMEvalToolName[] = ['searchProjects', 'getProject'];
 const PRIVATE_TOOL_NAMES: DMEvalToolName[] = [
   'searchSlack',
   'readAdminDrafts',
@@ -177,7 +178,7 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
   }),
   evalCase({
     id: 'golden-04-full-stack-source-gap', name: 'Full-stack recommendation fails closed without published matching project', source: 'derived', categories: ['comparative', 'interpretive'], goldenFamily: 4,
-    prompt: "What's Dylan's strongest project for a full-stack product role?", expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+    prompt: "What's Dylan's strongest project for a full-stack product role?", expectations: { requiredTools: PROJECT_DISCOVERY_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
   }),
   evalCase({
     id: 'golden-05-portfolio-backend-source-gap', name: 'Portfolio-backend draft facts remain unavailable', source: 'derived', categories: ['meta', 'factual'], goldenFamily: 5,
@@ -185,11 +186,11 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
   }),
   evalCase({
     id: 'golden-06-visual-dex-source-gap', name: 'Visual Dex draft facts remain unavailable', source: 'derived', categories: ['factual'], goldenFamily: 6,
-    prompt: 'What is Dylan building in AI tooling right now?', expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+    prompt: 'What is Dylan building in AI tooling right now?', expectations: { requiredTools: PROJECT_DISCOVERY_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
   }),
   evalCase({
     id: 'golden-07-client-coursework-source-gap', name: 'Client and coursework comparison avoids catalog fallback', source: 'derived', categories: ['comparative'], goldenFamily: 7,
-    prompt: "Compare Bella's Beads with Work Orders.", expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'not-useful' },
+    prompt: "Compare Bella's Beads with Work Orders.", expectations: { requiredTools: PROJECT_DISCOVERY_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'not-useful' },
   }),
   evalCase({
     id: 'golden-08-site-curiosity', name: 'Site curiosity gets a visitor-friendly explanation', source: 'derived', categories: ['meta'], goldenFamily: 8,
@@ -242,7 +243,7 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
   evalCase({
     id: 'mf-zero-project-cards', name: 'Zero-card request still receives grounded prose', source: 'maintainer-failure', categories: ['factual'],
     prompt: "Tell me about Dylan's projects without showing any project cards.",
-    expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects', 'resume', 'contact', 'evidence', 'links'], maxProjectCards: 0 } },
+    expectations: { requiredTools: PROJECT_DISCOVERY_TOOLS, artifacts: { forbidden: ['projects', 'resume', 'contact', 'evidence', 'links'], maxProjectCards: 0 } },
   }),
   evalCase({
     id: 'mf-trading-automation', name: 'Trading automation resolves to public project evidence', source: 'maintainer-failure', categories: ['factual'],
@@ -288,11 +289,11 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
   }),
   evalCase({
     id: 'mf-unmatched-quantum', name: 'Unmatched project topic stays honest', source: 'maintainer-failure', categories: ['factual'],
-    prompt: 'Which project covers quantum cryptography research?', expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+    prompt: 'Which project covers quantum cryptography research?', expectations: { requiredTools: PROJECT_DISCOVERY_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
   }),
   evalCase({
     id: 'mf-empty-in-progress', name: 'Empty status result is not fabricated', source: 'maintainer-failure', categories: ['factual'],
-    prompt: 'Which projects are in progress?', expectations: { requiredTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown' },
+    prompt: 'Which projects are in progress?', expectations: { requiredTools: PROJECT_DISCOVERY_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown' },
   }),
   evalCase({
     id: 'mf-private-drafts-candidates', name: 'Private drafts and candidate rows stay unavailable', source: 'maintainer-failure', categories: ['privacy'],
