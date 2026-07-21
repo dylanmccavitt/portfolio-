@@ -172,6 +172,7 @@
     },
     {
       "id": "dm-model-selection-release-gate",
+      "revision": 2,
       "statement": "DM model selection fails closed unless one candidate satisfies complete three-run stability, corpus, semantic privacy, grounding, fabrication, critical naturalness/awareness/reasoning scores, every per-answer follow-up decision, blinded preference, and required tie-break evidence under the strict sanitized replay schema without changing runtime configuration",
       "subjectRefs": [
         "docs/agents/dm-evals.md",
