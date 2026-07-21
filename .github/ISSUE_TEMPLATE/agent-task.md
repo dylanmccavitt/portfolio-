@@ -1,74 +1,55 @@
 # Agent Task
 
-<!-- New work is tracked in Linear (team dmcc / AGE, project Portfolio). Prefer
-`.agents/envelope/templates/linear-issue.md`. This GitHub template remains for the
-bounded production-readiness program (#184-#196). For #184-#196, GitHub is authoritative: use branch
-`codex/gh-<issue>-<slug>` and close from the PR with `Fixes #<issue>`. Linear/AGE
-remains the default outside that issue range. See `.agents/envelope/linear-map.md`. -->
+<!-- GitHub is the durable contract surface for Gepetto-managed delivery. Gepetto
+persists an approved research contract under the gepetto-research marker before
+implementation begins. Do not remove an existing artifact marker. -->
 
 ## Problem
 
 
-## Source traceability
+## Contract traceability
 
-- Source PRD:
 - Parent issue:
+- Source artifact:
+- Decision:
+- Desired base branch:
+- Exact approved base SHA:
+- Branch convention:
+- Coordinator task ID:
+
+## Dependencies
+
 - Depends on:
-- Now slice:
-- Preserves from scope ledger:
-- Owner engine:
+
+## Exact file scope
+
+-
 
 ## Acceptance criteria
 
 | Acceptance criterion | Expected evidence | Actual evidence |
 | --- | --- | --- |
-|  |  | Filled during closeout. |
-
-## Non-goals
-
--
-
-## Relevant files
-
--
+|  |  | Filled with exact-head implementation proof. |
 
 ## Verification
 
--
-
-## Deferred scope custody
-
-- Long-term capability:
-- Why deferred:
-- Where tracked: `docs/agents/scope-ledger.md`
-- Constraint imposed on V1:
-
-## Open questions
-
-| Question | Owner | Needed before | Status / evidence |
-| --- | --- | --- | --- |
-|  |  |  |  |
-
-## Continuity constraints checked
-
-- Constraint:
-  - Result:
-  - Evidence:
-
-## Future issue candidates
-
-| Title | Depends on | Preserves |
-| --- | --- | --- |
-|  |  |  |
+- Command:
+  - Expected result:
 
 ## Risks
 
 -
 
-## Desired base branch
+## Non-goals
 
-Use this issue's immediate stack parent branch. Do not target `main` for agent-first redesign PRs.
+-
 
-For production-readiness issues `#184`–`#196`, use implementation branch
-`codex/gh-<issue>-<slug>` and put `Fixes #<issue>` in the PR. Linear/AGE remains
-the tracker default outside that bounded program.
+## Continuity constraints
+
+- Constraint:
+  - Preserves:
+
+## Authority limits
+
+- Allowed:
+- Requires a separate explicit gate:
