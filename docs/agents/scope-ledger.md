@@ -23,8 +23,12 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 
 - Source DM PRD: Linear document `Integrated DM content backend and agent workflow PRD`.
 - Planning buildout: Linear document `DM implementation planning buildout`.
-- Acceptance criterion: Issues preserve DM naming, preview-branch base, one issue / one worktree / one PR, and Claude/GLM-vs-Codex ownership.
-- Expected evidence: PRD issue plus child issue packets link this ledger and name continuity constraints.
+- Acceptance criterion: Persisted GitHub delivery contracts preserve DM naming,
+  the approved preview stack parent, and one independently reviewable leaf with
+  one writer, worktree, branch, and pull request coordinated through Gepetto.
+- Expected evidence: The owning GitHub issue persists the approved research and
+  implementation contract, links this ledger, and binds proof to the live pull
+  request head.
 - Actual evidence: the preview branch contains the live DM runtime, Split-canvas
   landing, Typographic project cards, Editorial details, DB/admin/Slack seams,
   and the implementation history recorded by GitHub issues #184–#196. Those
@@ -134,9 +138,11 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 - Constraint: One implementation issue maps to one worktree, one branch, and one PR.
   - Deferred capability protected: Parallel agent ownership without hidden coupling.
   - Verification evidence: Issue packet and PR link.
-- Constraint: UI implementation routes to Claude or GLM; non-UI runtime/data/plumbing routes to Codex.
-  - Deferred capability protected: Correct agent specialization.
-  - Verification evidence: Owner engine field on every issue.
+- Constraint: Gepetto is the sole coordinator for tracked delivery, with the
+  approved research and implementation contract persisted on the owning GitHub
+  issue.
+  - Deferred capability protected: One auditable path from scope approval through exact-head review without competing routing systems.
+  - Verification evidence: The issue's managed research and implementation sections bind one leaf to the live pull request head.
 - Constraint: DM public answers use only published DB project records, approved public RAG sources, and static résumé/contact data.
   - Deferred capability protected: Privacy-safe RAG and publish flow.
   - Verification evidence: Runtime/eval fixtures or PR review evidence prove drafts/private/candidate data stay excluded.
