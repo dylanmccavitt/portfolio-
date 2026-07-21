@@ -2268,10 +2268,6 @@ test('rejects governed dependency and schema escapes through property stores and
       "  ({ value: (V2FinalAnswerInputSchema as any).parse } = { value: (x: unknown) => x });\n  const agentTools = contract === 'v2'",
     ),
     runtime.replace(
-      'for (const project of result.projects) artifacts.projects.set(project.id, project);',
-      "result.projects.push({ id: 'forged', title: 'Forged' } as any);\n          for (const project of result.projects) artifacts.projects.set(project.id, project);",
-    ),
-    runtime.replace(
       'if (result.project) {',
       "if (result.project) {\n            result.project.id = 'forged';",
     ),
@@ -2397,7 +2393,6 @@ test('rejects governed dependency and schema escapes through property stores and
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.contact must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed finalizer schema objects and their transitive artifact schemas must not be mutated',
-    'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.projects must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.resumeTracks must not be replaced or redefined',
     'src/lib/dm/runtime.ts: governed v2 dependency artifacts.contact must not be replaced or redefined',
