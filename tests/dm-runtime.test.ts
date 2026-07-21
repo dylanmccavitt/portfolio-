@@ -747,12 +747,22 @@ test('ambient site brief supports reasoned engineer synthesis while same-run evi
   });
 });
 
-test('one ToolLoopAgent run calls public tools and accepts only same-run evidence and artifacts', async () => {
+test('search-only project artifacts are rejected until a matching same-run direct read succeeds', async () => {
   const source = await createEvalProjectSource();
   const request = chatRequest('Which project shows trading automation?');
   let projectLoads = 0;
   const model = toolSequenceModel([
     { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifactIntent: 'one_project',
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
+      },
+    },
+    { toolName: 'getProject', input: { id: 'agentic-trader' } },
     {
       toolName: 'finalizeAnswer',
       input: {
@@ -776,12 +786,51 @@ test('one ToolLoopAgent run calls public tools and accepts only same-run evidenc
   const observation = await observeDMResponse(response, request);
 
   assert.equal(observation.outcome, 'completed');
-  assert.deepEqual(observation.tools, ['searchProjects']);
+  assert.deepEqual(observation.tools, ['searchProjects', 'getProject']);
   assert.deepEqual(observation.projectIds, ['agentic-trader']);
   assert.ok(observation.evidenceIds.includes('agentic-trader:identity'));
   assert.match(observation.answerText, /trading automation/i);
   assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, true);
   assert.equal(projectLoads, 1, 'the brief and public tools must share one run-local project promise');
+});
+
+test('successful discovery cannot silently omit an explicitly requested project card', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Show only one project card for trading automation.');
+  const model = toolSequenceModel([
+    { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifactIntent: 'one_project',
+        artifacts: [],
+        limitations: [],
+      },
+    },
+    { toolName: 'getProject', input: { id: 'agentic-trader' } },
+    {
+      toolName: 'finalizeAnswer',
+      input: {
+        segments: [{ kind: 'factual', text: 'agentic-trader shows public trading automation work.', evidenceIds: ['agentic-trader:identity'] }],
+        artifactIntent: 'one_project',
+        artifacts: [{ kind: 'project', id: 'agentic-trader' }],
+        limitations: [],
+      },
+    },
+  ]);
+
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model,
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.deepEqual(observation.tools, ['searchProjects', 'getProject']);
+  assert.deepEqual(observation.projectIds, ['agentic-trader']);
 });
 
 test('live eval project-unavailable wiring preserves startup and exercises searchProjects', async () => {
@@ -823,6 +872,7 @@ test('runtime metrics mark the first visible public-tool state before completion
   const metricsLines: string[] = [];
   const model = toolSequenceModel([
     { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    { toolName: 'getProject', input: { id: 'agentic-trader' } },
     {
       toolName: 'finalizeAnswer',
       input: {
@@ -845,7 +895,7 @@ test('runtime metrics mark the first visible public-tool state before completion
   assert.equal(observation.outcome, 'completed');
   assert.equal(metrics.outcome, 'completed');
   assert.equal(metrics.errorCategory, null);
-  assert.equal(metrics.toolCount, 1);
+  assert.equal(metrics.toolCount, 2);
   assert.equal(typeof metrics.firstTokenMs, 'number');
   assert.equal(typeof metrics.completionMs, 'number');
   assert.ok(
@@ -858,7 +908,7 @@ test('same-step finalization waits for public evidence and artifacts to settle',
   const source = await createEvalProjectSource();
   const request = chatRequest('Which project shows trading automation?');
   const model = toolStepModel([[
-    { toolName: 'searchProjects', input: { query: 'trading automation', limit: 1 } },
+    { toolName: 'getProject', input: { id: 'agentic-trader' } },
     {
       toolName: 'finalizeAnswer',
       input: {

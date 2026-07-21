@@ -4826,22 +4826,6 @@ function governedV2DependencyMutationFailures(sourceFile) {
   );
   const trustedArtifactWriteSpecs = [
     {
-      text: 'artifacts.projects.set(project.id, project)',
-      valid: (node) => executeBelongsToCall(node, 'tool', 'searchProjects')
-        && exactForOf(node, 'for(constprojectofresult.projects)artifacts.projects.set(project.id,project);')
-        && exactExecute(node, `execute: (input, { abortSignal }) => {
-          const outcomeOrdinal = reserveToolOutcome(artifacts);
-          return gate.run(async () => {
-            metrics.tool();
-            const result = await run.searchProjects(input, { abortSignal });
-            artifacts.projectLookupCompleted = true;
-            for (const project of result.projects) artifacts.projects.set(project.id, project);
-            rememberToolOutcome(artifacts, 'searchProjects', outcomeOrdinal, result.status, result.limitations);
-            return result;
-          });
-        }`),
-    },
-    {
       text: 'artifacts.projects.set(result.project.id, result.project)',
       valid: (node) => executeBelongsToCall(node, 'tool', 'getProject')
         && exactIf(node, 'if(result.project){artifacts.projects.set(result.project.id,result.project);artifacts.directProjectReads.add(result.project.id);}')

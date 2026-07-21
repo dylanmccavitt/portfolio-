@@ -42,23 +42,30 @@ test('composition tool descriptions require every requested public source', () =
   assert.match(run.searchPublicSources.description, /approved public/i);
 });
 
-test('project, resume, and contact tools return sanitized public records with stable evidence and artifact ids', async () => {
+test('project discovery stays compact while direct reads retain full evidence and artifact ids', async () => {
   const run = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [project] });
 
   const search = await run.searchProjects({ query: 'trading automation' });
   assert.equal(search.status, 'complete');
   assert.equal(search.projects[0]?.id, project.id);
-  assert.deepEqual(search.artifactIds, [project.id]);
+  assert.deepEqual(search.artifactIds, []);
   assert.ok(search.evidenceIds.includes(`${project.id}:summary`));
-  assert.equal('source' in (search.projects[0] ?? {}), false);
-  assert.equal('seo' in (search.projects[0] ?? {}), false);
-  assert.equal('shots' in (search.projects[0] ?? {}), false);
+  for (const field of ['about', 'notes', 'stack', 'metrics', 'links', 'artifactId', 'source', 'seo', 'shots']) {
+    assert.equal(field in (search.projects[0] ?? {}), false, `discovery record must omit ${field}`);
+  }
+  assert.deepEqual(
+    search.evidence.map((entry) => entry.field),
+    ['identity', 'slug', 'href', 'area', 'status', 'year', 'activity', 'tagline', 'summary'],
+  );
 
   const byId = await run.getProject.execute({ id: project.id });
   const bySlug = await run.getProject({ slug: project.slug });
   assert.equal(byId.status, 'complete');
   assert.deepEqual(byId.evidenceIds, bySlug.evidenceIds);
   assert.deepEqual(byId.artifactIds, [project.id]);
+  assert.ok(byId.project?.about.length);
+  assert.ok(byId.project?.stack.length);
+  assert.ok(byId.project?.links.length);
 
   const resume = await run.readResume({ query: 'open opportunities', trackIds: ['now'] });
   assert.equal(resume.status, 'complete');
@@ -93,7 +100,20 @@ test('title-only project names can use search when their stable id or slug is un
   assert.equal(resolvedByTitle.status, 'complete');
   assert.deepEqual(resolvedByTitle.projects.map((item) => item.id), ['nhf']);
   assert.ok(resolvedByTitle.evidenceIds.includes('nhf:identity'));
-  assert.deepEqual(resolvedByTitle.artifactIds, ['nhf']);
+  assert.deepEqual(resolvedByTitle.artifactIds, []);
+});
+
+test('serialized discovery payloads have a fixed ceiling and are materially smaller than full reads', async () => {
+  const projects = [project, renamedProject()];
+  const run = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => projects });
+  const discovery = await run.searchProjects({ query: 'trading automation', limit: 2 });
+  const full = await Promise.all(projects.map(async (item) => (await run.getProject({ id: item.id })).project));
+  const discoveryBytes = Buffer.byteLength(JSON.stringify(discovery.projects));
+  const fullBytes = Buffer.byteLength(JSON.stringify(full));
+
+  assert.equal(discovery.projects.length, 2);
+  assert.ok(discoveryBytes <= 4_000, `discovery payload exceeded 4000 bytes: ${discoveryBytes}`);
+  assert.ok(discoveryBytes * 2 <= fullBytes, `expected at least 50% reduction, got ${discoveryBytes}/${fullBytes}`);
 });
 
 test('the run-local ledger records only evidence returned by tools in that run', async () => {

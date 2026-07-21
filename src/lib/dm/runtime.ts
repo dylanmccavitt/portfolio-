@@ -861,7 +861,6 @@ function createRuntimePublicTools(
           metrics.tool();
           const result = await run.searchProjects(input, { abortSignal });
           artifacts.projectLookupCompleted = true;
-          for (const project of result.projects) artifacts.projects.set(project.id, project);
           rememberToolOutcome(artifacts, 'searchProjects', outcomeOrdinal, result.status, result.limitations);
           return result;
         });
@@ -1334,11 +1333,25 @@ function stableProjectReadErrors(
 function requestedArtifactErrors(input: FinalAnswerInput, artifacts: RunArtifacts): string[] {
   const requiredKinds = [...artifacts.requestedArtifactKinds]
     .filter((kind) => !(kind === 'evidence' && artifacts.requestedArtifactIntent === 'none'));
-  if (requiredKinds.length === 0) return [];
+  const requestedProjectRead = artifacts.requestedArtifactIntent === 'one_project'
+    || artifacts.requestedArtifactIntent === 'project_set';
+  if (requiredKinds.length === 0 && !requestedProjectRead) return [];
 
   const references = deduplicateArtifactReferences(input.artifacts);
   const referenceKeys = new Set(references.map((reference) => `${reference.kind}:${reference.id}`));
   const errors: string[] = [];
+  const projectSearch = artifacts.outcomes.get('searchProjects');
+  const requiresProjectRead = requestedProjectRead
+    || requiredKinds.some((kind) => kind === 'project' || kind === 'links');
+
+  if (
+    requiresProjectRead
+    && artifacts.projects.size === 0
+    && (projectSearch === 'complete' || projectSearch === 'partial')
+    && !artifacts.outcomes.has('getProject')
+  ) {
+    errors.push('requested project or links artifacts require getProject after discovery');
+  }
 
   if (requiredKinds.includes('resume')) {
     for (const id of artifacts.resumeTracks.keys()) {
