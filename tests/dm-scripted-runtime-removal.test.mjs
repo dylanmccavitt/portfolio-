@@ -7,8 +7,6 @@ import { URL } from 'node:url';
 
 import {
   FORBIDDEN_TOKENS,
-  REMOVAL_CLAIM_ID,
-  REMOVAL_CLAIM_STATEMENT,
   checkScriptedRuntimeRemoval,
   finalizationBoundaryFailures,
   v2FinalizationComparisonFailures,
@@ -18,9 +16,6 @@ const PROJECT_DRAFT_TOKEN = 'ProjectDraft';
 const CHAT_STREAM_TOKEN = 'createDMChatStream';
 const READ_NDJSON_TOKEN = 'readNdjson';
 const NDJSON_MEDIA_TYPE = 'application/x-ndjson';
-const GOVERNANCE_CLAIM_ID = 'dm-v2-validator-governance';
-const GOVERNANCE_CLAIM_STATEMENT = 'DM v2 runtime finalization is limited to documented structural, same-run provenance, source, integrity, and operational controls; behavior quality stays in prompts, approved public content, and evaluations';
-
 const GOVERNANCE_DOCUMENT_FIXTURES = {
   'docs/agents/dm-validator-governance.md': `# DM v2 validator governance
 
@@ -468,21 +463,6 @@ async function createCleanFixture(t) {
       'src/lib/dm/finalization.ts',
       await readFile(new URL('../src/lib/dm/finalization.ts', import.meta.url), 'utf8'),
     ),
-    writeFixtureFile(root, 'claims.json', `${JSON.stringify({
-      claims: [{ id: REMOVAL_CLAIM_ID, statement: REMOVAL_CLAIM_STATEMENT }, {
-        id: GOVERNANCE_CLAIM_ID,
-        statement: GOVERNANCE_CLAIM_STATEMENT,
-        subjectRefs: [
-          'docs/agents/dm-validator-governance.md',
-          'docs/agents/dm-evals.md',
-          'docs/agents/scope-ledger.md',
-          'src/lib/dm/finalization.ts',
-          'src/lib/dm/runtime.ts',
-          'scripts/check-dm-scripted-runtime-removed.mjs',
-          'tests/dm-scripted-runtime-removal.test.mjs',
-        ],
-      }],
-    })}\n`),
     ...Object.entries(GOVERNANCE_DOCUMENT_FIXTURES).map(([path, contents]) => (
       writeFixtureFile(root, path, contents)
     )),
@@ -638,24 +618,6 @@ test('excludes only the checker definitions while scanning adjacent scripts', as
 
   const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
   assert.ok(result.failures.includes(`${copiedChecker}: forbidden scripted-runtime token ${token}`));
-});
-
-test('requires the truthful replacement claim and rejects the superseded identity', async (t) => {
-  const root = await createCleanFixture(t);
-  await writeFixtureFile(root, 'claims.json', `${JSON.stringify({
-    claims: [{
-      id: 'dm-removed-scripted-runtime',
-      statement: 'the scripted DM router, planner, deterministic answer paths, fake trace, canned answer fixtures, and custom NDJSON protocol are absent',
-    }, {
-      id: 'dm-legacy-scripted-runtime-removed',
-      statement: 'superseded v1-only finalization claim',
-    }],
-  })}\n`);
-
-  const result = await checkScriptedRuntimeRemoval({ projectRoot: root });
-  assert.ok(result.failures.includes(`claims.json: missing ${REMOVAL_CLAIM_ID} claim`));
-  assert.ok(result.failures.includes('claims.json: superseded dm-removed-scripted-runtime claim must not remain active'));
-  assert.ok(result.failures.includes('claims.json: superseded dm-legacy-scripted-runtime-removed claim must not remain active'));
 });
 
 test('rejects missing canonical v2 governance prose and cross-document links', async (t) => {

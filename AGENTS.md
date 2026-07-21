@@ -72,28 +72,6 @@ binding point — read it before planning or building:
 Repo-specific skills live in `.agents/skills/`.
 Continuity for the agent-first redesign is tracked in `docs/agents/scope-ledger.md`.
 
-## Verification ledger (attest / flodex)
-
-This repo has a drift ledger: `claims.json` pins claims about code and docs
-(ADRs ↔ code) to the file versions they were proven against. The ledger state
-lives in `.attest/` (regenerable; do not hand-edit). The CLI lives outside the
-repo at `~/projects/attest` — if that path is absent (cloud/container
-environments), skip this section.
-
-- **Before starting work:** run
-  `node ~/projects/attest/src/attest.mjs status`
-  to see which claims your target files back.
-- **After finishing:** run `status` again. If your change staled claims, run
-  `verify` to re-prove them. If a check now fails, you either caught a real
-  regression or the doc/ADR needs updating — say which in your handoff, and
-  never delete a claim to make status green.
-- **When you add or change an ADR, decision, or documented behavior:** add a
-  claim for it in `claims.json`. For doc↔code claims, `subjectRefs` must span
-  both the doc and the code it describes, and the `check` must assert both
-  sides. Checks run through `/bin/sh` — escape `$`.
-- `node ~/projects/attest/src/attest.mjs dashboard` regenerates the visual
-  drift board at `.attest/dashboard.html`.
-
 ## Cursor Cloud specific instructions
 
 Standard build/test/lint/run commands live in `package.json` and

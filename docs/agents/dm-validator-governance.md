@@ -64,8 +64,8 @@ A future runtime rejection rule needs a concrete privacy or security failure
 mode. The same reviewable change must include the narrow rule, why existing
 schema/provenance/source controls are insufficient, a negative regression that
 demonstrates the failure, positive graceful-degradation coverage, this allowlist
-update, and an attest claim update spanning the documentation and executable
-proof. An annotation or behavioral preference is not exception evidence.
+update, and executable proof spanning the documentation and runtime boundary.
+An annotation or behavioral preference is not exception evidence.
 
 ## Implementation and review checklist
 
@@ -79,7 +79,7 @@ proof. An annotation or behavioral preference is not exception evidence.
   and unsafe lifecycle routes share the same canonical prose and metadata rules
   across the server, client, and response observer.
 - Confirm v1 behavior is unchanged and `DM_CONTRACT` still defaults to v1.
-- Re-run DM, eval, metrics, benchmark, proof, repository verification, and
-  attest at the exact candidate head with zero stale or unverified claims.
+- Re-run DM, eval, metrics, benchmark, proof, and repository verification at
+  the exact candidate head.
 - Do not combine this rule with model calls, paid qualification, configuration,
   deployment, database/corpus changes, runtime redesign, or v1 removal.
