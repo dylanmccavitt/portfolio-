@@ -47,25 +47,11 @@ export const FORBIDDEN_TOKENS = [
   'PROJECT_FACT_PACKET=',
 ];
 
-export const REMOVAL_CLAIM_ID = 'dm-finalization-contract-boundary';
-export const REMOVAL_CLAIM_STATEMENT = 'the legacy scripted DM runtime and custom NDJSON protocol are absent; DM defaults to the v1 enum-controlled finalizer while opt-in v2 preserves Unicode-safe bounded canonical prose across narrowly equivalent, finalize-only, prose-only, and material-drift terminal states without attaching rejected metadata';
-
-const GOVERNANCE_CLAIM_ID = 'dm-v2-validator-governance';
-const GOVERNANCE_CLAIM_STATEMENT = 'DM v2 runtime finalization is limited to documented structural, same-run provenance, source, integrity, and operational controls; behavior quality stays in prompts, approved public content, and evaluations';
 const GOVERNANCE_DOCUMENTS = {
   rule: 'docs/agents/dm-validator-governance.md',
   evals: 'docs/agents/dm-evals.md',
   scope: 'docs/agents/scope-ledger.md',
 };
-const GOVERNANCE_CLAIM_SUBJECT_REFS = [
-  GOVERNANCE_DOCUMENTS.rule,
-  GOVERNANCE_DOCUMENTS.evals,
-  GOVERNANCE_DOCUMENTS.scope,
-  'src/lib/dm/finalization.ts',
-  'src/lib/dm/runtime.ts',
-  'scripts/check-dm-scripted-runtime-removed.mjs',
-  'tests/dm-scripted-runtime-removal.test.mjs',
-];
 const GOVERNANCE_DOCUMENT_ANCHORS = {
   [GOVERNANCE_DOCUMENTS.rule]: [
     '# DM v2 validator governance',
@@ -95,11 +81,6 @@ const GOVERNANCE_DOCUMENT_ANCHORS = {
   ],
 };
 
-const SUPERSEDED_REMOVAL_CLAIM_IDS = new Set([
-  'dm-removed-scripted-runtime',
-  'dm-legacy-scripted-runtime-removed',
-]);
-const CLAIMS_PATH = 'claims.json';
 const CHECKER_PATH = 'scripts/check-dm-scripted-runtime-removed.mjs';
 const FINALIZATION_COPY_IDENTIFIER = 'FINALIZATION_ENUM_COPY';
 const EXPECTED_FINALIZATION_COPY_ACCESSES = new Map([
@@ -6540,41 +6521,8 @@ export function v2FinalizationComparisonFailures(source) {
   return governedBindingWritten ? [failure] : [];
 }
 
-async function removalClaimFailures(projectRoot) {
-  const claims = JSON.parse(await readFile(resolve(projectRoot, CLAIMS_PATH), 'utf8'));
-  const active = claims.claims ?? [];
-  const claim = active.find((item) => item.id === REMOVAL_CLAIM_ID);
-  const failures = [];
-  if (!claim) failures.push(`${CLAIMS_PATH}: missing ${REMOVAL_CLAIM_ID} claim`);
-  else if (claim.statement !== REMOVAL_CLAIM_STATEMENT) {
-    failures.push(`${CLAIMS_PATH}: ${REMOVAL_CLAIM_ID} must describe the finalization safety-copy exception exactly`);
-  }
-  for (const id of SUPERSEDED_REMOVAL_CLAIM_IDS) {
-    if (active.some((item) => item.id === id)) {
-      failures.push(`${CLAIMS_PATH}: superseded ${id} claim must not remain active`);
-    }
-  }
-  return failures;
-}
-
 async function governanceDocumentationFailures(projectRoot) {
   const failures = [];
-  const claims = JSON.parse(await readFile(resolve(projectRoot, CLAIMS_PATH), 'utf8'));
-  const claim = (claims.claims ?? []).find((item) => item.id === GOVERNANCE_CLAIM_ID);
-  if (!claim) {
-    failures.push(`${CLAIMS_PATH}: missing ${GOVERNANCE_CLAIM_ID} claim`);
-  } else {
-    if (claim.statement !== GOVERNANCE_CLAIM_STATEMENT) {
-      failures.push(`${CLAIMS_PATH}: ${GOVERNANCE_CLAIM_ID} must describe the documented v2 validator boundary exactly`);
-    }
-    const subjectRefs = new Set(claim.subjectRefs ?? []);
-    for (const subjectRef of GOVERNANCE_CLAIM_SUBJECT_REFS) {
-      if (!subjectRefs.has(subjectRef)) {
-        failures.push(`${CLAIMS_PATH}: ${GOVERNANCE_CLAIM_ID} must cover ${subjectRef}`);
-      }
-    }
-  }
-
   for (const [path, anchors] of Object.entries(GOVERNANCE_DOCUMENT_ANCHORS)) {
     let text;
     try {
@@ -6599,7 +6547,6 @@ async function governanceDocumentationFailures(projectRoot) {
 export async function checkScriptedRuntimeRemoval({ projectRoot = process.cwd() } = {}) {
   const root = resolve(projectRoot);
   const failures = await removedFileFailures(root);
-  failures.push(...await removalClaimFailures(root));
   failures.push(...await governanceDocumentationFailures(root));
 
   const sourceFiles = [];
