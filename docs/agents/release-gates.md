@@ -1,15 +1,18 @@
 # Release and rollback gate
 
-GitHub issue #192 prepares this checklist and its ruleset payload. It does not
-authorize an agent to mutate GitHub rulesets, Vercel configuration, preview or
-production databases, deploy hooks, cron, or production traffic.
+This reusable checklist and its ruleset payload govern an exact release
+candidate. Historical implementation issue #192 is a locator for the checklist,
+not current execution proof or authorization. This document does not authorize
+an agent to mutate GitHub rulesets, Vercel configuration, preview or production
+databases, deploy hooks, cron, or production traffic.
 
 ## Evidence identity
 
-- Stack parent / reviewed base: `68244ce1aa6ec575624c26535db91293cebe7b50`
-  (`codex/gh-191-dm-safeguards`).
-- Record the final #192 head SHA, preview deployment SHA, and every command
-  result below before a maintainer promotes the stack.
+- At execution time, record the live reviewed base SHA, candidate head SHA,
+  preview deployment SHA and URL, reviewer, timestamp, and every command result
+  below before a maintainer promotes the stack. A blank checklist is not proof.
+- Confirm the reviewed Git base and the live pull-request/deployment heads match
+  the recorded candidate before using any artifact.
 - **Any new commit invalidates every smoke, migration, live-eval, Vercel, and
   rollback artifact. Re-run and record the complete affected evidence at the
   new head.**
@@ -137,7 +140,8 @@ PR is reviewed and the stack is merged in order.
    response. Run `npm run dm:eval:release` only when the live-model and judge
    configuration is approved; attach a sanitized result, never raw secrets.
 6. Record the Vercel deployment SHA, public library/detail/DM smoke evidence,
-   and the hidden-draft exclusion proof required by the #190 runbook.
+   and the hidden-draft exclusion proof required by
+   [`catalog-cutover.md`](./catalog-cutover.md).
 7. With a separate approval, deploy preview with
    `PUBLIC_PROJECT_SOURCE=catalog_emergency`, prove the explicit source-mode
    signal and public fallback behavior, then restore `database` and redeploy.
@@ -145,5 +149,6 @@ PR is reviewed and the stack is merged in order.
 8. Keep the final preview-to-main PR as the manual program-epic gate after the
    full stack is merged. No agent merges it or mutates production.
 
-The earlier #190 preview proof is historical context only. It is not evidence
-for a later #192 head unless every affected artifact has been refreshed.
+Any earlier preview proof is historical context only. It is not evidence for a
+later candidate head unless every affected artifact has been refreshed and
+bound to that exact head.

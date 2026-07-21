@@ -1,17 +1,18 @@
 # DM voice and golden conversations
 
-This document defines the intended voice for DM v2 before the runtime changes.
-It is the prose standard for later prompt, content, and evaluation work—not a
-runtime fixture and not permission to relax DM's public-source boundary. It
-serves curious visitors first while remaining genuinely useful to recruiters
-and hiring managers.
+This document is the accepted voice and evaluation reference for DM. It is the
+prose standard for prompt, content, corpus, and evaluation work—not a runtime
+fixture and not permission to relax DM's public-source boundary. It serves
+curious visitors first while remaining genuinely useful to recruiters and
+hiring managers.
 
-## Merge gate
+## Status and use
 
-**Dylan's explicit acceptance of the tone and copy in this document is a hard
-merge gate for #264.** An issue update, review, passing check, or agent-authored
-assessment does not count as that acceptance. Keep the pull request in draft
-until Dylan's decision is recorded.
+The voice and copy below are the current accepted reference. Later changes to
+the voice contract or golden copy still require owner review; passing checks or
+an agent-authored assessment do not establish that approval. Acceptance of the
+wording also does not make every fact in an example executable public evidence:
+the source status and publication requirements below remain controlling.
 
 ## Voice contract
 
@@ -272,8 +273,9 @@ that are not executable evaluation or runtime content until the source status
 named above is satisfied.
 
 The executable harness keeps its live checked mapping in
-`DM_GOLDEN_SOURCE_STATUS` (`src/lib/dm/eval-corpus.ts`). While #267 remains
-open, families 2, 3, and 10 stay honest source-gap cases. Families 5 and 6 use
-the same treatment until an approved public project, RAG, or site source exists.
-The mapping never authorizes `src/data/catalog.ts` as a deployed or live-eval
+`DM_GOLDEN_SOURCE_STATUS` (`src/lib/dm/eval-corpus.ts`). Families 2, 3, and 10
+stay honest source-gap cases until the required public profile sources are
+approved and available through `profileLoader`. Families 5 and 6 use the same
+treatment until an approved public project, RAG, or site source exists. The
+mapping never authorizes `src/data/catalog.ts` as a deployed or live-eval
 fallback.
