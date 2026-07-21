@@ -36,6 +36,7 @@ docs/handoffs/*.md
 !docs/handoffs/.gitkeep
 
 # local agent worktrees (git worktree storage)
+.codex/
 .claude/worktrees/
 
 # conductor (retired)
