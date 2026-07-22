@@ -115,15 +115,17 @@ export interface PublicSourceRecord {
  * profile source must explicitly mark both publication and public visibility
  * before an entry can cross this boundary.
  */
-export interface PublicProfileSourceEntry {
-  id: string;
-  category: string;
-  title: string;
-  summary: string;
-  href?: string;
-  publicationStatus: 'published' | 'draft';
-  visibility: 'public' | 'private';
-}
+export const PublicProfileSourceEntrySchema = z.strictObject({
+  id: z.string().trim().min(1).max(200).regex(/^[a-z0-9][a-z0-9_-]*$/i),
+  category: z.string().trim().min(1).max(100),
+  title: z.string().trim().min(1).max(160),
+  summary: z.string().trim().min(1).max(1_000),
+  href: z.string().trim().min(1).max(2_000).optional(),
+  publicationStatus: z.enum(['published', 'draft']),
+  visibility: z.enum(['public', 'private']),
+});
+
+export type PublicProfileSourceEntry = z.infer<typeof PublicProfileSourceEntrySchema>;
 
 export interface PublicProfileRecord {
   id: string;
@@ -491,7 +493,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   );
 
   const searchProfile = createTool(
-    'Search published public profile entries. Returns empty until a reviewed profile source is supplied.',
+    'Search reviewed, published public profile entries. Use this for biography, working-style, recruiter, and approved-interest questions.',
     SearchProfileInputSchema,
     async (input, signal) => {
       if (!deps.loadProfileEntries) {
@@ -505,23 +507,29 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
         });
       }
       const entries = (await deps.loadProfileEntries())
+        .flatMap((entry) => {
+          const parsed = PublicProfileSourceEntrySchema.safeParse(entry);
+          return parsed.success ? [parsed.data] : [];
+        })
         .filter((entry) => entry.publicationStatus === 'published' && entry.visibility === 'public')
         .filter((entry) => !input.categories?.length || input.categories.some(
           (category) => category.toLowerCase() === entry.category.toLowerCase(),
         ))
-        .map((entry) => ({ entry, score: searchScore(profileHaystack(entry), input.query) }))
+        .map((entry) => ({ entry, score: profileSearchScore(entry, input.query) }))
         .filter(({ score }) => score > 0)
         .sort((a, b) => b.score - a.score || a.entry.id.localeCompare(b.entry.id));
       throwIfAborted(signal);
-      const selected = entries.slice(0, input.limit ?? 4).map(({ entry }) => profileRecord(entry));
+      const bestScore = entries[0]?.score ?? 0;
+      const bestEntries = entries.filter(({ score }) => score === bestScore);
+      const selected = bestEntries.slice(0, input.limit ?? 4).map(({ entry }) => profileRecord(entry));
       const evidence = selected.flatMap((record) => profileEvidence(record));
       return resultWithEvidence({
-        status: selected.length === 0 ? 'empty' : selected.length < entries.length ? 'partial' : 'complete',
+        status: selected.length === 0 ? 'empty' : selected.length < bestEntries.length ? 'partial' : 'complete',
         query: input.query,
         profiles: selected,
         evidence,
         artifactIds: [],
-        limitations: selected.length < entries.length ? ['result_limit'] : [],
+        limitations: selected.length < bestEntries.length ? ['result_limit'] : [],
       });
     },
     (input) => ({ query: input.query, profiles: [] }),
@@ -860,11 +868,45 @@ function profileHaystack(entry: PublicProfileSourceEntry): string {
   return [entry.id, entry.category, entry.title, entry.summary].join(' ');
 }
 
+function profileSearchScore(entry: PublicProfileSourceEntry, query: string): number {
+  if (UNSUPPORTED_PERSONAL_PROFILE_QUERY.test(query)) return 0;
+  const biographyIntent = /\b(?:about|bio|biography|background)\b/i.test(query);
+  const careerIntent = /\b(?:career (?:change|path|transition)|changed careers|start(?:ed)? in software)\b/i.test(query);
+  const workingStyleIntent = /\b(?:working style|work style|how\b.{0,40}\bwork|values?|collaborat\w*|communicat\w*|reliab\w*)\b/i.test(query);
+  const recruiterIntent = /\b(?:recruit\w*|interview\w*|full[- ]time|citizen(?:ship)?|sponsor(?:ship)?|job search)\b/i.test(query);
+  const approvedInterestIntent = /\b(?:interests?|side projects?)\b/i.test(query);
+  return profileTokenScore(profileHaystack(entry), query)
+    + (entry.category === 'bio' && biographyIntent ? 3 : 0)
+    + (entry.category === 'career' && careerIntent ? 3 : 0)
+    + (entry.category === 'working-style' && workingStyleIntent ? 3 : 0)
+    + (entry.category === 'recruiter' && recruiterIntent ? 3 : 0)
+    + (['interest', 'outside-work', 'easter-egg'].includes(entry.category) && approvedInterestIntent ? 3 : 0);
+}
+
 function searchScore(haystack: string, query: string): number {
   const normalized = haystack.toLowerCase();
   const tokens = query.toLowerCase().match(/[a-z0-9+.#-]{2,}/g) ?? [];
   return [...new Set(tokens)].reduce((score, token) => score + Number(normalized.includes(token)), 0);
 }
+
+function profileTokenScore(haystack: string, query: string): number {
+  const haystackTokens = new Set(profileSearchTokens(haystack));
+  return [...new Set(profileSearchTokens(query))]
+    .filter((token) => !PROFILE_SEARCH_STOP_WORDS.has(token))
+    .reduce((score, token) => score + Number(haystackTokens.has(token)), 0);
+}
+
+function profileSearchTokens(value: string): string[] {
+  return value.toLowerCase().match(/[a-z0-9+.#]{2,}/g) ?? [];
+}
+
+const PROFILE_SEARCH_STOP_WORDS = new Set([
+  'about', 'and', 'are', 'can', 'does', 'dylan', 'for', 'from', 'has', 'have',
+  'his', 'how', 'in', 'into', 'is', 'life', 'like', 'of', 'private', 'some', 'tell', 'that', 'the',
+  'this', 'was', 'what', 'when', 'where', 'which', 'who', 'with', 'would',
+]);
+
+const UNSUPPORTED_PERSONAL_PROFILE_QUERY = /\b(?:(?:private|personal)\W+life|hobbies?|favourites?|favorites?|family|families|relationships?|health|beliefs?|religion|religious|politics?|political|home\W+(?:address|location)|street\W+address|address)\b/i;
 
 function safePublicHref(value: string | undefined): string | undefined {
   if (!value) return undefined;

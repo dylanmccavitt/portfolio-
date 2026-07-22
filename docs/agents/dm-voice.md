@@ -66,17 +66,18 @@ and fail closed when they are unavailable.
 ### Draft facts awaiting runtime publication
 
 Dylan supplied the overview, career-change, portfolio-backend, Visual Dex, and
-hobby facts used below for this copy draft. That makes them valid material for
-owner review, but it does **not** make them approved runtime evidence.
+hobby facts used below for this copy draft. The approved overview and
+career-change entries now live in `src/data/profile.ts`; the remaining draft
+facts below are not approved runtime evidence.
 
 Before these examples become executable evaluation data or runtime targets:
 
 - Portfolio-backend and Visual Dex facts must enter a reviewed published
   project record, approved public RAG source, or approved site brief through the
   appropriate later content issue.
-- Hobby facts, and any overview or career detail not already present in
-  `src/data/resume.ts`, must enter approved public profile content and be
-  returned through the public `profileLoader`.
+- Any overview or career detail beyond `src/data/resume.ts` and the exact
+  approved profile entries, plus the genuine hobby facts below, must enter
+  separately approved public profile content before runtime use.
 
 Until then, those examples are copy-review goldens only. Owner-supplied copy
 does not bypass the published-project, approved-RAG, résumé, contact, or public
@@ -268,14 +269,17 @@ playfulness appears in general exploration, site, and hobby answers—not in the
 privacy limitation or hiring tradeoff. No answer adds a reflexive closing
 question.
 
-Examples 2, 3, 5, 6, 8, and 10 include owner-supplied or site-level draft facts
-that are not executable evaluation or runtime content until the source status
-named above is satisfied.
+Families 2 and 3 are executable from the owner-approved profile and canonical
+résumé, but the sample prose above is not itself a runtime source. Examples 5,
+6, 8, and 10 still include owner-supplied or site-level draft facts that are not
+executable evaluation or runtime content until the source status named above
+is satisfied.
 
 The executable harness keeps its live checked mapping in
-`DM_GOLDEN_SOURCE_STATUS` (`src/lib/dm/eval-corpus.ts`). Families 2, 3, and 10
-stay honest source-gap cases until the required public profile sources are
-approved and available through `profileLoader`. Families 5 and 6 use the same
-treatment until an approved public project, RAG, or site source exists. The
+`DM_GOLDEN_SOURCE_STATUS` (`src/lib/dm/eval-corpus.ts`). Families 2 and 3 now
+exercise the owner-approved profile through `profileLoader`; family 10 remains
+an honest source-gap because the approved corpus explicitly excludes genuine
+hobbies. Families 5 and 6 use the same source-gap treatment until an approved
+public project, RAG, or site source exists. The
 mapping never authorizes `src/data/catalog.ts` as a deployed or live-eval
 fallback.

@@ -169,12 +169,12 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
     prompt: 'Hi.', expectations: { forbiddenTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, followUp: 'useful' },
   }),
   evalCase({
-    id: 'golden-02-overview-source-gap', name: 'Overview stays honest while public profile is unavailable', source: 'derived', categories: ['personal'], goldenFamily: 2,
-    prompt: 'Tell me about Dylan.', expectations: { requiredTools: ['searchProfile'], forbiddenTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
+    id: 'golden-02-overview', name: 'Overview uses the approved public profile', source: 'derived', categories: ['personal'], goldenFamily: 2,
+    prompt: 'Tell me about Dylan.', expectations: { requiredTools: ['searchProfile'], forbiddenTools: PROJECT_TOOLS, artifacts: { forbidden: ['projects'] }, followUp: 'useful' },
   }),
   evalCase({
-    id: 'golden-03-career-change-source-gap', name: 'Career-change framing does not assert draft profile facts', source: 'derived', categories: ['personal', 'factual'], goldenFamily: 3,
-    prompt: "He didn't start in software, right?", expectations: { requiredTools: ['readResume', 'searchProfile'], artifacts: { required: ['resume'] }, limitation: 'honest-unknown', followUp: 'not-useful' },
+    id: 'golden-03-career-change', name: 'Career-change framing uses approved profile and resume facts', source: 'derived', categories: ['personal', 'factual'], goldenFamily: 3,
+    prompt: "He didn't start in software, right?", expectations: { requiredTools: ['readResume', 'searchProfile'], artifacts: { required: ['resume'] }, followUp: 'not-useful' },
   }),
   evalCase({
     id: 'golden-04-full-stack-source-gap', name: 'Full-stack recommendation fails closed without published matching project', source: 'derived', categories: ['comparative', 'interpretive'], goldenFamily: 4,
@@ -201,7 +201,7 @@ export const DM_LIVE_EVAL_CORPUS: DMLiveEvalCase[] = [
     prompt: "I don't know where to start. Show me something interesting.", expectations: { requiredTools: PROJECT_TOOLS, artifacts: { required: ['projects'], maxProjectCards: 2 }, followUp: 'not-useful' },
   }),
   evalCase({
-    id: 'golden-10-hobbies-source-gap', name: 'Hobbies remain unavailable until profile publication', source: 'derived', categories: ['personal'], goldenFamily: 10,
+    id: 'golden-10-hobbies-source-gap', name: 'Genuine hobbies remain unsupported by the approved profile', source: 'derived', categories: ['personal'], goldenFamily: 10,
     prompt: "What are some of Dylan's hobbies?", expectations: { requiredTools: ['searchProfile'], artifacts: { forbidden: ['projects'] }, limitation: 'honest-unknown', followUp: 'useful' },
   }),
   evalCase({
@@ -491,15 +491,15 @@ export function validateDMLiveEvalCorpus(corpus: DMLiveEvalCase[] = DM_LIVE_EVAL
 /** Checked source gate for every owner-approved golden family. */
 export const DM_GOLDEN_SOURCE_STATUS: readonly DMGoldenSourceStatusEntry[] = [
   { family: 1, status: 'executable', approvedSources: ['public DM capability contract'], caseId: 'golden-01-greeting' },
-  { family: 2, status: 'source-gap', approvedSources: [], caseId: 'golden-02-overview-source-gap' },
-  { family: 3, status: 'source-gap', approvedSources: ['canonical resume'], caseId: 'golden-03-career-change-source-gap' },
+  { family: 2, status: 'executable', approvedSources: ['owner-approved public profile'], caseId: 'golden-02-overview' },
+  { family: 3, status: 'executable', approvedSources: ['canonical resume', 'owner-approved public profile'], caseId: 'golden-03-career-change' },
   { family: 4, status: 'source-gap', approvedSources: [], caseId: 'golden-04-full-stack-source-gap' },
   { family: 5, status: 'source-gap', approvedSources: [], caseId: 'golden-05-portfolio-backend-source-gap' },
   { family: 6, status: 'source-gap', approvedSources: [], caseId: 'golden-06-visual-dex-source-gap' },
   { family: 7, status: 'source-gap', approvedSources: [], caseId: 'golden-07-client-coursework-source-gap' },
   { family: 8, status: 'executable', approvedSources: ['public DM capability contract'], caseId: 'golden-08-site-curiosity' },
   { family: 9, status: 'executable', approvedSources: ['published project records'], caseId: 'golden-09-exploration' },
-  { family: 10, status: 'source-gap', approvedSources: [], caseId: 'golden-10-hobbies-source-gap' },
+  { family: 10, status: 'source-gap', approvedSources: ['owner-approved public profile excludes genuine hobbies'], caseId: 'golden-10-hobbies-source-gap' },
   { family: 11, status: 'executable', approvedSources: ['public-source privacy boundary'], caseId: 'golden-11-private-life' },
   { family: 12, status: 'source-gap', approvedSources: ['canonical resume'], caseId: 'golden-12-fit-source-gap' },
 ];

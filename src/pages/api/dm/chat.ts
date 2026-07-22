@@ -24,6 +24,7 @@ import {
 } from '@/lib/dm/rate-limit';
 import { createDMMetricsRecorder } from '@/lib/dm/metrics';
 import type { DMChatContext, DMChatRequest, DMUIMessage } from '@/lib/dm/contract';
+import { loadPublicProfileEntries } from '@/data/profile';
 import { resolvePublicProjectSourceMode, type PublicProjectSourceMode } from '@/lib/public-projects';
 import {
   FIT_CHECK_INPUT_LIMIT,
@@ -40,6 +41,7 @@ export interface DMPostHandlerDeps {
   db?: DMRuntimeDeps['db'];
   model?: DMRuntimeDeps['model'];
   projectLoader?: DMRuntimeDeps['projectLoader'];
+  profileLoader?: DMRuntimeDeps['profileLoader'];
   createDb?: (connectionString?: string) => DbClient;
   clientAddressResolver?: DMClientAddressResolver;
   rateLimitConfig?: DMRateLimitConfig;
@@ -104,6 +106,7 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
         db,
         model: deps.model,
         projectLoader: deps.projectLoader,
+        profileLoader: deps.profileLoader ?? loadPublicProfileEntries,
         env: deps.env,
         signal: request.signal,
         traceId,

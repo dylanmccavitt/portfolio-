@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 export const PUBLIC_TOOL_MODULES = [
+  'src/data/profile.ts',
   'src/lib/dm/public-agent-tools.ts',
   'src/lib/dm/runtime.ts',
   'src/lib/dm/site-brief.ts',

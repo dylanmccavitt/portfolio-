@@ -1,4 +1,5 @@
 import type { DMLiveEvalCase } from './eval-corpus';
+import { loadPublicProfileEntries } from '@/data/profile';
 import {
   createUnavailableEvalPublicSourceSearch,
   type EvalProjectSource,
@@ -7,7 +8,7 @@ import type { DMRuntimeDeps } from './runtime';
 
 type DMEvalRuntimeSourceDeps = Pick<
   DMRuntimeDeps,
-  'db' | 'projectLoader' | 'ragSearch' | 'searchProjectsFailure'
+  'db' | 'projectLoader' | 'profileLoader' | 'ragSearch' | 'searchProjectsFailure'
 >;
 
 /**
@@ -22,6 +23,7 @@ export function createDMEvalRuntimeSourceDeps(
   return {
     db: source.db,
     projectLoader: source.projectLoader,
+    profileLoader: loadPublicProfileEntries,
     ragSearch: testCase.toolFailure?.tool === 'searchPublicSources'
       ? createUnavailableEvalPublicSourceSearch()
       : source.publicSourceSearch,

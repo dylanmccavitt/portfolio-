@@ -8,7 +8,7 @@ The portfolio becomes agent-first: visitors land on DM, a public agent that answ
 
 DM supersedes Eve for new product architecture. Eve runtime paths (`src/lib/eve/`, `/api/eve/chat`) were retired in AGE-818; do not resurrect Eve-specific product seams. The old root `agent/` Eve app was retired by AGE-739 when the public DM Vercel AI SDK seam replaced the remote Eve app dependency.
 
-Public DM answers may use only published DB project records, approved public RAG sources, and static résumé/contact data from `src/data/resume.ts`. Hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor chats, and unsupported/generated claims stay out of public answers.
+Public DM answers may use only published DB project records, approved public RAG sources, static résumé/contact data from `src/data/resume.ts`, and the owner-approved static public profile in `src/data/profile.ts`. Hidden drafts, private docs, Slack/admin notes, candidate evidence, visitor chats, and unsupported/generated claims stay out of public answers.
 
 DM v2 runtime validation follows
 [`docs/agents/dm-validator-governance.md`](./dm-validator-governance.md): hard
@@ -55,6 +55,7 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   applied, parity-first operator command; it preserves DB-only Loom and queues
   one durable static-artifact refresh.
 - Keep `src/data/resume.ts` as the v1 résumé/contact source.
+- Keep `src/data/profile.ts` as the owner-approved public-profile source; its production loader exposes only well-formed published/public entries, while the site brief receives only the approved short-bio summary.
 - Before an approved Loom refresh, explicitly adopt Loom's authenticated,
   immutable GitHub repository id onto the reviewed published project id using
   [`docs/agents/github-refresh.md`](./github-refresh.md); never infer identity
@@ -97,6 +98,10 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   - Why deferred: The first slice only needs streamed answers over approved public sources.
   - Where tracked: Future issue candidates below.
   - Constraint imposed on Now: Do not bake UI or API assumptions that prevent later conversation state.
+- Capability: Profile database, admin publication, or automated owner interview.
+  - Why deferred: The current source is a deliberately small static corpus whose nine entries received explicit owner approval.
+  - Where tracked: Future issue candidates below.
+  - Constraint imposed on Now: Keep profile loading behind the typed public seam, and never infer or publish additions without renewed owner approval.
 - Capability: Resume/contact DB migration.
   - Why deferred: V1 keeps résumé/contact in `src/data/resume.ts` while project records move first.
   - Where tracked: Future issue candidates below.
@@ -143,7 +148,7 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
   issue.
   - Deferred capability protected: One auditable path from scope approval through exact-head review without competing routing systems.
   - Verification evidence: The issue's managed research and implementation sections bind one leaf to the live pull request head.
-- Constraint: DM public answers use only published DB project records, approved public RAG sources, and static résumé/contact data.
+- Constraint: DM public answers use only published DB project records, approved public RAG sources, static résumé/contact data, and the owner-approved static public profile.
   - Deferred capability protected: Privacy-safe RAG and publish flow.
   - Verification evidence: Runtime/eval fixtures or PR review evidence prove drafts/private/candidate data stay excluded.
 - Constraint: Golden-conversation eval families with unapproved profile, project, RAG, or site facts remain checked source-gap cases.
@@ -184,6 +189,14 @@ The 2026-06-26 Integrated DM content backend PRD supersedes the 2026-06-18 Eve-s
 
 ## Future issue candidates
 
+- Title: Migrate the owner-approved public profile to reviewed DB/admin publication
+  - Type: HITL
+  - Depends on: Static public-profile source proving the typed runtime seam
+  - Preserves: Explicit owner approval before any profile fact becomes public
+- Title: Add an automated owner profile interview workflow
+  - Type: HITL
+  - Depends on: Private-to-public review gates and a concrete authoring need
+  - Preserves: Draft collection without inference or automatic publication
 - Title: Add persistent DM memory
   - Type: HITL
   - Depends on: Public DM service seam

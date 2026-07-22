@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CATALOG } from '@/data/catalog';
+import {
+  loadPublicProfileEntries,
+  parsePublicProfileEntries,
+  PUBLIC_PROFILE_SITE_SUMMARY,
+} from '@/data/profile';
 import { buildCatalogShadowRecords } from '@/lib/db/catalog-shadow';
 import { projectRecordToReadModels, type ProjectDetailReadModel, type ProjectReadQueryable } from '@/lib/db/project-reads';
 import {
@@ -262,7 +267,7 @@ test('empty and failed searches return source-specific safe limitation categorie
   assert.doesNotMatch(JSON.stringify(unavailable), /private retrieval implementation details/);
 });
 
-test('profile search is honestly empty before #194 and filters a later adapter to published public entries', async () => {
+test('profile search filters adapters to well-formed published public entries and sanitizes failures', async () => {
   const empty = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [project] });
   const unavailableProfile = await empty.searchProfile({ query: 'leadership' });
   assert.equal(unavailableProfile.status, 'empty');
@@ -273,6 +278,7 @@ test('profile search is honestly empty before #194 and filters a later adapter t
     { id: 'public-one', category: 'work', title: 'Leadership', summary: 'Published public profile entry.', href: 'javascript:private()', publicationStatus: 'published', visibility: 'public' },
     { id: 'draft-one', category: 'work', title: 'Leadership draft', summary: 'Draft profile entry.', publicationStatus: 'draft', visibility: 'public' },
     { id: 'private-one', category: 'work', title: 'Private leadership', summary: 'Private profile entry.', publicationStatus: 'published', visibility: 'private' },
+    { id: 'malformed id', category: 'work', title: 'Malformed leadership', summary: 'Malformed profile entry.', publicationStatus: 'published', visibility: 'public' } as PublicProfileSourceEntry,
   ];
   const ready = createPublicAgentTools({
     db: unusedDb(),
@@ -284,6 +290,7 @@ test('profile search is honestly empty before #194 and filters a later adapter t
   assert.deepEqual(profile.profiles.map((entry) => entry.id), ['public-one']);
   assert.equal(profile.profiles[0]?.href, undefined);
   assert.doesNotMatch(JSON.stringify(profile), /draft-one|private-one/);
+  assert.doesNotMatch(JSON.stringify(profile), /malformed/);
 
   const failed = createPublicAgentTools({
     db: unusedDb(),
@@ -294,6 +301,97 @@ test('profile search is honestly empty before #194 and filters a later adapter t
   assert.equal(failedProfile.status, 'unavailable');
   assert.deepEqual(failedProfile.limitations, ['profile_source_not_available']);
   assert.doesNotMatch(JSON.stringify(failedProfile), /private profile adapter details|public_data_unavailable/);
+});
+
+test('the reviewed static profile source exposes exactly the nine approved entries and keeps unknown topics empty', async () => {
+  const entries = await loadPublicProfileEntries();
+  assert.deepEqual(entries.map((entry) => entry.id), [
+    'short-bio',
+    'career-change',
+    'working-style',
+    'skills-focus',
+    'recruiter-faq',
+    'practical-side-projects',
+    'markets-and-trading',
+    'homelab',
+    'games-as-test-beds',
+  ]);
+  assert.ok(entries.every(
+    (entry) => entry.publicationStatus === 'published' && entry.visibility === 'public',
+  ));
+  assert.equal(entries.find((entry) => entry.id === 'short-bio')?.summary, PUBLIC_PROFILE_SITE_SUMMARY);
+
+  const run = createPublicAgentTools({
+    db: unusedDb(),
+    loadProjects: async () => [project],
+    loadProfileEntries: loadPublicProfileEntries,
+  });
+  const known = await run.searchProfile({ query: 'New York City software engineer economics' });
+  assert.equal(known.status, 'complete');
+  assert.equal(known.profiles[0]?.id, 'short-bio');
+  assert.ok(known.evidence.some((entry) => entry.id === 'profile:short-bio:summary'));
+
+  const biography = await run.searchProfile({ query: 'Tell me about Dylan' });
+  assert.equal(biography.profiles[0]?.id, 'short-bio');
+  assert.ok(biography.evidence.some((entry) => entry.id === 'profile:short-bio:summary'));
+
+  const interests = await run.searchProfile({ query: 'markets infrastructure', categories: ['interest'] });
+  assert.deepEqual(interests.profiles.map((entry) => entry.id), ['homelab', 'markets-and-trading']);
+
+  const unknown = await run.searchProfile({ query: 'favorite weekend hobby' });
+  assert.equal(unknown.status, 'empty');
+  assert.deepEqual(unknown.profiles, []);
+  assert.deepEqual(unknown.evidence, []);
+
+  const genuineHobbies = await run.searchProfile({ query: "What are some of Dylan's hobbies?" });
+  assert.equal(genuineHobbies.status, 'empty');
+  assert.deepEqual(genuineHobbies.profiles, []);
+
+  const privateLife = await run.searchProfile({ query: 'What is Dylan like in his private life?' });
+  assert.equal(privateLife.status, 'empty');
+  assert.deepEqual(privateLife.profiles, []);
+
+  for (const query of [
+    'How does Dylan work in private life?',
+    'How does Dylan work in his private-life?',
+    'How does Dylan work in his personal life?',
+    'What does Dylan value in private life?',
+    'What are his interests and hobbies?',
+    'What is his home address?',
+  ]) {
+    const unsupported = await run.searchProfile({ query });
+    assert.equal(unsupported.status, 'empty', query);
+    assert.deepEqual(unsupported.profiles, [], query);
+  }
+
+  assert.deepEqual(
+    (await run.searchProfile({ query: 'How does Dylan work?' })).profiles.map((entry) => entry.id),
+    ['working-style'],
+  );
+  assert.deepEqual(
+    (await run.searchProfile({ query: 'Does Dylan require sponsorship?' })).profiles.map((entry) => entry.id),
+    ['recruiter-faq'],
+  );
+  assert.deepEqual(
+    (await run.searchProfile({ query: 'private funds legal work' })).profiles.map((entry) => entry.id),
+    ['career-change'],
+  );
+});
+
+test('the static profile loader rejects malformed input and excludes draft or private entries', () => {
+  const visible = {
+    id: 'visible', category: 'bio', title: 'Visible', summary: 'Approved.',
+    publicationStatus: 'published', visibility: 'public',
+  };
+  assert.deepEqual(parsePublicProfileEntries([
+    visible,
+    { ...visible, id: 'draft', publicationStatus: 'draft' },
+    { ...visible, id: 'private', visibility: 'private' },
+  ]).map((entry) => entry.id), ['visible']);
+  assert.throws(
+    () => parsePublicProfileEntries([{ ...visible, id: 'malformed id' }]),
+    /Invalid string|validation/i,
+  );
 });
 
 test('empty, partial, error, cancellation, and timeout outcomes are explicit and sanitized', async () => {

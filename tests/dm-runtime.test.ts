@@ -5,6 +5,7 @@ import { MockLanguageModelV4 } from 'ai/test';
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import { validateFinalizationResult } from '@/lib/dm/client';
 import { RESUME } from '@/data/resume';
+import { loadPublicProfileEntries } from '@/data/profile';
 import {
   DM_LIVE_EVAL_CORPUS,
   evaluateDMEvalObservation,
@@ -84,6 +85,7 @@ test('v2 instructions require standard streamed prose and a narrowly normalized 
     content: {
       version: 1,
       careerOverview: 'Public career overview.',
+      profileSummary: 'Approved public profile summary.',
       routes: { home: '/', projects: '/library', resume: '/journey', hiring: '/hiring', fitCheck: '/fit-check' },
       projects: [],
       resumeTracks: [],
@@ -864,6 +866,57 @@ test('live eval project-unavailable wiring preserves startup and exercises searc
   assert.match(observation.answerText, /published project source is unavailable/i);
   assert.equal(evaluateDMEvalObservation(testCase, observation), null);
   assert.equal(projectLoads, 1, 'startup brief and the failed search must share one validated project promise');
+});
+
+test('live eval source wiring exercises the same approved profile corpus as production', async () => {
+  const source = await createEvalProjectSource();
+  const testCase = evalCase('golden-02-overview');
+  const request = requestForEvalCase(testCase);
+  const sourceDeps = createDMEvalRuntimeSourceDeps(testCase, source);
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    ...sourceDeps,
+    model: toolSequenceModel([
+      { toolName: 'searchProfile', input: { query: 'Tell me about Dylan' } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{
+          kind: 'factual',
+          text: 'Dylan is a New York City–based software engineer.',
+          evidenceIds: ['profile:short-bio:summary'],
+        }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.tools, ['searchProfile']);
+  assert.deepEqual(observation.evidenceIds, ['profile:short-bio:summary']);
+});
+
+test('live eval profile wiring keeps genuine hobbies honestly unsupported', async () => {
+  const source = await createEvalProjectSource();
+  const testCase = evalCase('golden-10-hobbies-source-gap');
+  const request = requestForEvalCase(testCase);
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    ...createDMEvalRuntimeSourceDeps(testCase, source),
+    model: toolSequenceModel([
+      { toolName: 'searchProfile', input: { query: "What are some of Dylan's hobbies?" } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{ kind: 'limitation', code: 'personal_unknown' }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: ['personal_unknown'],
+        followUp: 'contact_dylan',
+      } },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.tools, ['searchProfile']);
+  assert.deepEqual(observation.evidenceIds, []);
+  assert.equal(evaluateDMEvalObservation(testCase, observation), null);
 });
 
 test('runtime metrics mark the first visible public-tool state before completion', async () => {
@@ -3587,6 +3640,44 @@ test('the endpoint accepts bounded UIMessage input and returns the standard type
   const observation = await observeDMResponse(response, request);
   assert.equal(observation.outcome, 'completed');
   assert.match(observation.answerText, /published projects/);
+});
+
+test('the endpoint wires the reviewed static profile loader into same-run profile evidence', async () => {
+  const source = await createEvalProjectSource();
+  const request = chatRequest('Does Dylan require sponsorship?');
+  const handler = createDMPostHandler({
+    config,
+    db: source.db,
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'searchProfile', input: { query: 'require sponsorship', categories: ['recruiter'] } },
+      { toolName: 'finalizeAnswer', input: {
+        segments: [{
+          kind: 'factual',
+          text: 'Dylan does not require sponsorship.',
+          evidenceIds: ['profile:recruiter-faq:summary'],
+        }],
+        artifactIntent: 'none',
+        artifacts: [],
+        limitations: [],
+      } },
+    ]),
+  });
+  const response = await handler({
+    request: new Request('https://portfolio.test/api/dm/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    }),
+  } as never);
+  const observation = await observeDMResponse(response, request);
+
+  assert.equal(response.status, 200);
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.tools, ['searchProfile']);
+  assert.deepEqual(observation.evidenceIds, ['profile:recruiter-faq:summary']);
+  assert.match(observation.answerText, /does not require sponsorship/i);
+  assert.equal((await loadPublicProfileEntries()).length, 9);
 });
 
 test('the endpoint never puts unvalidated model text chunks on the wire', async () => {

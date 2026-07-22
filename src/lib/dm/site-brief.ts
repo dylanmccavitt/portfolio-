@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { RESUME } from '@/data/resume';
+import { PUBLIC_PROFILE_SITE_SUMMARY } from '@/data/profile';
 import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
 import {
   loadPublicProjectDetails,
@@ -47,6 +48,7 @@ export interface DMSiteBriefResumeTrack {
 export interface DMSiteBriefContent {
   version: 1;
   careerOverview: string;
+  profileSummary: string;
   routes: {
     home: '/';
     projects: '/library';
@@ -152,10 +154,15 @@ export function buildDMSiteBrief(
   if (!careerOverview.success) {
     throw new DMSiteBriefError('validation_failed', 'The canonical career overview is unavailable.');
   }
+  const profileSummary = OneLineSchema.safeParse(PUBLIC_PROFILE_SITE_SUMMARY);
+  if (!profileSummary.success) {
+    throw new DMSiteBriefError('validation_failed', 'The approved public profile summary is unavailable.');
+  }
 
   const content: DMSiteBriefContent = {
     version: 1,
     careerOverview: careerOverview.data,
+    profileSummary: profileSummary.data,
     routes: {
       home: '/',
       projects: '/library',

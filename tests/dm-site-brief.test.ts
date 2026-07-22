@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RESUME } from '@/data/resume';
+import { loadPublicProfileEntries, PUBLIC_PROFILE_SITE_SUMMARY } from '@/data/profile';
 import type { ProjectDetailReadModel, ProjectReadQueryable } from '@/lib/db/project-reads';
 import { createEvalProjectSource } from '@/lib/dm/eval-source';
 import {
@@ -57,6 +58,14 @@ test('site brief includes the canonical career overview, resume tracks, routes, 
   assert.ok(current);
 
   assert.equal(brief.content.careerOverview, RESUME.about);
+  assert.equal(brief.content.profileSummary, PUBLIC_PROFILE_SITE_SUMMARY);
+  assert.equal(
+    Object.values(brief.content).filter((value) => value === PUBLIC_PROFILE_SITE_SUMMARY).length,
+    1,
+  );
+  for (const entry of (await loadPublicProfileEntries()).filter((candidate) => candidate.id !== 'short-bio')) {
+    assert.equal(brief.promptText.includes(entry.summary), false);
+  }
   assert.deepEqual(
     brief.content.resumeTracks.map((track) => ({ id: track.id, route: track.route })),
     RESUME.tracks.map((track) => ({ id: track.id, route: `/journey/${track.id}` })),
@@ -113,24 +122,34 @@ test('site brief UTF-8 budget fails closed immediately above the Unicode-safe by
   const template = (await source.projectLoader())[0];
   assert.ok(template);
   let rowCount = 0;
+  let fixedUnicodeCount = 0;
 
   for (let count = 2; count <= 30; count += 1) {
-    const belowCandidate = unicodeBudgetProjects(template, count, 0);
-    const aboveCandidate = unicodeBudgetProjects(template, count, DM_SITE_BRIEF_SUMMARY_MAX_CHARS);
-    try {
-      buildDMSiteBrief(belowCandidate);
-    } catch {
-      break;
-    }
-    try {
-      buildDMSiteBrief(aboveCandidate);
-    } catch (error) {
-      if (error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded') {
-        rowCount = count;
-        break;
+    for (let fixed = 0; fixed <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS; fixed += 1) {
+      const belowCandidate = unicodeBudgetProjects(template, count, 0, fixed);
+      const aboveCandidate = unicodeBudgetProjects(
+        template,
+        count,
+        DM_SITE_BRIEF_SUMMARY_MAX_CHARS,
+        fixed,
+      );
+      try {
+        buildDMSiteBrief(belowCandidate);
+      } catch {
+        continue;
       }
-      throw error;
+      try {
+        buildDMSiteBrief(aboveCandidate);
+      } catch (error) {
+        if (error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded') {
+          rowCount = count;
+          fixedUnicodeCount = fixed;
+          break;
+        }
+        throw error;
+      }
     }
+    if (rowCount > 0) break;
   }
   assert.ok(rowCount > 0, 'expected a Unicode fixture that crosses only the UTF-8 byte ceiling');
 
@@ -138,7 +157,12 @@ test('site brief UTF-8 budget fails closed immediately above the Unicode-safe by
   let firstRejectedUnicodeCount = 0;
   for (let unicodeCount = 0; unicodeCount <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS; unicodeCount += 1) {
     try {
-      belowLimit = buildDMSiteBrief(unicodeBudgetProjects(template, rowCount, unicodeCount));
+      belowLimit = buildDMSiteBrief(unicodeBudgetProjects(
+        template,
+        rowCount,
+        unicodeCount,
+        fixedUnicodeCount,
+      ));
     } catch (error) {
       assert.ok(error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded');
       firstRejectedUnicodeCount = unicodeCount;
@@ -152,7 +176,12 @@ test('site brief UTF-8 budget fails closed immediately above the Unicode-safe by
   assert.ok(belowLimit.charCount <= DM_SITE_BRIEF_MAX_CHARS);
   assert.equal(belowLimit.approximatePlanningTokens, Math.ceil(belowLimit.utf8ByteCount / 4));
   assert.throws(
-    () => buildDMSiteBrief(unicodeBudgetProjects(template, rowCount, firstRejectedUnicodeCount)),
+    () => buildDMSiteBrief(unicodeBudgetProjects(
+      template,
+      rowCount,
+      firstRejectedUnicodeCount,
+      fixedUnicodeCount,
+    )),
     (error: unknown) => error instanceof DMSiteBriefError && error.code === 'size_limit_exceeded',
   );
 });
@@ -301,12 +330,13 @@ function unicodeBudgetProjects(
   template: ProjectDetailReadModel,
   count: number,
   finalSummaryUnicodeCharacters: number,
+  fixedSummaryUnicodeCharacters = DM_SITE_BRIEF_SUMMARY_MAX_CHARS,
 ): ProjectDetailReadModel[] {
   return variableProjects(template, count).map((project, index) => ({
     ...project,
     summary: index === count - 1
       ? `${'界'.repeat(finalSummaryUnicodeCharacters)}${'a'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS - finalSummaryUnicodeCharacters)}`
-      : '界'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS),
+      : `${'界'.repeat(fixedSummaryUnicodeCharacters)}${'a'.repeat(DM_SITE_BRIEF_SUMMARY_MAX_CHARS - fixedSummaryUnicodeCharacters)}`,
   }));
 }
 

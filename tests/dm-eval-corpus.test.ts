@@ -275,7 +275,8 @@ test('all 12 golden families have a checked source status and source gaps stay h
     assert.equal(item?.goldenFamily, entry.family);
     if (entry.status === 'source-gap') assert.notEqual(item?.expectations.limitation, 'none');
   }
-  for (const family of [2, 3, 10]) assert.equal(DM_GOLDEN_SOURCE_STATUS[family - 1]?.status, 'source-gap');
+  for (const family of [2, 3]) assert.equal(DM_GOLDEN_SOURCE_STATUS[family - 1]?.status, 'executable');
+  assert.equal(DM_GOLDEN_SOURCE_STATUS[9]?.status, 'source-gap');
   for (const family of [5, 6]) assert.equal(DM_GOLDEN_SOURCE_STATUS[family - 1]?.status, 'source-gap');
   assert.ok(DM_LIVE_EVAL_CORPUS.filter((item) => item.categories.includes('privacy')).length < DM_LIVE_EVAL_CORPUS.length / 3);
   assert.throws(
