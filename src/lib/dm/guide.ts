@@ -176,6 +176,7 @@ function routeActionCandidates(kind: DMPageContextKind): Array<[string, string, 
 }
 
 function normalizePublicPath(path: string): string {
+  assertCanonicalInputPath(path);
   let url: URL;
   try {
     url = new URL(path, 'https://portfolio.invalid');
@@ -186,6 +187,24 @@ function normalizePublicPath(path: string): string {
     throw new DMPageContextError('context.page.path must be a same-origin public pathname.');
   }
   return url.pathname.length > 1 ? url.pathname.replace(/\/$/, '') : '/';
+}
+
+function assertCanonicalInputPath(path: string): void {
+  if (path.includes('\\')) {
+    throw new DMPageContextError('context.page.path must be a canonical public pathname.');
+  }
+  const pathname = path.split(/[?#]/, 1)[0] ?? '';
+  for (const rawSegment of pathname.split('/')) {
+    let segment: string;
+    try {
+      segment = decodeURIComponent(rawSegment);
+    } catch {
+      throw new DMPageContextError('context.page.path must be a canonical public pathname.');
+    }
+    if (segment === '.' || segment === '..' || segment.includes('\\')) {
+      throw new DMPageContextError('context.page.path must be a canonical public pathname.');
+    }
+  }
 }
 
 function invalidRoute(): never {

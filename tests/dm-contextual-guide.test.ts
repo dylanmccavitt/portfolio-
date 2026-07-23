@@ -40,6 +40,9 @@ test('forged, unknown, private, and mismatched route contexts are rejected', asy
     { kind: 'home', path: '/admin' },
     { kind: 'project', path: '/projects/evalgate', reference: '../admin' },
     { kind: 'project', path: '/projects/evalgate', reference: 'loom' },
+    { kind: 'project', path: '/projects\\evalgate', reference: 'evalgate' },
+    { kind: 'project', path: '/projects/private/../evalgate', reference: 'evalgate' },
+    { kind: 'project', path: '/projects/%2e%2e/evalgate', reference: 'evalgate' },
     { kind: 'hiring', path: '/hiring', privateSources: true },
   ]) {
     assert.throws(() => parseDMPageContext(page), /context\.page/);
@@ -60,6 +63,15 @@ test('stale cross-route history is rejected before it can reach the model', asyn
     message('assistant', 'Old project answer.', 'project:/projects/evalgate:evalgate'),
   ]);
   await assert.rejects(parseDMChatRequest(request), /history does not match the active page context/);
+});
+
+test('project page context keeps its public slug distinct from internal project ids', async () => {
+  const parsed = await parseDMChatRequest(requestFor(
+    { kind: 'project', path: '/projects/public-project-slug', reference: 'public-project-slug' },
+    'What matters most about this project?',
+  ));
+  assert.equal(parsed.context?.page.reference, 'public-project-slug');
+  assert.equal(parsed.context?.projectIds, undefined);
 });
 
 test('fit-check context remains route-bound and sanitizes private contact data', async () => {
@@ -119,6 +131,8 @@ test('the optional guide has desktop sidecar, mobile bottom-sheet, keyboard, can
   assert.match(client, /event\.key === 'Escape'/);
   assert.match(client, /event\.key !== 'Tab'/);
   assert.match(client, /controller\?\.abort\(\)/);
+  assert.match(client, /turn\.stop\(\)/);
+  assert.match(client, /document\.activeElement === panel/);
   assert.match(client, /window\.addEventListener\('popstate'/);
   assert.match(client, /history\.length = 0/);
   assert.match(css, /\.context-guide-panel[\s\S]*height: 100dvh/);
@@ -135,7 +149,6 @@ function requestFor(
   const pageContextId = dmPageContextId(page);
   const context = {
     page,
-    ...(page.kind === 'project' && page.reference ? { projectIds: [page.reference] } : {}),
     ...(page.kind === 'journey' && page.reference ? { resumeTrackIds: [page.reference] } : {}),
     ...extraContext,
   };

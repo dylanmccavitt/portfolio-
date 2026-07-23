@@ -1412,6 +1412,9 @@ function contextNote(context: DMChatContext | undefined): string {
   if (!context) return '';
   const lines = [
     `Validated public page context: ${context.page.kind} (${context.page.path}). Keep the answer relevant to this route unless the latest question clearly asks to compare another public area.`,
+    context.page.kind === 'project' && context.page.reference
+      ? `Stable published project slug from page context: ${context.page.reference}. Call getProject with its slug field before making project claims; never treat this slug as an internal project id.`
+      : '',
     context.projectIds?.length
       ? `Stable public project ids already resolved by page context: ${context.projectIds.join(', ')}. For a latest-turn reference to one of these ids, call getProject directly; never use searchProjects to rediscover it.`
       : '',

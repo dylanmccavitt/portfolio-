@@ -53,6 +53,58 @@ test('system instructions retain the public-source and same-run evidence boundar
   assert.match(instructions, /finalizeAnswer/);
 });
 
+test('project route context tells the model to resolve the public slug, not an internal id', async () => {
+  const source = await createTestProjectSource();
+  const [fixtureProject] = await source.projectLoader();
+  assert.ok(fixtureProject);
+  const publicSlug = 'public-project-slug';
+  const project = {
+    ...fixtureProject,
+    slug: publicSlug,
+    href: `/projects/${publicSlug}`,
+    dmArtifact: {
+      ...fixtureProject.dmArtifact,
+      href: `/projects/${publicSlug}`,
+    },
+  };
+  const prompts: LanguageModelV4CallOptions[] = [];
+  const request = chatRequest('What matters most here?', {
+    kind: 'project',
+    path: `/projects/${publicSlug}`,
+    reference: publicSlug,
+  });
+  const response = createDMChatResponse(request, config, {
+    db: emptyDb(),
+    projectLoader: async () => [project],
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { slug: publicSlug } },
+      {
+        toolName: 'finalizeAnswer',
+        input: {
+          segments: [{
+            kind: 'factual',
+            text: `${project.title} is the published project on this page.`,
+            evidenceIds: [`${project.id}:identity`],
+          }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        },
+      },
+    ], prompts),
+  });
+  const observation = await observeDMResponse(response, request);
+  const prompt = JSON.stringify(prompts[0]?.prompt);
+
+  assert.notEqual(project.id, project.slug);
+  assert.equal(observation.result?.status, 'accepted');
+  assert.deepEqual(observation.tools, ['getProject']);
+  assert.ok(observation.evidenceIds.includes(`${project.id}:identity`));
+  assert.match(prompt, /Stable published project slug from page context: public-project-slug/);
+  assert.match(prompt, /Call getProject with its slug field/);
+  assert.doesNotMatch(prompt, /Stable public project ids already resolved by page context: public-project-slug/);
+});
+
 test('a conversational answer completes through the single structured contract', async () => {
   const source = await createTestProjectSource();
   const request = chatRequest('Hello');

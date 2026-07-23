@@ -294,6 +294,13 @@ class Turn {
     this.showError(`${AGENT_NAME} didn't return a verified answer. Please try rephrasing the question.`);
   }
 
+  stop(): void {
+    if (this.completed) return;
+    this.typingEl.hidden = true;
+    this.answerEl.hidden = false;
+    this.proseEl.append(make('p', { class: 'dm-p', text: `${AGENT_NAME} stopped this answer.` }));
+  }
+
   historyText(): string | null {
     return completedAssistantHistoryText(this.text, this.completed);
   }
@@ -377,7 +384,6 @@ function initRoot(root: HTMLElement): void {
   const pageId = dmPageContextId(page);
   const context: DMChatContext = {
     page,
-    ...(page.kind === 'project' && page.reference ? { projectIds: [page.reference] } : {}),
     ...(page.kind === 'journey' && page.reference ? { resumeTrackIds: [page.reference] } : {}),
   };
   const fitForm = root.querySelector<HTMLFormElement>('[data-dm-fit-form]');
@@ -422,6 +428,7 @@ function initRoot(root: HTMLElement): void {
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         history.length = historyStart;
+        turn.stop();
         return;
       }
       console.error('[dm] UIMessage stream failed', { name: error instanceof Error ? error.name : typeof error });
@@ -471,7 +478,10 @@ function initRoot(root: HTMLElement): void {
       }
       const first = items[0];
       const last = items.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
+      if (document.activeElement === panel) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {

@@ -250,7 +250,10 @@ function parseContext(value: unknown): DMChatContext {
   const projectIds = parseStringArray(record.projectIds, 'context.projectIds');
   const resumeTrackIds = parseStringArray(record.resumeTrackIds, 'context.resumeTrackIds');
   const fitCheck = parseFitCheckContext(record.fitCheck);
-  const expectedProjectIds = page.kind === 'project' && page.reference ? [page.reference] : undefined;
+  // Project route references are public slugs, not necessarily internal project
+  // IDs. Keep the slug in the validated page contract and let the public
+  // getProject tool resolve it through its slug input.
+  const expectedProjectIds = undefined;
   const expectedResumeTrackIds = page.kind === 'journey' && page.reference ? [page.reference] : undefined;
 
   if (!sameOptionalStringArray(projectIds, expectedProjectIds)) {
