@@ -1,161 +1,58 @@
 ---
-/**
- * Home — the Split-canvas DM landing (#86). The portfolio is agent-first: you
- * land on DM, a chat agent that answers questions about Dylan and renders
- * project, résumé, and contact artifacts. This is the winning Split-canvas
- * layout folded into production and wired to the DM streaming endpoint (#84)
- * via the chat island (`scripts/dm.ts`); canned demo driver/data are not
- * shipped.
- *
- * Structure: a persistent left rail (DM identity, suggested prompts,
- * new-conversation) and a main pane (empty-state greeting, the
- * conversation thread the island fills, and a docked composer). The thread's
- * turns are built client-side from streamed payloads — see `scripts/dm.ts`.
- *
- * This page renders the static shell only; all interaction lives in the island.
- */
-import DMLayout from '@/layouts/DM.astro';
-import { AGENT_NAME, CONTACT, GREETING, SUBGREETING, SUGGESTED } from '@/lib/dm/client';
+import Device from '@/layouts/Device.astro';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 const meta = {
   ...libraryMeta(
     'Dylan McCavitt',
-    'Software engineer in NYC building practical tools, client software, AI-assisted workflows, and grounded side-project evidence. Ask DM or browse directly.',
+    'Software engineer in New York City building practical product, backend, and AI tools. Browse selected work or ask DM.',
   ),
   jsonLd: personJsonLd(),
 };
 
-const ENTRY_LINKS = [
-  {
-    label: 'Project library',
-    href: '/library',
-    eyebrow: 'Evidence',
-    text: 'Practical tools, client software, and side-project proof.',
-  },
-  {
-    label: 'Resume / journey',
-    href: '/journey',
-    eyebrow: 'Background',
-    text: 'Economics, legal ops, cyber risk, CS, and current work.',
-  },
-  {
-    label: 'Hiring tour',
-    href: '/hiring',
-    eyebrow: 'Recruiter path',
-    text: 'A guided read on fit, strengths, and strongest examples.',
-  },
-  {
-    label: 'Fit check',
-    href: '/fit-check',
-    eyebrow: 'Job description',
-    text: 'Paste a role and get an evidence-grounded DM read.',
-  },
-  {
-    label: 'Contact Dylan',
-    href: `mailto:${CONTACT.email}`,
-    eyebrow: 'Next step',
-    text: 'Email directly from the current resume contact details.',
-  },
+const menu = [
+  ['Work', '/library'],
+  ['Journey', '/journey'],
+  ['Resume', '/resume'],
+  ['Contact', '/contact'],
 ] as const;
 ---
 
-<DMLayout title="Dylan McCavitt · Software engineer" meta={meta}>
-  <div class="dm-root dm-root--home" data-dm-root data-dm-page-kind="home" data-dm-page-path="/">
-    <!-- ============ persistent left rail ============ -->
-    <aside class="dm-side">
-      <div class="dm-id">
-        <span class="dm-monogram" aria-hidden="true">✦</span>
-        <span class="dm-id-text">
-          <span class="dm-id-name">{AGENT_NAME}</span>
-          <span class="dm-id-sub">portfolio agent</span>
-        </span>
-        <span class="dm-dot" title="online" aria-hidden="true"></span>
+<Device title="Dylan McCavitt · Software engineer" meta={meta} surface="home" guideKind="home">
+  <section class="home-device" aria-label="Portfolio navigation console">
+    <section class="home-screen home-screen--hero" aria-labelledby="home-title">
+      <div class="home-hero-copy">
+        <p class="home-kicker">DM / portfolio OS</p>
+        <h1 class="home-title" id="home-title">Dylan McCavitt</h1>
+        <p class="home-role">
+          Software engineer
+          <span class="home-ready">/ ready</span>
+        </p>
       </div>
+    </section>
 
-      <section class="dm-section dm-section--grow">
-        <p class="dm-label">Suggested</p>
-        <ul class="dm-suggest">
-          {
-            SUGGESTED.map((prompt) => (
-              <li>
-                <button
-                  class="dm-suggest-row"
-                  type="button"
-                  data-dm-send
-                  data-label={prompt.label}
-                >
-                  <span class="dm-suggest-label">{prompt.label}</span>
-                </button>
-              </li>
-            ))
-          }
-        </ul>
-      </section>
+    <section class="home-screen home-screen--menu" aria-labelledby="home-menu-title">
+      <p class="screen-kicker" id="home-menu-title">Portfolio OS</p>
+      <nav class="home-menu" aria-label="Portfolio">
+        {menu.map(([label, href]) => <a href={href}>{label}</a>)}
+        <button class="home-menu-guide" type="button" data-home-guide>Ask DM</button>
+      </nav>
+      <p class="home-menu-help">Arrows move · Enter open · Esc back</p>
+    </section>
 
-      <button class="dm-reset" type="button" data-dm-reset>
-        <span aria-hidden="true">↺</span> New conversation
-      </button>
-      <a class="dm-reset dm-fit-link" href="/fit-check">
-        <span aria-hidden="true">▤</span> Paste a job description
-      </a>
-    </aside>
+    <a class="hardware-link hardware-link--up" href="/library" aria-label="Directional pad up: Work">↑</a>
+    <a class="hardware-link hardware-link--right" href="/journey" aria-label="Directional pad right: Journey">→</a>
+    <a class="hardware-link hardware-link--down" href="/resume" aria-label="Directional pad down: Resume">↓</a>
+    <a class="hardware-link hardware-link--left" href="/contact" aria-label="Directional pad left: Contact">←</a>
+    <a class="hardware-link hardware-link--open" href="/library">Open</a>
+    <a class="hardware-link hardware-link--back" href="/">Back</a>
+  </section>
 
-    <!-- ============ main conversation pane ============ -->
-    <main class="dm-main">
-      <header class="dm-bar">
-        <span class="dm-bar-title"
-          >{AGENT_NAME} <span class="dm-bar-sub">· portfolio agent</span></span
-        >
-        <span class="dm-bar-status"
-          ><span class="dm-dot" aria-hidden="true"></span> ready</span
-        >
-      </header>
+  <a class="home-simple-nav" href="/library">Open simple navigation</a>
+</Device>
 
-      <div class="dm-stage">
-        <!-- empty state -->
-        <div class="dm-empty">
-          <div class="dm-card">
-            <span class="dm-card-tile" aria-hidden="true">✦</span>
-            <p class="dm-entry-kicker">Dylan McCavitt · software engineer</p>
-            <h1 class="dm-greeting">{GREETING}</h1>
-            <p class="dm-subgreeting">{SUBGREETING}</p>
-            <nav class="dm-entry-grid" aria-label="Recruiter entry paths">
-              {
-                ENTRY_LINKS.map((link) => (
-                  <a class="dm-entry-link" href={link.href}>
-                    <span class="dm-entry-eyebrow">{link.eyebrow}</span>
-                    <span class="dm-entry-label">{link.label}</span>
-                    <span class="dm-entry-text">{link.text}</span>
-                  </a>
-                ))
-              }
-            </nav>
-            <p class="dm-hint">Suggested questions stay in the side rail, or type your own below ↓</p>
-          </div>
-        </div>
-
-        <!-- conversation thread (filled by the island) -->
-        <div class="dm-thread" data-dm-thread role="log" aria-label="Conversation with DM"></div>
-      </div>
-
-      <!-- docked composer -->
-      <form class="dm-composer" data-dm-form>
-        <div class="dm-composer-inner">
-          <span class="dm-composer-glyph" aria-hidden="true">⌁</span>
-          <input
-            class="dm-input"
-            data-dm-input
-            type="text"
-            name="message"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="Ask DM about Dylan's work…"
-            aria-label="Ask DM about Dylan"
-          />
-          <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">→</button>
-        </div>
-      </form>
-    </main>
-  </div>
-</DMLayout>
+<script is:inline>
+  document.querySelector('[data-home-guide]')?.addEventListener('click', () => {
+    document.querySelector('[data-dm-open]')?.click();
+  });
+</script>

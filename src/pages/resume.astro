@@ -1,0 +1,83 @@
+---
+import Editorial from '@/layouts/Editorial.astro';
+import { RESUME } from '@/data/resume';
+import { journeyMeta } from '@/lib/seo';
+
+const meta = journeyMeta();
+const experience = RESUME.tracks.filter((track) =>
+  ['bella-era', 'kroll', 'paulweiss'].includes(track.id),
+);
+const education = RESUME.tracks.filter((track) =>
+  ['stevens', 'syracuse'].includes(track.id),
+);
+---
+
+<Editorial title={`Resume · ${meta.title}`} meta={meta}>
+  <article class="device-route-screen resume-console">
+    <nav class="screen-nav" aria-label="Primary">
+      <a href="/">DM / Resume</a>
+      <span class="screen-nav-links">
+        <a href="/">Home</a>
+        <a href="/library">Work</a>
+        <a href="/journey">Journey</a>
+        <a href="/contact">Contact</a>
+      </span>
+    </nav>
+
+    <header class="resume-console-head">
+      <h1 class="screen-title">Dylan McCavitt</h1>
+      <p class="screen-lede">Software engineer · backend, product, AI tools</p>
+      <p class="resume-console-meta">New York City · Open to opportunities · US citizen — no sponsorship needed</p>
+    </header>
+
+    <div class="resume-console-grid">
+      <section>
+        <h2>Experience</h2>
+        {experience.map((entry) => (
+          <article class="resume-console-row">
+            <h3>{entry.title} — <span>{entry.role}</span> — {entry.when}</h3>
+            <p>{entry.about[0]}</p>
+          </article>
+        ))}
+      </section>
+      <aside>
+        <section>
+          <h2>Education</h2>
+          {education.map((entry) => <p><strong>{entry.role}</strong> — {entry.title} — {entry.when}</p>)}
+        </section>
+        <section>
+          <h2>Focus</h2>
+          <p>Backend systems</p>
+          <p>Product engineering</p>
+          <p>Practical AI tools</p>
+        </section>
+      </aside>
+    </div>
+
+    <nav class="resume-console-actions" aria-label="Resume actions">
+      <a class="console-button console-button--fill" href="https://dylanmccavitt.xyz/resume.pdf">Download PDF</a>
+      <a class="console-button" href="mailto:dylanmccavitt@outlook.com">Email Dylan</a>
+      <a href="/journey">View journey →</a>
+    </nav>
+    <p class="screen-footer">Tab move · Enter open · Esc home</p>
+  </article>
+</Editorial>
+
+<style>
+  .resume-console { padding: clamp(30px, 4.7vw, 70px); }
+  .resume-console-head { border-bottom: 1px solid var(--pl-line); padding-bottom: 1.4rem; }
+  .resume-console-meta { color: var(--pl-dim); margin: 1.3rem 0 0; text-transform: uppercase; font-size: .78rem; letter-spacing: .05em; }
+  .resume-console-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, .95fr); gap: clamp(2rem, 5vw, 5rem); margin-top: clamp(2rem, 5vh, 4rem); }
+  .resume-console-grid h2 { color: var(--pl-text); font-size: 1rem; font-weight: 500; text-transform: uppercase; border-bottom: 1px solid var(--pl-line); padding-bottom: .75rem; }
+  .resume-console-row { padding: 1.2rem 0; border-bottom: 1px solid color-mix(in srgb, var(--pl-line) 74%, transparent); }
+  .resume-console-row h3 { margin: 0; font-size: .88rem; font-weight: 500; text-transform: uppercase; }
+  .resume-console-row h3 span { color: var(--pl-accent); }
+  .resume-console-row p, .resume-console-grid aside p { color: var(--pl-dim); font-family: var(--pl-mono); font-size: .78rem; line-height: 1.6; }
+  .resume-console-grid aside section + section { margin-top: 2rem; }
+  .resume-console-grid aside strong { color: var(--pl-text); font-weight: 500; }
+  .resume-console-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1.7rem; }
+  .resume-console-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--pl-accent); text-transform: uppercase; font-size: .78rem; text-decoration: none; }
+  .console-button { min-width: 180px; padding: .7rem 1.2rem; border: 1px solid var(--pl-accent); }
+  .console-button--fill { background: #7084a9; color: #eef1f7 !important; }
+  @media (max-width: 768px) { .resume-console-grid { grid-template-columns: 1fr; } .resume-console-actions { align-items: stretch; flex-direction: column; } .resume-console-actions a { width: 100%; } }
+</style>

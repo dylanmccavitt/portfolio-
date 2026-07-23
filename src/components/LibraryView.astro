@@ -1,208 +1,89 @@
 ---
-/**
- * Library view — a flat, editorial index of canonical Typographic project
- * cards. Used by `/library` and `/library/[filter]`.
- *
- * The active filter is the URL; routes provide read models from the selected
- * public project source. Deployed database mode never falls back to catalog.
- */
-import ProjectCardGrid from './ProjectCardGrid.astro';
 import {
   AREA_PLAYLISTS,
   PLAYLIST_SLUGS,
   type PlaylistId,
 } from '@/data/catalog';
-import { filterPublicProjectDetails } from '@/lib/public-projects';
 import type { ProjectDetailReadModel } from '@/lib/db/project-reads';
+import { filterPublicProjectDetails } from '@/lib/public-projects';
 
 export interface Props {
   filter: PlaylistId;
   projects: ProjectDetailReadModel[];
 }
+
 const { filter, projects } = Astro.props;
-
 const list = filterPublicProjectDetails(projects, filter);
-
 const LABELS: Record<PlaylistId, string> = {
-  all: 'All work',
+  all: 'Selected work',
   wip: 'Now building',
-  'Shipped & Client Work': 'Shipped & Client Work',
+  'Shipped & Client Work': 'Shipped client work',
   Apps: 'Apps',
-  'AI & Developer Tools': 'AI & Developer Tools',
-  'Side Projects & Experiments': 'Side Projects & Experiments',
+  'AI & Developer Tools': 'AI & developer tools',
+  'Side Projects & Experiments': 'Side projects',
   Coursework: 'Coursework',
 };
-
 const FILTERS = ['all', 'wip', ...AREA_PLAYLISTS] satisfies PlaylistId[];
-const hrefFor = (id: PlaylistId) =>
-  id === 'all' ? '/library' : `/library/${PLAYLIST_SLUGS[id]}`;
-const sectionTitle = LABELS[filter];
-const count = list.length;
-const countFor = (id: PlaylistId) => filterPublicProjectDetails(projects, id).length;
+const hrefFor = (id: PlaylistId) => id === 'all' ? '/library' : `/library/${PLAYLIST_SLUGS[id]}`;
 ---
 
-<section class="library-page">
-  <header class="library-topbar">
-    <a class="library-mark" href="/" aria-label="Dylan McCavitt home">DM</a>
-    <nav class="library-nav" aria-label="Primary">
-      <a href="/">Ask DM</a>
-      <a href="/journey">Resume</a>
-      <a href="/hiring">Hiring tour</a>
+<section class="device-route-screen work-console">
+  <nav class="screen-nav" aria-label="Primary">
+    <a href="/">DM / Work</a>
+    <span class="screen-nav-links">
+      <a href="/">Home</a>
+      <a href="/journey">Journey</a>
+      <a href="/resume">Resume</a>
+      <a href="/contact">Contact</a>
+      <button type="button" data-open-guide>Ask DM</button>
+    </span>
+  </nav>
+
+  <header class="work-console-head">
+    <h1 class="screen-title">{LABELS[filter]}</h1>
+    <nav class="work-filters" aria-label="Project filters">
+      {FILTERS.map((id) => (
+        <a href={hrefFor(id)} aria-current={id === filter ? 'page' : undefined}>{LABELS[id]}</a>
+      ))}
     </nav>
   </header>
 
-  <div class="library-wrap">
-    <section class="library-hero">
-      <p class="eyebrow">Project library</p>
-      <h1>{sectionTitle}</h1>
-      <p>
-        {count} {count === 1 ? 'project' : 'projects'} from Dylan's portfolio.
-        Browse by area or open a project for the full case study.
-      </p>
-    </section>
+  <ol class="work-list">
+    {list.map((project, index) => (
+      <li>
+        <a href={`/projects/${project.slug}`} class:list={['work-row', { selected: index === 0 }]}>
+          <span class="work-index">{String(index + 1).padStart(2, '0')}</span>
+          <strong>{project.title}</strong>
+          <span>{project.area} · {project.status[1]} {project.year}</span>
+          <span>Open case →</span>
+        </a>
+      </li>
+    ))}
+  </ol>
 
-    <nav class="filter-nav" aria-label="Project filters">
-      {
-        FILTERS.map((id) => (
-          <a
-            class:list={['filter-link', { active: id === filter }]}
-            href={hrefFor(id)}
-            aria-current={id === filter ? 'page' : undefined}
-          >
-            <span>{LABELS[id]}</span>
-            <b>{countFor(id)}</b>
-          </a>
-        ))
-      }
-    </nav>
-
-    <ProjectCardGrid projects={list} />
-  </div>
+  <p class="screen-footer">↑↓ select · Enter open · / ask DM · Esc home</p>
 </section>
 
+<script is:inline>
+  document.querySelector('[data-open-guide]')?.addEventListener('click', () => {
+    document.querySelector('[data-dm-open]')?.click();
+  });
+</script>
+
 <style>
-  .library-page {
-    min-height: 100dvh;
-    color: var(--pl-text);
-    font-family: var(--pl-sans);
-  }
-
-  .library-topbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    padding: 13px clamp(18px, 5vw, 40px);
-    border-bottom: 1px solid var(--pl-line);
-    background: color-mix(in srgb, var(--pl-bg) 84%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-
-  .library-mark {
-    font-family: var(--pl-mono);
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 1.5px;
-    color: var(--pl-accent);
-    border: 1px solid color-mix(in srgb, var(--pl-accent) 38%, var(--pl-line));
-    border-radius: 7px;
-    padding: 4px 8px;
-    line-height: 1;
-  }
-
-  .library-nav {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 14px;
-    font-size: 13px;
-    color: var(--pl-dim);
-  }
-  .library-nav a:hover {
-    color: var(--pl-text);
-  }
-
-  .library-wrap {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: clamp(40px, 7vw, 82px) clamp(18px, 5vw, 40px) clamp(64px, 10vw, 112px);
-  }
-
-  .library-hero {
-    max-width: 700px;
-    margin-bottom: clamp(30px, 6vw, 56px);
-  }
-  .eyebrow {
-    font-family: var(--pl-mono);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--pl-accent);
-    margin-bottom: 16px;
-  }
-  .library-hero h1 {
-    font-size: clamp(34px, 6vw, 64px);
-    font-weight: 800;
-    line-height: 1.02;
-    letter-spacing: -0.02em;
-  }
-  .library-hero p {
-    max-width: 58ch;
-    margin-top: 18px;
-    color: var(--pl-dim);
-    font-size: 16px;
-    line-height: 1.6;
-  }
-
-  .filter-nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: clamp(26px, 5vw, 44px);
-  }
-  .filter-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 38px;
-    padding: 8px 12px;
-    border: 1px solid var(--pl-line);
-    border-radius: 999px;
-    color: var(--pl-dim);
-    font-size: 12.5px;
-  }
-  .filter-link b {
-    font-family: var(--pl-mono);
-    font-size: 10.5px;
-    font-weight: 500;
-    color: var(--pl-faint);
-  }
-  .filter-link:hover,
-  .filter-link.active {
-    color: var(--pl-text);
-    border-color: var(--pl-accent);
-    background: color-mix(in srgb, var(--pl-accent) 9%, transparent);
-  }
-
-  @media (max-width: 640px) {
-    .library-topbar {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-    .library-nav {
-      justify-content: flex-start;
-      gap: 11px;
-    }
-    .filter-link {
-      width: 100%;
-      justify-content: space-between;
-      border-radius: 10px;
-    }
-  }
+  .work-console { padding: clamp(30px, 4.7vw, 70px); }
+  .work-console-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; }
+  .work-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .65rem 1rem; max-width: 55%; }
+  .work-filters a { min-height: 44px; display: inline-flex; align-items: center; color: var(--pl-faint); font-size: .64rem; text-decoration: none; text-transform: uppercase; }
+  .work-filters a[aria-current='page'], .work-filters a:hover { color: var(--pl-text); text-decoration: underline; text-underline-offset: .3rem; }
+  .screen-nav button { min-height: 44px; padding: 0 .75rem; color: inherit; background: transparent; border: 1px solid var(--pl-accent); text-transform: uppercase; cursor: pointer; }
+  .work-list { list-style: none; margin: clamp(2.4rem, 6vh, 5.5rem) 0 0; padding: 0; }
+  .work-list li + li { border-top: 1px solid rgba(91, 116, 154, .38); }
+  .work-row { display: grid; grid-template-columns: 70px minmax(180px, 1.3fr) minmax(210px, 1fr) auto; align-items: center; gap: 1.25rem; min-height: clamp(74px, 9vh, 108px); padding: 1rem 1.25rem; color: var(--pl-text); border: 1px solid transparent; text-decoration: none; text-transform: uppercase; }
+  .work-row.selected, .work-row:hover { border-color: #778cad; background: linear-gradient(90deg, rgba(78, 101, 139, .44), rgba(53, 73, 106, .15)); }
+  .work-index { color: #c5cedc; font-size: 1.35rem; }
+  .work-row strong { font-size: clamp(.94rem, 1.55vw, 1.35rem); font-weight: 500; letter-spacing: .04em; }
+  .work-row span:nth-child(3), .work-row span:last-child { color: var(--pl-accent); font-size: .67rem; }
+  @media (max-width: 900px) { .work-console-head { align-items: flex-start; flex-direction: column; } .work-filters { justify-content: flex-start; max-width: none; } .work-row { grid-template-columns: 48px 1fr auto; } .work-row span:nth-child(3) { display: none; } }
+  @media (max-width: 560px) { .work-row { grid-template-columns: 38px 1fr; } .work-row span:last-child { grid-column: 2; } }
 </style>

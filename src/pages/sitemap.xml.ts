@@ -13,6 +13,8 @@
  *   /projects/<id-or-slug>  — project detail pages from the active source
  *   /journey                — resume timeline
  *   /journey/<track>        — one route per resume entry
+ *   /resume                 — concise recruiter résumé
+ *   /contact                — direct contact surface
  *
  * Total URL count is source-dependent: deployed database mode uses published
  * rows only; offline development and explicit emergency mode use the catalog.
@@ -41,6 +43,8 @@ function canonicalPaths(projectPaths: string[]): string[] {
     ...projectPaths,
     '/journey/',
     ...RESUME.tracks.map((t) => `/journey/${t.id}/`),
+    '/resume/',
+    '/contact/',
   ];
 }
 
