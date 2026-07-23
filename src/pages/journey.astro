@@ -58,7 +58,7 @@ const meta = journeyMeta();
   .journey-list li::before { content: ''; position: absolute; top: 50%; left: -1.82rem; width: .55rem; height: .55rem; border: 2px solid #718ab3; background: #071321; transform: translateY(-50%); }
   .journey-list li + li { border-top: 1px solid rgba(87, 111, 150, .42); }
   .journey-list a { display: grid; grid-template-columns: 155px minmax(240px, 1fr) minmax(260px, 1.15fr); align-items: center; gap: 1.4rem; min-height: clamp(70px, 8vh, 92px); padding: .8rem 1rem; color: var(--pl-text); text-decoration: none; text-transform: uppercase; }
-  .journey-list li.current a, .journey-list a:hover { outline: 1px solid #718ab3; background: linear-gradient(90deg, rgba(66, 91, 134, .42), rgba(44, 63, 95, .12)); }
+  .journey-list li.current a, .journey-list a:hover, .journey-list a.is-key-selected { outline: 1px solid #718ab3; background: linear-gradient(90deg, rgba(66, 91, 134, .42), rgba(44, 63, 95, .12)); }
   .journey-list a > span { color: var(--pl-accent); font-size: .72rem; }
   .journey-list strong { font-size: .88rem; font-weight: 500; }
   .journey-list small { display: block; margin-top: .4rem; color: var(--pl-accent); font-size: .65rem; font-weight: 400; }

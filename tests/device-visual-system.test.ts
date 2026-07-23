@@ -7,9 +7,10 @@ const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
 
 test('home uses semantic routes over one progressive Three.js renderer', async () => {
-  const [home, device, layout] = await Promise.all([
+  const [home, bootstrap, device, layout] = await Promise.all([
     read('src/pages/index.astro'),
     read('src/scripts/device.ts'),
+    read('src/scripts/device-renderer.ts'),
     read('src/layouts/Device.astro'),
   ]);
 
@@ -25,10 +26,13 @@ test('home uses semantic routes over one progressive Three.js renderer', async (
   assert.match(device, /createVhsGlassMaterial/);
   assert.doesNotMatch(device, /GLTFLoader|DRACOLoader|https?:\/\//);
   assert.match(layout, /data-device-canvas/);
+  assert.match(bootstrap, /min-width: 769px/);
+  assert.match(bootstrap, /import\('\.\/device-renderer'\)/);
+  assert.doesNotMatch(bootstrap, /from 'three'|WebGLRenderer|WebGLRenderTarget/);
 });
 
 test('renderer pauses and releases GPU resources', async () => {
-  const device = await read('src/scripts/device.ts');
+  const device = await read('src/scripts/device-renderer.ts');
   assert.match(device, /prefers-reduced-motion/);
   assert.match(device, /IntersectionObserver/);
   assert.match(device, /visibilitychange/);
@@ -38,6 +42,28 @@ test('renderer pauses and releases GPU resources', async () => {
   assert.match(device, /ditherTarget\.dispose\(\)/);
   assert.match(device, /renderer\.dispose\(\)/);
   assert.match(device, /pagehide/);
+});
+
+test('keyboard instructions are backed by real route controls', async () => {
+  const bootstrap = await read('src/scripts/device.ts');
+  for (const key of ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Escape', 'Enter']) {
+    assert.match(bootstrap, new RegExp(key));
+  }
+  assert.match(bootstrap, /isEditableTarget/);
+  assert.match(bootstrap, /data-dm-dialog/);
+  assert.match(bootstrap, /window\.location\.assign/);
+});
+
+test('dither status is visible and bound to guide state', async () => {
+  const [device, layout] = await Promise.all([
+    read('src/scripts/device-renderer.ts'),
+    read('src/layouts/Device.astro'),
+  ]);
+  assert.match(device, /MutationObserver/);
+  assert.match(device, /guide-open/);
+  assert.match(device, /statusPlane\.renderOrder/);
+  assert.match(device, /depthTest: false/);
+  assert.match(layout, /data-device-status/);
 });
 
 test('static and mobile fallbacks preserve usable document surfaces', async () => {

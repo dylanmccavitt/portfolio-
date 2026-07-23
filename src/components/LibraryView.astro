@@ -80,7 +80,7 @@ const hrefFor = (id: PlaylistId) => id === 'all' ? '/library' : `/library/${PLAY
   .work-list { list-style: none; margin: clamp(2.4rem, 6vh, 5.5rem) 0 0; padding: 0; }
   .work-list li + li { border-top: 1px solid rgba(91, 116, 154, .38); }
   .work-row { display: grid; grid-template-columns: 70px minmax(180px, 1.3fr) minmax(210px, 1fr) auto; align-items: center; gap: 1.25rem; min-height: clamp(74px, 9vh, 108px); padding: 1rem 1.25rem; color: var(--pl-text); border: 1px solid transparent; text-decoration: none; text-transform: uppercase; }
-  .work-row.selected, .work-row:hover { border-color: #778cad; background: linear-gradient(90deg, rgba(78, 101, 139, .44), rgba(53, 73, 106, .15)); }
+  .work-row.selected, .work-row:hover, .work-row.is-key-selected { border-color: #778cad; background: linear-gradient(90deg, rgba(78, 101, 139, .44), rgba(53, 73, 106, .15)); }
   .work-index { color: #c5cedc; font-size: 1.35rem; }
   .work-row strong { font-size: clamp(.94rem, 1.55vw, 1.35rem); font-weight: 500; letter-spacing: .04em; }
   .work-row span:nth-child(3), .work-row span:last-child { color: var(--pl-accent); font-size: .67rem; }
