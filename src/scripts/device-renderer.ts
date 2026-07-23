@@ -142,6 +142,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
 
   const statusPass = createDitheredStatus(renderer);
   const guideDialog = document.querySelector<HTMLElement>('[data-dm-dialog]');
+  const guideAvailable = Boolean(guideDialog);
   const semanticStatus = document.querySelector<HTMLElement>('[data-device-status]');
   const syncGuideState = () => {
     const guideOpen = guideDialog ? !guideDialog.hidden : false;
@@ -149,7 +150,9 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     if (semanticStatus) {
       semanticStatus.textContent = guideOpen
         ? 'Device status: contextual guide open.'
-        : 'Device status: portfolio ready; contextual guide available.';
+        : guideAvailable
+          ? 'Device status: portfolio ready; contextual guide available.'
+          : 'Device status: portfolio ready.';
     }
   };
   const guideObserver = guideDialog

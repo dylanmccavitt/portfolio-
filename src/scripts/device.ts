@@ -95,8 +95,8 @@ document.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (event.key === 'Enter') {
+  if (event.key === 'Enter' && activeIndex >= 0) {
     event.preventDefault();
-    items[activeIndex >= 0 ? activeIndex : currentIndex]?.click();
+    items[activeIndex]?.click();
   }
 });

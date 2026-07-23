@@ -52,6 +52,8 @@ test('keyboard instructions are backed by real route controls', async () => {
   assert.match(bootstrap, /isEditableTarget/);
   assert.match(bootstrap, /data-dm-dialog/);
   assert.match(bootstrap, /window\.location\.assign/);
+  assert.match(bootstrap, /event\.key === 'Enter' && activeIndex >= 0/);
+  assert.match(bootstrap, /items\[activeIndex\]\?\.click\(\)/);
 });
 
 test('dither status is visible and bound to guide state', async () => {
@@ -64,6 +66,10 @@ test('dither status is visible and bound to guide state', async () => {
   assert.match(device, /statusPlane\.renderOrder/);
   assert.match(device, /depthTest: false/);
   assert.match(layout, /data-device-status/);
+  assert.match(device, /guideAvailable/);
+  assert.match(device, /Device status: portfolio ready\.'/);
+  assert.match(layout, /guideKind[\s\S]*contextual guide available/);
+  assert.match(layout, /Device status: portfolio ready\.'/);
 });
 
 test('static and mobile fallbacks preserve usable document surfaces', async () => {
@@ -79,6 +85,14 @@ test('static and mobile fallbacks preserve usable document surfaces', async () =
   assert.match(css, /html\[data-webgl='unavailable'\]/);
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.device-canvas[\s\S]*display: none/);
   assert.match(css, /min-height: 44px/);
+  assert.doesNotMatch(css, /\.home-menu a \{[\s\S]*?min-height: 31px/);
+  assert.match(css, /\.home-menu a \{[\s\S]*?min-height: 44px/);
+  assert.match(css, /\.home-menu-guide \{[\s\S]*?min-height: 44px/);
+  assert.match(css, /\.device-body \.home-simple-nav:focus-visible \{[\s\S]*?outline-color: #101725/);
+  assert.match(
+    css,
+    /@media \(max-width: 768px\)[\s\S]*?\.device-body \.home-simple-nav \{[\s\S]*?position: static[\s\S]*?color: #9db0d2[\s\S]*?inset: auto/,
+  );
   for (const source of [home, work, project, journey, resume, contact]) {
     assert.match(source, /<nav|<form/);
   }
@@ -111,6 +125,8 @@ test('Canvas UI attribution and local-only source constraints are durable', asyn
   ]);
   assert.match(license, /Copyright \(c\) 2026 David Haz/);
   assert.match(license, /MIT \+ Commons Clause/);
+  assert.match(license, /src\/scripts\/device-renderer\.ts/);
+  assert.doesNotMatch(license, /src\/scripts\/device\.ts/);
   assert.match(pkg, /"three"/);
   assert.doesNotMatch(pkg, /"react"/);
   assert.doesNotMatch(dm, /fonts\.googleapis|fonts\.gstatic/);

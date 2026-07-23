@@ -7,10 +7,10 @@ The muted portfolio visual system adapts two techniques from
 - restrained grain and scanline math from `VHSVanilla.ts`; and
 - the 4×4 Bayer threshold post-process from `DitheredObjectVanilla.ts`.
 
-The adapted shaders live in `src/scripts/device.ts`. They are limited to the
-device displays and a small status object, use the portfolio's shared Three.js
-renderer, load no remote model or texture, and leave semantic HTML as the
-authoritative fallback.
+The adapted shaders live in `src/scripts/device-renderer.ts`. They are limited
+to the device displays and a small status object, use the portfolio's shared
+Three.js renderer, load no remote model or texture, and leave semantic HTML as
+the authoritative fallback.
 
 ## MIT + Commons Clause License Condition v1.0
 

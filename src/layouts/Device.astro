@@ -59,7 +59,9 @@ const ogImage = new URL(meta?.ogImage ?? OG_FALLBACK, Astro.site).href;
     <div class="device-stage" data-device-stage data-device-surface={surface}>
       <canvas class="device-canvas" data-device-canvas aria-hidden="true"></canvas>
       <p class="device-status" data-device-status aria-live="polite">
-        Device status: portfolio ready; contextual guide available.
+        {guideKind
+          ? 'Device status: portfolio ready; contextual guide available.'
+          : 'Device status: portfolio ready.'}
       </p>
       <main id="main" class:list={['device-content', `device-content--${surface}`]} tabindex="-1">
         <slot />

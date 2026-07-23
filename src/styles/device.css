@@ -183,19 +183,19 @@ html[data-webgl='mobile-static'] .device-canvas {
   left: 22.4%;
   width: 55.2%;
   height: 34.5%;
-  padding: 4.6% 6%;
+  padding: 1.5% 6% 5%;
 }
 
 .home-menu {
   display: grid;
-  gap: clamp(0.18rem, 0.45vh, 0.42rem);
+  gap: 0;
   margin-top: 0.35rem;
 }
 
 .home-menu a {
   display: flex;
   align-items: center;
-  min-height: 31px;
+  min-height: 44px;
   padding: 0.25rem 0.55rem;
   color: #d8dee8;
   font-size: clamp(0.68rem, 0.86vw, 0.9rem);
@@ -214,7 +214,7 @@ html[data-webgl='mobile-static'] .device-canvas {
 }
 
 .home-menu-guide {
-  min-height: 31px;
+  min-height: 44px;
   padding: 0.25rem 1.6rem;
   color: #d8dee8;
   background: transparent;
@@ -326,6 +326,10 @@ html[data-webgl='mobile-static'] .device-canvas {
   background: transparent;
   font-size: 0.78rem;
   text-underline-offset: 0.25em;
+}
+
+.device-body .home-simple-nav:focus-visible {
+  outline-color: #101725;
 }
 
 /* ---------- inner route / thin hardware frame ---------- */
@@ -652,12 +656,17 @@ html[data-webgl='mobile-static'] .device-canvas {
     display: none;
   }
 
-  .home-simple-nav {
+  .device-body .home-simple-nav {
     position: static;
     display: block;
     padding: 20px;
     color: #9db0d2;
     background: #071321;
+    inset: auto;
+  }
+
+  .device-body .home-simple-nav:focus-visible {
+    outline-color: #dbe2ec;
   }
 
   .context-guide-panel {
