@@ -1,26 +1,5 @@
 ---
-/**
- * Project detail view — one page per selected public-source project, rebuilt as a
- * centered **Editorial** case study (#87): a minimal monogram/back bar, a large
- * recruiter-readable hero, a full-width lead screenshot, a comfortable reading
- * column (About / Metrics / Highlights / Details), a responsive screenshot
- * gallery with a zero-JS `:target` lightbox, and a "More projects" row built
- * from the canonical Typographic card language (#85).
- *
- * Static-first: the gallery lightbox is pure CSS `:target`, and the only client
- * island is the deliberate contextual guide sidecar. Routes and SEO are preserved —
- * one prerendered page per offline/emergency catalog entry or a live DB-backed
- * page in database mode, with meta via `projectMeta(p)`. Tokens,
- * the two web fonts, and the global `.badge.<kind>` classes come from
- * `player.css` (imported by the Editorial layout).
- */
 import Editorial from '@/layouts/Editorial.astro';
-import ProjectCardGrid from '@/components/ProjectCardGrid.astro';
-import {
-  isImageShot,
-  isVideoShot,
-  type ProjectShot,
-} from '@/data/catalog';
 import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
 import { loadPublicProjectDetailBySlug, loadPublicProjectDetails } from '@/lib/public-projects';
 import { projectMeta } from '@/lib/seo';
@@ -30,621 +9,99 @@ export async function getStaticPaths() {
   return publicProjectStaticPaths(projects);
 }
 
-// A detail route always resolves its primary record through the public slug
-// query. The list query below exists only for the related-project rail.
 const slug = Astro.params.id ?? '';
 const { project } = await loadPublicProjectDetailBySlug(slug);
+if (!project) return new Response(null, { status: 404, statusText: 'Not Found' });
 
-if (!project) {
-  return new Response(null, { status: 404, statusText: 'Not Found' });
-}
-
-const { projects } = await loadPublicProjectDetails();
 const p = project;
-const related = projects.filter((o) => o.area === p.area && o.id !== p.id).slice(0, 5);
 const meta = projectMeta(p);
-const isPhone = (shot: ProjectShot): boolean =>
-  isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.skeletonKind === 'phone';
-
-/** Explicit intrinsic dimensions so images reserve layout (zero CLS). */
-const DIMS = { wide: { w: 1200, h: 800 }, phone: { w: 360, h: 640 } } as const;
-
-/** Plain-language label for a skeleton placeholder kind. */
-const SKEL_LABEL: Record<string, string> = {
-  chart: 'Chart',
-  dash: 'Dashboard',
-  list: 'List',
-  code: 'Code',
-  phone: 'Mobile',
-};
-
-const lead = p.shots[0];
-const gallery = p.shots.slice(1);
-const galleryHasVideo = gallery.some(isVideoShot);
 ---
 
 <Editorial title={meta.title} meta={meta}>
-  <article class="editorial" style={`--accent:${p.hue}`}>
-    <header class="topbar">
-      <span class="mono" aria-hidden="true">DM</span>
-      <a class="ed-back" href="/library">← Back to projects</a>
+  <article class="device-route-screen project-console">
+    <nav class="screen-nav" aria-label="Primary">
+      <a href="/library">DM / Work / {p.title}</a>
+      <span class="screen-nav-links">
+        <a href="/library">All work</a>
+        <a href="/journey">Journey</a>
+        <a href="/resume">Resume</a>
+        <a href="/contact">Contact</a>
+        <button type="button" data-open-guide>Ask DM</button>
+      </span>
+    </nav>
+
+    <header class="project-console-head">
+      <h1 class="screen-title">{p.title}</h1>
+      <p class="screen-lede">{p.line}</p>
+      <dl class="project-meta">
+        <div><dt>Area</dt><dd>{p.area}</dd></div>
+        <div><dt>Status</dt><dd>{p.status[1]}</dd></div>
+        <div><dt>Year</dt><dd>{p.year}</dd></div>
+      </dl>
     </header>
 
-    <div class="wrap">
-      <section class="ed-hero">
-        <p class="eyebrow">{p.area} · {p.year}</p>
-        <h1 class="title">{p.title}</h1>
-        <p class="lead-line">{p.line}</p>
-        <div class="hero-meta">
-          <span class:list={['badge', p.status[0]]}>{p.status[1]}</span>
-          <span class="activity">{p.activity}</span>
-        </div>
-        {
-          p.links.length > 0 && (
-            <div class="cta">
-              {p.links.map((link, i) => (
-                <a
-                  class:list={['btn', i === 0 ? 'btn-fill' : 'btn-out']}
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener"
-                >
-                  {link.label}
-                </a>
-              ))}
-            </div>
-          )
-        }
+    <div class="project-console-grid">
+      <section>
+        <h2>What shipped</h2>
+        {p.about.slice(0, 1).map((paragraph) => <p>{paragraph}</p>)}
       </section>
-
-      {
-        lead && (
-          <figure class:list={['lead', { phone: isPhone(lead) }]}>
-            {isImageShot(lead) ? (
-              <a class="frame" href="#shot-0" aria-label={`Expand screenshot: ${lead.caption}`}>
-                <img
-                  src={lead.src}
-                  alt={lead.caption}
-                  width={(isPhone(lead) ? DIMS.phone : DIMS.wide).w}
-                  height={(isPhone(lead) ? DIMS.phone : DIMS.wide).h}
-                  loading="lazy"
-                  decoding="async"
-                />
-              </a>
-            ) : isVideoShot(lead) ? (
-              <div class="frame">
-                <video
-                  src={lead.src}
-                  width={(isPhone(lead) ? DIMS.phone : DIMS.wide).w}
-                  height={(isPhone(lead) ? DIMS.phone : DIMS.wide).h}
-                  controls
-                  muted
-                  playsinline
-                  preload="metadata"
-                  poster={lead.poster}
-                ></video>
-              </div>
-            ) : (
-              <div
-                class:list={['frame', 'skel', { phone: isPhone(lead) }]}
-                data-kind={lead.skeletonKind}
-                style={`--tint:${p.hue}`}
-              >
-                <span class="skel-kind">{SKEL_LABEL[lead.skeletonKind] ?? lead.skeletonKind}</span>
-              </div>
-            )}
-            <figcaption>{lead.caption}</figcaption>
-          </figure>
-        )
-      }
-
-      <div class="read">
-        {
-          p.about.length > 0 && (
-            <section class="block">
-              <h2 class="h">About</h2>
-              {p.about.map((para) => (
-                <p class="para">{para}</p>
-              ))}
-            </section>
-          )
-        }
-
-        {
-          p.metrics.length > 0 && (
-            <section class="metrics" aria-label="Metrics">
-              {p.metrics.map((metric) => (
-                <div class="metric">
-                  <b class="metric-v">{metric.value}</b>
-                  <span class="metric-l">{metric.label}</span>
-                </div>
-              ))}
-            </section>
-          )
-        }
-
-        {
-          p.notes.length > 0 && (
-            <section class="block">
-              <h2 class="h">Highlights</h2>
-              <ul class="highlights">
-                {p.notes.map((note) => (
-                  <li>{note}</li>
-                ))}
-              </ul>
-            </section>
-          )
-        }
-
-        {
-          p.stack.length > 0 && (
-            <section class="block">
-              <h2 class="h">Details</h2>
-              <dl class="details">
-                {p.stack.map((entry) => (
-                  <div class="detail-row">
-                    <dt>{entry.label}</dt>
-                    <dd>{entry.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          )
-        }
-      </div>
-
-      {
-        gallery.length > 0 && (
-          <section class="gallery-wrap">
-            <h2 class="h">{galleryHasVideo ? 'Screenshots & demos' : 'Screenshots'}</h2>
-            <div class="gallery">
-              {gallery.map((shot, idx) => {
-                const i = idx + 1;
-                const phone = isPhone(shot);
-                const dims = phone ? DIMS.phone : DIMS.wide;
-                return (
-                  <figure class:list={['shot', { phone }]}>
-                    {isImageShot(shot) ? (
-                      <a
-                        class="frame"
-                        href={`#shot-${i}`}
-                        aria-label={`Expand screenshot: ${shot.caption}`}
-                      >
-                        <img
-                          src={shot.src}
-                          alt={shot.caption}
-                          width={dims.w}
-                          height={dims.h}
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      </a>
-                    ) : isVideoShot(shot) ? (
-                      <div class="frame">
-                        <video
-                          src={shot.src}
-                          width={dims.w}
-                          height={dims.h}
-                          controls
-                          muted
-                          playsinline
-                          preload="metadata"
-                          poster={shot.poster}
-                        ></video>
-                      </div>
-                    ) : (
-                      <div
-                        class:list={['frame', 'skel', { phone }]}
-                        data-kind={shot.skeletonKind}
-                        style={`--tint:${p.hue}`}
-                      >
-                        <span class="skel-kind">{SKEL_LABEL[shot.skeletonKind] ?? shot.skeletonKind}</span>
-                      </div>
-                    )}
-                    <figcaption>{shot.caption}</figcaption>
-                  </figure>
-                );
-              })}
-            </div>
-          </section>
-        )
-      }
-
-      {
-        related.length > 0 && (
-          <section class="ed-more">
-            <h2 class="h">More projects</h2>
-            <ProjectCardGrid projects={related} />
-          </section>
-        )
-      }
+      <section>
+        <h2>Evidence</h2>
+        <dl class="project-evidence">
+          {p.metrics.slice(0, 3).map((metric) => <div><dt>{metric.value}</dt><dd>{metric.label}</dd></div>)}
+        </dl>
+      </section>
     </div>
 
-    {/* Zero-JS lightbox: each real screenshot links to `#shot-N`; `:target`
-        reveals the matching fixed overlay; the overlay itself is the close link. */}
+    <nav class="project-actions" aria-label="Project actions">
+      {p.links.map((link, index) => (
+        <a class:list={['console-button', { 'console-button--fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label}</a>
+      ))}
+      <button class="console-button" type="button" data-open-guide>Ask DM about this</button>
+      <a href="/library">← All work</a>
+    </nav>
     {
-      p.shots.map(
-        (shot, i) =>
-          isImageShot(shot) && (
-            <a class="lightbox" id={`shot-${i}`} href="#!" aria-label={`Close expanded screenshot: ${shot.caption}`}>
-              <img src={shot.src} alt={shot.caption} loading="lazy" decoding="async" />
-              <span class="lb-cap">{shot.caption}</span>
-            </a>
-          ),
+      (p.about.length > 1 || p.notes.length > 0) && (
+        <details class="project-more">
+          <summary>More project detail</summary>
+          {p.about.slice(1).map((paragraph) => <p>{paragraph}</p>)}
+          <ul>{p.notes.map((note) => <li>{note}</li>)}</ul>
+        </details>
       )
     }
+    <p class="screen-footer">Tab move · Enter open · Esc back</p>
   </article>
-  <script src="../../scripts/dm.ts"></script>
 </Editorial>
 
+<script is:inline>
+  document.querySelectorAll('[data-open-guide]').forEach((button) => {
+    button.addEventListener('click', () => document.querySelector('[data-dm-open]')?.click());
+  });
+</script>
+
 <style>
-  .editorial {
-    --accent: var(--pl-accent);
-    --measure: 68ch;
-    --wide: 920px;
-    min-height: 100dvh;
-    color: var(--pl-text);
-    font-family: var(--pl-sans);
-  }
-
-  /* ---- sticky top bar ---- */
-  .topbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 13px clamp(18px, 5vw, 40px);
-    border-bottom: 1px solid var(--pl-line);
-    background: color-mix(in srgb, var(--pl-bg) 84%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  .topbar .mono {
-    font-family: var(--pl-mono);
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 1.5px;
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--pl-line));
-    border-radius: 7px;
-    padding: 4px 8px;
-    line-height: 1;
-  }
-  .topbar .ed-back {
-    font-size: 13px;
-    color: var(--pl-dim);
-    transition: color 0.15s ease;
-  }
-  .topbar .ed-back:hover {
-    color: var(--pl-text);
-  }
-
-  /* ---- centered measure ---- */
-  .wrap {
-    max-width: var(--wide);
-    margin: 0 auto;
-    padding: 0 clamp(18px, 5vw, 40px) clamp(64px, 12vw, 110px);
-  }
-
-  /* ---- hero ---- */
-  .ed-hero {
-    max-width: var(--measure);
-    margin: 0 auto;
-    text-align: center;
-    padding: clamp(44px, 9vw, 96px) 0 clamp(26px, 4vw, 40px);
-  }
-  .eyebrow {
-    font-family: var(--pl-mono);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 18px;
-  }
-  .title {
-    font-size: clamp(32px, 6vw, 56px);
-    font-weight: 800;
-    line-height: 1.04;
-    letter-spacing: -0.02em;
-  }
-  .lead-line {
-    margin: 18px auto 0;
-    max-width: 46ch;
-    font-size: clamp(16px, 2.4vw, 20px);
-    line-height: 1.5;
-    color: var(--pl-dim);
-  }
-  .hero-meta {
-    margin-top: 22px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-  }
-  .hero-meta .activity {
-    font-family: var(--pl-mono);
-    font-size: 12px;
-    color: var(--pl-faint);
-  }
-  .cta {
-    margin-top: 28px;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-  }
-  .btn {
-    font-size: 13px;
-    font-weight: 600;
-    padding: 10px 18px;
-    border-radius: 99px;
-    border: 1px solid transparent;
-    transition:
-      filter 0.15s ease,
-      border-color 0.15s ease,
-      color 0.15s ease,
-      background 0.15s ease;
-  }
-  .btn-fill {
-    background: var(--accent);
-    color: #0c0e13;
-  }
-  .btn-fill:hover {
-    filter: brightness(1.08);
-  }
-  .btn-out {
-    background: var(--pl-tile);
-    color: var(--pl-text);
-    border-color: var(--pl-line);
-  }
-  .btn-out:hover {
-    border-color: color-mix(in srgb, var(--accent) 50%, var(--pl-line));
-    color: #fff;
-  }
-
-  /* ---- lead screenshot ---- */
-  .lead {
-    margin: clamp(6px, 1.5vw, 14px) auto 0;
-  }
-  .lead.phone {
-    max-width: 360px;
-  }
-  .lead figcaption {
-    margin-top: 12px;
-    text-align: center;
-    font-size: 12.5px;
-    color: var(--pl-faint);
-  }
-
-  /* shared framed surface for images + skeletons */
-  .frame {
-    display: block;
-    border: 1px solid var(--pl-line);
-    border-radius: 14px;
-    overflow: hidden;
-    background: var(--pl-panel);
-    box-shadow: 0 30px 60px -34px rgba(0, 0, 0, 0.7);
-  }
-  a.frame {
-    cursor: zoom-in;
-  }
-  .frame img,
-  .frame video {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-
-  /* skeleton placeholder */
-  .skel {
-    aspect-ratio: 3 / 2;
-    display: grid;
-    place-items: center;
-    background:
-      radial-gradient(
-        130% 120% at 50% 0%,
-        color-mix(in srgb, var(--tint) 20%, transparent),
-        transparent 62%
-      ),
-      var(--pl-tile);
-  }
-  .skel.phone {
-    aspect-ratio: 9 / 16;
-  }
-  .skel-kind {
-    font-family: var(--pl-mono);
-    font-size: 12px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--tint) 72%, var(--pl-text));
-    border: 1px solid color-mix(in srgb, var(--tint) 32%, var(--pl-line));
-    border-radius: 8px;
-    padding: 8px 14px;
-    background: color-mix(in srgb, var(--tint) 8%, transparent);
-  }
-
-  /* ---- reading column ---- */
-  .read {
-    max-width: var(--measure);
-    margin: clamp(40px, 7vw, 72px) auto 0;
-    display: flex;
-    flex-direction: column;
-    gap: clamp(34px, 5vw, 52px);
-  }
-  .h {
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 1.6px;
-    text-transform: uppercase;
-    color: var(--pl-faint);
-    margin-bottom: 16px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--pl-line);
-  }
-  .para {
-    font-size: 15.5px;
-    line-height: 1.78;
-    color: var(--pl-text);
-  }
-  .para + .para {
-    margin-top: 16px;
-  }
-
-  /* metrics strip */
-  .metrics {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-  }
-  .metric {
-    flex: 1 1 140px;
-    background: var(--pl-tile);
-    border: 1px solid var(--pl-tile-line);
-    border-radius: 12px;
-    padding: 16px 18px;
-  }
-  .metric-v {
-    display: block;
-    font-family: var(--pl-mono);
-    font-size: 22px;
-    font-weight: 500;
-    line-height: 1.1;
-    color: var(--accent);
-  }
-  .metric-l {
-    display: block;
-    margin-top: 7px;
-    font-size: 11.5px;
-    line-height: 1.4;
-    color: var(--pl-faint);
-  }
-
-  /* highlights */
-  .highlights {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .highlights li {
-    position: relative;
-    padding-left: 26px;
-    font-size: 14.5px;
-    line-height: 1.6;
-    color: var(--pl-dim);
-  }
-  .highlights li::before {
-    content: '✓';
-    position: absolute;
-    left: 0;
-    top: 0;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-
-  /* details key/value grid */
-  .details {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    border-top: 1px solid var(--pl-line);
-  }
-  .detail-row {
-    display: contents;
-  }
-  .detail-row dt {
-    padding: 12px 24px 12px 0;
-    font-size: 12px;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--pl-faint);
-    border-bottom: 1px solid var(--pl-line);
-  }
-  .detail-row dd {
-    padding: 12px 0;
-    font-family: var(--pl-mono);
-    font-size: 13.5px;
-    color: var(--pl-text);
-    text-align: right;
-    border-bottom: 1px solid var(--pl-line);
-    word-break: break-word;
-  }
-
-  /* ---- gallery ---- */
-  .gallery-wrap {
-    margin-top: clamp(48px, 8vw, 84px);
-  }
-  .gallery {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 22px;
-  }
-  .shot {
-    margin: 0;
-  }
-  .shot figcaption {
-    margin-top: 10px;
-    font-size: 12px;
-    color: var(--pl-faint);
-  }
-  .shot.phone .frame {
-    max-width: 280px;
-    margin: 0 auto;
-  }
-
-  /* ---- lightbox (zero JS, :target) ---- */
-  .lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: none;
-    place-items: center;
-    padding: 4vmin;
-    background: rgba(8, 9, 12, 0.92);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    cursor: zoom-out;
-  }
-  .lightbox:target {
-    display: grid;
-  }
-  .lightbox img {
-    max-width: min(1100px, 96vw);
-    max-height: 86vh;
-    width: auto;
-    height: auto;
-    border-radius: 12px;
-    border: 1px solid var(--pl-line);
-    box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.75);
-  }
-  .lb-cap {
-    position: absolute;
-    bottom: 5vmin;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 12.5px;
-    color: var(--pl-faint);
-  }
-
-  /* ---- more projects (canonical Typographic cards, #85) ---- */
-  .ed-more {
-    margin-top: clamp(48px, 8vw, 84px);
-  }
-
-  /* ---- mobile: single column ---- */
-  @media (max-width: 820px) {
-    .gallery {
-      grid-template-columns: 1fr;
-    }
-    .metric {
-      flex-basis: 100%;
-    }
-  }
-
+  .project-console { padding: clamp(30px, 4.7vw, 70px); }
+  .screen-nav button { min-height: 44px; padding: 0 .75rem; color: inherit; background: transparent; border: 1px solid var(--pl-accent); text-transform: uppercase; cursor: pointer; }
+  .project-console-head { border-bottom: 1px solid var(--pl-line); }
+  .project-console-head .screen-lede { max-width: none; margin: 1.1rem 0; text-transform: uppercase; }
+  .project-meta { display: grid; grid-template-columns: repeat(3, 1fr); margin: 1.5rem 0 0; border-top: 1px solid var(--pl-line); }
+  .project-meta div { display: flex; gap: 1rem; padding: 1rem .5rem; text-transform: uppercase; }
+  .project-meta dt { color: var(--pl-accent); }
+  .project-meta dd { margin: 0; }
+  .project-console-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 4rem); margin-top: clamp(2.2rem, 5vh, 4rem); }
+  .project-console h2 { margin: 0 0 1.3rem; padding-bottom: .8rem; border-bottom: 1px solid var(--pl-accent); color: var(--pl-text); font-size: 1.1rem; font-weight: 500; text-transform: uppercase; }
+  .project-console-grid section > p { color: #c8d1df; font-size: .9rem; line-height: 1.72; }
+  .project-console-grid section > p + p { margin-top: 1rem; }
+  .project-evidence { margin: 0; }
+  .project-evidence div { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 1rem; min-height: 68px; border-bottom: 1px solid var(--pl-line); }
+  .project-evidence dt { color: var(--pl-text); font-size: 1.5rem; }
+  .project-evidence dd { margin: 0; color: var(--pl-accent); text-transform: uppercase; }
+  .project-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 2rem; }
+  .project-actions a, .project-actions button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--pl-accent); background: transparent; border: 0; text-transform: uppercase; text-decoration: none; cursor: pointer; }
+  .project-actions .console-button { min-width: 190px; padding: .7rem 1.2rem; border: 1px solid var(--pl-accent); }
+  .project-actions .console-button--fill { color: #f1f3f7; background: #7185aa; }
+  .project-more { margin-top: 1.25rem; color: var(--pl-dim); font-size: .78rem; line-height: 1.65; }
+  .project-more summary { min-height: 44px; display: flex; align-items: center; color: var(--pl-accent); cursor: pointer; text-transform: uppercase; }
+  .project-more ul { padding-left: 1.2rem; }
+  @media (max-width: 768px) { .project-console-grid, .project-meta { grid-template-columns: 1fr; } .project-meta div + div { border-top: 1px solid var(--pl-line); } .project-actions { align-items: stretch; flex-direction: column; } .project-actions > * { width: 100%; } }
 </style>

@@ -14,9 +14,10 @@ leaves.
   home, library, project, journey, hiring, and fit-check contexts. The server
   validates route context and derives every action from finite public routes or
   same-run evidence; route history never crosses context boundaries.
-- The muted Three.js visual system belongs to GitHub issue #307. Three.js must
-  remain progressive enhancement; core routes and content cannot depend on
-  WebGL or client JavaScript.
+- The muted Three.js visual system is owned by GitHub issue #307. Its binding
+  references live in `docs/design/contextual-guide-reset/`. Three.js remains
+  progressive enhancement; core routes and content do not depend on WebGL or
+  client JavaScript.
 
 ## Public-source and privacy boundary
 
@@ -56,7 +57,6 @@ never commit secrets or provider configuration.
 
 ## Deferred work
 
-- Three.js route and device presentation: issue #307.
 - Provider-free contract, accessibility, browser, responsive, and visual proof:
   issue #308.
 - Production model/provider selection, persistent memory, resume/contact DB

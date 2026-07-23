@@ -1,247 +1,69 @@
 ---
-/**
- * Resume index — a static, editorial career timeline backed by
- * `src/data/resume.ts`. This route keeps the existing `/journey` URL while
- * removing the old shell chrome and metaphor copy.
- */
 import Editorial from '@/layouts/Editorial.astro';
 import { RESUME } from '@/data/resume';
 import { journeyMeta } from '@/lib/seo';
 
-const LINKS = {
-  resume: 'https://dylanmccavitt.xyz/resume.pdf',
-  email: 'mailto:dylanmccavitt@outlook.com',
-  linkedin: 'https://www.linkedin.com/in/dylan-mccavitt',
-};
-
-const entries = RESUME.tracks;
 const meta = journeyMeta();
 ---
 
 <Editorial title={meta.title} meta={meta}>
-  <section class="resume-page">
-    <header class="resume-topbar">
-      <a class="resume-mark" href="/" aria-label="Dylan McCavitt home">DM</a>
-      <nav class="resume-nav" aria-label="Primary">
-        <a href="/">Ask DM</a>
-        <a href="/library">Projects</a>
-        <a href="/hiring">Hiring tour</a>
-      </nav>
+  <section class="device-route-screen journey-console">
+    <nav class="screen-nav" aria-label="Primary">
+      <a href="/">DM / Journey</a>
+      <span class="screen-nav-links">
+        <a href="/">Home</a>
+        <a href="/library">Work</a>
+        <a href="/resume">Resume</a>
+        <a href="/contact">Contact</a>
+        <button type="button" data-open-guide>Ask DM</button>
+      </span>
+    </nav>
+
+    <header>
+      <h1 class="screen-title">The path here</h1>
+      <p class="screen-lede">{RESUME.line}</p>
     </header>
 
-    <div class="resume-wrap">
-      <section class="resume-hero">
-        <p class="eyebrow">Resume</p>
-        <h1>{RESUME.title}</h1>
-        <p>{RESUME.about}</p>
-        <div class="resume-actions">
-          <a class="btn btn-fill" href={LINKS.resume} target="_blank" rel="noopener">
-            Download resume
+    <ol class="journey-list">
+      {RESUME.tracks.map((entry) => (
+        <li class:list={{ current: entry.current }}>
+          <a href={`/journey/${entry.id}`}>
+            <span>{entry.when}</span>
+            <strong>{entry.title}<small>{entry.role}</small></strong>
+            <span>{entry.notes[0]}</span>
           </a>
-          <a class="btn btn-out" href={LINKS.email}>Email Dylan</a>
-          <a class="btn btn-out" href={LINKS.linkedin} target="_blank" rel="noopener">
-            LinkedIn
-          </a>
-        </div>
-      </section>
+        </li>
+      ))}
+    </ol>
 
-      <section class="timeline" aria-labelledby="timeline-title">
-        <h2 id="timeline-title">Career Timeline</h2>
-        <ol>
-          {
-            entries.map((entry) => (
-              <li>
-                <a class="timeline-row" href={`/journey/${entry.id}`} style={`--accent:${entry.hue}`}>
-                  <span class="when">{entry.when}</span>
-                  <span class="entry">
-                    <span class="entry-top">
-                      <b>{entry.title}</b>
-                      {entry.current && <span class="badge live">Current</span>}
-                    </span>
-                    <span>{entry.role}</span>
-                  </span>
-                </a>
-              </li>
-            ))
-          }
-        </ol>
-      </section>
-    </div>
+    <nav class="journey-actions" aria-label="Journey actions">
+      <button type="button" data-open-guide>Ask DM about my path</button>
+      <a href="/resume">View full resume</a>
+    </nav>
+    <p class="screen-footer">↑↓ explore · Enter details · Esc home</p>
   </section>
 </Editorial>
 
+<script is:inline>
+  document.querySelectorAll('[data-open-guide]').forEach((button) => {
+    button.addEventListener('click', () => document.querySelector('[data-dm-open]')?.click());
+  });
+</script>
+
 <style>
-  .resume-page {
-    min-height: 100dvh;
-    color: var(--pl-text);
-    font-family: var(--pl-sans);
-  }
-
-  .resume-topbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    padding: 13px clamp(18px, 5vw, 40px);
-    border-bottom: 1px solid var(--pl-line);
-    background: color-mix(in srgb, var(--pl-bg) 84%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-
-  .resume-mark {
-    font-family: var(--pl-mono);
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 1.5px;
-    color: var(--pl-accent);
-    border: 1px solid color-mix(in srgb, var(--pl-accent) 38%, var(--pl-line));
-    border-radius: 7px;
-    padding: 4px 8px;
-    line-height: 1;
-  }
-
-  .resume-nav {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 14px;
-    font-size: 13px;
-    color: var(--pl-dim);
-  }
-  .resume-nav a:hover {
-    color: var(--pl-text);
-  }
-
-  .resume-wrap {
-    max-width: 920px;
-    margin: 0 auto;
-    padding: clamp(44px, 8vw, 92px) clamp(18px, 5vw, 40px) clamp(64px, 10vw, 112px);
-  }
-
-  .resume-hero {
-    max-width: 700px;
-    margin-bottom: clamp(40px, 7vw, 72px);
-  }
-  .eyebrow {
-    font-family: var(--pl-mono);
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--pl-accent);
-    margin-bottom: 16px;
-  }
-  .resume-hero h1 {
-    font-size: clamp(38px, 7vw, 72px);
-    font-weight: 800;
-    line-height: 1.02;
-    letter-spacing: -0.02em;
-  }
-  .resume-hero p {
-    max-width: 58ch;
-    margin-top: 18px;
-    color: var(--pl-dim);
-    font-size: 16px;
-    line-height: 1.65;
-  }
-
-  .resume-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 28px;
-  }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 42px;
-    padding: 10px 18px;
-    border-radius: 999px;
-    border: 1px solid transparent;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .btn-fill {
-    background: var(--pl-text);
-    color: #111;
-  }
-  .btn-out {
-    background: var(--pl-tile);
-    color: var(--pl-text);
-    border-color: var(--pl-line);
-  }
-  .btn-out:hover {
-    border-color: var(--pl-accent);
-  }
-
-  .timeline h2 {
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 1.6px;
-    text-transform: uppercase;
-    color: var(--pl-faint);
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--pl-line);
-  }
-  .timeline ol {
-    list-style: none;
-  }
-  .timeline-row {
-    display: grid;
-    grid-template-columns: 140px minmax(0, 1fr);
-    gap: 22px;
-    padding: 20px 0;
-    border-bottom: 1px solid var(--pl-line);
-  }
-  .timeline-row:hover b,
-  .timeline-row:focus-visible b {
-    color: var(--accent);
-  }
-  .when {
-    font-family: var(--pl-mono);
-    font-size: 12px;
-    color: var(--pl-faint);
-  }
-  .entry {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    color: var(--pl-dim);
-    font-size: 13.5px;
-  }
-  .entry-top {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .entry b {
-    color: var(--pl-text);
-    font-size: 18px;
-    line-height: 1.2;
-    transition: color 0.15s ease;
-  }
-
-  @media (max-width: 640px) {
-    .resume-topbar {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-    .resume-nav {
-      justify-content: flex-start;
-      gap: 11px;
-    }
-    .timeline-row {
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-  }
+  .journey-console { padding: clamp(30px, 4.7vw, 70px); }
+  .screen-nav button { min-height: 44px; padding: 0 .75rem; color: inherit; background: transparent; border: 1px solid var(--pl-accent); text-transform: uppercase; cursor: pointer; }
+  .journey-list { position: relative; list-style: none; margin: clamp(2rem, 5vh, 4rem) 0 0; padding: 0 0 0 1.5rem; border-left: 2px solid #617ba7; }
+  .journey-list li { position: relative; }
+  .journey-list li::before { content: ''; position: absolute; top: 50%; left: -1.82rem; width: .55rem; height: .55rem; border: 2px solid #718ab3; background: #071321; transform: translateY(-50%); }
+  .journey-list li + li { border-top: 1px solid rgba(87, 111, 150, .42); }
+  .journey-list a { display: grid; grid-template-columns: 155px minmax(240px, 1fr) minmax(260px, 1.15fr); align-items: center; gap: 1.4rem; min-height: clamp(70px, 8vh, 92px); padding: .8rem 1rem; color: var(--pl-text); text-decoration: none; text-transform: uppercase; }
+  .journey-list li.current a, .journey-list a:hover, .journey-list a.is-key-selected { outline: 1px solid #718ab3; background: linear-gradient(90deg, rgba(66, 91, 134, .42), rgba(44, 63, 95, .12)); }
+  .journey-list a > span { color: var(--pl-accent); font-size: .72rem; }
+  .journey-list strong { font-size: .88rem; font-weight: 500; }
+  .journey-list small { display: block; margin-top: .4rem; color: var(--pl-accent); font-size: .65rem; font-weight: 400; }
+  .journey-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; }
+  .journey-actions button, .journey-actions a { min-height: 44px; padding: .7rem 1rem; color: var(--pl-accent); background: transparent; border: 1px solid var(--pl-accent); text-transform: uppercase; text-decoration: none; cursor: pointer; }
+  @media (max-width: 900px) { .journey-list a { grid-template-columns: 110px 1fr; } .journey-list a > span:last-child { grid-column: 2; } }
+  @media (max-width: 560px) { .journey-list a { grid-template-columns: 1fr; } .journey-list a > span:last-child { grid-column: auto; } .journey-actions { align-items: stretch; flex-direction: column; } }
 </style>

@@ -1,42 +1,21 @@
 ---
 /**
- * Editorial layout — standalone `<head>` + body scaffold for static pages that
- * share the site metadata contract (canonical, OG/Twitter, JSON-LD, fonts,
- * favicon).
+ * Static route display inside the muted Three.js hardware frame.
  *
- * The detail page projects its own monogram/back bar + case-study article into
- * the `<slot/>`; design tokens, the two web fonts, and the `.badge.<kind>`
- * classes still come from `player.css` (the `--pl-*` set), so these pages stay
- * visually consistent with the rest of the redesign.
+ * The slot remains complete semantic HTML; Device adds the optional renderer
+ * and the existing route-bound contextual guide without changing its contract.
  */
-import { OG_FALLBACK, serializeJsonLd, type PageMeta } from '@/lib/seo';
-import ContextualGuide from '@/components/ContextualGuide.astro';
+import Device from '@/layouts/Device.astro';
 import type { DMPageContextKind } from '@/lib/dm/guide';
-import '@/styles/player.css';
-import '@/styles/dm.css';
+import type { PageMeta } from '@/lib/seo';
 
 export interface Props {
   title: string;
   description?: string;
-  /**
-   * Per-page SEO bundle (#29) — drives OG/Twitter tags, `og:type`, the OG
-   * image, and optional JSON-LD. The page passes data-derived meta from
-   * `lib/seo`; when omitted, the head falls back to the defaults below.
-   */
   meta?: PageMeta;
 }
-const { title, description = 'Dylan McCavitt · Portfolio', meta } = Astro.props;
 
-// Canonical URL for this page (#25) — absolute, origin from `Astro.site`.
-const canonical = new URL(Astro.url.pathname, Astro.site).href;
-
-// Site-wide meta defaults; `meta` (when passed) overrides each field (#29).
-const metaDescription = meta?.description ?? description;
-const ogTitle = title;
-const ogDescription = meta?.description ?? description;
-const ogType = meta?.ogType ?? 'website';
-const ogImage = new URL(meta?.ogImage ?? OG_FALLBACK, Astro.site).href;
-const jsonLd = meta?.jsonLd;
+const { title, description, meta } = Astro.props;
 const path = Astro.url.pathname.length > 1 ? Astro.url.pathname.replace(/\/$/, '') : '/';
 const guide = (() => {
   if (path === '/library' || path.startsWith('/library/')) return { kind: 'library' as const };
@@ -47,54 +26,13 @@ const guide = (() => {
 })() satisfies { kind: DMPageContextKind; reference?: string } | null;
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <!-- Keeps the page edge-to-edge and preserves iOS safe-area values. -->
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
-    <meta name="description" content={metaDescription} />
-    <meta property="og:title" content={ogTitle} />
-    <meta property="og:description" content={ogDescription} />
-    <meta property="og:type" content={ogType} />
-    <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={ogImage} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:site_name" content="Dylan McCavitt" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content={ogImage} />
-    <meta name="twitter:title" content={ogTitle} />
-    <meta name="twitter:description" content={ogDescription} />
-    <title>{title}</title>
-    <link rel="canonical" href={canonical} />
-    {
-      jsonLd && (
-        <script
-          is:inline
-          type="application/ld+json"
-          set:html={serializeJsonLd(jsonLd)}
-        />
-      )
-    }
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
-    />
-  </head>
-  <body class="editorial-body">
-    <a class="skip-link" href="#main">Skip to content</a>
-    <main id="main" tabindex="-1">
-      <slot />
-    </main>
-    {guide && <ContextualGuide kind={guide.kind} path={path} reference={guide.reference} />}
-    {guide && <script src="../scripts/dm.ts"></script>}
-  </body>
-</html>
+<Device
+  title={title}
+  description={description}
+  meta={meta}
+  surface="route"
+  guideKind={guide?.kind}
+  guideReference={guide?.reference}
+>
+  <slot />
+</Device>

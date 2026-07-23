@@ -23,11 +23,16 @@ test('shared JSON-LD serializer preserves data without allowing hostile script t
 });
 
 test('all public layouts use the shared JSON-LD serializer', async () => {
-  for (const layout of ['Editorial.astro', 'Tour.astro', 'DM.astro']) {
+  for (const layout of ['Device.astro', 'Tour.astro', 'DM.astro']) {
     const source = await readFile(resolve(ROOT, 'src', 'layouts', layout), 'utf8');
-    assert.match(source, /serializeJsonLd\(jsonLd\)/, layout);
+    assert.match(source, /serializeJsonLd\((?:jsonLd|meta\.jsonLd)\)/, layout);
     assert.equal(source.includes('JSON.stringify(jsonLd)'), false, layout);
   }
+
+  const editorial = await readFile(resolve(ROOT, 'src', 'layouts', 'Editorial.astro'), 'utf8');
+  assert.match(editorial, /import Device from '@\/layouts\/Device\.astro'/);
+  assert.match(editorial, /<Device[\s\S]*meta=\{meta\}/);
+  assert.equal(editorial.includes('JSON.stringify(jsonLd)'), false);
 });
 
 test('Vercel applies the exact global CSP without wildcards or unsafe-eval', async () => {

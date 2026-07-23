@@ -1,3 +1,10 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
 /* Shared redesign tokens and primitives.
 
    This file keeps the `--pl-*` token contract used by the DM, Editorial, and
@@ -6,18 +13,18 @@
 */
 
 :root {
-  --pl-bg: #121317;
-  --pl-side: #17181d;
-  --pl-panel: #1c1e24;
-  --pl-panel-hi: #23252d;
-  --pl-line: #2a2c35;
-  --pl-tile: #1b1d23;
-  --pl-tile-line: #2e313b;
-  --pl-text: #e6e8ed;
-  --pl-dim: #969aa6;
-  --pl-faint: #8a8fa0;
-  --pl-accent: #8b7cf6;
-  --pl-focus: #b3a8ff;
+  --pl-bg: #06101d;
+  --pl-side: #0b1626;
+  --pl-panel: #101d2f;
+  --pl-panel-hi: #18273b;
+  --pl-line: #30435f;
+  --pl-tile: #101b2b;
+  --pl-tile-line: #364b69;
+  --pl-text: #dce3ee;
+  --pl-dim: #91a1bc;
+  --pl-faint: #7486a6;
+  --pl-accent: #8296bb;
+  --pl-focus: #c2c9dc;
   --pl-green: #50c878;
   --pl-amber: #e6b450;
   --pl-ink: #0e1410;

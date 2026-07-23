@@ -1,0 +1,82 @@
+---
+import Editorial from '@/layouts/Editorial.astro';
+import { libraryMeta, personJsonLd } from '@/lib/seo';
+
+const email = 'dylanmccavitt@outlook.com';
+const meta = {
+  ...libraryMeta('Contact Dylan McCavitt', 'Contact Dylan about software engineering roles and practical product work.'),
+  jsonLd: personJsonLd(),
+};
+---
+
+<Editorial title="Contact · Dylan McCavitt" meta={meta}>
+  <article class="device-route-screen contact-console">
+    <nav class="screen-nav" aria-label="Primary">
+      <a href="/">DM / Contact</a>
+      <span class="screen-nav-links">
+        <a href="/">Home</a>
+        <a href="/library">Work</a>
+        <a href="/journey">Journey</a>
+        <a href="/resume">Resume</a>
+      </span>
+    </nav>
+
+    <header>
+      <h1 class="screen-title">Let’s talk.</h1>
+      <p class="screen-lede">Open to software engineering roles and practical product work.</p>
+    </header>
+
+    <div class="contact-console-grid">
+      <form class="contact-console-form" action={`mailto:${email}`} method="get">
+        <label>Name <input name="name" autocomplete="name" /></label>
+        <label>Email <input name="email" type="email" autocomplete="email" /></label>
+        <label>Message <textarea name="body" rows="6" placeholder="What would you like to build or discuss?"></textarea></label>
+        <p>Opens your email app. No form content is stored by this site.</p>
+        <div>
+          <button class="console-button console-button--fill" type="submit">Send message</button>
+          <button class="console-button" type="button" data-copy-email data-email={email}>Copy email</button>
+          <a href={`mailto:${email}`}>{email}</a>
+        </div>
+        <p class="copy-status" data-copy-status aria-live="polite"></p>
+      </form>
+      <aside class="contact-console-facts">
+        <p>New York City</p>
+        <p>US citizen</p>
+        <p>No sponsorship needed</p>
+        <p>Open to opportunities</p>
+      </aside>
+    </div>
+    <p class="screen-footer">Tab move · Enter submit · Esc home</p>
+  </article>
+</Editorial>
+
+<script is:inline>
+  const copy = document.querySelector('[data-copy-email]');
+  copy?.addEventListener('click', async () => {
+    const email = copy.getAttribute('data-email') || '';
+    const status = document.querySelector('[data-copy-status]');
+    try {
+      await navigator.clipboard.writeText(email);
+      if (status) status.textContent = 'Email copied.';
+    } catch {
+      window.location.href = `mailto:${email}`;
+    }
+  });
+</script>
+
+<style>
+  .contact-console { padding: clamp(30px, 4.7vw, 70px); }
+  .contact-console-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .38fr); gap: clamp(2rem, 4vw, 4rem); margin-top: clamp(2.2rem, 5vh, 4.5rem); }
+  .contact-console-form { display: grid; gap: 1.35rem; }
+  .contact-console-form label { display: grid; gap: .5rem; color: var(--pl-accent); font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; }
+  .contact-console-form input, .contact-console-form textarea { width: 100%; min-height: 44px; padding: .7rem .3rem; color: var(--pl-text); background: transparent; border: 0; border-bottom: 1px solid var(--pl-accent); border-radius: 0; resize: vertical; }
+  .contact-console-form textarea { padding: .85rem; border: 1px solid var(--pl-accent); }
+  .contact-console-form > p { color: var(--pl-dim); font-size: .7rem; text-transform: uppercase; }
+  .contact-console-form > div { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+  .contact-console-form button, .contact-console-form a { min-height: 44px; padding: .7rem 1.25rem; color: var(--pl-accent); background: transparent; border: 1px solid var(--pl-accent); text-decoration: none; text-transform: uppercase; cursor: pointer; }
+  .contact-console-form .console-button--fill { color: #eef1f7; background: #7084a9; }
+  .contact-console-form a { border: 0; text-decoration: underline; }
+  .copy-status { min-height: 1rem; margin: 0; }
+  .contact-console-facts { display: grid; align-content: start; gap: 1.5rem; padding: 2rem; border-left: 1px solid var(--pl-accent); color: var(--pl-accent); text-transform: uppercase; }
+  @media (max-width: 768px) { .contact-console-grid { grid-template-columns: 1fr; } .contact-console-facts { border-top: 1px solid var(--pl-accent); border-left: 0; padding: 1.5rem 0; } }
+</style>
