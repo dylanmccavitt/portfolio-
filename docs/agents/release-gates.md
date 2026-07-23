@@ -137,7 +137,9 @@ PR is reviewed and the stack is merged in order.
    keyboard/accessibility and narrow mobile viewport checks.
 5. With approved credentials only, call readiness and record its fully redacted
    response. Runtime, accessibility, browser, responsive, and visual gates are
-   tracked by issue #308; paid model evaluation is not a release command.
+   tracked by issue #308 and the provider-free
+   [`replacement-quality-gates.md`](./replacement-quality-gates.md) procedure;
+   paid model evaluation is not a release command.
 6. Record the Vercel deployment SHA, public library/detail/DM smoke evidence,
    and the hidden-draft exclusion proof required by
    [`catalog-cutover.md`](./catalog-cutover.md).
