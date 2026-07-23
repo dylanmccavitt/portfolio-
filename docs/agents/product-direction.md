@@ -10,8 +10,10 @@ leaves.
   are retired product history and must not return as live seams.
 - The portfolio remains recruiter-friendly, jargon-light, and static-first
   outside the deliberate guide client island.
-- The replacement contextual-guide contract belongs to GitHub issue #306. This
-  leaf does not pre-implement its route contexts, actions, or interface.
+- The contextual-guide runtime is the single public guide contract across
+  home, library, project, journey, hiring, and fit-check contexts. The server
+  validates route context and derives every action from finite public routes or
+  same-run evidence; route history never crosses context boundaries.
 - The muted Three.js visual system belongs to GitHub issue #307. Three.js must
   remain progressive enhancement; core routes and content cannot depend on
   WebGL or client JavaScript.
@@ -54,7 +56,6 @@ never commit secrets or provider configuration.
 
 ## Deferred work
 
-- Contextual-guide runtime and server-derived actions: issue #306.
 - Three.js route and device presentation: issue #307.
 - Provider-free contract, accessibility, browser, responsive, and visual proof:
   issue #308.

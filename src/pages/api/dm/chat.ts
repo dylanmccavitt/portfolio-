@@ -24,6 +24,7 @@ import {
 } from '@/lib/dm/rate-limit';
 import { createDMMetricsRecorder } from '@/lib/dm/metrics';
 import type { DMChatContext, DMChatRequest, DMUIMessage } from '@/lib/dm/contract';
+import { dmPageContextId, DMPageContextError, parseDMPageContext } from '@/lib/dm/guide';
 import { loadPublicProfileEntries } from '@/data/profile';
 import { resolvePublicProjectSourceMode, type PublicProjectSourceMode } from '@/lib/public-projects';
 import {
@@ -101,7 +102,7 @@ export function createDMPostHandler(deps: DMPostHandlerDeps = {}): APIRoute {
         }
       }
       assertRequestSize(request);
-      const payload = await parseRequest(request);
+      const payload = await parseDMChatRequest(request);
       const response = createDMChatResponse(payload, config, {
         db,
         model: deps.model,
@@ -159,7 +160,7 @@ export const POST = createDMPostHandler();
 
 export const ALL: APIRoute = () => jsonError(405, 'method_not_allowed', 'Use POST with a visitor message.');
 
-async function parseRequest(request: Request): Promise<DMChatRequest> {
+export async function parseDMChatRequest(request: Request): Promise<DMChatRequest> {
   let body: unknown;
 
   try {
@@ -173,8 +174,8 @@ async function parseRequest(request: Request): Promise<DMChatRequest> {
   }
 
   const candidate = body as Record<string, unknown>;
-  const messages = parseMessages(candidate.messages);
   const context = parseContext(candidate.context);
+  const messages = parseMessages(candidate.messages, dmPageContextId(context.page));
 
   return { messages, context };
 }
@@ -188,7 +189,7 @@ function assertRequestSize(request: Request): void {
   }
 }
 
-function parseMessages(value: unknown): DMUIMessage[] {
+function parseMessages(value: unknown, pageContextId: string): DMUIMessage[] {
   if (!Array.isArray(value) || value.length === 0) throw badRequest('messages must be a non-empty array.');
   const messages = value.slice(-13).map((entry) => {
     if (!entry || typeof entry !== 'object') {
@@ -205,9 +206,17 @@ function parseMessages(value: unknown): DMUIMessage[] {
     if (!Array.isArray(record.parts) || record.parts.length === 0) {
       throw badRequest('message parts must be a non-empty array.');
     }
+    if (!record.metadata || typeof record.metadata !== 'object' || Array.isArray(record.metadata)) {
+      throw badRequest('message metadata must identify its page context.');
+    }
+    const metadata = record.metadata as Record<string, unknown>;
+    if (Object.keys(metadata).some((key) => key !== 'pageContextId') || metadata.pageContextId !== pageContextId) {
+      throw badRequest('message history does not match the active page context.');
+    }
     return {
       id: record.id,
       role: record.role,
+      metadata: { pageContextId },
       parts: record.parts.map((part) => {
         if (!part || typeof part !== 'object') throw badRequest('message parts must be objects.');
         const value = part as Record<string, unknown>;
@@ -222,16 +231,39 @@ function parseMessages(value: unknown): DMUIMessage[] {
   return messages;
 }
 
-function parseContext(value: unknown): DMChatContext | undefined {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== 'object') throw badRequest('context must be an object when provided.');
+function parseContext(value: unknown): DMChatContext {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw badRequest('context must be an object.');
+  }
 
   const record = value as Record<string, unknown>;
-  return {
-    projectIds: parseStringArray(record.projectIds, 'context.projectIds'),
-    resumeTrackIds: parseStringArray(record.resumeTrackIds, 'context.resumeTrackIds'),
-    fitCheck: parseFitCheckContext(record.fitCheck),
-  };
+  if (Object.keys(record).some((key) => !['page', 'projectIds', 'resumeTrackIds', 'fitCheck'].includes(key))) {
+    throw badRequest('context contains unsupported fields.');
+  }
+  let page: DMChatContext['page'];
+  try {
+    page = parseDMPageContext(record.page);
+  } catch (error) {
+    if (error instanceof DMPageContextError) throw badRequest(error.message);
+    throw error;
+  }
+  const projectIds = parseStringArray(record.projectIds, 'context.projectIds');
+  const resumeTrackIds = parseStringArray(record.resumeTrackIds, 'context.resumeTrackIds');
+  const fitCheck = parseFitCheckContext(record.fitCheck);
+  const expectedProjectIds = page.kind === 'project' && page.reference ? [page.reference] : undefined;
+  const expectedResumeTrackIds = page.kind === 'journey' && page.reference ? [page.reference] : undefined;
+
+  if (!sameOptionalStringArray(projectIds, expectedProjectIds)) {
+    throw badRequest('context.projectIds must be derived from the active project route.');
+  }
+  if (!sameOptionalStringArray(resumeTrackIds, expectedResumeTrackIds)) {
+    throw badRequest('context.resumeTrackIds must be derived from the active journey route.');
+  }
+  if (fitCheck && page.kind !== 'fit-check') {
+    throw badRequest('context.fitCheck is allowed only on the fit-check route.');
+  }
+
+  return { page, projectIds: expectedProjectIds, resumeTrackIds: expectedResumeTrackIds, fitCheck };
 }
 
 function parseStringArray(value: unknown, field: string): string[] | undefined {
@@ -242,6 +274,11 @@ function parseStringArray(value: unknown, field: string): string[] | undefined {
     if (typeof item !== 'string') throw badRequest(`${field} entries must be strings.`);
     return item;
   });
+}
+
+function sameOptionalStringArray(actual: string[] | undefined, expected: string[] | undefined): boolean {
+  if (!actual && !expected) return true;
+  return Boolean(actual && expected && actual.length === expected.length && actual.every((item, index) => item === expected[index]));
 }
 
 function parseFitCheckContext(value: unknown): DMChatContext['fitCheck'] {

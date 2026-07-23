@@ -10,7 +10,10 @@
  * visually consistent with the rest of the redesign.
  */
 import { OG_FALLBACK, serializeJsonLd, type PageMeta } from '@/lib/seo';
+import ContextualGuide from '@/components/ContextualGuide.astro';
+import type { DMPageContextKind } from '@/lib/dm/guide';
 import '@/styles/player.css';
+import '@/styles/dm.css';
 
 export interface Props {
   title: string;
@@ -34,6 +37,14 @@ const ogDescription = meta?.description ?? description;
 const ogType = meta?.ogType ?? 'website';
 const ogImage = new URL(meta?.ogImage ?? OG_FALLBACK, Astro.site).href;
 const jsonLd = meta?.jsonLd;
+const path = Astro.url.pathname.length > 1 ? Astro.url.pathname.replace(/\/$/, '') : '/';
+const guide = (() => {
+  if (path === '/library' || path.startsWith('/library/')) return { kind: 'library' as const };
+  if (path.startsWith('/projects/')) return { kind: 'project' as const, reference: path.split('/').at(-1) };
+  if (path === '/journey') return { kind: 'journey' as const };
+  if (path.startsWith('/journey/')) return { kind: 'journey' as const, reference: path.split('/').at(-1) };
+  return null;
+})() satisfies { kind: DMPageContextKind; reference?: string } | null;
 ---
 
 <!doctype html>
@@ -83,5 +94,7 @@ const jsonLd = meta?.jsonLd;
     <main id="main" tabindex="-1">
       <slot />
     </main>
+    {guide && <ContextualGuide kind={guide.kind} path={path} reference={guide.reference} />}
+    {guide && <script src="../scripts/dm.ts"></script>}
   </body>
 </html>

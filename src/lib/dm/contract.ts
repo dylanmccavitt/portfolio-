@@ -6,10 +6,12 @@ import type {
   PublicSourceRecord,
   PublicToolEvidence,
 } from './public-agent-tools';
+import type { DMGuideAction, DMPageContext } from './guide';
 
 export const AGENT_NAME = 'DM';
 
 export interface DMChatContext {
+  page: DMPageContext;
   projectIds?: string[];
   resumeTrackIds?: string[];
   fitCheck?: {
@@ -52,6 +54,7 @@ export type DMAnswerArtifact =
 export interface DMValidatedAnswer {
   segments: DMAnswerSegment[];
   artifacts: DMAnswerArtifact[];
+  actions: DMGuideAction[];
   limitations: string[];
 }
 

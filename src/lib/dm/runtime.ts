@@ -52,6 +52,7 @@ import {
   normalizeDMSiteBriefProjectReference,
   type DMSiteBrief,
 } from './site-brief';
+import { deriveGuideActions } from './guide';
 export interface DMRuntimeConfig {
   provider: 'gateway' | 'openai';
   model: string;
@@ -312,7 +313,7 @@ export function createDMChatResponse(
         await publicToolGate.waitForIdle();
         if (finalizationResult) return finalizationResult;
         finalizationAttempts += 1;
-        const validation = validateFinalAnswer(input, publicRun, artifacts);
+        const validation = validateFinalAnswer(input, publicRun, artifacts, request.context);
         if (validation.ok) {
           finalized = true;
           finalizationResult = {
@@ -330,7 +331,7 @@ export function createDMChatResponse(
           } satisfies DMFinalizationResult;
         }
         finalized = true;
-        finalizationResult = limitedResult(true);
+        finalizationResult = limitedResult(true, request.context);
         return finalizationResult;
       },
     }),
@@ -432,7 +433,7 @@ export function createDMChatResponse(
           metrics.error('unknown');
           return;
         }
-        finalizationResult ??= limitedResult(finalizationAttempts > 0);
+        finalizationResult ??= limitedResult(finalizationAttempts > 0, request.context);
         if (
           finalizationResult.status === 'limited'
           && finalizationAttempts > 0
@@ -655,6 +656,7 @@ function validateFinalAnswer(
   input: FinalAnswerInput,
   run: PublicAgentToolRun,
   artifacts: RunArtifacts,
+  context: DMChatContext | undefined,
 ): { ok: true; answer: DMValidatedAnswer } | { ok: false; errors: string[] } {
   const changedIntent = artifacts.boundArtifactIntent !== null
     && input.artifactIntent !== artifacts.boundArtifactIntent;
@@ -709,11 +711,13 @@ function validateFinalAnswer(
     ...input.limitations.map((code) => FINALIZATION_ENUM_COPY.limitation[code]),
     ...effectiveLimitations(artifacts).map(humanLimitation).filter((item): item is string => Boolean(item)),
   ])].filter((limitation) => !segmentTexts.has(limitation));
+  const resolvedArtifacts = artifactReferences.flatMap((reference) => resolveArtifact(reference, artifacts));
   return {
     ok: true,
     answer: {
       segments,
-      artifacts: artifactReferences.flatMap((reference) => resolveArtifact(reference, artifacts)),
+      artifacts: resolvedArtifacts,
+      actions: deriveGuideActions(context?.page, resolvedArtifacts),
       limitations,
     },
   };
@@ -1354,7 +1358,10 @@ function serverLimitation(code: LimitationCode): string {
   return SERVER_LIMITATION_COPY[code];
 }
 
-function limitedResult(repairAttempted: boolean): Extract<DMFinalizationResult, { status: 'limited' }> {
+function limitedResult(
+  repairAttempted: boolean,
+  context?: DMChatContext,
+): Extract<DMFinalizationResult, { status: 'limited' }> {
   return {
     status: 'limited',
     repairAttempted,
@@ -1365,6 +1372,7 @@ function limitedResult(repairAttempted: boolean): Extract<DMFinalizationResult, 
         evidence: [],
       }],
       artifacts: [],
+      actions: deriveGuideActions(context?.page, []),
       limitations: ['No unverified factual answer was shown.'],
     },
   };
@@ -1403,6 +1411,7 @@ function modelMessages(request: DMChatRequest): ModelMessage[] {
 function contextNote(context: DMChatContext | undefined): string {
   if (!context) return '';
   const lines = [
+    `Validated public page context: ${context.page.kind} (${context.page.path}). Keep the answer relevant to this route unless the latest question clearly asks to compare another public area.`,
     context.projectIds?.length
       ? `Stable public project ids already resolved by page context: ${context.projectIds.join(', ')}. For a latest-turn reference to one of these ids, call getProject directly; never use searchProjects to rediscover it.`
       : '',

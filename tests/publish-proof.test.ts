@@ -305,9 +305,13 @@ function toolSequenceModel(calls: Array<{ toolName: string; input: unknown }>): 
 }
 
 function dmRequest(message: string, projectIds?: string[]): DMChatRequest {
+  const reference = projectIds?.[0];
+  const page = reference
+    ? { kind: 'project' as const, path: `/projects/${reference}`, reference }
+    : { kind: 'home' as const, path: '/' };
   return {
     messages: [{ id: 'proof-user', role: 'user', parts: [{ type: 'text', text: message }] }],
-    ...(projectIds ? { context: { projectIds } } : {}),
+    context: { page, ...(projectIds ? { projectIds } : {}) },
   };
 }
 

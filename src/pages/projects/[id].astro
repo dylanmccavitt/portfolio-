@@ -8,7 +8,7 @@
  * from the canonical Typographic card language (#85).
  *
  * Static-first: the gallery lightbox is pure CSS `:target`, and the only client
- * island is the deliberate contextual DM popup. Routes and SEO are preserved —
+ * island is the deliberate contextual guide sidecar. Routes and SEO are preserved —
  * one prerendered page per offline/emergency catalog entry or a live DB-backed
  * page in database mode, with meta via `projectMeta(p)`. Tokens,
  * the two web fonts, and the global `.badge.<kind>` classes come from
@@ -24,8 +24,6 @@ import {
 import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
 import { loadPublicProjectDetailBySlug, loadPublicProjectDetails } from '@/lib/public-projects';
 import { projectMeta } from '@/lib/seo';
-import { AGENT_NAME } from '@/lib/dm/client';
-import '@/styles/dm.css';
 
 export async function getStaticPaths() {
   const { projects } = await loadPublicProjectDetails();
@@ -45,11 +43,6 @@ const { projects } = await loadPublicProjectDetails();
 const p = project;
 const related = projects.filter((o) => o.area === p.area && o.id !== p.id).slice(0, 5);
 const meta = projectMeta(p);
-const agentDialogId = `project-agent-${p.id}`;
-const agentTitleId = `${agentDialogId}-title`;
-const agentDescriptionId = `${agentDialogId}-description`;
-const defaultProjectPrompt = `Tell me about ${p.title} and what Dylan did.`;
-
 const isPhone = (shot: ProjectShot): boolean =>
   isImageShot(shot) || isVideoShot(shot) ? shot.phone === true : shot.skeletonKind === 'phone';
 
@@ -102,100 +95,6 @@ const galleryHasVideo = gallery.some(isVideoShot);
             </div>
           )
         }
-
-        <div class="project-agent" data-dm-root data-dm-project-id={p.id}>
-          <button
-            class="project-agent-trigger"
-            type="button"
-            data-dm-open
-            aria-haspopup="dialog"
-            aria-expanded="false"
-            aria-controls={agentDialogId}
-          >
-            <span>Ask DM about this</span>
-            <small>Answers in place</small>
-          </button>
-
-          <div class="dm-popup" data-dm-dialog hidden>
-            <section
-              class="dm-popup-panel"
-              data-dm-panel
-              id={agentDialogId}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={agentTitleId}
-              aria-describedby={agentDescriptionId}
-              tabindex="-1"
-            >
-              <header class="dm-popup-head">
-                <div>
-                  <p class="dm-label">DM project guide</p>
-                  <h2 id={agentTitleId}>Ask DM about {p.title}</h2>
-                </div>
-                <button class="dm-popup-close" type="button" data-dm-close>
-                  <span aria-hidden="true">×</span>
-                  <span class="dm-sr-only">Close DM project guide</span>
-                </button>
-              </header>
-
-              <div class="dm-main dm-main--popup">
-                <p id={agentDescriptionId} class="dm-sr-only">
-                  Chat with {AGENT_NAME} about this project without leaving the page.
-                </p>
-                <div class="dm-stage">
-                  <div class="dm-empty">
-                    <div class="dm-card">
-                      <span class="dm-card-tile" aria-hidden="true">✦</span>
-                      <h3 class="dm-greeting">Ask DM about this project.</h3>
-                      <p class="dm-subgreeting">
-                        {AGENT_NAME} will use {p.title} as the active project context.
-                      </p>
-                      <ul class="dm-suggest project-agent-suggest">
-                        <li>
-                          <button
-                            class="dm-suggest-row"
-                            type="button"
-                            data-dm-send
-                            data-label={defaultProjectPrompt}
-                          >
-                            <span class="dm-suggest-label">Start with the project overview</span>
-                            <span class="dm-suggest-hint">context.projectIds: {p.id}</span>
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div
-                    class="dm-thread"
-                    data-dm-thread
-                    role="log"
-                    aria-label={`${AGENT_NAME} conversation about ${p.title}`}
-                  ></div>
-                </div>
-
-                <form class="dm-composer" data-dm-form>
-                  <div class="dm-composer-inner">
-                    <span class="dm-composer-glyph" aria-hidden="true">⌁</span>
-                    <input
-                      class="dm-input"
-                      data-dm-input
-                      type="text"
-                      name="message"
-                      autocomplete="off"
-                      spellcheck="false"
-                      placeholder={`Ask about ${p.title}…`}
-                      aria-label={`Ask ${AGENT_NAME} about ${p.title}`}
-                    />
-                    <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">
-                      →
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </section>
-          </div>
-        </div>
       </section>
 
       {

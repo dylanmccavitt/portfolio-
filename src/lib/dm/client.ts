@@ -7,6 +7,7 @@ import type {
   DMFinalizationResult,
   DMValidatedAnswer,
 } from './contract';
+import { DM_PAGE_CONTEXT_KINDS, isAllowedGuideActionDestination, type DMGuideAction } from './guide';
 export {
   FIT_CHECK_CONTEXT_LIMIT,
   FIT_CHECK_INPUT_LIMIT,
@@ -67,12 +68,30 @@ function validateAnswer(value: unknown): DMValidatedAnswer | null {
   if (!isRecord(value) || !Array.isArray(value.segments) || !Array.isArray(value.artifacts)) return null;
   const segments = value.segments.map(validateSegment);
   const artifacts = value.artifacts.map(validateArtifact);
-  if (segments.some((item) => !item) || artifacts.some((item) => !item) || !isStringArray(value.limitations)) return null;
+  const actions = Array.isArray(value.actions) ? value.actions.map(validateAction) : [];
+  if (segments.some((item) => !item) || artifacts.some((item) => !item) || actions.some((item) => !item) || !isStringArray(value.limitations)) return null;
   return {
     segments: segments as DMAnswerSegment[],
     artifacts: artifacts as DMAnswerArtifact[],
+    actions: actions as DMGuideAction[],
     limitations: value.limitations,
   };
+}
+
+function validateAction(value: unknown): DMGuideAction | null {
+  if (!isRecord(value)
+    || typeof value.id !== 'string'
+    || typeof value.label !== 'string'
+    || typeof value.href !== 'string'
+    || !isAllowedGuideActionDestination(value.href)
+    || !isRecord(value.source)) return null;
+  if (
+    value.source.kind === 'route'
+    && typeof value.source.context === 'string'
+    && (DM_PAGE_CONTEXT_KINDS as readonly string[]).includes(value.source.context)
+  ) return value as unknown as DMGuideAction;
+  if (value.source.kind === 'evidence' && typeof value.source.evidenceId === 'string') return value as unknown as DMGuideAction;
+  return null;
 }
 
 function validateSegment(value: unknown): DMAnswerSegment | null {

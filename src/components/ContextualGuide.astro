@@ -1,0 +1,106 @@
+---
+import type { DMPageContextKind } from '@/lib/dm/guide';
+
+interface Props {
+  kind: DMPageContextKind;
+  path: string;
+  reference?: string;
+}
+
+const { kind, path, reference } = Astro.props;
+const guideId = `contextual-guide-${kind}-${reference ?? 'index'}`;
+const titleId = `${guideId}-title`;
+const descriptionId = `${guideId}-description`;
+const prompt: Record<DMPageContextKind, string> = {
+  home: "What should I know about Dylan's work?",
+  library: 'Help me find the most relevant project.',
+  project: 'What matters most about this project?',
+  journey: "How does this background connect to Dylan's work?",
+  hiring: 'Summarize the strongest hiring evidence.',
+  'fit-check': 'What evidence should I weigh for this role?',
+};
+---
+
+<aside
+  class="context-guide project-agent"
+  data-dm-root
+  data-dm-page-kind={kind}
+  data-dm-page-path={path}
+  data-dm-page-reference={reference}
+  aria-label="Contextual portfolio guide"
+>
+  <button
+    class="project-agent-trigger context-guide-trigger"
+    type="button"
+    data-dm-open
+    aria-haspopup="dialog"
+    aria-expanded="false"
+    aria-controls={guideId}
+  >
+    <span>Ask the guide</span>
+    <small>Optional</small>
+  </button>
+
+  <div class="dm-popup context-guide-backdrop" data-dm-dialog hidden>
+    <section
+      class="dm-popup-panel context-guide-panel"
+      data-dm-panel
+      id={guideId}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      tabindex="-1"
+    >
+      <header class="dm-popup-head">
+        <div>
+          <p class="dm-label">Contextual guide</p>
+          <h2 id={titleId}>Ask about this page</h2>
+        </div>
+        <div class="context-guide-controls">
+          <button class="context-guide-cancel" type="button" data-dm-cancel>Stop</button>
+          <button class="dm-popup-close" type="button" data-dm-close>
+            <span aria-hidden="true">×</span>
+            <span class="dm-sr-only">Close contextual guide</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="dm-main dm-main--popup">
+        <p id={descriptionId} class="dm-sr-only">
+          Ask an evidence-grounded question without leaving this page.
+        </p>
+        <div class="dm-stage">
+          <div class="dm-empty">
+            <div class="dm-card">
+              <h3 class="dm-greeting">A quiet guide for what you’re viewing.</h3>
+              <p class="dm-subgreeting">
+                Answers use published projects, approved public sources, and the public resume only.
+              </p>
+              <button class="dm-suggest-row context-guide-suggestion" type="button" data-dm-send data-label={prompt[kind]}>
+                <span class="dm-suggest-label">{prompt[kind]}</span>
+              </button>
+            </div>
+          </div>
+          <div class="dm-thread" data-dm-thread role="log" aria-label="Contextual guide conversation"></div>
+        </div>
+        <form class="dm-composer" data-dm-form>
+          <div class="dm-composer-inner">
+            <span class="dm-composer-glyph" aria-hidden="true">⌁</span>
+            <input
+              class="dm-input"
+              data-dm-input
+              type="text"
+              name="message"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Ask about this page…"
+              aria-label="Ask the contextual guide"
+            />
+            <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">→</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</aside>
