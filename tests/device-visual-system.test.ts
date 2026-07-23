@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { collectionOwnsArrowKey } from '../src/scripts/device-keyboard.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
@@ -54,6 +55,15 @@ test('keyboard instructions are backed by real route controls', async () => {
   assert.match(bootstrap, /window\.location\.assign/);
   assert.match(bootstrap, /event\.key === 'Enter' && activeIndex >= 0/);
   assert.match(bootstrap, /items\[activeIndex\]\?\.click\(\)/);
+});
+
+test('collection arrows leave unrelated native controls in charge', () => {
+  assert.equal(collectionOwnsArrowKey(-1, true), false);
+});
+
+test('collection arrows remain available inside the collection or without native focus', () => {
+  assert.equal(collectionOwnsArrowKey(0, true), true);
+  assert.equal(collectionOwnsArrowKey(-1, false), true);
 });
 
 test('dither status is visible and bound to guide state', async () => {

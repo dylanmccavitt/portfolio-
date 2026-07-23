@@ -1,3 +1,5 @@
+import { collectionOwnsArrowKey } from './device-keyboard';
+
 const desktopRenderer = window.matchMedia('(min-width: 769px)');
 let stopRenderer: (() => void) | undefined;
 let loadVersion = 0;
@@ -50,6 +52,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
     && Boolean(target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]'));
 }
 
+function isNativeInteractiveTarget(target: HTMLElement | null): boolean {
+  return Boolean(target?.closest('a[href], button, input, textarea, select, summary'));
+}
+
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) return;
   const dialog = document.querySelector<HTMLElement>('[data-dm-dialog]');
@@ -87,7 +93,7 @@ document.addEventListener('keydown', (event) => {
       ? -1
       : 0;
 
-  if (delta !== 0) {
+  if (delta !== 0 && collectionOwnsArrowKey(activeIndex, isNativeInteractiveTarget(active))) {
     event.preventDefault();
     const nextIndex = (currentIndex + delta + items.length) % items.length;
     items.forEach((item, index) => item.classList.toggle('is-key-selected', index === nextIndex));
