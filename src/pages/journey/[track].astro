@@ -46,14 +46,17 @@ const meta = journeyTrackMeta(t);
 ---
 
 <Editorial title={meta.title} meta={meta}>
-  <article class="resume-detail" style={`--accent:${t.hue}`}>
-    <header class="detail-topbar">
-      <a class="detail-mark" href="/" aria-label="Dylan McCavitt home">DM</a>
-      <nav class="detail-nav" aria-label="Primary">
-        <a href="/journey">Resume</a>
-        <a href="/library">Projects</a>
-      </nav>
-    </header>
+  <article class="device-route-screen resume-detail" style={`--accent:${t.hue}`}>
+    <nav class="screen-nav" aria-label="Primary">
+      <a href="/journey">DM / Journey / {t.title}</a>
+      <span class="screen-nav-links">
+        <a href="/">Home</a>
+        <a href="/library">Work</a>
+        <a href="/journey">Journey</a>
+        <a href="/resume">Resume</a>
+        <button type="button" data-open-guide>Ask DM</button>
+      </span>
+    </nav>
 
     <div class="detail-wrap">
       <a class="back" href="/journey">Back to resume</a>
@@ -122,52 +125,28 @@ const meta = journeyTrackMeta(t);
   </article>
 </Editorial>
 
+<script is:inline>
+  document.querySelectorAll('[data-open-guide]').forEach((button) => {
+    button.addEventListener('click', () => document.querySelector('[data-dm-open]')?.click());
+  });
+</script>
+
 <style>
   .resume-detail {
     --accent: var(--pl-accent);
-    min-height: 100dvh;
+    padding: clamp(30px, 4.7vw, 70px);
     color: var(--pl-text);
     font-family: var(--pl-sans);
   }
 
-  .detail-topbar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    padding: 13px clamp(18px, 5vw, 40px);
-    border-bottom: 1px solid var(--pl-line);
-    background: color-mix(in srgb, var(--pl-bg) 84%, transparent);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-
-  .detail-mark {
-    font-family: var(--pl-mono);
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 1.5px;
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--pl-line));
-    border-radius: 7px;
-    padding: 4px 8px;
-    line-height: 1;
-  }
-
-  .detail-nav {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 14px;
-    font-size: 13px;
-    color: var(--pl-dim);
-  }
-  .detail-nav a:hover {
-    color: var(--pl-text);
+  .screen-nav button {
+    min-height: 44px;
+    padding: 0 0.75rem;
+    color: inherit;
+    background: transparent;
+    border: 1px solid var(--pl-accent);
+    text-transform: uppercase;
+    cursor: pointer;
   }
 
   .detail-wrap {
@@ -340,14 +319,6 @@ const meta = journeyTrackMeta(t);
   }
 
   @media (max-width: 640px) {
-    .detail-topbar {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-    .detail-nav {
-      justify-content: flex-start;
-      gap: 11px;
-    }
     .details div {
       grid-template-columns: 1fr;
       gap: 6px;
