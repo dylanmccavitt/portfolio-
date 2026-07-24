@@ -24,6 +24,9 @@
     "test:outbox": "node --import tsx --test tests/outbox-worker.test.ts",
     "test:proof": "node --import tsx --test tests/publish-proof.test.ts",
     "test:visual": "node --import tsx --test tests/device-visual-system.test.ts",
+    "test:quality": "node --import tsx --test tests/replacement-quality-proof.test.ts",
+    "proof:quality": "tsx scripts/replacement-quality-proof.ts",
+    "package:quality": "tsx scripts/build-replacement-quality-artifact.ts",
     "typecheck": "astro check",
     "verify": "npm run lint && npm run typecheck && npm run build",
     "db:migrate": "tsx scripts/db.ts migrate",
@@ -58,6 +61,7 @@
     "eslint": "^10.1.0",
     "eslint-plugin-astro": "^1.6.0",
     "satori": "^0.26.0",
+    "sharp": "^0.34.5",
     "tsx": "^4.22.4",
     "typescript-eslint": "^8.58.0"
   },

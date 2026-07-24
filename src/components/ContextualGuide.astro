@@ -19,6 +19,11 @@ const prompt: Record<DMPageContextKind, string> = {
   hiring: 'Summarize the strongest hiring evidence.',
   'fit-check': 'What evidence should I weigh for this role?',
 };
+const contextLabel = kind === 'library'
+  ? 'DM / Work context'
+  : kind === 'project'
+    ? 'DM / Project context'
+    : `DM / ${kind} context`;
 ---
 
 <aside
@@ -54,12 +59,13 @@ const prompt: Record<DMPageContextKind, string> = {
     >
       <header class="dm-popup-head">
         <div>
-          <p class="dm-label">Contextual guide</p>
+          <p class="dm-label">{contextLabel}</p>
           <h2 id={titleId}>Ask about this page</h2>
         </div>
         <div class="context-guide-controls">
           <button class="context-guide-cancel" type="button" data-dm-cancel>Stop</button>
           <button class="dm-popup-close" type="button" data-dm-close>
+            <span class="dm-popup-close-label">Close</span>
             <span aria-hidden="true">×</span>
             <span class="dm-sr-only">Close contextual guide</span>
           </button>
@@ -97,8 +103,11 @@ const prompt: Record<DMPageContextKind, string> = {
               placeholder="Ask about this page…"
               aria-label="Ask the contextual guide"
             />
-            <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">→</button>
+            <button class="dm-send" type="submit" data-dm-submit aria-label="Send message">
+              <span class="dm-send-label">Send</span>
+            </button>
           </div>
+          <p class="context-guide-safety">Public sources only · resets on route change</p>
         </form>
       </div>
     </section>

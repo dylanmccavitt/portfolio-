@@ -78,6 +78,8 @@ test('dither status is visible and bound to guide state', async () => {
   assert.match(layout, /data-device-status/);
   assert.match(device, /guideAvailable/);
   assert.match(device, /Device status: portfolio ready\.'/);
+  assert.match(device, /screen edges never drift outside their physical openings/);
+  assert.doesNotMatch(device, /world\.rotation\.z = -pointerCurrent/);
   assert.match(layout, /guideKind[\s\S]*contextual guide available/);
   assert.match(layout, /Device status: portfolio ready\.'/);
 });
@@ -98,6 +100,7 @@ test('static and mobile fallbacks preserve usable document surfaces', async () =
   assert.doesNotMatch(css, /\.home-menu a \{[\s\S]*?min-height: 31px/);
   assert.match(css, /\.home-menu a \{[\s\S]*?min-height: 44px/);
   assert.match(css, /\.home-menu-guide \{[\s\S]*?min-height: 44px/);
+  assert.match(css, /html:not\(\[data-webgl='available'\]\) \.hardware-link \{[\s\S]*?opacity: 0/);
   assert.match(css, /\.device-body \.home-simple-nav:focus-visible \{[\s\S]*?outline-color: #101725/);
   assert.match(
     css,
@@ -107,6 +110,54 @@ test('static and mobile fallbacks preserve usable document surfaces', async () =
     assert.match(source, /<nav|<form/);
   }
   assert.match(contact, /action=\{`mailto:/);
+});
+
+test('binding Work and answered-guide states retain reference hierarchy and public content order', async () => {
+  const [work, deviceCss, guide, dmCss, client] = await Promise.all([
+    read('src/components/LibraryView.astro'),
+    read('src/styles/device.css'),
+    read('src/components/ContextualGuide.astro'),
+    read('src/styles/dm.css'),
+    read('src/scripts/dm.ts'),
+  ]);
+  const order = ['bellas-beads', 'agentic-trader', 'tradingview-mcp', 'evalgate'];
+  let cursor = -1;
+  for (const id of order) {
+    const next = work.indexOf(`'${id}'`);
+    assert.ok(next > cursor, `${id} must retain selected-work reference order`);
+    cursor = next;
+  }
+  assert.match(deviceCss, /--device-screen-inset-x: clamp\(46px, 5\.6vw, 82px\)/);
+  assert.match(deviceCss, /--device-screen-inset-y: clamp\(38px, 4\.8vw, 70px\)/);
+  assert.match(
+    deviceCss,
+    /height: calc\(100dvh - var\(--device-screen-inset-y\) - var\(--device-screen-inset-y\)\)/,
+  );
+  assert.match(deviceCss, /clip-path: inset\(0 round 6px\)/);
+  assert.match(deviceCss, /inset 0 0 0 8px rgba\(3, 9, 17, 0\.48\)/);
+  assert.match(
+    deviceCss,
+    /\.home-screen--hero \{[\s\S]*?left: 7\.2%[\s\S]*?width: 85\.6%[\s\S]*?height: 32\.55%/,
+  );
+  assert.match(
+    deviceCss,
+    /\.home-screen--menu \{[\s\S]*?left: 22\.3%[\s\S]*?width: 55\.4%[\s\S]*?height: 36\.1%/,
+  );
+  assert.match(deviceCss, /\.hardware-link--up \{[\s\S]*?left: 11\.6%/);
+  assert.match(deviceCss, /\.hardware-link--right \{[\s\S]*?left: 19%/);
+  assert.match(deviceCss, /\.hardware-link--down \{[\s\S]*?left: 11\.6%/);
+  assert.match(deviceCss, /\.hardware-link--left \{[\s\S]*?left: 4\.2%/);
+  assert.match(
+    deviceCss,
+    /\.hardware-link--up,[\s\S]*?\.hardware-link--left \{[\s\S]*?color: transparent/,
+  );
+  assert.match(deviceCss, /body:has\(\.context-guide-backdrop:not\(\[hidden\]\)\) \.work-console/);
+  assert.match(guide, /DM \/ Work context/);
+  assert.match(guide, /Public sources only · resets on route change/);
+  assert.match(dmCss, /\.context-guide \.dm-user-tag[\s\S]*letter-spacing/);
+  assert.match(dmCss, /\.context-guide \.dm-chip[\s\S]*place-items: center/);
+  assert.match(client, /text: 'You asked'/);
+  assert.match(client, /class: 'dm-view-all'/);
 });
 
 test('binding design references retain their approved hashes', async () => {

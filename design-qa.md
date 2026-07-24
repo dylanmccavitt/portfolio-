@@ -1,78 +1,89 @@
-# Design QA — issue #307 fixer cycle 2
+# Replacement quality visual QA
 
-## Visual truth and normalization
+**Comparison target**
 
-- Source: `docs/design/contextual-guide-reset/01-home-muted-threejs.png` (1487 × 1058).
-- Implementation: `/tmp/portfolio-311-cycle2-home-1440x900.jpg` (1440 × 900 CSS pixels, DPR 1).
-- Normalization: source resized proportionally to 1440px wide, then center-cropped from approximately 1440 × 1025 to 1440 × 900.
-- State: Home, contextual guide closed, portfolio ready.
-- Full-view side-by-side evidence: `/tmp/portfolio-311-cycle2-compare-1440x900.jpg`.
-- Focused-region evidence was not needed: the 2880 × 900 combined input preserves the upper screen, hinge, lower controls, bezels, labels, shadows, and typography at readable size.
+- Source visual truth:
+  - `docs/design/contextual-guide-reset/02-work-layout.png`
+  - `docs/design/contextual-guide-reset/07-dm-right-sidecar-muted.png`
+- Implementation screenshots:
+  - `proof/replacement-quality-inputs/visual-work-expanded.png`
+  - `proof/replacement-quality-inputs/visual-dm-right-sidecar.png`
+- CSS viewport and implementation pixels: 1440 × 900 at device scale factor 1.
+- Source pixels: 1487 × 1058. For comparison, the source was contained at
+  1440 × 1025 and centered without cropping; the implementation remained
+  1440 × 900 and was centered vertically. The implementation intentionally
+  keeps the approved expanded route viewport rather than copying the source's
+  smaller home-device scale.
+- State: `/library` with Bella's Beads selected; `/library` with the
+  provider-free answered DM sidecar open for the shipping-experience question.
 
-The full-view comparison checks the five required fidelity surfaces:
+**Full-view comparison evidence**
 
-- Fonts and typography: locally shipped IBM Plex Mono, matching uppercase hierarchy, readable optical weight, tracking, and line height.
-- Spacing and layout: broader centered clamshell, tight reference crop, balanced upper/lower housings, aligned DOM screens, and side controls.
-- Colors and tokens: muted gray-lilac studio surface, graphite/navy molded shell, dusty steel-blue highlights, cool gray text, and accessible focus/foreground contrast.
-- Image/asset fidelity: the device is true Three.js geometry, not a screenshot or CSS illustration; the binding reference remains tracked byte-for-byte.
-- Copy/content: the same identity, role, ready state, portfolio menu, controls, guide action, and simple-navigation fallback remain present.
+- Work: `/tmp/pr312-work-comparison-hires.png`
+- Answered sidecar: `/tmp/pr312-sidecar-comparison-hires.png`
+- The comparisons place each binding reference on the left and its current
+  implementation on the right in one image.
 
-## Comparison history
+**Focused-region comparison evidence**
 
-| Pass | Priority | Visible difference | Repair | Post-fix evidence |
-| --- | --- | --- | --- | --- |
-| Pre-review | P1 | Device was narrow, flat, dark-on-dark, weakly beveled, under-lit, and materially below the selected reference. | Rebuilt layered housings, edge bands, molded microtexture, recessed multi-layer bezels/glass, segmented hinge, detailed D-pad/buttons, status object, contact shadow, and studio key/fill/rim lighting. | `/tmp/portfolio-311-fix-home-1440x900-pass2.png` |
-| Fix 2 | P2 | Device was too large in frame; lower semantic screen and hardware labels were misaligned. | Tightened camera scale, aligned lower display to the modeled aperture, shifted hardware hit areas, refined hinge thickness, typography scale, and contrast. | `/tmp/portfolio-311-fix-home-1440x900-final.png` |
-| Sidecar 1 | P1 | Desktop guide still overlaid or extended beyond the reflowed route. | Reserved the exact guide column, resized the stage/canvas, and fixed the guide backdrop/panel to the right column. | `/tmp/portfolio-311-fix-sidecar-1440-pass2.png` |
-| Tablet 1 | P2 | At 1024px the menu footer collided with the final action. | Re-aligned the lower screen, provided 44px menu controls, tightened rhythm, and removed the redundant compact footer. | `/tmp/portfolio-311-fix-home-1024x768-final.png` |
-| Fixer cycle 2 | P2 | The desktop Home actions were only 31px tall; the mobile simple-navigation link remained fixed due selector specificity. | Made all five Home actions 44px at every viewport, retuned only the lower-screen rhythm, and restored the mobile link to its intended in-flow treatment. The Three.js geometry, camera, materials, and lighting were unchanged. | `/tmp/portfolio-311-cycle2-home-1440x900.jpg`; `/tmp/portfolio-311-cycle2-home-390x844-full.jpg` |
+The full-resolution combined images keep the navigation, selected row, project
+metadata, answer, source, actions, composer, frame edges, and footer text
+readable. Separate focused crops were not required.
 
-## Responsive and interaction evidence
+**Findings**
 
-| Viewport | Route/state | Result |
-| --- | --- | --- |
-| 1440 × 900 | Home | Pass: polished centered device, visible state-bound dither object, five 44px menu actions, high-contrast focus outline, no clipping or overflow. |
-| 1440 × 900 | Work + guide | Pass: true split sidecar; route remains visible in the resized stage. |
-| 1024 × 768 | Home | Pass: complete device, 44px hardware targets, no menu collision or horizontal overflow. |
-| 768 × 1024 | Work | Pass: static document surface, no Three.js renderer/chunk request, 29 links, no overflow. |
-| 390 × 844 | Home | Pass: static full-width document, no Three.js renderer/chunk request, no overflow. |
-| 390 × 844 | Work + guide | Pass: 390px-wide bottom sheet, reachable close/input/send controls, no overflow. |
+- No actionable P0, P1, or P2 differences remain.
+- Fonts and typography: the condensed display/mono hierarchy, selected-project
+  emphasis, small navigation, answer body, labels, and actions align. The
+  implementation uses the repository's production font stack rather than
+  raster imitation.
+- Spacing and layout rhythm: the expanded route viewport preserves the required
+  larger inner screen while matching the source's molded frame hierarchy,
+  selected-row geometry, four-row rhythm, integrated right split, and answer /
+  action / composer proportions.
+- Colors and visual tokens: the purple Work surround, gray answered-state
+  surround, dark glass screen, blue selection, muted rules, and foreground
+  contrast align with the references.
+- Image quality and asset fidelity: the references contain no content imagery or
+  logos that require substitution. The rendered Three.js frame is crisp at the
+  evidence density and no source asset is replaced by placeholder art.
+- Copy and content: project order, titles, approved public descriptors, question,
+  answer, source, Open case, View all work, and reset notice match the binding
+  state and hierarchy.
+- Interaction/accessibility: navigation, selected-row keyboard behavior,
+  guide focus/escape behavior, route-reset cancellation, mobile bottom-sheet
+  behavior, reduced motion, WebGL fallback, and no-JS usefulness are preserved
+  by the browser and provider-free test matrix.
 
-Evidence:
+**Comparison history**
 
-- `/tmp/portfolio-311-cycle2-compare-1440x900.jpg`
-- `/tmp/portfolio-311-cycle2-home-390x844-full.jpg`
-- `/tmp/portfolio-311-fix-sidecar-1440-pass2.png`
-- `/tmp/portfolio-311-fix-home-1024x768-final.png`
-- `/tmp/portfolio-311-fix-work-768x1024.png`
-- `/tmp/portfolio-311-fix-home-390x844.png`
-- `/tmp/portfolio-311-fix-work-guide-390x844.png`
+1. Initial comparison found a P1: the Work state was a flat, weakly framed list
+   with mismatched hierarchy and ordering; the answered guide read as a
+   detached utility panel with incorrect answer/action proportions.
+2. Fixes: added the molded/glass route frame and state-specific surround,
+   restored binding project order and descriptors, enlarged and rebalanced the
+   selected-work hierarchy, integrated the guide as a true split, and rebuilt
+   question, answer, source, actions, composer, and reset-note hierarchy.
+3. Post-fix evidence: both high-resolution combined comparisons above show the
+   corrected same-state implementation. A second senior-design pass found no
+   unresolved P0, P1, or P2 difference.
 
-Keyboard browser proof: a synthetic native Enter event on the focused Work top-nav Home link remained unprevented with `href="/"`, while collection Enter remained deliberately handled. The controller still ignores editable/dialog targets, Arrow selection retains focus, Escape routes back, and `/` opens the contextual guide.
+**Open Questions**
 
-Reduced-motion browser proof: fresh cycle-2 captures 500ms apart were byte-identical at SHA-256 `cbfa1989508ee50a88f3a595eed23547b1fbb8f63140ac97751facd8e1b7be68`.
+- None.
 
-No-JavaScript browser proof: Home retained the heading and semantic `/library`, `/journey`, `/resume`, and `/contact` links with the canvas hidden, the simple-navigation link in flow, and no horizontal overflow.
+**Implementation Checklist**
 
-Mobile performance proof: at 768px and 390px, `data-webgl="mobile-static"`, the canvas was `display: none`, and the observed resource inventory contained neither `device-renderer` nor Three.js.
+- [x] Binding Work state aligned at 1440 × 900.
+- [x] Binding answered sidecar state aligned at 1440 × 900.
+- [x] Expanded route viewport preserved.
+- [x] Responsive and fallback behavior retained.
+- [x] Independent exact-capture review input required by the package gate.
 
-Console check: fresh exact-state Home and Work loads had no application errors. The deliberate WebGL-unavailable path remains covered by the focused tests and unchanged renderer failure handling.
+**Follow-up Polish**
 
-## Findings
-
-- P0: none.
-- P1: none.
-- P2: none.
-- P3: the studio props remain deliberately restrained; the crude faceted mug was removed rather than carried forward below the device-quality bar. Cycle 2 introduced no visual regression.
-
-## Performance
-
-- Desktop renderer chunk: 538,570 bytes minified / 134,808 bytes gzip.
-- Breakpoint/bootstrap chunk: 2,048 bytes minified / 1,058 bytes gzip.
-- One desktop-only Three.js renderer and one shared status post-process.
-- Mobile/tablet static breakpoints do not fetch or initialize the renderer.
-- DPR remains capped at 1.75.
-- Rendering pauses when hidden/off-screen; all targets, textures, materials, geometry, observers, and the renderer are disposed on teardown.
-- No remote model, texture, decoder, font, or runtime CDN dependency.
+- P3: the live Three.js bevel and scanline rendering will vary slightly from the
+  raster references across GPU/antialiasing implementations; this does not alter
+  hierarchy, geometry, copy, or interaction.
 
 final result: passed

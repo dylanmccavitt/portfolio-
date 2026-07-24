@@ -117,9 +117,13 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   face.lookAt(0, 0, 0);
   scene.add(face);
 
+  const deskMaterial = new THREE.MeshStandardMaterial({
+    color: surface === 'route' ? 0x8e88d1 : 0x737788,
+    roughness: 0.92,
+  });
   const desk = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 28),
-    new THREE.MeshStandardMaterial({ color: 0x737788, roughness: 0.92 }),
+    deskMaterial,
   );
   desk.rotation.x = -Math.PI / 2;
   desk.position.y = -0.5;
@@ -146,6 +150,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   const semanticStatus = document.querySelector<HTMLElement>('[data-device-status]');
   const syncGuideState = () => {
     const guideOpen = guideDialog ? !guideDialog.hidden : false;
+    if (surface === 'route') deskMaterial.color.set(guideOpen ? 0x7d7f8d : 0x8e88d1);
     statusPass.setState(guideOpen ? 'guide-open' : 'ready');
     if (semanticStatus) {
       semanticStatus.textContent = guideOpen
@@ -167,17 +172,6 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   let visible = !document.hidden;
   let inView = true;
   let disposed = false;
-  const pointerTarget = new THREE.Vector2();
-  const pointerCurrent = new THREE.Vector2();
-
-  const onPointer = (event: PointerEvent) => {
-    if (reducedMotion.matches) return;
-    pointerTarget.set(
-      (event.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2,
-      (event.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2,
-    );
-  };
-  window.addEventListener('pointermove', onPointer, { passive: true });
 
   const onVisibility = () => {
     visible = !document.hidden;
@@ -207,13 +201,9 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   renderer.setAnimationLoop(() => {
     if (!visible || !inView || disposed) return;
     const elapsed = reducedMotion.matches ? 0 : (performance.now() - startedAt) / 1000;
-    pointerCurrent.lerp(pointerTarget, 0.045);
-    if (!reducedMotion.matches) {
-      world.rotation.z = -pointerCurrent.x * 0.009;
-      world.rotation.x = pointerCurrent.y * 0.006;
-    } else {
-      world.rotation.set(0, 0, 0);
-    }
+    // DOM screen content and the WebGL chassis share one fixed projection so
+    // screen edges never drift outside their physical openings.
+    world.rotation.set(0, 0, 0);
     statusPass.render(elapsed);
     updateVhsTime(world, elapsed);
     renderer.setRenderTarget(null);
@@ -227,7 +217,6 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     resizeObserver.disconnect();
     viewObserver.disconnect();
     guideObserver?.disconnect();
-    window.removeEventListener('pointermove', onPointer);
     document.removeEventListener('visibilitychange', onVisibility);
     statusPass.dispose();
     disposeObject(scene);
@@ -287,14 +276,14 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
       marker.position.set(x, 0.26, z);
       dpad.add(marker);
     }
-    dpad.position.set(-2.76, 0.55, 2.12);
+    dpad.position.set(-2.78, 0.55, 2.1);
     world.add(dpad);
 
     const open = controlBox(0.84, 0.78, 0.24);
-    open.position.set(2.82, 0.55, 1.48);
+    open.position.set(2.78, 0.55, 1.48);
     world.add(open);
     const back = controlBox(0.84, 0.78, 0.24);
-    back.position.set(2.82, 0.55, 2.72);
+    back.position.set(2.78, 0.55, 2.72);
     world.add(back);
     for (const x of [-2.9, 2.9]) {
       const slot = new THREE.Mesh(new RoundedBoxGeometry(0.55, 0.07, 0.12, 2, 0.04), seam);
@@ -330,11 +319,12 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
 
   function buildRoute() {
     const aspect = Math.min(window.innerWidth / Math.max(window.innerHeight, 1), 1.75);
-    const frameWidth = Math.max(9.2, 8.35 * aspect);
-    const frame = roundedHousing(frameWidth, 8.1, 0.52);
+    const frameWidth = Math.max(10.6, 9.68 * aspect);
+    const frameDepth = 9.3;
+    const frame = roundedHousing(frameWidth, frameDepth, 0.52);
     frame.position.set(0, 0, 0);
     world.add(frame);
-    const routeGlass = screen(frameWidth - 0.72, 7.38);
+    const routeGlass = screen(frameWidth - 0.72, frameDepth - 0.72);
     routeGlass.position.set(0, 0.43, 0);
     world.add(routeGlass);
     const statusPlane = new THREE.Mesh(
