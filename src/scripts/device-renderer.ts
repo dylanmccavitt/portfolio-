@@ -9,6 +9,14 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
+/**
+ * Pointer parallax amplitude, in radians. Deliberately tiny: the DOM overlays
+ * are projected from the unrotated surface rectangles, so the chassis tilt must
+ * stay small enough that the resulting screen-space drift remains sub-pixel.
+ */
+const POINTER_TILT_Z = 0.009;
+const POINTER_TILT_X = 0.006;
+
 export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () => void {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const surface = stage.dataset.deviceSurface === 'home' ? 'home' : 'route';
@@ -275,6 +283,17 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   let visible = !document.hidden;
   let inView = true;
   let disposed = false;
+  const pointerTarget = new THREE.Vector2();
+  const pointerCurrent = new THREE.Vector2();
+
+  const onPointer = (event: PointerEvent) => {
+    if (reducedMotion.matches) return;
+    pointerTarget.set(
+      (event.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2,
+      (event.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2,
+    );
+  };
+  window.addEventListener('pointermove', onPointer, { passive: true });
 
   const onVisibility = () => {
     visible = !document.hidden;
@@ -309,8 +328,16 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     if (!visible || !inView || disposed) return;
     const elapsed = reducedMotion.matches ? 0 : (performance.now() - startedAt) / 1000;
     // DOM screen content and the WebGL chassis share one fixed projection so
-    // screen edges never drift outside their physical openings.
-    world.rotation.set(0, 0, 0);
+    // screen edges never drift outside their physical openings. The pointer
+    // parallax therefore stays inside POINTER_TILT_Z/POINTER_TILT_X, whose
+    // sub-pixel chassis displacement keeps the overlay projection valid.
+    pointerCurrent.lerp(pointerTarget, 0.045);
+    if (!reducedMotion.matches) {
+      world.rotation.z = -pointerCurrent.x * POINTER_TILT_Z;
+      world.rotation.x = pointerCurrent.y * POINTER_TILT_X;
+    } else {
+      world.rotation.set(0, 0, 0);
+    }
     statusPass.render(elapsed);
     updateVhsTime(world, elapsed);
     renderer.setRenderTarget(null);
@@ -324,6 +351,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     resizeObserver.disconnect();
     viewObserver.disconnect();
     guideObserver?.disconnect();
+    window.removeEventListener('pointermove', onPointer);
     document.removeEventListener('visibilitychange', onVisibility);
     clearHomeOverlay();
     clearRouteOverlay();

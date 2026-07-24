@@ -32,6 +32,19 @@ test('home uses semantic routes over one progressive Three.js renderer', async (
   assert.doesNotMatch(bootstrap, /from 'three'|WebGLRenderer|WebGLRenderTarget/);
 });
 
+test('subtle pointer parallax stays wired, bounded, and reduced-motion aware', async () => {
+  const device = await read('src/scripts/device-renderer.ts');
+  assert.match(device, /const POINTER_TILT_Z = 0\.009;/);
+  assert.match(device, /const POINTER_TILT_X = 0\.006;/);
+  assert.match(device, /addEventListener\('pointermove', onPointer, \{ passive: true \}\)/);
+  assert.match(device, /removeEventListener\('pointermove', onPointer\)/);
+  assert.match(device, /pointerCurrent\.lerp\(pointerTarget, 0\.045\)/);
+  assert.match(device, /world\.rotation\.z = -pointerCurrent\.x \* POINTER_TILT_Z/);
+  assert.match(device, /world\.rotation\.x = pointerCurrent\.y \* POINTER_TILT_X/);
+  assert.match(device, /if \(reducedMotion\.matches\) return;/);
+  assert.match(device, /\} else \{\s*world\.rotation\.set\(0, 0, 0\);/);
+});
+
 test('renderer pauses and releases GPU resources', async () => {
   const device = await read('src/scripts/device-renderer.ts');
   assert.match(device, /prefers-reduced-motion/);
@@ -94,7 +107,6 @@ test('dither status is visible and bound to guide state', async () => {
   assert.match(device, /guideAvailable/);
   assert.match(device, /Device status: portfolio ready\.'/);
   assert.match(device, /screen edges never drift outside their physical openings/);
-  assert.doesNotMatch(device, /world\.rotation\.z = -pointerCurrent/);
   assert.match(layout, /guideKind[\s\S]*contextual guide available/);
   assert.match(layout, /Device status: portfolio ready\.'/);
 });
