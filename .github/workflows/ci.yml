@@ -46,7 +46,7 @@ jobs:
 
       - name: Build exact-head replacement quality artifact
         if: github.event_name == 'pull_request'
-        run: npm run package:quality -- "${{ github.event.pull_request.head.sha }}" "${{ github.event.pull_request.base.sha }}" "$RUNNER_TEMP/replacement-quality-proof"
+        run: npm run package:quality -- "${{ github.event.pull_request.head.sha }}" "${{ github.event.pull_request.base.sha }}" "$RUNNER_TEMP/replacement-quality-proof" "proof/replacement-quality-visual-review.json"
 
       - name: Upload exact-head replacement quality artifact
         if: github.event_name == 'pull_request'

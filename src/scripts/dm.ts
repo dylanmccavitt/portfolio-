@@ -106,7 +106,7 @@ class Turn {
     ]);
     this.root = make('article', { class: 'dm-turn' }, [
       make('div', { class: 'dm-user-row' }, [
-        make('span', { class: 'dm-user-tag', text: 'You' }),
+        make('span', { class: 'dm-user-tag', text: 'You asked' }),
         make('p', { class: 'dm-user', text: question }),
       ]),
       this.typingEl,
@@ -139,8 +139,11 @@ class Turn {
       this.proseEl.append(make('p', { class: 'dm-p', text: limitation }));
       this.text += `${this.text ? '\n\n' : ''}${limitation}`;
     }
-    this.renderActions(answer.actions);
     for (const artifact of answer.artifacts) this.renderArtifact(artifact);
+    this.renderActions(answer.actions);
+    if (answer.artifacts.some((artifact) => artifact.kind === 'project')) {
+      this.canvas().append(make('a', { class: 'dm-view-all', href: '/library', text: 'View all work' }));
+    }
     const evidence = uniqueEvidence(answer.segments);
     if (evidence.length > 0) this.renderEvidence(evidence);
     this.completed = true;
@@ -166,18 +169,20 @@ class Turn {
   private renderActions(actions: DMGuideAction[]): void {
     const allowed = actions.filter((action) => isAllowedGuideActionDestination(action.href));
     if (!allowed.length) return;
-    this.proseEl.append(make('nav', { class: 'dm-next', 'aria-label': 'Suggested next steps' }, [
+    const actionsNav = make('nav', { class: 'dm-next', 'aria-label': 'Suggested next steps' }, [
       make('p', { class: 'dm-next-label', text: 'Next steps' }),
       make('div', { class: 'dm-next-chips' }, allowed.map((action) =>
         make('a', { class: 'dm-chip', href: action.href, text: action.label }),
       )),
-    ]));
+    ]);
+    (this.canvasEl ?? this.proseEl).append(actionsNav);
   }
 
   private renderProject(project: PublicProjectToolRecord): void {
     const [statusKind = 'done', statusLabel = 'Published'] = project.status;
     const wrap = make('div', { class: 'dm-projs' }, [
       make('a', { class: 'dm-proj', href: project.href, hue: '#8b7cf6' }, [
+        make('span', { class: 'dm-proj__source-label', text: 'Source' }),
         make('span', { class: 'dm-proj__rule', 'aria-hidden': 'true' }),
         make('span', { class: 'dm-proj__body' }, [
           make('span', { class: 'dm-proj__main' }, [

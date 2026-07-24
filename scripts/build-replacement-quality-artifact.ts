@@ -1,19 +1,23 @@
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   REQUIRED_FALLBACK_CHECKS,
   REQUIRED_INTERACTION_CHECKS,
-  REQUIRED_VISUAL_DIMENSIONS,
-  VISUAL_REFERENCE_BINDINGS,
+  visualCaptureSetSha256,
   verifyReplacementQualityProof,
   type ReplacementQualityProof,
+  type ReplacementQualityVisualReviewInput,
 } from './replacement-quality-proof';
 
 const GIT_SHA = /^[a-f0-9]{40}$/;
+const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const captureInputRoot = resolve(repositoryRoot, 'proof/replacement-quality-inputs');
+const REVIEW_INPUT_REPOSITORY_PATH = 'proof/replacement-quality-visual-review.json';
 
 const CAPTURE_INPUTS = {
   desktop: 'desktop-home.png',
@@ -24,16 +28,11 @@ const CAPTURE_INPUTS = {
   'dm-right-sidecar': 'visual-dm-right-sidecar.png',
 } as const;
 
-const VISUAL_P3_FINDINGS = {
-  'home-muted': [{ priority: 'P3', dimension: 'geometry', observation: 'minor-drift' }],
-  'work-expanded': [{ priority: 'P3', dimension: 'copy', observation: 'minor-drift' }],
-  'dm-right-sidecar': [{ priority: 'P3', dimension: 'layout', observation: 'minor-drift' }],
-} as const;
-
 export async function buildReplacementQualityArtifact(
   headSha: string,
   baseSha: string,
   outputDirectory: string,
+  reviewInputPath: string,
   createdAt = new Date().toISOString(),
 ): Promise<{ artifactPath: string; artifactSha256: string }> {
   if (!GIT_SHA.test(headSha) || !GIT_SHA.test(baseSha)) {
@@ -43,6 +42,11 @@ export async function buildReplacementQualityArtifact(
   const packageRoot = resolve(outputDirectory);
   const capturesRoot = resolve(packageRoot, 'captures');
   await mkdir(capturesRoot, { recursive: true });
+  const reviewInputSource = await readFile(resolve(reviewInputPath), 'utf8');
+  const reviewInput = JSON.parse(reviewInputSource) as ReplacementQualityVisualReviewInput;
+  const packagedReviewInputPath = resolve(packageRoot, 'replacement-quality-visual-review.json');
+  await writeFile(packagedReviewInputPath, reviewInputSource, 'utf8');
+  const reviewInputSha256 = createHash('sha256').update(reviewInputSource).digest('hex');
 
   const captures = new Map<string, { path: string; sha256: string }>();
   for (const [id, filename] of Object.entries(CAPTURE_INPUTS)) {
@@ -95,14 +99,16 @@ export async function buildReplacementQualityArtifact(
     ],
     interactionChecks: REQUIRED_INTERACTION_CHECKS.map((id) => ({ id, result: 'pass' })),
     fallbackChecks: REQUIRED_FALLBACK_CHECKS.map((id) => ({ id, result: 'pass' })),
-    visualComparisons: Object.entries(VISUAL_REFERENCE_BINDINGS).map(([id, reference]) => ({
-      id: id as keyof typeof VISUAL_REFERENCE_BINDINGS,
-      reference,
-      capture: captures.get(id)!,
-      reviewedDimensions: [...REQUIRED_VISUAL_DIMENSIONS],
-      findings: [...VISUAL_P3_FINDINGS[id as keyof typeof VISUAL_P3_FINDINGS]],
-      result: 'pass',
-    })),
+    visualReview: {
+      input: {
+        path: 'replacement-quality-visual-review.json',
+        sha256: reviewInputSha256,
+      },
+      reviewerTaskId: reviewInput.reviewerTaskId,
+      reviewedSourceHeadSha: reviewInput.reviewedSourceHeadSha,
+      captureSetSha256: reviewInput.captureSetSha256,
+    },
+    visualComparisons: reviewInput.comparisons,
     diagnostics: [{
       id: 'optional-action-quality',
       result: 'diagnostic',
@@ -118,6 +124,7 @@ export async function buildReplacementQualityArtifact(
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewInput.reviewedSourceHeadSha,
   });
   if (errors.length > 0) {
     throw new Error(`generated proof failed validation:\n${errors.join('\n')}`);
@@ -130,17 +137,26 @@ export async function buildReplacementQualityArtifact(
 }
 
 async function main(): Promise<void> {
-  const [headSha, baseSha, outputDirectory] = process.argv.slice(2);
-  if (!headSha || !baseSha || !outputDirectory) {
+  const [headSha, baseSha, outputDirectory, reviewInputPath] = process.argv.slice(2);
+  if (!headSha || !baseSha || !outputDirectory || !reviewInputPath) {
     throw new Error(
-      'Usage: build-replacement-quality-artifact <head-sha> <base-sha> <output-directory>',
+      'Usage: build-replacement-quality-artifact <head-sha> <base-sha> <output-directory> <review-input>',
     );
   }
+  const reviewedSourceHeadSha = await verifyIndependentReviewCommit(headSha, reviewInputPath);
   const result = await buildReplacementQualityArtifact(
     headSha,
     baseSha,
     outputDirectory,
+    reviewInputPath,
   );
+  const reviewInput = JSON.parse(await readFile(resolve(reviewInputPath), 'utf8')) as ReplacementQualityVisualReviewInput;
+  if (
+    reviewInput.reviewedSourceHeadSha !== reviewedSourceHeadSha
+    || reviewInput.captureSetSha256 !== visualCaptureSetSha256(reviewInput.comparisons)
+  ) {
+    throw new Error('visual review input is stale or capture-set mismatched');
+  }
   console.log(JSON.stringify({
     status: 'pass',
     headSha,
@@ -148,6 +164,30 @@ async function main(): Promise<void> {
     artifactPath: result.artifactPath,
     artifactSha256: result.artifactSha256,
   }));
+}
+
+async function verifyIndependentReviewCommit(
+  headSha: string,
+  reviewInputPath: string,
+): Promise<string> {
+  const resolvedReviewInput = resolve(reviewInputPath);
+  if (relative(repositoryRoot, resolvedReviewInput) !== REVIEW_INPUT_REPOSITORY_PATH) {
+    throw new Error(`review input must be ${REVIEW_INPUT_REPOSITORY_PATH}`);
+  }
+  const [{ stdout: currentStdout }, { stdout: parentStdout }, { stdout: changedStdout }] =
+    await Promise.all([
+      execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot }),
+      execFileAsync('git', ['rev-parse', 'HEAD^'], { cwd: repositoryRoot }),
+      execFileAsync('git', ['diff', '--name-only', 'HEAD^', 'HEAD'], { cwd: repositoryRoot }),
+    ]);
+  if (currentStdout.trim() !== headSha) {
+    throw new Error('package head does not match the checked-out Git head');
+  }
+  const changed = changedStdout.trim().split('\n').filter(Boolean);
+  if (changed.length !== 1 || changed[0] !== REVIEW_INPUT_REPOSITORY_PATH) {
+    throw new Error('final review-binding commit must change only the independent visual review input');
+  }
+  return parentStdout.trim();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

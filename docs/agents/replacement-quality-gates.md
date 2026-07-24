@@ -61,7 +61,9 @@ references:
 
 Review typography, layout, palette, geometry, and copy for each gate. Record
 visible differences as P0–P3. Any unresolved P0, P1, or P2 difference fails the
-artifact. P3 observations may remain diagnostic.
+artifact. P3 observations may remain diagnostic. The comparison must be
+performed independently from the package builder and persisted in
+`proof/replacement-quality-visual-review.json`.
 
 ## Sanitized artifact schema
 
@@ -103,6 +105,15 @@ schema. Visual observations are limited to a P3 priority, one reviewed
 dimension, and the `minor-drift` code; any P0–P2 observation must fail the gate
 outside the artifact rather than be serialized as a passing record.
 
+The visual-review input is a closed, sanitized object that names the independent
+reviewer task, the reviewed source commit, the exact reference/capture set
+digest, and a pass disposition with enumerated evidence for all five dimensions
+of every comparison. Its final binding commit may change only that input file.
+The package builder rejects missing, stale, self-generated, mismatched, or
+materially failing review input. The CI package records the input file and its
+SHA-256 so another reviewer can inspect the judgment separately from the
+generated proof.
+
 Validate the completed artifact from the exact candidate head:
 
 ```sh
@@ -126,14 +137,17 @@ request head, CI runs:
 npm run package:quality -- \
   "$GITHUB_SHA" \
   "<pull-request-base-sha>" \
-  "$RUNNER_TEMP/replacement-quality-proof"
+  "$RUNNER_TEMP/replacement-quality-proof" \
+  "proof/replacement-quality-visual-review.json"
 ```
 
-The package builder copies the committed captures, injects the workflow’s exact
-head and base SHAs, computes every capture hash, writes the strict JSON
-artifact, and validates the completed package before upload. CI uploads it as
+The package builder verifies that the checked-out head is a one-file review
+binding commit whose parent is the reviewed source commit, copies the committed
+captures and independent review input, injects the workflow’s exact head and
+base SHAs, computes every hash, writes the strict JSON artifact, and validates
+the completed package before upload. CI uploads it as
 `replacement-quality-proof-<full-head-sha>` for 90 days. The managed issue proof
 must link the exact successful Actions run and artifact download, record the
-artifact name and JSON SHA-256 printed by the builder, and be refreshed after
-every head change. A local-only hash without that inspectable package is not
-sufficient review evidence.
+artifact name, expiration, and JSON SHA-256 printed by the builder, and be
+refreshed after every head change. A local-only hash without that inspectable
+package is not sufficient review evidence.

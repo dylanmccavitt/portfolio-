@@ -9,6 +9,7 @@ import sharp from 'sharp';
 const execFileAsync = promisify(execFile);
 const SHA256 = /^[a-f0-9]{64}$/;
 const GIT_SHA = /^[a-f0-9]{40}$/;
+const TASK_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const SAFE_ARTIFACT_PATH = /^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/;
 const PROOF_KEYS = [
   'schemaVersion',
@@ -21,6 +22,7 @@ const PROOF_KEYS = [
   'viewports',
   'interactionChecks',
   'fallbackChecks',
+  'visualReview',
   'visualComparisons',
   'diagnostics',
 ] as const;
@@ -36,6 +38,21 @@ const VISUAL_COMPARISON_KEYS = [
   'result',
 ] as const;
 const VISUAL_FINDING_KEYS = ['priority', 'dimension', 'observation'] as const;
+const VISUAL_REVIEW_KEYS = [
+  'input',
+  'reviewerTaskId',
+  'reviewedSourceHeadSha',
+  'captureSetSha256',
+] as const;
+const VISUAL_REVIEW_INPUT_KEYS = [
+  'schemaVersion',
+  'issue',
+  'reviewerTaskId',
+  'reviewedSourceHeadSha',
+  'captureSetSha256',
+  'comparisons',
+] as const;
+const REVIEWED_DIMENSION_KEYS = ['dimension', 'disposition', 'evidence'] as const;
 const DIAGNOSTIC_KEYS = ['id', 'result', 'observation'] as const;
 const ALLOWED_BROWSER_ROUTES = [
   '/',
@@ -103,6 +120,14 @@ export const REQUIRED_VISUAL_DIMENSIONS = [
   'copy',
 ] as const;
 
+export const VISUAL_DIMENSION_EVIDENCE = {
+  typography: 'type-scale-style-and-hierarchy-aligned',
+  layout: 'layout-spacing-rhythm-and-proportions-aligned',
+  palette: 'palette-contrast-and-surface-tone-aligned',
+  geometry: 'frame-screen-and-selected-state-geometry-aligned',
+  copy: 'content-order-labels-and-action-hierarchy-aligned',
+} as const;
+
 type CheckResult = 'pass';
 type ViewportId = keyof typeof REQUIRED_VIEWPORTS;
 type VisualId = keyof typeof VISUAL_REFERENCE_BINDINGS;
@@ -134,13 +159,28 @@ interface VisualFinding {
   observation: 'minor-drift';
 }
 
-interface VisualComparison {
+interface ReviewedVisualDimension {
+  dimension: VisualDimension;
+  disposition: 'pass';
+  evidence: (typeof VISUAL_DIMENSION_EVIDENCE)[VisualDimension];
+}
+
+export interface VisualComparison {
   id: VisualId;
   reference: Capture;
   capture: Capture;
-  reviewedDimensions: VisualDimension[];
+  reviewedDimensions: ReviewedVisualDimension[];
   findings: VisualFinding[];
   result: CheckResult;
+}
+
+export interface ReplacementQualityVisualReviewInput {
+  schemaVersion: 1;
+  issue: 308;
+  reviewerTaskId: string;
+  reviewedSourceHeadSha: string;
+  captureSetSha256: string;
+  comparisons: VisualComparison[];
 }
 
 export interface ReplacementQualityProof {
@@ -154,6 +194,12 @@ export interface ReplacementQualityProof {
   viewports: BrowserViewportProof[];
   interactionChecks: NamedCheck[];
   fallbackChecks: NamedCheck[];
+  visualReview: {
+    input: Capture;
+    reviewerTaskId: string;
+    reviewedSourceHeadSha: string;
+    captureSetSha256: string;
+  };
   visualComparisons: VisualComparison[];
   diagnostics: Array<{
     id: 'optional-action-quality';
@@ -167,6 +213,7 @@ export interface VerifyProofOptions {
   repositoryRoot: string;
   expectedHeadSha: string;
   expectedBaseSha: string;
+  expectedReviewedSourceHeadSha: string;
 }
 
 export async function verifyReplacementQualityProof(
@@ -202,6 +249,7 @@ export async function verifyReplacementQualityProof(
   await verifyViewports(proof.viewports, options, errors);
   verifyNamedChecks('interactionChecks', proof.interactionChecks, REQUIRED_INTERACTION_CHECKS, errors);
   verifyNamedChecks('fallbackChecks', proof.fallbackChecks, REQUIRED_FALLBACK_CHECKS, errors);
+  await verifyVisualReview(proof.visualReview, proof.visualComparisons, options, errors);
   await verifyVisualComparisons(proof.visualComparisons, options, errors);
   verifyDiagnostics(proof.diagnostics, errors);
   return errors;
@@ -274,6 +322,84 @@ function verifyNamedChecks(
   }
 }
 
+async function verifyVisualReview(
+  review: ReplacementQualityProof['visualReview'] | undefined,
+  comparisons: ReplacementQualityProof['visualComparisons'] | undefined,
+  options: VerifyProofOptions,
+  errors: string[],
+): Promise<void> {
+  if (!isRecord(review)) {
+    errors.push('visualReview must be an object');
+    return;
+  }
+  verifyExactKeys(review, '$.visualReview', VISUAL_REVIEW_KEYS, errors);
+  verifyCaptureShape(review.input, '$.visualReview.input', errors);
+  if (review.input?.path !== 'replacement-quality-visual-review.json') {
+    errors.push('visualReview.input must use replacement-quality-visual-review.json');
+    return;
+  }
+  const reviewPath = await resolveArtifactFile(options.artifactPath, review.input.path);
+  if (!reviewPath || !SHA256.test(review.input.sha256)) {
+    errors.push('visualReview.input must use a safe relative path and SHA-256');
+    return;
+  }
+
+  let input: ReplacementQualityVisualReviewInput;
+  try {
+    const source = await readFile(reviewPath, 'utf8');
+    const actualSha = createHash('sha256').update(source).digest('hex');
+    if (actualSha !== review.input.sha256) {
+      errors.push('visualReview.input SHA-256 does not match the packaged review input');
+    }
+    const parsed = JSON.parse(source) as unknown;
+    if (!isRecord(parsed)) {
+      errors.push('visual review input must be a JSON object');
+      return;
+    }
+    verifyExactKeys(parsed, '$.visualReviewInput', VISUAL_REVIEW_INPUT_KEYS, errors);
+    scanForSensitiveData(parsed, '$.visualReviewInput', errors);
+    input = parsed as unknown as ReplacementQualityVisualReviewInput;
+  } catch {
+    errors.push('visualReview.input must be readable JSON');
+    return;
+  }
+
+  if (input.schemaVersion !== 1 || input.issue !== 308) {
+    errors.push('visual review input identity is invalid');
+  }
+  if (!TASK_ID.test(input.reviewerTaskId) || input.reviewerTaskId !== review.reviewerTaskId) {
+    errors.push('visual review input reviewer task identity is invalid or mismatched');
+  }
+  if (
+    input.reviewedSourceHeadSha !== options.expectedReviewedSourceHeadSha
+    || review.reviewedSourceHeadSha !== options.expectedReviewedSourceHeadSha
+  ) {
+    errors.push(`visual review input must match reviewed source head ${options.expectedReviewedSourceHeadSha}`);
+  }
+  if (!SHA256.test(input.captureSetSha256) || input.captureSetSha256 !== review.captureSetSha256) {
+    errors.push('visual review capture-set binding is invalid or mismatched');
+  }
+  if (!Array.isArray(comparisons) || JSON.stringify(input.comparisons) !== JSON.stringify(comparisons)) {
+    errors.push('visual comparisons must exactly match the independent review input');
+    return;
+  }
+  const actualCaptureSetSha = visualCaptureSetSha256(comparisons);
+  if (
+    input.captureSetSha256 !== actualCaptureSetSha
+    || review.captureSetSha256 !== actualCaptureSetSha
+  ) {
+    errors.push('visual review capture set is stale or mismatched');
+  }
+}
+
+export function visualCaptureSetSha256(comparisons: VisualComparison[]): string {
+  const bindings = comparisons
+    .map((comparison) =>
+      `${comparison.id}:${comparison.reference.sha256}:${comparison.capture.sha256}`)
+    .sort();
+  return createHash('sha256').update(`${bindings.join('\n')}\n`).digest('hex');
+}
+
 async function verifyVisualComparisons(
   comparisons: ReplacementQualityProof['visualComparisons'] | undefined,
   options: VerifyProofOptions,
@@ -325,12 +451,40 @@ async function verifyVisualComparisons(
       errors,
     );
     if (comparison.result !== 'pass') errors.push(`${id}.result must be pass`);
-    const dimensions = new Set(comparison.reviewedDimensions);
-    for (const dimension of REQUIRED_VISUAL_DIMENSIONS) {
-      if (!dimensions.has(dimension)) errors.push(`${id} did not review ${dimension}`);
+    if (!Array.isArray(comparison.reviewedDimensions)) {
+      errors.push(`${id}.reviewedDimensions must be an array`);
+      continue;
     }
-    if (dimensions.size !== REQUIRED_VISUAL_DIMENSIONS.length) {
-      errors.push(`${id}.reviewedDimensions contains unsupported or duplicate values`);
+    for (const [index, reviewed] of comparison.reviewedDimensions.entries()) {
+      if (!isRecord(reviewed)) {
+        errors.push(`${id}.reviewedDimensions[${index}] must be an object`);
+        continue;
+      }
+      verifyExactKeys(
+        reviewed,
+        `$.visualComparisons.${id}.reviewedDimensions[${index}]`,
+        REVIEWED_DIMENSION_KEYS,
+        errors,
+      );
+    }
+    for (const dimension of REQUIRED_VISUAL_DIMENSIONS) {
+      const matches = comparison.reviewedDimensions.filter((reviewed) =>
+        reviewed?.dimension === dimension);
+      if (matches.length !== 1) {
+        errors.push(`${id} must review ${dimension} exactly once`);
+        continue;
+      }
+      const reviewed = matches[0]!;
+      if (reviewed.disposition !== 'pass') {
+        errors.push(`${id}.${dimension} disposition must pass`);
+      }
+      if (reviewed.evidence !== VISUAL_DIMENSION_EVIDENCE[dimension]) {
+        errors.push(`${id}.${dimension} evidence is invalid`);
+      }
+    }
+    if (comparison.reviewedDimensions.some((reviewed) =>
+      !REQUIRED_VISUAL_DIMENSIONS.includes(reviewed?.dimension as VisualDimension))) {
+      errors.push(`${id}.reviewedDimensions contains an unsupported dimension`);
     }
     if (!Array.isArray(comparison.findings)) {
       errors.push(`${id}.findings must be an array`);
@@ -522,16 +676,19 @@ async function main(): Promise<void> {
   }
   const artifactPath = resolve(artifactArgument);
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const [{ stdout }, source] = await Promise.all([
+  const [{ stdout }, { stdout: parentStdout }, source] = await Promise.all([
     execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot }),
+    execFileAsync('git', ['rev-parse', 'HEAD^'], { cwd: repositoryRoot }),
     readFile(artifactPath, 'utf8'),
   ]);
   const expectedHeadSha = stdout.trim();
+  const expectedReviewedSourceHeadSha = parentStdout.trim();
   const errors = await verifyReplacementQualityProof(JSON.parse(source), {
     artifactPath,
     repositoryRoot,
     expectedHeadSha,
     expectedBaseSha,
+    expectedReviewedSourceHeadSha,
   });
   if (errors.length > 0) {
     for (const error of errors) console.error(`replacement-quality-proof: ${error}`);

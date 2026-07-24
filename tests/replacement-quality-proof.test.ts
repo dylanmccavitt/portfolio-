@@ -10,15 +10,19 @@ import {
   REQUIRED_INTERACTION_CHECKS,
   REQUIRED_VIEWPORTS,
   REQUIRED_VISUAL_DIMENSIONS,
+  VISUAL_DIMENSION_EVIDENCE,
   VISUAL_REFERENCE_BINDINGS,
+  visualCaptureSetSha256,
   verifyReplacementQualityProof,
   type ReplacementQualityProof,
+  type ReplacementQualityVisualReviewInput,
 } from '../scripts/replacement-quality-proof';
 import { buildReplacementQualityArtifact } from '../scripts/build-replacement-quality-artifact';
 
 const repositoryRoot = resolve(new URL('..', import.meta.url).pathname);
 const headSha = 'a'.repeat(40);
 const baseSha = 'c'.repeat(40);
+const reviewedSourceHeadSha = 'b'.repeat(40);
 
 test('sanitized exact-head browser and visual proof passes every required gate', async (t) => {
   const fixture = await createFixture(t);
@@ -27,6 +31,7 @@ test('sanitized exact-head browser and visual proof passes every required gate',
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   assert.deepEqual(errors, []);
 });
@@ -50,6 +55,7 @@ test('material drift, stale heads, missing checks, and sensitive fields fail clo
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   assert.ok(errors.some((error) => error.includes('exact current head')));
   assert.ok(errors.some((error) => error.includes('cancellation exactly once')));
@@ -65,6 +71,7 @@ test('optional action quality remains diagnostic and never becomes a presence ve
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   assert.deepEqual(errors, []);
 });
@@ -90,6 +97,7 @@ test('visual captures must be readable PNGs at the exact gate dimensions', async
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   assert.ok(errors.some((error) => error.includes('home-muted.capture must be a readable PNG')));
   assert.ok(errors.some((error) => error.includes('work-expanded.capture must be 1440x900')));
@@ -123,6 +131,7 @@ test('capture paths reject direct and parent-directory symlinks', async (t) => {
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   assert.ok(errors.some((error) => error.includes('desktop.capture must use a safe relative path')));
   assert.ok(errors.some((error) => error.includes('home-muted.capture must use a safe relative path')));
@@ -135,7 +144,11 @@ test('runtime schema rejects unknown keys at every object level and private text
   Object.assign(proof.viewports[0]!, { extra: 'private viewport note' });
   Object.assign(proof.viewports[0]!.capture, { extra: 'private capture note' });
   Object.assign(proof.interactionChecks[0]!, { extra: 'private interaction note' });
+  Object.assign(proof.visualReview, { extra: 'private review binding note' });
   Object.assign(proof.visualComparisons[0]!, { extra: 'private comparison note' });
+  Object.assign(proof.visualComparisons[0]!.reviewedDimensions[0]!, {
+    extra: 'private dimension note',
+  });
   proof.visualComparisons[0]!.findings.push({
     priority: 'P3',
     dimension: 'layout',
@@ -149,13 +162,16 @@ test('runtime schema rejects unknown keys at every object level and private text
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   for (const path of [
     '$.unexpectedVisitorText',
     '$.viewports[0].extra',
     '$.desktop.capture.extra',
     '$.interactionChecks[0].extra',
+    '$.visualReview.extra',
     '$.visualComparisons[0].extra',
+    '$.visualComparisons.home-muted.reviewedDimensions[0].extra',
     '$.visualComparisons.home-muted.findings[0].extra',
     '$.diagnostics[0].extra',
   ]) {
@@ -172,9 +188,64 @@ test('base identity and canonical timestamps are exact', async (t) => {
     repositoryRoot,
     expectedHeadSha: headSha,
     expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
   });
   assert.ok(errors.some((error) => error.includes('exact reviewed base')));
   assert.ok(errors.some((error) => error.includes('canonical ISO timestamp')));
+});
+
+test('independent visual review input is required, exact-head bound, and capture-set bound', async (t) => {
+  const fixture = await createFixture(t);
+  fixture.proof.visualReview.input.path = 'missing-review.json';
+  let errors = await verifyReplacementQualityProof(fixture.proof, {
+    artifactPath: fixture.artifactPath,
+    repositoryRoot,
+    expectedHeadSha: headSha,
+    expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
+  });
+  assert.ok(errors.some((error) => error.includes('replacement-quality-visual-review.json')));
+
+  const staleFixture = await createFixture(t);
+  const staleInput = JSON.parse(await readFile(staleFixture.reviewInputPath, 'utf8')) as ReplacementQualityVisualReviewInput;
+  staleInput.reviewedSourceHeadSha = 'd'.repeat(40);
+  staleFixture.proof.visualReview.reviewedSourceHeadSha = staleInput.reviewedSourceHeadSha;
+  const staleSource = `${JSON.stringify(staleInput, null, 2)}\n`;
+  await writeFile(staleFixture.reviewInputPath, staleSource);
+  staleFixture.proof.visualReview.input.sha256 = sha256(Buffer.from(staleSource));
+  errors = await verifyReplacementQualityProof(staleFixture.proof, {
+    artifactPath: staleFixture.artifactPath,
+    repositoryRoot,
+    expectedHeadSha: headSha,
+    expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
+  });
+  assert.ok(errors.some((error) => error.includes('reviewed source head')));
+
+  const mismatchedFixture = await createFixture(t);
+  const mismatchedInput = JSON.parse(await readFile(mismatchedFixture.reviewInputPath, 'utf8')) as ReplacementQualityVisualReviewInput;
+  mismatchedInput.captureSetSha256 = 'e'.repeat(64);
+  mismatchedFixture.proof.visualReview.captureSetSha256 = mismatchedInput.captureSetSha256;
+  const mismatchedSource = `${JSON.stringify(mismatchedInput, null, 2)}\n`;
+  await writeFile(mismatchedFixture.reviewInputPath, mismatchedSource);
+  mismatchedFixture.proof.visualReview.input.sha256 = sha256(Buffer.from(mismatchedSource));
+  errors = await verifyReplacementQualityProof(mismatchedFixture.proof, {
+    artifactPath: mismatchedFixture.artifactPath,
+    repositoryRoot,
+    expectedHeadSha: headSha,
+    expectedBaseSha: baseSha,
+    expectedReviewedSourceHeadSha: reviewedSourceHeadSha,
+  });
+  assert.ok(errors.some((error) => error.includes('capture set is stale or mismatched')));
+});
+
+test('package builder consumes reviewer-authored dispositions instead of generating constants', async () => {
+  const source = await readFile(
+    new URL('../scripts/build-replacement-quality-artifact.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /readFile\(resolve\(reviewInputPath\)/);
+  assert.doesNotMatch(source, /VISUAL_P3_FINDINGS|minor-drift/);
 });
 
 test('committed sanitized captures build an independently inspectable exact-head package', async (t) => {
@@ -183,10 +254,13 @@ test('committed sanitized captures build an independently inspectable exact-head
     const { rm } = await import('node:fs/promises');
     await rm(directory, { recursive: true, force: true });
   });
+  const reviewInputPath = join(directory, 'source-review.json');
+  await writeFile(reviewInputPath, `${JSON.stringify(await committedVisualReviewInput(), null, 2)}\n`);
   const result = await buildReplacementQualityArtifact(
     headSha,
     baseSha,
     directory,
+    reviewInputPath,
     '2026-07-23T18:00:00.000Z',
   );
   const artifactSource = await readFile(result.artifactPath, 'utf8');
@@ -213,6 +287,7 @@ test('committed sanitized captures build an independently inspectable exact-head
 async function createFixture(t: test.TestContext): Promise<{
   proof: ReplacementQualityProof;
   artifactPath: string;
+  reviewInputPath: string;
   directory: string;
   captures: Map<string, { path: string; sha256: string }>;
 }> {
@@ -237,6 +312,26 @@ async function createFixture(t: test.TestContext): Promise<{
   }
   const artifactPath = join(directory, 'proof.json');
   await writeFile(artifactPath, '{}');
+  const visualComparisons = Object.entries(VISUAL_REFERENCE_BINDINGS).map(([id, reference]) => ({
+    id: id as keyof typeof VISUAL_REFERENCE_BINDINGS,
+    reference,
+    capture: captures.get('desktop')!,
+    reviewedDimensions: reviewedVisualDimensions(),
+    findings: [],
+    result: 'pass' as const,
+  }));
+  const captureSetSha256 = visualCaptureSetSha256(visualComparisons);
+  const reviewInput: ReplacementQualityVisualReviewInput = {
+    schemaVersion: 1,
+    issue: 308,
+    reviewerTaskId: '019f9052-b07e-7083-8b90-7d8df9fadce0',
+    reviewedSourceHeadSha,
+    captureSetSha256,
+    comparisons: visualComparisons,
+  };
+  const reviewInputSource = `${JSON.stringify(reviewInput, null, 2)}\n`;
+  const reviewInputPath = join(directory, 'replacement-quality-visual-review.json');
+  await writeFile(reviewInputPath, reviewInputSource);
 
   const proof: ReplacementQualityProof = {
     schemaVersion: 1,
@@ -256,25 +351,68 @@ async function createFixture(t: test.TestContext): Promise<{
     })),
     interactionChecks: REQUIRED_INTERACTION_CHECKS.map((id) => ({ id, result: 'pass' })),
     fallbackChecks: REQUIRED_FALLBACK_CHECKS.map((id) => ({ id, result: 'pass' })),
-    visualComparisons: Object.entries(VISUAL_REFERENCE_BINDINGS).map(([id, reference]) => ({
-      id: id as keyof typeof VISUAL_REFERENCE_BINDINGS,
-      reference,
-      capture: captures.get('desktop')!,
-      reviewedDimensions: [...REQUIRED_VISUAL_DIMENSIONS],
-      findings: [],
-      result: 'pass',
-    })),
+    visualReview: {
+      input: {
+        path: 'replacement-quality-visual-review.json',
+        sha256: sha256(Buffer.from(reviewInputSource)),
+      },
+      reviewerTaskId: reviewInput.reviewerTaskId,
+      reviewedSourceHeadSha,
+      captureSetSha256,
+    },
+    visualComparisons,
     diagnostics: [{
       id: 'optional-action-quality',
       result: 'diagnostic',
       observation: 'not-exercised',
     }],
   };
-  return { proof, artifactPath, directory, captures };
+  return { proof, artifactPath, reviewInputPath, directory, captures };
 }
 
 function sha256(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+function reviewedVisualDimensions() {
+  return REQUIRED_VISUAL_DIMENSIONS.map((dimension) => ({
+    dimension,
+    disposition: 'pass' as const,
+    evidence: VISUAL_DIMENSION_EVIDENCE[dimension],
+  }));
+}
+
+async function committedVisualReviewInput(): Promise<ReplacementQualityVisualReviewInput> {
+  const captureFilenames = {
+    'home-muted': 'visual-home-muted.png',
+    'work-expanded': 'visual-work-expanded.png',
+    'dm-right-sidecar': 'visual-dm-right-sidecar.png',
+  } as const;
+  const comparisons = await Promise.all(
+    Object.entries(VISUAL_REFERENCE_BINDINGS).map(async ([id, reference]) => {
+      const filename = captureFilenames[id as keyof typeof captureFilenames];
+      const bytes = await readFile(join(repositoryRoot, 'proof/replacement-quality-inputs', filename));
+      return {
+        id: id as keyof typeof VISUAL_REFERENCE_BINDINGS,
+        reference,
+        capture: {
+          path: `captures/${filename}`,
+          sha256: sha256(bytes),
+        },
+        reviewedDimensions: reviewedVisualDimensions(),
+        findings: [],
+        result: 'pass' as const,
+      };
+    }),
+  );
+  return {
+    schemaVersion: 1,
+    issue: 308,
+    reviewerTaskId: '019f9052-b07e-7083-8b90-7d8df9fadce0',
+    reviewedSourceHeadSha,
+    captureSetSha256: visualCaptureSetSha256(comparisons),
+    comparisons,
+  };
 }
 
 async function readCapture(directory: string, path: string): Promise<Buffer> {
