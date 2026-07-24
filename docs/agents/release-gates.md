@@ -129,9 +129,11 @@ PR is reviewed and the stack is merged in order.
    published record through the approved admin flow before trying a preview
    deployment.
 4. Verify the preview CSP response on `/`, `/library`, a published
-   `/projects/<slug>`, `/admin`, and a DM request. Confirm the Split-canvas
-   landing, library, detail, admin review, and DM flows remain usable under the
-   header. Published image, video, and poster paths must be self-hosted under
+   `/projects/<slug>`, `/journey`, `/resume`, `/contact`, and a DM request.
+   Confirm the device console home, library, project detail, journey, résumé,
+   contact, and contextual-guide flows remain usable under the header, and that
+   every route stays complete and navigable with client JavaScript and WebGL
+   unavailable. Published image, video, and poster paths must be self-hosted under
    the approved `/screenshots/` or `/demos/` roots before this gate; external
    media is rejected to stay aligned with the exact CSP. Include
    keyboard/accessibility and narrow mobile viewport checks.
@@ -141,8 +143,7 @@ PR is reviewed and the stack is merged in order.
    [`replacement-quality-gates.md`](./replacement-quality-gates.md) procedure;
    paid model evaluation is not a release command.
 6. Record the Vercel deployment SHA, public library/detail/DM smoke evidence,
-   and the hidden-draft exclusion proof required by
-   [`catalog-cutover.md`](./catalog-cutover.md).
+   and proof that hidden and draft records are excluded from every public read.
 7. With a separate approval, deploy preview with
    `PUBLIC_PROJECT_SOURCE=catalog_emergency`, prove the explicit source-mode
    signal and public fallback behavior, then restore `database` and redeploy.

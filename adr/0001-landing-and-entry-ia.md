@@ -1,6 +1,6 @@
 # ADR 0001 — Landing Page Concept & Entry IA
 
-**Status:** Superseded by the agent-first Split-canvas landing — retained as 2026-06-14 architecture history
+**Status:** Superseded by the agent-first device console home and its contextual guide — retained as 2026-06-14 architecture history
 **Implements:** Issue #59
 **Unblocks:** Issue #60 (nav/code wiring), Issue #62 (hiring tour)
 

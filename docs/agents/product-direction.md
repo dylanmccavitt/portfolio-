@@ -11,7 +11,7 @@ leaves.
 - The portfolio remains recruiter-friendly, jargon-light, and static-first
   outside the deliberate guide client island.
 - The contextual-guide runtime is the single public guide contract across
-  home, library, project, journey, hiring, and fit-check contexts. The server
+  the home, library, project, and journey contexts. The server
   validates route context and derives every action from finite public routes or
   same-run evidence; route history never crosses context boundaries.
 - The muted Three.js visual system is owned by GitHub issue #307. Its binding
@@ -37,9 +37,9 @@ development, and the explicit `catalog_emergency` rollback source.
 ## Runtime invariants
 
 Retain typed public tools, same-run evidence tracking, rate limiting, metrics,
-request cancellation and deadlines, fit-check sanitization, and sanitized
-errors. Model and provider selection stays configurable outside the repository;
-never commit secrets or provider configuration.
+request cancellation and deadlines, and sanitized errors. Model and provider
+selection stays configurable outside the repository; never commit secrets or
+provider configuration.
 
 ## Delivery and operations
 
@@ -52,8 +52,9 @@ never commit secrets or provider configuration.
   owning GitHub issue.
 - Merge, deploy, promotion, migration, publication, issue closure, provider
   changes, paid evaluations, and destructive cleanup require explicit gates.
-- Keep the durable outbox, review-gated GitHub refresh, and parity-first catalog
-  cutover procedures in their dedicated operator documents.
+- Keep the durable outbox and review-gated GitHub refresh procedures in their
+  dedicated operator documents under `docs/agents/`. The parity-first catalog
+  cutover runbook lives on GitHub **#190**.
 
 ## Deferred work
 

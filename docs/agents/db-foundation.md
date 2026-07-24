@@ -1,7 +1,7 @@
 # DB foundation
 
-AGE-728 adds the Neon-on-Vercel foundation for DM project records. AGE-733 adds
-the shared public project read layer. Source-selection hardening now makes
+This document describes the Neon-on-Vercel foundation for DM project records
+and the shared public project read layer. Source-selection hardening now makes
 database mode published-DB only and fail-closed. GitHub **#190** adds the
 review-gated cutover machinery, but its Loom proof, configuration, and all
 preview/production mutations remain maintainer-operated gates.
@@ -41,7 +41,7 @@ preview/production mutations remain maintainer-operated gates.
 - Live rendering: Astro ignores non-literal `export const prerender` values, so
   the `live-public-project-pages` hook in `astro.config.mjs` flips `/library`,
   `/library/[filter]`, and `/projects/[id]` to on-demand rendering in database
-  mode. `/hiring` and journey references remain static deployment gates: a
+  mode. Journey references remain a static deployment gate: a
   missing featured published row fails the refreshed build. Sitemap and OG
   images remain build-time until #189/#190 finish the reviewed site-refresh
   contract.
@@ -75,11 +75,10 @@ preview/production mutations remain maintainer-operated gates.
   `npm run db:catalog:cutover`, then—only after separate maintainer approval—run
   `npm run db:catalog:cutover -- --apply`. The function promotes only
   `legacy_catalog` shadows, preserves published DB-only rows such as Loom, and
-  enqueues one durable `site_refresh` job when it promotes any rows. See
-  `docs/agents/catalog-cutover.md` for the preview proof record and production
-  runbook.
+  enqueues one durable `site_refresh` job when it promotes any rows. The
+  preview proof record and production runbook live on GitHub **#190**.
 - `npm run db:seed` applies migrations and non-public seed rows under `db/seeds/`.
-- `ALLOW_DB_RESET=1 npm run db:reset` drops the AGE-728 foundation tables, reapplies migrations, then reapplies seeds. The safety flag is required because this command uses the active Neon/Vercel connection string.
+- `ALLOW_DB_RESET=1 npm run db:reset` drops the foundation tables, reapplies migrations, then reapplies seeds. The safety flag is required because this command uses the active Neon/Vercel connection string.
 - `npm run test:db` runs the migration/seed/reset proof against an in-memory PGlite database, so CI/local tests do not require Vercel or Neon credentials.
 
 ## Branch hygiene

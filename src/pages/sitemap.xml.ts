@@ -5,7 +5,7 @@
  * selected public project source (`loadPublicProjectDetails()`).
  *
  * Route families included:
- *   /                       — concierge landing (#60)
+ *   /                       — device console home with the contextual guide
  *   /library                — all-work library
  *   /library/<slug>         — filtered project indexes (from PLAYLIST_SLUGS)
  *   /projects/<id-or-slug>  — project detail pages from the active source
@@ -17,8 +17,9 @@
  * Total URL count is source-dependent: deployed database mode uses published
  * rows only; offline development and explicit emergency mode use the catalog.
  *
- * `/projects` (the index) is intentionally absent — it now 301s to `/library`.
- * Retired legacy URLs are handled by `vercel.json` 301s and never appear here.
+ * Only live routes appear here. Redirected and retired URLs — including
+ * `/projects` (301s to `/library`) and every other `vercel.json` redirect
+ * source — are deliberately absent.
  */
 import type { APIRoute } from 'astro';
 import { PLAYLIST_SLUGS } from '@/data/catalog';
