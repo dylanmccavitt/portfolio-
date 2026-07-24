@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "issue": 308,
+  "reviewerTaskId": "019f9466-6209-7be2-a48c-f6372ace4abc",
+  "reviewedSourceHeadSha": "401771e7daa0571c4413b77ea5354bd0843e6c4a",
+  "captureSetSha256": "6758924a8abee3e4e84e4189f6aa264f3d60c10e86e02378381fbed3e771b872",
+  "comparisons": [
+    {
+      "id": "home-muted",
+      "reference": {
+        "path": "docs/design/contextual-guide-reset/01-home-muted-threejs.png",
+        "sha256": "92fa8bff310564a6264994382f4621428ac5add9d6a1a7afe171111f0e4103b7"
+      },
+      "capture": {
+        "path": "captures/visual-home-muted.png",
+        "sha256": "015262350bafcdcc4715a3091aafcef90fd9f9030a38c688baa42d6990a92be1"
+      },
+      "reviewedDimensions": [
+        {
+          "dimension": "typography",
+          "disposition": "pass",
+          "evidence": "type-scale-style-and-hierarchy-aligned"
+        },
+        {
+          "dimension": "layout",
+          "disposition": "pass",
+          "evidence": "layout-spacing-rhythm-and-proportions-aligned"
+        },
+        {
+          "dimension": "palette",
+          "disposition": "pass",
+          "evidence": "palette-contrast-and-surface-tone-aligned"
+        },
+        {
+          "dimension": "geometry",
+          "disposition": "pass",
+          "evidence": "frame-screen-and-selected-state-geometry-aligned"
+        },
+        {
+          "dimension": "copy",
+          "disposition": "pass",
+          "evidence": "content-order-labels-and-action-hierarchy-aligned"
+        }
+      ],
+      "findings": [],
+      "result": "pass"
+    },
+    {
+      "id": "work-expanded",
+      "reference": {
+        "path": "docs/design/contextual-guide-reset/02-work-layout.png",
+        "sha256": "9ab440d983436c3ab09d938359e18ff5a515629975b678474a60a2b637855d69"
+      },
+      "capture": {
+        "path": "captures/visual-work-expanded.png",
+        "sha256": "8fd82a5d661f64e60604fcb3d4685b3fe3fa13fd27645595ba219ff034dcf9c1"
+      },
+      "reviewedDimensions": [
+        {
+          "dimension": "typography",
+          "disposition": "pass",
+          "evidence": "type-scale-style-and-hierarchy-aligned"
+        },
+        {
+          "dimension": "layout",
+          "disposition": "pass",
+          "evidence": "layout-spacing-rhythm-and-proportions-aligned"
+        },
+        {
+          "dimension": "palette",
+          "disposition": "pass",
+          "evidence": "palette-contrast-and-surface-tone-aligned"
+        },
+        {
+          "dimension": "geometry",
+          "disposition": "pass",
+          "evidence": "frame-screen-and-selected-state-geometry-aligned"
+        },
+        {
+          "dimension": "copy",
+          "disposition": "pass",
+          "evidence": "content-order-labels-and-action-hierarchy-aligned"
+        }
+      ],
+      "findings": [],
+      "result": "pass"
+    },
+    {
+      "id": "dm-right-sidecar",
+      "reference": {
+        "path": "docs/design/contextual-guide-reset/07-dm-right-sidecar-muted.png",
+        "sha256": "17eeeebb3a5167434c0d33f40e103e0a284afa09c2ca7cb46965025df7963263"
+      },
+      "capture": {
+        "path": "captures/visual-dm-right-sidecar.png",
+        "sha256": "12d1b50517e98b8f643fb8768ea83b738b7bbdc3d7e28326a55e6be5b95d7465"
+      },
+      "reviewedDimensions": [
+        {
+          "dimension": "typography",
+          "disposition": "pass",
+          "evidence": "type-scale-style-and-hierarchy-aligned"
+        },
+        {
+          "dimension": "layout",
+          "disposition": "pass",
+          "evidence": "layout-spacing-rhythm-and-proportions-aligned"
+        },
+        {
+          "dimension": "palette",
+          "disposition": "pass",
+          "evidence": "palette-contrast-and-surface-tone-aligned"
+        },
+        {
+          "dimension": "geometry",
+          "disposition": "pass",
+          "evidence": "frame-screen-and-selected-state-geometry-aligned"
+        },
+        {
+          "dimension": "copy",
+          "disposition": "pass",
+          "evidence": "content-order-labels-and-action-hierarchy-aligned"
+        }
+      ],
+      "findings": [],
+      "result": "pass"
+    }
+  ]
+}
