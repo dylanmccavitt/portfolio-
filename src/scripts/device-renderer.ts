@@ -50,6 +50,9 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   const homeDevice = surface === 'home'
     ? document.querySelector<HTMLElement>('.home-device')
     : null;
+  const routeScreen = surface === 'route'
+    ? document.querySelector<HTMLElement>('.device-route-screen')
+    : null;
   type OverlayRect = {
     left: number;
     top: number;
@@ -78,6 +81,19 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     openZ: 1.48,
     backZ: 2.72,
   } as const;
+  const routeAspect = Math.min(window.innerWidth / Math.max(window.innerHeight, 1), 1.75);
+  const routeLayout = {
+    frameWidth: Math.max(10.6, 9.68 * routeAspect),
+    frameDepth: 9.3,
+    screenY: 0.665,
+  } as const;
+  const routeSurface = {
+    x: 0,
+    z: 0,
+    width: routeLayout.frameWidth - 0.78,
+    depth: routeLayout.frameDepth - 0.78,
+    y: routeLayout.screenY,
+  } satisfies DeviceSurface;
   const homeSurfaces = {
     hero: { x: 0, z: -2.18, width: 6.82, depth: 2.65, y: 0.715 },
     menu: { x: 0, z: 2.1, width: 4.36, depth: 2.72, y: 0.745 },
@@ -282,6 +298,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     if (surface === 'home') syncHomeOverlay(width, height);
+    else syncRouteOverlay(width, height);
     statusPass.resize(dpr);
   };
   const resizeObserver = new ResizeObserver(resize);
@@ -309,6 +326,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     guideObserver?.disconnect();
     document.removeEventListener('visibilitychange', onVisibility);
     clearHomeOverlay();
+    clearRouteOverlay();
     statusPass.dispose();
     disposeObject(scene);
     renderer.dispose();
@@ -476,14 +494,42 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     }
   }
 
+  function syncRouteOverlay(stageWidth: number, stageHeight: number): void {
+    if (!routeScreen) return;
+    const initialRect = projectSurface(routeSurface, stageWidth, stageHeight);
+    const fitWidth = stageWidth * 0.92;
+    const fitHeight = stageHeight * 0.92;
+    camera.zoom = Math.min(
+      fitWidth / Math.max(initialRect.width, 1),
+      fitHeight / Math.max(initialRect.height, 1),
+    );
+    camera.updateProjectionMatrix();
+    const rect = projectSurface(routeSurface, stageWidth, stageHeight);
+    routeScreen.dataset.deviceRouteOverlayBound = '';
+    routeScreen.style.setProperty('--device-route-left', `${rect.left}px`);
+    routeScreen.style.setProperty('--device-route-top', `${rect.top}px`);
+    routeScreen.style.setProperty('--device-route-width', `${rect.width}px`);
+    routeScreen.style.setProperty('--device-route-height', `${rect.height}px`);
+  }
+
+  function clearRouteOverlay(): void {
+    if (!routeScreen) return;
+    delete routeScreen.dataset.deviceRouteOverlayBound;
+    for (const property of [
+      '--device-route-left',
+      '--device-route-top',
+      '--device-route-width',
+      '--device-route-height',
+    ]) {
+      routeScreen.style.removeProperty(property);
+    }
+  }
+
   function buildRoute() {
-    const aspect = Math.min(window.innerWidth / Math.max(window.innerHeight, 1), 1.75);
-    const frameWidth = Math.max(10.6, 9.68 * aspect);
-    const frameDepth = 9.3;
-    const frame = roundedHousing(frameWidth, frameDepth, 0.52);
+    const frame = roundedHousing(routeLayout.frameWidth, routeLayout.frameDepth, 0.52);
     frame.position.set(0, 0, 0);
     world.add(frame);
-    const routeGlass = screen(frameWidth - 0.72, frameDepth - 0.72);
+    const routeGlass = screen(routeLayout.frameWidth - 0.72, routeLayout.frameDepth - 0.72);
     routeGlass.position.set(0, 0.43, 0);
     world.add(routeGlass);
     const statusPlane = new THREE.Mesh(
@@ -497,7 +543,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
       }),
     );
     statusPlane.rotation.x = -Math.PI / 2;
-    statusPlane.position.set(frameWidth / 2 - 0.74, 0.49, -3.42);
+    statusPlane.position.set(routeLayout.frameWidth / 2 - 0.74, 0.49, -3.42);
     world.add(statusPlane);
   }
 

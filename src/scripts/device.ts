@@ -1,4 +1,4 @@
-import { collectionOwnsArrowKey } from './device-keyboard';
+import { collectionOwnsArrowKey, nextCollectionIndex } from './device-keyboard';
 
 const desktopRenderer = window.matchMedia('(min-width: 769px)');
 let stopRenderer: (() => void) | undefined;
@@ -56,6 +56,45 @@ function isNativeInteractiveTarget(target: HTMLElement | null): boolean {
   return Boolean(target?.closest('a[href], button, input, textarea, select, summary'));
 }
 
+function selectedCollectionIndex(items: HTMLElement[]): number {
+  const selectedIndex = items.findIndex((item) =>
+    item.classList.contains('is-key-selected')
+    || item.classList.contains('selected')
+    || item.closest('li')?.classList.contains('current'));
+  return Math.max(0, selectedIndex);
+}
+
+function moveActiveSelection(delta: -1 | 1): void {
+  const items = activeCollection();
+  if (items.length === 0) return;
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const activeIndex = items.findIndex((item) => item === active);
+  const currentIndex = activeIndex >= 0 ? activeIndex : selectedCollectionIndex(items);
+  const nextIndex = nextCollectionIndex(items.length, currentIndex, delta);
+  items.forEach((item, index) => {
+    item.classList.remove('selected');
+    item.classList.toggle('is-key-selected', index === nextIndex);
+  });
+  items[nextIndex]?.focus({ preventScroll: true });
+}
+
+function activateCurrentSelection(): void {
+  const items = activeCollection();
+  if (items.length === 0) return;
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const activeIndex = items.findIndex((item) => item === active);
+  items[activeIndex >= 0 ? activeIndex : selectedCollectionIndex(items)]?.click();
+}
+
+document.querySelectorAll<HTMLElement>('[data-device-direction]').forEach((control) => {
+  const direction = control.dataset.deviceDirection;
+  const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+  control.addEventListener('click', () => moveActiveSelection(delta));
+});
+
+document.querySelector<HTMLElement>('[data-device-open]')
+  ?.addEventListener('click', activateCurrentSelection);
+
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) return;
   const dialog = document.querySelector<HTMLElement>('[data-dm-dialog]');
@@ -84,25 +123,29 @@ document.addEventListener('keydown', (event) => {
   if (items.length === 0) return;
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const activeIndex = items.findIndex((item) => item === active);
-  const selectedIndex = Math.max(0, items.findIndex((item) =>
-    item.classList.contains('selected') || item.classList.contains('is-key-selected')));
-  const currentIndex = activeIndex >= 0 ? activeIndex : selectedIndex;
   const delta = event.key === 'ArrowDown' || event.key === 'ArrowRight'
-    ? 1
+    ? 1 as const
     : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
-      ? -1
+      ? -1 as const
       : 0;
+  const hardwareControlFocused = Boolean(
+    active?.closest('[data-device-direction], [data-device-open]'),
+  );
 
-  if (delta !== 0 && collectionOwnsArrowKey(activeIndex, isNativeInteractiveTarget(active))) {
+  if (
+    delta !== 0
+    && (
+      hardwareControlFocused
+      || collectionOwnsArrowKey(activeIndex, isNativeInteractiveTarget(active))
+    )
+  ) {
     event.preventDefault();
-    const nextIndex = (currentIndex + delta + items.length) % items.length;
-    items.forEach((item, index) => item.classList.toggle('is-key-selected', index === nextIndex));
-    items[nextIndex]?.focus();
+    moveActiveSelection(delta);
     return;
   }
 
   if (event.key === 'Enter' && activeIndex >= 0) {
     event.preventDefault();
-    items[activeIndex]?.click();
+    activateCurrentSelection();
   }
 });

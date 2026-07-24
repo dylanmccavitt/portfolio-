@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { collectionOwnsArrowKey } from '../src/scripts/device-keyboard.ts';
+import { collectionOwnsArrowKey, nextCollectionIndex } from '../src/scripts/device-keyboard.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
@@ -16,7 +16,7 @@ test('home uses semantic routes over one progressive Three.js renderer', async (
   ]);
 
   for (const route of ['/library', '/journey', '/resume', '/contact']) {
-    assert.match(home, new RegExp(`href="${route}"`));
+    assert.match(home, new RegExp(`['"]${route}['"]`));
   }
   assert.match(device, /new THREE\.WebGLRenderer/);
   assert.equal((device.match(/new THREE\.WebGLRenderer/g) ?? []).length, 1);
@@ -46,15 +46,23 @@ test('renderer pauses and releases GPU resources', async () => {
 });
 
 test('keyboard instructions are backed by real route controls', async () => {
-  const bootstrap = await read('src/scripts/device.ts');
+  const [bootstrap, home] = await Promise.all([
+    read('src/scripts/device.ts'),
+    read('src/pages/index.astro'),
+  ]);
   for (const key of ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Escape', 'Enter']) {
     assert.match(bootstrap, new RegExp(key));
   }
   assert.match(bootstrap, /isEditableTarget/);
   assert.match(bootstrap, /data-dm-dialog/);
   assert.match(bootstrap, /window\.location\.assign/);
-  assert.match(bootstrap, /event\.key === 'Enter' && activeIndex >= 0/);
-  assert.match(bootstrap, /items\[activeIndex\]\?\.click\(\)/);
+  assert.match(bootstrap, /moveActiveSelection\(delta\)/);
+  assert.match(bootstrap, /activateCurrentSelection/);
+  assert.match(bootstrap, /\[data-device-direction\]/);
+  assert.match(bootstrap, /\[data-device-open\]/);
+  assert.doesNotMatch(home, /class="hardware-link hardware-link--(?:up|right|down|left)" href=/);
+  assert.match(home, /data-device-direction="up"/);
+  assert.match(home, /data-device-open/);
 });
 
 test('collection arrows leave unrelated native controls in charge', () => {
@@ -64,6 +72,13 @@ test('collection arrows leave unrelated native controls in charge', () => {
 test('collection arrows remain available inside the collection or without native focus', () => {
   assert.equal(collectionOwnsArrowKey(0, true), true);
   assert.equal(collectionOwnsArrowKey(-1, false), true);
+});
+
+test('directional selection wraps through the active collection', () => {
+  assert.equal(nextCollectionIndex(5, 0, 1), 1);
+  assert.equal(nextCollectionIndex(5, 4, 1), 0);
+  assert.equal(nextCollectionIndex(5, 0, -1), 4);
+  assert.equal(nextCollectionIndex(0, 0, 1), -1);
 });
 
 test('dither status is visible and bound to guide state', async () => {
@@ -136,7 +151,8 @@ test('binding Work and answered-guide states retain reference hierarchy and publ
     /height: calc\(100dvh - var\(--device-screen-inset-y\) - var\(--device-screen-inset-y\)\)/,
   );
   assert.match(deviceCss, /clip-path: inset\(0 round 6px\)/);
-  assert.match(deviceCss, /inset 0 0 0 8px rgba\(3, 9, 17, 0\.48\)/);
+  assert.match(deviceCss, /\.device-route-screen\[data-device-route-overlay-bound\][\s\S]*?clip-path: inset\(1px round 5px\)[\s\S]*?border: 0/);
+  assert.match(deviceCss, /inset 0 0 38px rgba\(4, 11, 22, 0\.72\)/);
   assert.match(
     deviceCss,
     /\.home-screen--hero \{[\s\S]*?left: 7\.2%[\s\S]*?width: 85\.6%[\s\S]*?height: 32\.55%/,
@@ -156,6 +172,10 @@ test('binding Work and answered-guide states retain reference hierarchy and publ
   assert.match(device, /syncHomeOverlay\(width, height\)/);
   assert.match(device, /fitHeight = stageHeight \* 0\.96/);
   assert.match(device, /--device-overlay-left/);
+  assert.match(device, /syncRouteOverlay\(width, height\)/);
+  assert.match(device, /const fitWidth = stageWidth \* 0\.92/);
+  assert.match(device, /const fitHeight = stageHeight \* 0\.92/);
+  assert.match(device, /--device-route-left/);
   assert.match(device, /const dpadLayout = \{[\s\S]*?x: -3\.15,[\s\S]*?span: 1\.16/);
   assert.match(
     device,
@@ -169,8 +189,8 @@ test('binding Work and answered-guide states retain reference hierarchy and publ
   assert.doesNotMatch(device, /dpad\.position\.set\(-2\.78/);
   assert.doesNotMatch(device, /(?:open|back)\.position\.set\(2\.78/);
   assert.doesNotMatch(device, /new THREE\.ConeGeometry\(0\.11/);
-  assert.match(home, /aria-label="Directional pad up: Work"><\/a>/);
-  assert.doesNotMatch(home, /Directional pad (?:up|right|down|left): [^"]+">[↑→↓←]/);
+  assert.match(home, /aria-label="Move menu selection up"><\/button>/);
+  assert.doesNotMatch(home, /data-device-direction="[^"]+"[^>]*href=/);
   assert.match(deviceCss, /body:has\(\.context-guide-backdrop:not\(\[hidden\]\)\) \.work-console/);
   assert.match(guide, /DM \/ Work context/);
   assert.match(guide, /Public sources only · resets on route change/);

@@ -238,7 +238,7 @@ html[data-webgl='mobile-static'] .device-canvas {
   border: 1px solid transparent;
 }
 
-.home-menu a:first-child,
+.home-menu:not(:has(.is-key-selected)) a:first-child,
 .home-menu a:hover,
 .home-menu a.is-key-selected {
   color: #f0f2f6;
@@ -270,7 +270,7 @@ html[data-webgl='mobile-static'] .device-canvas {
   opacity: 0;
 }
 
-.home-menu a:first-child::before,
+.home-menu:not(:has(.is-key-selected)) a:first-child::before,
 .home-menu a:hover::before,
 .home-menu a.is-key-selected::before {
   opacity: 1;
@@ -295,6 +295,7 @@ html[data-webgl='mobile-static'] .device-canvas {
   z-index: 4;
   display: grid;
   place-items: center;
+  padding: 0;
   color: #bac4d5;
   font-size: 0.65rem;
   letter-spacing: 0.05em;
@@ -302,6 +303,7 @@ html[data-webgl='mobile-static'] .device-canvas {
   text-transform: uppercase;
   border: 0;
   background: transparent;
+  cursor: pointer;
 }
 
 .home-device[data-device-overlay-bound] .home-screen,
@@ -425,6 +427,26 @@ html:not([data-webgl='available']) .hardware-link {
     inset 0 0 48px rgba(4, 11, 22, 0.94);
 }
 
+.device-route-screen[data-device-route-overlay-bound] {
+  position: fixed;
+  top: var(--device-route-top);
+  left: var(--device-route-left);
+  width: var(--device-route-width);
+  height: var(--device-route-height);
+  min-height: 0;
+  margin: 0;
+  clip-path: inset(1px round 5px);
+  border: 0;
+  border-radius: 5px;
+  background:
+    repeating-linear-gradient(0deg, rgba(135, 155, 187, 0.016) 0 1px, transparent 1px 3px),
+    radial-gradient(circle at 50% 42%, rgba(74, 103, 148, 0.07), transparent 64%),
+    rgba(3, 13, 25, 0.86);
+  box-shadow:
+    inset 0 0 1px rgba(132, 158, 198, 0.5),
+    inset 0 0 38px rgba(4, 11, 22, 0.72);
+}
+
 .device-content--route > section,
 .device-content--route > article {
   padding: clamp(28px, 4.5vw, 66px);
@@ -446,7 +468,7 @@ html[data-webgl='unavailable'] .device-content--route > article {
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
-  margin-bottom: clamp(36px, 5vh, 58px);
+  margin-bottom: clamp(24px, 3.8vh, 42px);
   color: #8cb2ee;
   font-size: 0.84rem;
   letter-spacing: 0.075em;
@@ -659,6 +681,16 @@ html[data-webgl='unavailable'] .device-content--route > article {
     border-radius: 0;
     box-shadow: none;
     padding: max(22px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom));
+  }
+
+  .device-route-screen[data-device-route-overlay-bound] {
+    position: relative;
+    inset: auto;
+    width: auto;
+    height: auto;
+    min-height: 100dvh;
+    clip-path: none;
+    border-radius: 0;
   }
 
   .screen-nav,
