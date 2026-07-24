@@ -15,10 +15,8 @@ import {
   ReadResumeInputSchema,
   SearchProfileInputSchema,
   SearchProjectsInputSchema,
-  SearchPublicSourcesInputSchema,
   type PublicProfileSourceEntry,
 } from '@/lib/dm/public-agent-tools';
-import type { PublicRagSearchConfig } from '@/lib/rag/retrieval';
 
 const project = publishedProject();
 
@@ -33,7 +31,6 @@ test('public agent tool schemas are strict and bound their required inputs', () 
   assert.equal(ReadResumeInputSchema.safeParse({ query: 'engineering', trackIds: ['now'] }).success, true);
   assert.equal(GetContactInputSchema.safeParse({}).success, true);
   assert.equal(GetContactInputSchema.safeParse({ credential: 'nope' }).success, false);
-  assert.equal(SearchPublicSourcesInputSchema.safeParse({ query: 'public proof', projectIds: [project.id] }).success, true);
   assert.equal(SearchProfileInputSchema.safeParse({ query: 'leadership', categories: ['work'] }).success, true);
 });
 
@@ -42,9 +39,15 @@ test('composition tool descriptions require every requested public source', () =
 
   assert.match(run.readResume.description, /getContact/);
   assert.match(run.getContact.description, /readResume/);
-  assert.match(run.getProject.description, /searchPublicSources/);
-  assert.match(run.searchPublicSources.description, /getProject/);
-  assert.match(run.searchPublicSources.description, /approved public/i);
+  assert.match(run.getProject.description, /searchProjects/);
+});
+
+test('the public tool surface is exactly the five published-source tools', () => {
+  const run = createPublicAgentTools({ db: unusedDb(), loadProjects: async () => [project] });
+
+  assert.deepEqual(Object.keys(run.tools).sort(), [
+    'getContact', 'getProject', 'readResume', 'searchProfile', 'searchProjects',
+  ]);
 });
 
 test('project discovery stays compact while direct reads retain full evidence and artifact ids', async () => {
@@ -165,64 +168,6 @@ test('deployed project reads use the published-only query and never surface draf
   assert.ok(sqlSeen.length > 0);
 });
 
-test('approved public-source search composes with project tools and rechecks every citation boundary', async () => {
-  const config = publicRagConfig();
-  const run = createPublicAgentTools({
-    db: unusedDb(),
-    loadProjects: async () => [project],
-    createRagConfig: async () => config,
-    ragSearch: async (_query, received) => {
-      assert.deepEqual(received.sources.map((source) => source.id), ['rag-public']);
-      return {
-        citations: [
-          {
-            ragSourceId: 'rag-public',
-            projectId: project.id,
-            fileId: 'file-public',
-            filename: 'approved.md',
-            score: 0.9,
-            text: 'Approved public evidence returned for the published project.',
-          },
-          {
-            ragSourceId: 'rag-private',
-            projectId: 'candidate-hidden',
-            fileId: 'file-private',
-            filename: 'private.md',
-            score: 1,
-            text: 'Private candidate evidence must never cross the public tool boundary.',
-          },
-        ],
-      };
-    },
-  });
-
-  const projects = await run.searchProjects({ query: 'trading automation' });
-  const sources = await run.searchPublicSources({ query: 'public evidence', projectIds: [projects.projects[0]!.id] });
-  assert.equal(sources.status, 'partial');
-  assert.deepEqual(sources.sources.map((source) => source.id), ['rag-public']);
-  assert.deepEqual(sources.artifactIds, ['rag-public']);
-  assert.equal('fileId' in (sources.sources[0] ?? {}), false);
-  assert.doesNotMatch(JSON.stringify(sources), /candidate-hidden|private\.md|file-private/);
-  assert.equal(run.evidenceLedger.has('citation:rag-public'), true);
-  assert.equal(run.evidenceLedger.has('citation:rag-private'), false);
-
-  const omittedProjectFilter = await run.searchPublicSources({ query: 'public evidence' });
-  const emptyProjectFilter = await run.searchPublicSources({ query: 'public evidence', projectIds: [] });
-  assert.deepEqual(
-    emptyProjectFilter.sources.map((source) => source.id),
-    omittedProjectFilter.sources.map((source) => source.id),
-  );
-
-  const missingConfig = createPublicAgentTools({
-    db: unusedDb(),
-    loadProjects: async () => [project],
-    createRagConfig: async () => config,
-  });
-  const unavailable = await missingConfig.searchPublicSources({ query: 'public evidence' });
-  assert.equal(unavailable.status, 'unavailable');
-  assert.deepEqual(unavailable.limitations, ['public_source_config_unavailable']);
-});
-
 test('empty and failed searches return source-specific safe limitation categories', async () => {
   const projectSearch = createPublicAgentTools({
     db: unusedDb(),
@@ -245,26 +190,6 @@ test('empty and failed searches return source-specific safe limitation categorie
   });
   assert.equal(queryMissWithMatchingFilters.status, 'empty');
   assert.deepEqual(queryMissWithMatchingFilters.limitations, ['no_matching_published_projects']);
-
-  const emptyPublicSources = createPublicAgentTools({
-    db: unusedDb(),
-    loadProjects: async () => [project],
-    createRagConfig: async () => null,
-  });
-  const noEvidence = await emptyPublicSources.searchPublicSources({ query: 'architecture evidence' });
-  assert.equal(noEvidence.status, 'empty');
-  assert.deepEqual(noEvidence.limitations, ['no_matching_approved_public_sources']);
-
-  const publicSourceFailure = createPublicAgentTools({
-    db: unusedDb(),
-    loadProjects: async () => [project],
-    createRagConfig: async () => publicRagConfig(),
-    ragSearch: async () => { throw new Error('private retrieval implementation details'); },
-  });
-  const unavailable = await publicSourceFailure.searchPublicSources({ query: 'architecture evidence' });
-  assert.equal(unavailable.status, 'unavailable');
-  assert.deepEqual(unavailable.limitations, ['public_source_unavailable']);
-  assert.doesNotMatch(JSON.stringify(unavailable), /private retrieval implementation details/);
 });
 
 test('profile search filters adapters to well-formed published public entries and sanitizes failures', async () => {
@@ -469,29 +394,4 @@ function renamedProject(): ProjectDetailReadModel {
 
 function unusedDb(): ProjectReadQueryable {
   return { async query() { throw new Error('unexpected database query'); } };
-}
-
-function publicRagConfig(): PublicRagSearchConfig {
-  const sources = [
-    { id: 'rag-public', project_id: project.id, vector_store_id: 'vs-public', openai_file_id: 'file-public' },
-    { id: 'rag-private', project_id: 'candidate-hidden', vector_store_id: 'vs-private', openai_file_id: 'file-private' },
-  ];
-  return {
-    sources,
-    minTextChars: 1,
-    scoreThreshold: 0,
-    tool: {
-      vectorStoreIds: ['vs-public', 'vs-private'],
-      filters: {
-        type: 'and',
-        filters: [
-          { type: 'eq', key: 'visibility', value: 'public' },
-          { type: 'in', key: 'project_id', value: sources.map((source) => source.project_id) },
-          { type: 'in', key: 'rag_source_id', value: sources.map((source) => source.id) },
-        ],
-      },
-      maxNumResults: 4,
-      ranking: { ranker: 'auto', scoreThreshold: 0 },
-    },
-  };
 }

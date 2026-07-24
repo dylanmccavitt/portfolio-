@@ -269,7 +269,7 @@ test('private-boundary prompts expose only the reviewed public tool surface', as
   assert.deepEqual(observation.tools, []);
   assert.doesNotMatch(observation.answerText, /candidate records|visitor history/i);
   assert.deepEqual((prompts[0]?.tools?.map((entry) => entry.name) ?? []).sort(), [
-    'finalizeAnswer', 'getContact', 'getProject', 'readResume', 'searchProfile', 'searchProjects', 'searchPublicSources',
+    'finalizeAnswer', 'getContact', 'getProject', 'readResume', 'searchProfile', 'searchProjects',
   ].sort());
 });
 
@@ -346,62 +346,6 @@ test('same-step public read and finalization wait for the artifact to settle', a
 
   assert.equal(observation.result?.status, 'accepted');
   assert.deepEqual(observation.projectIds, ['loom']);
-});
-
-test('approved public-source evidence composes with its published project read', async () => {
-  const source = await createTestProjectSource();
-  const request = chatRequest('Show Loom and the approved public evidence behind it.');
-  const db = {
-    async query<Row = unknown>(sql: string) {
-      const rows = sql.includes('FROM rag_sources r')
-        ? [{ id: 'rag-loom', project_id: 'loom', vector_store_id: 'vs-public', openai_file_id: 'file-public' }]
-        : [];
-      return { rows: rows as Row[] };
-    },
-  };
-  const observation = await observeDMResponse(createDMChatResponse(request, config, {
-    db,
-    projectLoader: source.projectLoader,
-    ragSearch: async () => ({ citations: [{
-      ragSourceId: 'rag-loom',
-      projectId: 'loom',
-      fileId: 'file-public',
-      filename: 'approved.md',
-      score: 0.9,
-      text: 'Approved public evidence confirms the reviewed publish path.',
-    }] }),
-    model: toolSequenceModel([
-      { toolName: 'getProject', input: { id: 'loom' } },
-      { toolName: 'searchPublicSources', input: { query: 'reviewed publish path', projectIds: ['loom'] } },
-      { toolName: 'finalizeAnswer', input: {
-        segments: [
-          {
-            kind: 'factual',
-            text: 'Loom is a published project.',
-            evidenceIds: ['loom:identity'],
-            evidenceQuotes: [{ evidenceId: 'loom:identity', quote: 'loom' }],
-          },
-          {
-            kind: 'factual',
-            text: 'Approved public evidence confirms the reviewed publish path.',
-            evidenceIds: ['citation:rag-loom'],
-            evidenceQuotes: [{
-              evidenceId: 'citation:rag-loom',
-              quote: 'Approved public evidence confirms the reviewed publish path.',
-            }],
-          },
-        ],
-        artifactIntent: 'one_project',
-        artifacts: [{ kind: 'project', id: 'loom' }, { kind: 'evidence', id: 'rag-loom' }],
-        limitations: [],
-      } },
-    ]),
-  }), request);
-
-  assert.equal(observation.result?.status, 'accepted');
-  assert.deepEqual(observation.tools, ['getProject', 'searchPublicSources']);
-  assert.ok(observation.evidenceIds.includes('citation:rag-loom'));
-  assert.deepEqual(observation.blockKinds, ['projects:loom', 'evidence']);
 });
 
 test('request cancellation is propagated without exposing its reason', async () => {

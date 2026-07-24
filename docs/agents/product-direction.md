@@ -24,7 +24,6 @@ leaves.
 Public answers may use only:
 
 - published database project records;
-- approved public RAG sources;
 - static resume and contact data from `src/data/resume.ts`; and
 - the owner-approved public profile in `src/data/profile.ts`.
 

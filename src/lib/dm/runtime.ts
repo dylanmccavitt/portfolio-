@@ -22,7 +22,6 @@ import {
   loadPublicProjectDetails,
   type PublicProjectEnv,
 } from '@/lib/public-projects';
-import type { PublicRagSearchConfig, PublicRagSearchOutput } from '@/lib/rag/retrieval';
 import {
   createDMMetricsRecorder,
   shouldRecordDMMetrics,
@@ -81,11 +80,6 @@ export interface DMRuntimeDeps {
   /** Test seam that can fail only the broad project search tool. */
   searchProjectsFailure?: () => never | Promise<never>;
   profileLoader?: () => Promise<PublicProfileSourceEntry[]>;
-  ragSearch?: (
-    query: string,
-    config: PublicRagSearchConfig,
-    options: { apiKey: string; signal?: AbortSignal },
-  ) => Promise<PublicRagSearchOutput>;
   signal?: AbortSignal;
   traceId?: string;
   budgets?: DMBudgetConfig;
@@ -153,9 +147,7 @@ const LIMITATION_CODES = [
   'personal_unknown',
   'no_matching_published_projects',
   'no_matching_published_project_filters',
-  'no_matching_approved_public_sources',
   'public_data_unavailable',
-  'public_source_unavailable',
   'unsupported_request',
   'ambiguous_reference',
 ] as const;
@@ -175,10 +167,8 @@ const SERVER_LIMITATION_COPY = {
   personal_unknown: 'I could not find a published public answer to that personal question.',
   no_matching_published_projects: 'I found no matching published project evidence for that question.',
   no_matching_published_project_filters: 'No published projects matched the requested filters.',
-  no_matching_approved_public_sources: 'I found no matching approved public-source evidence for that question.',
   public_data_unavailable: 'The published project source is unavailable for this answer.',
-  public_source_unavailable: 'Approved public-source search is unavailable for this answer.',
-  unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and approved public sources.",
+  unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and published profile entries.",
   ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
 } satisfies Record<LimitationCode, string>;
 
@@ -191,7 +181,7 @@ const FINALIZATION_ENUM_COPY = {
     capabilities: "I can help with Dylan's published projects, public resume, and contact details.",
     acknowledgement: 'Got it.',
     clarify_reference: 'Could you clarify which published project or resume entry you mean?',
-    explain_process: 'I answer using published portfolio records, the public resume, contact details, and approved public sources.',
+    explain_process: 'I answer using published portfolio records, the public resume, contact details, and published profile entries.',
   },
   limitation: SERVER_LIMITATION_COPY,
 } satisfies {
@@ -242,7 +232,6 @@ const COMPOSITION_PAIRS: Array<{
   artifacts: [ArtifactReference['kind'], ArtifactReference['kind']];
 }> = [
   { sources: ['resume', 'contact'], artifacts: ['resume', 'contact'] },
-  { sources: ['project', 'public_source'], artifacts: ['project', 'evidence'] },
 ];
 
 interface RunArtifacts {
@@ -265,7 +254,7 @@ interface RunArtifacts {
   projectLookupCompleted: boolean;
 }
 
-type LimitationTrackedTool = 'searchProjects' | 'getProject' | 'searchPublicSources' | 'searchProfile';
+type LimitationTrackedTool = 'searchProjects' | 'getProject' | 'searchProfile';
 
 interface PublicToolGate {
   run<T>(operation: () => Promise<T>): Promise<T>;
@@ -292,8 +281,6 @@ export function createDMChatResponse(
     loadProjects,
     ...(deps.searchProjectsFailure ? { searchProjectsFailure: deps.searchProjectsFailure } : {}),
     ...(deps.profileLoader ? { loadProfileEntries: deps.profileLoader } : {}),
-    ...(deps.ragSearch ? { ragSearch: deps.ragSearch } : {}),
-    ragApiKey: deps.env?.OPENAI_API_KEY?.trim() ?? process.env.OPENAI_API_KEY?.trim(),
   });
   const artifacts = emptyArtifacts(requestedArtifactRequirements(request));
   const publicToolGate = createPublicToolGate();
@@ -602,20 +589,6 @@ function createRuntimePublicTools(
         return result;
       }),
     }),
-    searchPublicSources: tool({
-      description: run.searchPublicSources.description,
-      inputSchema: run.searchPublicSources.inputSchema,
-      execute: (input, { abortSignal }) => {
-        const outcomeOrdinal = reserveToolOutcome(artifacts);
-        return gate.run(async () => {
-          metrics.tool();
-          const result = await run.searchPublicSources(input, { abortSignal });
-          for (const source of result.sources) artifacts.sources.set(source.id, source);
-          rememberToolOutcome(artifacts, 'searchPublicSources', outcomeOrdinal, result.status, result.limitations);
-          return result;
-        });
-      },
-    }),
     searchProfile: tool({
       description: run.searchProfile.description,
       inputSchema: run.searchProfile.inputSchema,
@@ -727,9 +700,7 @@ const TOOL_OUTCOME_LIMITATION_CODES = new Set<LimitationCode>([
   'personal_unknown',
   'no_matching_published_projects',
   'no_matching_published_project_filters',
-  'no_matching_approved_public_sources',
   'public_data_unavailable',
-  'public_source_unavailable',
 ]);
 
 function limitationOutcomeErrors(input: FinalAnswerInput, artifacts: RunArtifacts): string[] {
@@ -789,11 +760,6 @@ function requiredOutcomeLimitations(artifacts: RunArtifacts): Set<LimitationCode
   if (projectRead === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'getProject')) {
     required.add('no_matching_published_projects');
   } else if (projectRead === 'unavailable') required.add('public_data_unavailable');
-
-  const publicSourceSearch = artifacts.outcomes.get('searchPublicSources');
-  if (publicSourceSearch === 'empty' && !emptyOutcomeHasRetainedArtifacts(artifacts, 'searchPublicSources')) {
-    required.add('no_matching_approved_public_sources');
-  } else if (publicSourceSearch === 'unavailable') required.add('public_source_unavailable');
 
   const profileSearch = artifacts.outcomes.get('searchProfile');
   if (profileSearch === 'empty' || profileSearch === 'unavailable') required.add('personal_unknown');
@@ -1319,7 +1285,6 @@ function emptyOutcomeHasRetainedArtifacts(
 ): boolean {
   if (artifacts.outcomes.get(toolName) !== 'empty') return false;
   if (toolName === 'searchProjects' || toolName === 'getProject') return artifacts.projects.size > 0;
-  if (toolName === 'searchPublicSources') return artifacts.sources.size > 0;
   return false;
 }
 
@@ -1329,15 +1294,10 @@ function humanLimitation(code: string): string | null {
       return serverLimitation('public_data_unavailable');
     case 'published_project_links_unavailable':
       return 'Some published portfolio data was unavailable for this answer.';
-    case 'public_source_unavailable':
-    case 'public_source_config_unavailable':
-      return serverLimitation('public_source_unavailable');
     case 'no_matching_published_projects':
       return serverLimitation('no_matching_published_projects');
     case 'no_matching_published_project_filters':
       return serverLimitation('no_matching_published_project_filters');
-    case 'no_matching_approved_public_sources':
-      return serverLimitation('no_matching_approved_public_sources');
     case 'profile_source_not_available':
       return serverLimitation('personal_unknown');
     case 'timeout':
@@ -1347,7 +1307,6 @@ function humanLimitation(code: string): string | null {
     case 'unknown_track_ids_omitted':
       return 'Unknown resume entries were omitted.';
     case 'result_limit':
-    case 'result_limit_or_boundary_filter':
       return 'The answer uses a bounded subset of the available public results.';
     default:
       return null;
@@ -1429,7 +1388,6 @@ function sourceMode(sources: string[]): DMSourceMode {
     if (source === 'project') modes.add('published_db');
     else if (source === 'resume') modes.add('resume_static');
     else if (source === 'contact') modes.add('contact_static');
-    else if (source === 'public_source') modes.add('rag');
   }
   if (modes.size === 0) return 'none';
   if (modes.size > 1) return 'mixed';
@@ -1520,16 +1478,15 @@ const DM_BASE_SYSTEM_INSTRUCTIONS = [
   'Use the typed public tools when a claim needs facts. Avoid tools for greetings, capability questions, and other purely conversational turns.',
   'Treat every multi-part request as a checklist. Call the public tool needed for each requested aspect, and do not finalize until every successful source in the requested composition pair is cited or an unavailable aspect has an explicit limitation.',
   'For a recruiter question that asks for both resume background and contact details, call both readResume and getContact, cite evidence from both, preserve a distinctive exact value from each in evidenceQuotes, and include the returned resume and contact artifacts.',
-  'For a project evidence deep dive, call both getProject and searchPublicSources with the published project id, cite evidence from both successful tools, preserve a distinctive exact phrase from each in evidenceQuotes, and include only same-run project and approved evidence artifacts.',
   'When the visitor requests a distinctive fact or public evidence, add an evidenceQuotes entry whose quote is an exact substring of that returned evidence value and appears in the same factual segment before any supported interpretation; natural prose capitalization is allowed.',
   'If one requested public source is partial or unavailable, keep the supported aspects from successful tools, state the bounded limitation, and never invent the missing evidence or artifact.',
   'Conversation history can resolve the subject, but only the latest turn controls the requested aspect. Corrections replace the prior subject instead of blending subjects.',
-  'When the latest turn names, corrects, or refers to a project whose stable public id or slug is known, call getProject. Stable project ids supplied by page context are already resolved and must never be sent to searchProjects. If only its public title is known and the stable id or slug is unresolved, call searchProjects once to resolve it; do not guess a stable reference from the title.',
+  'When the latest turn names, corrects, or refers to a published project whose stable public id or slug is known, call getProject. Stable project ids supplied by page context are already resolved and must never be sent to searchProjects. If only its public title is known and the stable id or slug is unresolved, call searchProjects once to resolve it; do not guess a stable reference from the title.',
   'For a later question about a previously discussed project, cite getProject evidence but omit the repeated project artifact unless the visitor explicitly asks to see its card. A correction to a different project may include that new project artifact.',
   'For a link-only request, use links artifacts and omit project artifacts.',
   'For comparisons and interpretations, gather evidence for every project or resume fact you discuss and distinguish supported inference from fact.',
   'Use project area, status, or year filters when the latest question asks about that exact aspect. If the filtered search is empty, state the matching bounded limitation.',
-  'When searchProjects, searchPublicSources, or searchProfile returns empty or unavailable, select the matching finite limitation code. Do not turn an empty result into an unavailable-source claim or expose internal error details.',
+  'When searchProjects, getProject, or searchProfile returns empty or unavailable, select the matching finite limitation code. Do not turn an empty result into an unavailable-source claim or expose internal error details.',
   'For ambiguous references, use the server-controlled clarification segment without guessing.',
   'Unknown personal details require searchProfile and an honest limitation when its public result is empty.',
   FORBIDDEN_SOURCE_INSTRUCTION,

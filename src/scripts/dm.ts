@@ -547,7 +547,6 @@ function toolSummary(name: string): string {
     getProject: 'Read a published project',
     readResume: 'Read public resume facts',
     getContact: 'Read public contact details',
-    searchPublicSources: 'Search approved public sources',
     searchProfile: 'Search published profile facts',
   };
   return summaries[name] ?? 'Use a public portfolio tool';

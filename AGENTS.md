@@ -17,7 +17,7 @@ here.
 - **Global CSS** — design tokens in `src/styles/player.css` (`--pl-*`); device console styles in `src/styles/device.css`; contextual guide styles in `src/styles/dm.css`
 - **Vanilla TypeScript client islands** — `src/scripts/dm.ts` streams against `/api/dm/chat` for the contextual guide; `src/scripts/device.ts` bootstraps on every page and dynamically imports the Three.js renderer only above 769px
 - **TypeScript data modules** — `src/data/catalog.ts` (migration shadow plus local/emergency source), `src/data/resume.ts` (résumé/contact v1 source), and `src/data/profile.ts` (owner-approved public profile); no Markdown/MDX content collections
-- **Neon Postgres** — DM project records and RAG; see `docs/agents/db-foundation.md`
+- **Neon Postgres** — DM project records; see `docs/agents/db-foundation.md`
 - **Deployed** to Vercel
 
 Default to zero client JS beyond those two islands: static `.astro` pages
@@ -82,7 +82,7 @@ those scripts directly; this section records only the non-obvious caveats.
 
 - **Node 24 is required** (`engines: 24.x`, `.node-version`, `.nvmrc`, `mise.toml`). Development is local — there is no container or remote dev environment. If a shell resolves a different `node`, activate 24 first (for example `mise use node@24`, or prepend the mise Node 24 `bin` directory to `PATH`) and confirm with `node -v` before running `npm run verify` or any `test:*` script.
 - **Tests need no external services or secrets.** The `test:*` scripts use an in-memory Postgres via `@electric-sql/pglite`. The authoritative test set is whatever `.github/workflows/ci.yml` runs — read that file rather than trusting an enumeration here.
-- **DM chat is disabled without config.** `/api/dm/chat` returns HTTP 503 `missing_config` unless a database URL and either `AI_GATEWAY_API_KEY` or `OPENAI_API_KEY` are set; the site shell, browsing, and all tests work without them. Approved-source vector search additionally needs `OPENAI_API_KEY`. The guide degrades to a "DM is unavailable right now" notice. Never commit these values.
+- **DM chat is disabled without config.** `/api/dm/chat` returns HTTP 503 `missing_config` unless a database URL and either `AI_GATEWAY_API_KEY` or `OPENAI_API_KEY` are set; the site shell, browsing, and all tests work without them. The guide degrades to a "DM is unavailable right now" notice. Never commit these values.
 
 ## Code review
 
