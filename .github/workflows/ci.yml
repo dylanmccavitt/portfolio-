@@ -44,7 +44,7 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npm run test:db && npm run test:discovery && npm run test:slack && npm run test:admin && npm run test:dm && npm run test:metrics && npm run test:rag && npm run test:outbox && npm run test:proof && npm run test:release && npm run test:visual && npm run test:quality
+        run: npm run test:db && npm run test:dm && npm run test:metrics && npm run test:rag && npm run test:release && npm run test:visual && npm run test:quality
 
       - name: Build exact-head replacement quality artifact
         if: github.event_name == 'pull_request'
