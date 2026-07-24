@@ -155,40 +155,16 @@ const ConversationalActSchema = z.enum(CONVERSATIONAL_ACTS);
 const LimitationCodeSchema = z.enum(LIMITATION_CODES);
 const ArtifactIntentSchema = z.enum(['none', 'one_project', 'project_set', 'non_project']);
 
-type ConversationalAct = z.infer<typeof ConversationalActSchema>;
 type LimitationCode = z.infer<typeof LimitationCodeSchema>;
 type ArtifactIntent = z.infer<typeof ArtifactIntentSchema>;
 
 const MAX_PROJECT_SET_ARTIFACTS = 4;
 const MAX_FINALIZATION_ARTIFACTS = 8;
 
-const SERVER_LIMITATION_COPY = {
-  private_sources: 'I can only use published public portfolio sources.',
-  personal_unknown: 'I could not find a published public answer to that personal question.',
-  no_matching_published_projects: 'I found no matching published project evidence for that question.',
-  no_matching_published_project_filters: 'No published projects matched the requested filters.',
-  public_data_unavailable: 'The published project source is unavailable for this answer.',
-  unsupported_request: "I can only help with Dylan's published portfolio, public resume, contact details, and published profile entries.",
-  ambiguous_reference: 'I need a more specific published project or resume entry before I can answer safely.',
-} satisfies Record<LimitationCode, string>;
-
-// Security boundary: only factual segments retain model-authored prose. The
-// model can select these finite enum values only through finalizeAnswer; the
-// server materializes the copy after the structured answer validates.
-const FINALIZATION_ENUM_COPY = {
-  conversational: {
-    greeting: "Hi — I'm DM, Dylan's public portfolio guide.",
-    capabilities: "I can help with Dylan's published projects, public resume, and contact details.",
-    acknowledgement: 'Got it.',
-    clarify_reference: 'Could you clarify which published project or resume entry you mean?',
-    explain_process: 'I answer using published portfolio records, the public resume, contact details, and published profile entries.',
-  },
-  limitation: SERVER_LIMITATION_COPY,
-} satisfies {
-  conversational: Record<ConversationalAct, string>;
-  limitation: Record<LimitationCode, string>;
-};
-
+// Security boundary: every segment carries model-authored prose. `act` and
+// `code` stay as finite labels the validator and metrics read; only factual
+// segments may assert a claim about Dylan, and only against the same-run
+// evidence ledger.
 const AnswerSegmentInputSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('factual'),
@@ -202,10 +178,12 @@ const AnswerSegmentInputSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('conversational'),
     act: ConversationalActSchema,
+    text: z.string().trim().min(1).max(600),
   }),
   z.strictObject({
     kind: z.literal('limitation'),
     code: LimitationCodeSchema,
+    text: z.string().trim().min(1).max(600),
   }),
 ]);
 
@@ -318,7 +296,11 @@ export function createDMChatResponse(
           } satisfies DMFinalizationResult;
         }
         finalized = true;
-        finalizationResult = limitedResult(true, request.context);
+        // Grounding failures fail closed. A repeated artifact-envelope failure
+        // keeps the model's own grounded prose and drops the artifacts.
+        finalizationResult = validation.evidenceViolation
+          ? limitedResult(true, request.context)
+          : degradedResult(input, publicRun, artifacts, request.context);
         return finalizationResult;
       },
     }),
@@ -625,32 +607,46 @@ function createPublicToolGate(): PublicToolGate {
   };
 }
 
+type FinalAnswerValidation =
+  | { ok: true; answer: DMValidatedAnswer }
+  | { ok: false; errors: string[]; evidenceViolation: boolean };
+
 function validateFinalAnswer(
   input: FinalAnswerInput,
   run: PublicAgentToolRun,
   artifacts: RunArtifacts,
   context: DMChatContext | undefined,
-): { ok: true; answer: DMValidatedAnswer } | { ok: false; errors: string[] } {
+): FinalAnswerValidation {
   const changedIntent = artifacts.boundArtifactIntent !== null
     && input.artifactIntent !== artifacts.boundArtifactIntent;
   artifacts.boundArtifactIntent ??= input.artifactIntent;
   if (changedIntent) {
-    return { ok: false, errors: ['artifact intent must match the current request and cannot change during repair'] };
+    return {
+      ok: false,
+      errors: ['artifact intent must match the current request and cannot change during repair'],
+      evidenceViolation: false,
+    };
   }
-  const errors: string[] = [];
-  errors.push(...limitationOutcomeErrors(input, artifacts));
+  // Evidence errors are grounding failures and always fail closed. Style errors
+  // only concern the artifact envelope, so a persistent one degrades to the
+  // model's own validated prose instead of to server boilerplate.
+  const evidenceErrors: string[] = [];
+  const styleErrors: string[] = [];
+  evidenceErrors.push(...limitationOutcomeErrors(input, artifacts));
   const artifactReferences = deduplicateArtifactReferences(input.artifacts);
   for (const [index, segment] of input.segments.entries()) {
     if (segment.kind !== 'factual') continue;
     const unknown = segment.evidenceIds.filter((id) => !run.evidenceLedger.has(id));
-    if (unknown.length > 0) errors.push(`segment ${index + 1} cites evidence not returned in this run`);
-    errors.push(...evidenceQuoteErrors(segment, run, index));
+    if (unknown.length > 0) evidenceErrors.push(`segment ${index + 1} cites evidence not returned in this run`);
+    evidenceErrors.push(...evidenceQuoteErrors(segment, run, index));
   }
-  errors.push(...compositionCoverageErrors(input, run));
-  errors.push(...stableProjectReadErrors(input, run, artifacts));
-  errors.push(...requestedArtifactErrors(input, artifacts));
+  const composition = compositionCoverageErrors(input, run);
+  evidenceErrors.push(...composition.evidence);
+  styleErrors.push(...composition.style);
+  evidenceErrors.push(...stableProjectReadErrors(input, run, artifacts));
+  styleErrors.push(...requestedArtifactErrors(input, artifacts));
   for (const reference of artifactReferences) {
-    if (!artifactAvailable(reference, artifacts)) errors.push(`${reference.kind} artifact was not returned in this run`);
+    if (!artifactAvailable(reference, artifacts)) styleErrors.push(`${reference.kind} artifact was not returned in this run`);
   }
   if (
     artifacts.requestedArtifactIntent !== null
@@ -658,40 +654,73 @@ function validateFinalAnswer(
     && artifacts.projects.size === 0
     && !artifacts.projectLookupCompleted
   ) {
-    errors.push('requested project artifacts require a completed project lookup');
+    styleErrors.push('requested project artifacts require a completed project lookup');
   }
-  errors.push(...artifactCardinalityErrors(input.artifactIntent, artifactReferences, artifacts.projects.size));
-  if (errors.length > 0) return { ok: false, errors: [...new Set(errors)].slice(0, 5) };
-
-  const segments = input.segments.map((segment) => {
-    if (segment.kind === 'factual') {
-      return {
-        text: segment.text,
-        evidenceIds: [...new Set(segment.evidenceIds)],
-        evidence: run.evidenceLedger.resolve(segment.evidenceIds),
-      };
-    }
+  styleErrors.push(...artifactCardinalityErrors(input.artifactIntent, artifactReferences, artifacts.projects.size));
+  if (evidenceErrors.length > 0 || styleErrors.length > 0) {
     return {
-      text: segment.kind === 'conversational'
-        ? FINALIZATION_ENUM_COPY.conversational[segment.act]
-        : FINALIZATION_ENUM_COPY.limitation[segment.code],
-      evidenceIds: [],
-      evidence: [],
+      ok: false,
+      errors: [...new Set([...evidenceErrors, ...styleErrors])].slice(0, 5),
+      evidenceViolation: evidenceErrors.length > 0,
     };
-  });
-  const segmentTexts = new Set(segments.map((segment) => segment.text));
-  const limitations = [...new Set([
-    ...input.limitations.map((code) => FINALIZATION_ENUM_COPY.limitation[code]),
-    ...effectiveLimitations(artifacts).map(humanLimitation).filter((item): item is string => Boolean(item)),
-  ])].filter((limitation) => !segmentTexts.has(limitation));
+  }
+
   const resolvedArtifacts = artifactReferences.flatMap((reference) => resolveArtifact(reference, artifacts));
   return {
     ok: true,
     answer: {
-      segments,
+      segments: modelAuthoredSegments(input, run),
       artifacts: resolvedArtifacts,
       actions: deriveGuideActions(context?.page, resolvedArtifacts),
-      limitations,
+      limitations: serverObservedLimitations(artifacts),
+    },
+  };
+}
+
+/**
+ * Every segment keeps the model's own wording. Factual segments additionally
+ * carry the same-run ledger evidence that validation already proved.
+ */
+function modelAuthoredSegments(input: FinalAnswerInput, run: PublicAgentToolRun): DMValidatedAnswer['segments'] {
+  return input.segments.map((segment) => segment.kind === 'factual'
+    ? {
+      text: segment.text,
+      evidenceIds: [...new Set(segment.evidenceIds)],
+      evidence: run.evidenceLedger.resolve(segment.evidenceIds),
+    }
+    : { text: segment.text, evidenceIds: [], evidence: [] });
+}
+
+/**
+ * Runtime disclosures the model is not separately required to acknowledge.
+ * Empty and unavailable public-source outcomes are excluded here because
+ * `limitationOutcomeErrors` already forces the model to state them itself.
+ */
+function serverObservedLimitations(artifacts: RunArtifacts): string[] {
+  return [...new Set(
+    effectiveLimitations(artifacts).map(humanLimitation).filter((item): item is string => Boolean(item)),
+  )];
+}
+
+/**
+ * Degraded finalization: the artifact envelope failed validation twice, but the
+ * prose itself is grounded, so the visitor gets the model's words without the
+ * artifacts rather than a canned non-answer.
+ */
+function degradedResult(
+  input: FinalAnswerInput,
+  run: PublicAgentToolRun,
+  artifacts: RunArtifacts,
+  context: DMChatContext | undefined,
+): Extract<DMFinalizationResult, { status: 'limited' }> {
+  return {
+    status: 'limited',
+    repairAttempted: true,
+    answer: {
+      segments: modelAuthoredSegments(input, run),
+      artifacts: [],
+      actions: deriveGuideActions(context?.page, []),
+      limitations: serverObservedLimitations(artifacts),
     },
   };
 }
@@ -766,7 +795,10 @@ function requiredOutcomeLimitations(artifacts: RunArtifacts): Set<LimitationCode
   return required;
 }
 
-function compositionCoverageErrors(input: FinalAnswerInput, run: PublicAgentToolRun): string[] {
+function compositionCoverageErrors(
+  input: FinalAnswerInput,
+  run: PublicAgentToolRun,
+): { evidence: string[]; style: string[] } {
   const returnedSources = new Set(
     run.evidenceLedger.snapshot()
       .map((evidence) => evidence.source)
@@ -785,26 +817,27 @@ function compositionCoverageErrors(input: FinalAnswerInput, run: PublicAgentTool
       : []),
   );
   const artifactKinds = new Set(input.artifacts.map((artifact) => artifact.kind));
-  const errors: string[] = [];
+  const evidence: string[] = [];
+  const style: string[] = [];
   for (const pair of COMPOSITION_PAIRS) {
     if (!pair.sources.every((source) => returnedSources.has(source))) continue;
     const missingSources = pair.sources.filter((source) => !citedSources.has(source));
     if (missingSources.length > 0) {
-      errors.push(`composed answer omitted returned evidence from: ${missingSources.join(', ')}`);
+      evidence.push(`composed answer omitted returned evidence from: ${missingSources.join(', ')}`);
     }
     const missingQuotes = pair.sources.filter((source) => !exactQuoteSources.has(source));
     if (missingQuotes.length > 0) {
-      errors.push(`composed answer needs exact evidence quotes from: ${missingQuotes.join(', ')}`);
+      evidence.push(`composed answer needs exact evidence quotes from: ${missingQuotes.join(', ')}`);
     }
     const requiredArtifacts = input.artifactIntent === 'none'
       ? []
       : pair.artifacts.filter((artifact) => input.artifactIntent !== 'non_project' || artifact !== 'project');
     const missingArtifacts = requiredArtifacts.filter((artifact) => !artifactKinds.has(artifact));
     if (missingArtifacts.length > 0) {
-      errors.push(`composed answer omitted required artifacts: ${missingArtifacts.join(', ')}`);
+      style.push(`composed answer omitted required artifacts: ${missingArtifacts.join(', ')}`);
     }
   }
-  return errors;
+  return { evidence, style };
 }
 
 function deduplicateArtifactReferences(references: ArtifactReference[]): ArtifactReference[] {
@@ -1288,18 +1321,16 @@ function emptyOutcomeHasRetainedArtifacts(
   return false;
 }
 
+/**
+ * Server-side disclosure of tool outcomes the model is not separately forced to
+ * state. Empty and unavailable public-source outcomes are deliberately absent:
+ * `requiredOutcomeLimitations` makes the model acknowledge those in its own
+ * words, so repeating server copy underneath would only restore boilerplate.
+ */
 function humanLimitation(code: string): string | null {
   switch (code) {
-    case 'public_data_unavailable':
-      return serverLimitation('public_data_unavailable');
     case 'published_project_links_unavailable':
       return 'Some published portfolio data was unavailable for this answer.';
-    case 'no_matching_published_projects':
-      return serverLimitation('no_matching_published_projects');
-    case 'no_matching_published_project_filters':
-      return serverLimitation('no_matching_published_project_filters');
-    case 'profile_source_not_available':
-      return serverLimitation('personal_unknown');
     case 'timeout':
       return 'A public source took too long to respond.';
     case 'cancelled':
@@ -1311,10 +1342,6 @@ function humanLimitation(code: string): string | null {
     default:
       return null;
   }
-}
-
-function serverLimitation(code: LimitationCode): string {
-  return SERVER_LIMITATION_COPY[code];
 }
 
 function limitedResult(
@@ -1472,9 +1499,31 @@ async function raceWithRequestSignal<T>(promise: Promise<T>, signal: AbortSignal
   });
 }
 
-const DM_BASE_SYSTEM_INSTRUCTIONS = [
-  "You are DM, Dylan McCavitt's public portfolio agent for recruiters and hiring managers.",
+// Voice target: docs/agents/dm-voice.md. That file governs register and
+// judgment only; it never widens the public-source boundary or the same-run
+// evidence rules restated below.
+const DM_VOICE_INSTRUCTIONS = [
+  "You are DM, the guide to Dylan McCavitt's published work. That is the whole job: you are not a general assistant, not a salesperson, and not a persona with a backstory or a favorite project.",
+  'Your visitor is usually a recruiter or hiring manager deciding whether to spend another ten minutes. They are not necessarily technical, and they arrive with a few concrete questions: has he shipped anything real, what kind of engineer is he, is he available, how do I reach him. Write for the non-technical reader and let the specifics serve the technical one.',
+  'Write your own sentences. Every segment you send to finalizeAnswer carries prose you wrote; nothing is substituted for you.',
+  'Register: plain, specific, warm without being chummy. Short sentences, one idea each. Prefer concrete nouns and real numbers over adjectives. First person singular is normal, and Dylan is "Dylan", never "the candidate".',
+  'Never open with "Great question", "Absolutely", "Certainly", or "I\'d be happy to". No exclamation marks. No emoji. No stacked hedges. Do not end with "Let me know if you have any other questions", "Feel free to ask", or any variant; if a next step genuinely exists, name one specific thing instead.',
+  'Never narrate the machinery. Do not say you are searching, looking things up, or working from returned evidence, and never mention tools, segments, artifacts, or limitation codes. Look things up, then answer.',
+  'Vary your openings. Two visitors on the same route must not receive the same sentence. A greeting says what the visitor can get here, uses the current route, and runs one or two sentences; it is not a capability list and not "Ask me anything".',
+  'Answer first, then point. Route suggestions and cards are rendered by the surface, so point in plain language ("the full timeline is on the journey page") and never invent a path, URL, or link label. One destination per answer.',
   'Answer the latest question first. Normally use two to five concise sentences across no more than five answer segments.',
+];
+
+const DM_GROUNDING_INSTRUCTIONS = [
+  'Never claim anything about Dylan that did not come back from a tool result in this same run. Enthusiasm is not evidence and plausibility is not evidence.',
+  'Report a record\'s shape, not a better version of it: if a record says a project is in progress, do not say he "built" it; if it names one client contract, do not say "extensive client work". A project using a technology does not license a claim of expertise in it. Say what the project did and let the reader judge.',
+  'When you do not know, say the gap plainly in your own words, in a sentence a person would say, and then do exactly one of: offer the nearest thing you do know, or ask one clarifying question that would let you answer. Never both. Never a stock apology, and never a confident-sounding non-answer. Not knowing something is not an error.',
+  'For an ambiguous reference, name the actual candidates rather than asking a generic clarifying question, and ask only once. If one reading is clearly dominant, answer it and note the assumption in a clause.',
+];
+
+const DM_BASE_SYSTEM_INSTRUCTIONS = [
+  ...DM_VOICE_INSTRUCTIONS,
+  ...DM_GROUNDING_INSTRUCTIONS,
   'Use the typed public tools when a claim needs facts. Avoid tools for greetings, capability questions, and other purely conversational turns.',
   'Treat every multi-part request as a checklist. Call the public tool needed for each requested aspect, and do not finalize until every successful source in the requested composition pair is cited or an unavailable aspect has an explicit limitation.',
   'For a recruiter question that asks for both resume background and contact details, call both readResume and getContact, cite evidence from both, preserve a distinctive exact value from each in evidenceQuotes, and include the returned resume and contact artifacts.',
@@ -1486,12 +1535,11 @@ const DM_BASE_SYSTEM_INSTRUCTIONS = [
   'For a link-only request, use links artifacts and omit project artifacts.',
   'For comparisons and interpretations, gather evidence for every project or resume fact you discuss and distinguish supported inference from fact.',
   'Use project area, status, or year filters when the latest question asks about that exact aspect. If the filtered search is empty, state the matching bounded limitation.',
-  'When searchProjects, getProject, or searchProfile returns empty or unavailable, select the matching finite limitation code. Do not turn an empty result into an unavailable-source claim or expose internal error details.',
-  'For ambiguous references, use the server-controlled clarification segment without guessing.',
-  'Unknown personal details require searchProfile and an honest limitation when its public result is empty.',
+  'When searchProjects, getProject, or searchProfile returns empty or unavailable, say so in a limitation segment and tag it with the matching finite code. Do not turn an empty result into an unavailable-source claim, and never expose internal error details or which tool returned nothing.',
+  'Unknown personal details require searchProfile, and an honest gap in your own words when its public result is empty.',
   FORBIDDEN_SOURCE_INSTRUCTION,
   'Every factual segment passed to finalizeAnswer must cite one or more evidenceIds returned by public tools in this same run.',
-  'Only factual segments accept free text. For no-evidence output, select a server-controlled conversational act or limitation code; never place arbitrary prose in those fields.',
+  'Only factual segments may assert a fact about Dylan, his projects, or his resume. Conversational and limitation segments carry your own prose but no claim of fact: use them for greetings, clarifying questions, and stated gaps. The act and code fields are labels for the server, not copy the visitor sees.',
   'Artifact references must use artifact ids returned by tools in this same run. Include every explicitly requested resume, contact, link, evidence, or project artifact that the successful public tools returned; do not copy or invent artifact payloads.',
   'Set artifactIntent from the latest request: none for explicitly no artifacts, one_project for exactly one or a best-project card, project_set for a project list or overview, and non_project only when rendering resume, contact, evidence, or link artifacts without project cards.',
   'The server derives explicit zero, one-project, and project-set intent from the current request. Your artifactIntent must match that policy and cannot change during repair.',

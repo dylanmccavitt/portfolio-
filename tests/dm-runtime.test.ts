@@ -53,6 +53,19 @@ test('system instructions retain the public-source and same-run evidence boundar
   assert.match(instructions, /finalizeAnswer/);
 });
 
+test('system instructions carry the voice target and the no-evidence failure behaviour', async () => {
+  const source = await createTestProjectSource();
+  const instructions = buildDMSystemInstructions(buildDMSiteBrief(await source.projectLoader()));
+
+  assert.match(instructions, /Write your own sentences/i);
+  assert.match(instructions, /Vary your openings/i);
+  assert.match(instructions, /Never narrate the machinery/i);
+  assert.match(instructions, /say the gap plainly in your own words/i);
+  assert.match(instructions, /offer the nearest thing you do know, or ask one clarifying question/i);
+  assert.match(instructions, /Never claim anything about Dylan that did not come back from a tool result/i);
+  assert.doesNotMatch(instructions, /server-controlled conversational act/i);
+});
+
 test('project route context tells the model to resolve the public slug, not an internal id', async () => {
   const source = await createTestProjectSource();
   const [fixtureProject] = await source.projectLoader();
@@ -105,16 +118,17 @@ test('project route context tells the model to resolve the public slug, not an i
   assert.doesNotMatch(prompt, /Stable public project ids already resolved by page context: public-project-slug/);
 });
 
-test('a conversational answer completes through the single structured contract', async () => {
+test('a conversational answer carries the model-authored prose with no evidence attached', async () => {
   const source = await createTestProjectSource();
   const request = chatRequest('Hello');
+  const greeting = 'This is the portfolio side of Dylan’s work. Ask about a project and I will pull the record.';
   const response = createDMChatResponse(request, config, {
     db: emptyDb(),
     projectLoader: source.projectLoader,
     model: toolSequenceModel([{
       toolName: 'finalizeAnswer',
       input: {
-        segments: [{ kind: 'conversational', act: 'greeting' }],
+        segments: [{ kind: 'conversational', act: 'greeting', text: greeting }],
         artifactIntent: 'none',
         artifacts: [],
         limitations: [],
@@ -125,7 +139,10 @@ test('a conversational answer completes through the single structured contract',
 
   assert.equal(observation.outcome, 'completed');
   assert.equal(observation.result?.status, 'accepted');
-  assert.equal(observation.answerText, "Hi — I'm DM, Dylan's public portfolio guide.");
+  assert.equal(observation.answerText, greeting);
+  assert.deepEqual(observation.result?.answer.segments[0]?.evidenceIds, []);
+  assert.deepEqual(observation.result?.answer.segments[0]?.evidence, []);
+  assert.deepEqual(observation.result?.answer.limitations, []);
   assert.deepEqual(observation.result?.answer.artifacts, []);
   assert.deepEqual(
     observation.result?.answer.actions.map(({ label, href, source }) => ({ label, href, source })),
@@ -136,9 +153,42 @@ test('a conversational answer completes through the single structured contract',
   );
 });
 
+test('two greetings in separate turns are not forced to share one fixed opening', async () => {
+  const source = await createTestProjectSource();
+  const openings = [
+    'Dylan builds software and ships it. Pick a project and I will tell you what it does.',
+    'Everything here comes from what Dylan has published. Where do you want to start?',
+  ];
+  const answers: string[] = [];
+
+  for (const opening of openings) {
+    const request = chatRequest('Hi there');
+    const observation = await observeDMResponse(createDMChatResponse(request, config, {
+      db: emptyDb(),
+      projectLoader: source.projectLoader,
+      model: toolSequenceModel([{
+        toolName: 'finalizeAnswer',
+        input: {
+          segments: [{ kind: 'conversational', act: 'greeting', text: opening }],
+          artifactIntent: 'none',
+          artifacts: [],
+          limitations: [],
+        },
+      }]),
+    }), request);
+
+    assert.equal(observation.result?.status, 'accepted');
+    answers.push(observation.answerText);
+  }
+
+  assert.deepEqual(answers, openings);
+  assert.notEqual(answers[0], answers[1]);
+});
+
 test('model prose outside the structured answer is not visitor-visible', async () => {
   const source = await createTestProjectSource();
   const request = chatRequest('What can you do?');
+  const capabilities = 'I can walk you through the published projects, the resume, or how to reach him.';
   const response = createDMChatResponse(request, config, {
     db: emptyDb(),
     projectLoader: source.projectLoader,
@@ -146,7 +196,7 @@ test('model prose outside the structured answer is not visitor-visible', async (
       toolName: 'finalizeAnswer',
       prose: 'unvalidated model preamble',
       input: {
-        segments: [{ kind: 'conversational', act: 'capabilities' }],
+        segments: [{ kind: 'conversational', act: 'capabilities', text: capabilities }],
         artifactIntent: 'none',
         artifacts: [],
         limitations: [],
@@ -157,10 +207,7 @@ test('model prose outside the structured answer is not visitor-visible', async (
 
   assert.equal(observation.outcome, 'completed');
   assert.doesNotMatch(observation.answerText, /unvalidated model preamble/);
-  assert.equal(
-    observation.answerText,
-    "I can help with Dylan's published projects, public resume, and contact details.",
-  );
+  assert.equal(observation.answerText, capabilities);
 });
 
 test('a direct published-project read grounds a factual answer and project artifact', async () => {
@@ -219,6 +266,38 @@ test('unknown evidence exhausts one repair attempt and fails closed', async () =
   assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
 });
 
+test('a persistent artifact-envelope miss degrades to the grounded model prose, not boilerplate', async () => {
+  const source = await createTestProjectSource();
+  const request = chatRequest('Tell me about Loom and show its project card.');
+  const prose = 'Loom is a published project. That is the record I have on it.';
+  const unavailableArtifact = {
+    segments: [{ kind: 'factual', text: prose, evidenceIds: ['loom:identity'] }],
+    artifactIntent: 'one_project',
+    artifacts: [{ kind: 'project', id: 'never-returned' }],
+    limitations: [],
+  };
+  const metricsLines: string[] = [];
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: emptyDb(),
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'getProject', input: { id: 'loom' } },
+      { toolName: 'finalizeAnswer', input: unavailableArtifact },
+      { toolName: 'finalizeAnswer', input: unavailableArtifact },
+    ]),
+    metricsLogger: (line) => metricsLines.push(line),
+  }), request);
+
+  assert.equal(observation.result?.status, 'limited');
+  assert.equal(observation.result?.repairAttempted, true);
+  assert.equal(observation.answerText, prose);
+  assert.doesNotMatch(observation.answerText, /could not verify/i);
+  assert.doesNotMatch(JSON.stringify(observation), /never-returned/);
+  assert.deepEqual(observation.result?.answer.artifacts, []);
+  assert.ok(observation.evidenceIds.includes('loom:identity'));
+  assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
+});
+
 test('invalid first finalization can be repaired with same-run public evidence', async () => {
   const source = await createTestProjectSource();
   const request = chatRequest('Tell me about Loom.');
@@ -257,7 +336,11 @@ test('private-boundary prompts expose only the reviewed public tool surface', as
     model: toolSequenceModel([{
       toolName: 'finalizeAnswer',
       input: {
-        segments: [{ kind: 'limitation', code: 'private_sources' }],
+        segments: [{
+          kind: 'limitation',
+          code: 'private_sources',
+          text: 'I only see what Dylan has published. Anything internal is off the table here.',
+        }],
         artifactIntent: 'none',
         artifacts: [],
         limitations: ['private_sources'],
@@ -267,6 +350,7 @@ test('private-boundary prompts expose only the reviewed public tool surface', as
 
   assert.equal(observation.result?.status, 'accepted');
   assert.deepEqual(observation.tools, []);
+  assert.match(observation.answerText, /only see what Dylan has published/);
   assert.doesNotMatch(observation.answerText, /candidate records|visitor history/i);
   assert.deepEqual((prompts[0]?.tools?.map((entry) => entry.name) ?? []).sort(), [
     'finalizeAnswer', 'getContact', 'getProject', 'readResume', 'searchProfile', 'searchProjects',
