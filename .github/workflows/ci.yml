@@ -26,6 +26,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
+          # On pull_request, actions/checkout defaults to refs/pull/N/merge — a
+          # synthetic merge commit whose SHA never equals the PR head. The
+          # replacement-quality gate binds proof to the exact live PR head
+          # (AGENTS.md), so check the head out directly. Without this the gate
+          # fails on every pull request with "package head does not match the
+          # checked-out Git head".
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
