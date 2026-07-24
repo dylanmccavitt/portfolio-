@@ -620,18 +620,22 @@ function validateFinalAnswer(
   const changedIntent = artifacts.boundArtifactIntent !== null
     && input.artifactIntent !== artifacts.boundArtifactIntent;
   artifacts.boundArtifactIntent ??= input.artifactIntent;
-  if (changedIntent) {
-    return {
-      ok: false,
-      errors: ['artifact intent must match the current request and cannot change during repair'],
-      evidenceViolation: false,
-    };
-  }
   // Evidence errors are grounding failures and always fail closed. Style errors
   // only concern the artifact envelope, so a persistent one degrades to the
   // model's own validated prose instead of to server boilerplate.
+  //
+  // A changed artifact intent is an envelope failure, so it belongs in
+  // `styleErrors` rather than in an early return. Returning here with a
+  // hard-coded `evidenceViolation: false` would claim a grounding verdict that
+  // was never computed: the ledger loop below would be skipped, and the caller
+  // reads that flag to choose between failing closed and emitting the model's
+  // own prose. An unvalidated answer would then ship with fabricated evidence
+  // ids silently resolving to an empty evidence array.
   const evidenceErrors: string[] = [];
   const styleErrors: string[] = [];
+  if (changedIntent) {
+    styleErrors.push('artifact intent must match the current request and cannot change during repair');
+  }
   evidenceErrors.push(...limitationOutcomeErrors(input, artifacts));
   const artifactReferences = deduplicateArtifactReferences(input.artifacts);
   for (const [index, segment] of input.segments.entries()) {

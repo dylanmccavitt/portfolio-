@@ -266,6 +266,40 @@ test('unknown evidence exhausts one repair attempt and fails closed', async () =
   assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
 });
 
+test('a changed artifact intent cannot ship ungrounded prose', async () => {
+  // Regression guard. `validateFinalAnswer` used to return early on a changed
+  // artifact intent with a hard-coded `evidenceViolation: false`, so the ledger
+  // loop never ran. The caller reads that flag to choose between failing closed
+  // and emitting the model's own prose, so an entirely unvalidated answer shipped
+  // with fabricated evidence ids resolving silently to an empty evidence array.
+  const source = await createTestProjectSource();
+  // The request pre-binds `one_project`; the model then finalizes `project_set`.
+  const request = chatRequest('Show me one project.');
+  const fabricated = {
+    segments: [{
+      kind: 'factual',
+      text: 'Dylan spent four years at Google leading the Search ranking team.',
+      evidenceIds: ['totally:made:up'],
+    }],
+    artifactIntent: 'project_set',
+    artifacts: [],
+    limitations: [],
+  };
+  const observation = await observeDMResponse(createDMChatResponse(request, config, {
+    db: emptyDb(),
+    projectLoader: source.projectLoader,
+    model: toolSequenceModel([
+      { toolName: 'finalizeAnswer', input: fabricated },
+      { toolName: 'finalizeAnswer', input: fabricated },
+    ]),
+  }), request);
+
+  assert.equal(observation.result?.status, 'limited');
+  assert.doesNotMatch(observation.answerText, /Google|Search ranking/i);
+  assert.doesNotMatch(JSON.stringify(observation), /totally:made:up/);
+  assert.match(observation.answerText, /could not verify/i);
+});
+
 test('a persistent artifact-envelope miss degrades to the grounded model prose, not boilerplate', async () => {
   const source = await createTestProjectSource();
   const request = chatRequest('Tell me about Loom and show its project card.');
