@@ -52,17 +52,22 @@ provider configuration.
   owning GitHub issue.
 - Merge, deploy, promotion, migration, publication, issue closure, provider
   changes, paid evaluations, and destructive cleanup require explicit gates.
-- Keep the durable outbox and review-gated GitHub refresh procedures in their
-  dedicated operator documents under `docs/agents/`. The parity-first catalog
-  cutover runbook lives on GitHub **#190**.
+- The durable outbox, the review-gated GitHub refresh procedure, the admin
+  publish pipeline, and the Slack control plane were removed with the
+  content-operations backend (#316), along with their operator documents. The
+  parity-first catalog cutover runbook (#190) was retired unexecuted; public
+  project reads are published-DB only and fail closed, and `scripts/db.ts` is
+  now the sole writer to the projects database.
 
 ## Deferred work
 
-- Provider-free contract, accessibility, browser, responsive, and visual proof:
-  issue #308.
+- Agent rework and RAG removal: issue **#318**, blocked pending a specification.
+- Any reinstated publication workflow, scheduled refresh, or content-operations
+  surface is new work, not a restoration — the previous implementations are
+  deleted, not parked.
 - Production model/provider selection, persistent memory, resume/contact DB
-  migration, scheduled refresh/outbox execution, generated visuals, richer
-  artifact types, and blog expansion remain future separately authorized work.
+  migration, generated visuals, richer artifact types, and blog expansion remain
+  future separately authorized work.
 
 ## Naming anchors
 

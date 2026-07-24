@@ -23,39 +23,20 @@ databases, deploy hooks, cron, or production traffic.
 | GitHub CI (`Lint, typecheck, build`) | | | | |
 | Vercel preview | | | | |
 | Preview migration read-back | | | | |
-| Published-media path preflight | | | n/a | |
 | Preview smoke, accessibility, and mobile | | | | |
 | Emergency rollback and restore | | | | |
 | Ruleset read-back | | | n/a | |
 
 ## Readiness contract
 
-`GET /api/admin/readiness` is machine-authenticated with
-`Authorization: Bearer <DM_READINESS_TOKEN>`. The token must be at least 32
-UTF-8 bytes. The endpoint returns `Cache-Control: no-store` and only the
-redacted fields `status`, `checks.db.ok`,
-`checks.outbox.{queued,processing,dead,overdue,backlogExceeded}`, and
-`checks.rag.configured`.
+The machine-authenticated `GET /api/admin/readiness` endpoint, its outbox
+backlog gate, and the published-media path preflight were removed with the
+content-operations backend (#316). There is no readiness endpoint on this
+branch; `/api/dm/chat` is the only API route.
 
-It returns `200` only when the deployed DM configuration is valid (runtime,
-budget, rate-limit, and `database` public-project source), the database query
-completes within 2000 ms, `OPENAI_API_KEY` is configured for public RAG, and
-the outbox gate is healthy. `DM_RATE_LIMIT_HMAC_SECRET` must be at least 32
-UTF-8 bytes. `RAG_VECTOR_STORE_ID` remains optional because vector-store
-identities are persisted per approved source.
-
-The documented outbox gate is deliberately conservative:
-
-- Active backlog is `queued + processing`; it must stay below `20`.
-- A `dead` job always degrades readiness.
-- `overdue` means a queued job whose `next_attempt_at` is at least 15 minutes
-  overdue, or a processing job whose lease has expired; either always degrades
-  readiness.
-
-Counts are returned as zero when the database cannot be queried, but
-`checks.db.ok: false` and `checks.outbox.backlogExceeded: true` make that state
-unambiguously degraded. Raw query errors, job errors, connection strings,
-provider/vector identifiers, and credentials are never returned.
+Readiness for a release candidate is established by the checklist above plus
+`npm test`, which gates the visual system, route coverage, and the public DM
+tool boundary.
 
 ## Maintainer-only GitHub protection gate
 

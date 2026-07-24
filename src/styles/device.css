@@ -518,14 +518,6 @@ html[data-webgl='unavailable'] .device-content--route > article {
 }
 
 /* Existing static routes adopt the device display without losing their data. */
-.device-body .detail-topbar {
-  position: static;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-}
-
 .device-body .resume-detail {
   font-family: var(--pl-mono);
 }
@@ -543,8 +535,7 @@ html[data-webgl='unavailable'] .device-content--route > article {
 }
 
 .device-body .btn,
-.device-body .badge,
-.device-body .detail-mark {
+.device-body .badge {
   border-radius: 0;
 }
 
@@ -677,8 +668,7 @@ html[data-webgl='unavailable'] .device-content--route > article {
     border-radius: 0;
   }
 
-  .screen-nav,
-  .detail-topbar {
+  .screen-nav {
     align-items: flex-start !important;
     flex-direction: column;
     gap: 0.65rem !important;
