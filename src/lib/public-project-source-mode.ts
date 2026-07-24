@@ -1,12 +1,9 @@
-const PUBLIC_PROJECT_DB_FLAGS = ['PUBLIC_PROJECT_PAGES_FROM_DB', 'PORTFOLIO_PUBLIC_PROJECTS_FROM_DB'] as const;
 const DATABASE_ENV_KEYS = ['DATABASE_URL', 'POSTGRES_URL', 'PORTFOLIO_DATABASE_URL', 'PORTFOLIO_POSTGRES_URL'] as const;
-const TRUTHY_ENV_VALUES: Record<string, true> = { '1': true, true: true, yes: true, on: true };
 const PUBLIC_PROJECT_SOURCE_VALUES = ['database', 'catalog_emergency'] as const;
 
-type PublicProjectFlag = (typeof PUBLIC_PROJECT_DB_FLAGS)[number];
 type DatabaseEnvKey = (typeof DATABASE_ENV_KEYS)[number];
 
-export type PublicProjectEnv = Partial<Record<DatabaseEnvKey | PublicProjectFlag, string>> & {
+export type PublicProjectEnv = Partial<Record<DatabaseEnvKey, string>> & {
   PUBLIC_PROJECT_SOURCE?: string;
   CI?: string;
   VERCEL?: string;
@@ -44,12 +41,6 @@ export function resolvePublicProjectSourceModeFromEnv(
   }
 
   if (options.hasInjectedDb) return 'database';
-
-  // Deprecated compatibility flags are database-only. They never enable a
-  // catalog escape hatch when the database read fails.
-  if (PUBLIC_PROJECT_DB_FLAGS.some((key) => Object.hasOwn(TRUTHY_ENV_VALUES, env[key]?.trim().toLowerCase() ?? ''))) {
-    return 'database';
-  }
 
   // Every real Vercel build/function is database-only, including one whose DB
   // configuration is missing. Vercel env pulls also contain VERCEL=1, so pair

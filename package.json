@@ -14,8 +14,7 @@
     "test:db": "node --import tsx --test tests/db-foundation.test.ts",
     "test:release": "node --import tsx --test tests/release-gates.test.ts",
     "test:dm": "node --import tsx --test tests/dm-runtime.test.ts tests/dm-streaming.test.ts tests/dm-contextual-guide.test.ts tests/dm-public-agent-tools.test.ts tests/dm-site-brief.test.ts && npm run test:dm-boundary",
-    "test:dm-boundary": "node --test tests/public-dm-tool-boundary.test.mjs && npm run build && node scripts/check-public-dm-tool-boundary.mjs",
-    "test:dm-tools": "node --import tsx --test tests/dm-public-agent-tools.test.ts tests/dm-site-brief.test.ts",
+    "test:dm-boundary": "node --test tests/public-dm-tool-boundary.test.mjs && node scripts/check-public-dm-tool-boundary.mjs",
     "test:metrics": "node --import tsx --test tests/dm-metrics.test.ts",
     "test:rag": "node --import tsx --test tests/rag-ingestion.test.ts tests/rag-retrieval.test.ts",
     "test:visual": "node --import tsx --test tests/device-visual-system.test.ts",
@@ -36,30 +35,31 @@
     "@astrojs/check": "^0.9.9",
     "@astrojs/vercel": "^11.0.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/inter": "^5.2.8",
     "@neondatabase/serverless": "^1.1.0",
+    "@resvg/resvg-js": "^2.6.2",
     "ai": "^7.0.2",
     "astro": "^7.0.3",
     "openai": "^6.45.0",
+    "satori": "^0.26.0",
     "three": "^0.185.1",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@ai-sdk/provider": "^4.0.0",
     "@electric-sql/pglite": "^0.5.3",
     "@eslint/js": "^10.0.1",
-    "@fontsource/inter": "^5.2.8",
-    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^25.6.0",
     "@types/three": "^0.185.1",
     "eslint": "^10.1.0",
     "eslint-plugin-astro": "^1.6.0",
-    "satori": "^0.26.0",
     "sharp": "^0.34.5",
     "tsx": "^4.22.4",
     "typescript-eslint": "^8.58.0"
   },
   "overrides": {
     "path-to-regexp": "6.3.0",
-    "yaml": "2.8.3"
+    "yaml": "^2.8.3"
   }
 }

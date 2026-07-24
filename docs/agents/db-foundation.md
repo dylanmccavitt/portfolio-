@@ -16,8 +16,7 @@ preview/production mutations remain maintainer-operated gates.
 - Normal operator mode: `PUBLIC_PROJECT_SOURCE=database`.
 - Database mode is also selected by an injected DB client, a real Vercel build
   (`VERCEL=1` plus `CI=1`), a Vercel function (`VERCEL=1` plus
-  `VERCEL_REGION`), a configured local database URL, or the deprecated truthy compatibility flags
-  `PUBLIC_PROJECT_PAGES_FROM_DB` / `PORTFOLIO_PUBLIC_PROJECTS_FROM_DB`.
+  `VERCEL_REGION`), or a configured local database URL.
 - Database mode queries only rows where `lifecycle_state = 'published'` via
   `fetchPublicProjectDetails()` / `fetchPublicProjectCards()`. It never appends
   catalog rows and never catches an error into catalog content.

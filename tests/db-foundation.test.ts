@@ -1387,7 +1387,6 @@ test('DB read layer accepts canonical Loom demo media and rejects invalid media'
 
 test('public project source modes keep catalog use explicit and database reads fail closed', async () => {
   assert.equal(shouldUsePublicProjectDb({}), false);
-  assert.equal(shouldUsePublicProjectDb({ PUBLIC_PROJECT_PAGES_FROM_DB: 'true' }), true);
   assert.equal(shouldUsePublicProjectDb({ PUBLIC_PROJECT_SOURCE: 'database' }), true);
   assert.equal(shouldUsePublicProjectDb({ DATABASE_URL: 'postgres://local' }), true);
   assert.equal(shouldUsePublicProjectDb({ VERCEL: '1' }), false);

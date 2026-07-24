@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { serializeJsonLd } from '@/lib/seo';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; upgrade-insecure-requests";
+const CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; upgrade-insecure-requests";
 
 test('shared JSON-LD serializer preserves data without allowing hostile script termination', () => {
   const hostile = {

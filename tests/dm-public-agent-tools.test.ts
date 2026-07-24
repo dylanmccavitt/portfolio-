@@ -155,7 +155,7 @@ test('deployed project reads use the published-only query and never surface draf
   };
   const run = createPublicAgentTools({
     db,
-    env: { PUBLIC_PROJECT_PAGES_FROM_DB: 'true' },
+    env: { PUBLIC_PROJECT_SOURCE: 'database' },
   });
 
   const visible = await run.getProject({ id: published.id });
