@@ -8,14 +8,13 @@
  */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-
-/**
- * Pointer parallax amplitude, in radians. Deliberately tiny: the DOM overlays
- * are projected from the unrotated surface rectangles, so the chassis tilt must
- * stay small enough that the resulting screen-space drift remains sub-pixel.
- */
-const POINTER_TILT_Z = 0.009;
-const POINTER_TILT_X = 0.006;
+import {
+  frameDelta,
+  frameSmoothingAlpha,
+  POINTER_SETTLE_PER_FRAME,
+  POINTER_TILT_X,
+  POINTER_TILT_Z,
+} from './device-frame';
 
 export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () => void {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -288,9 +287,9 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   else buildRoute();
   renderer.shadowMap.needsUpdate = true;
 
-  // Animation time is accumulated from clamped frame deltas rather than read
-  // from the wall clock, so the paused frames behind `!visible || !inView` do
-  // not pile up into a single jump when the loop resumes.
+  // Animation time is accumulated from clamped frame deltas (see `frameDelta`)
+  // rather than read from the wall clock, so the paused frames behind
+  // `!visible || !inView` do not pile up into a single jump when the loop resumes.
   let clock = 0;
   let lastFrame = performance.now();
   let visible = !document.hidden;
@@ -371,7 +370,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   renderer.setAnimationLoop(() => {
     if (!visible || !inView || disposed) return;
     const now = performance.now();
-    const dt = Math.min((now - lastFrame) / 1000, 0.05);
+    const dt = frameDelta(now, lastFrame);
     lastFrame = now;
     clock += dt;
     const elapsed = reducedMotion.matches ? 0 : clock;
@@ -380,8 +379,8 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     // parallax therefore stays inside POINTER_TILT_Z/POINTER_TILT_X, whose
     // sub-pixel chassis displacement keeps the overlay projection valid.
     // The exponential alpha is frame-rate independent and reproduces the tuned
-    // 0.045-per-frame settle exactly at 60Hz.
-    pointerCurrent.lerp(pointerTarget, 1 - Math.pow(1 - 0.045, dt * 60));
+    // POINTER_SETTLE_PER_FRAME settle exactly at 60Hz.
+    pointerCurrent.lerp(pointerTarget, frameSmoothingAlpha(POINTER_SETTLE_PER_FRAME, dt));
     if (!reducedMotion.matches) {
       world.rotation.z = -pointerCurrent.x * POINTER_TILT_Z;
       world.rotation.x = pointerCurrent.y * POINTER_TILT_X;

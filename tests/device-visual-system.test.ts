@@ -3,6 +3,15 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { collectionOwnsArrowKey, nextCollectionIndex } from '../src/scripts/device-keyboard.ts';
+import {
+  frameDelta,
+  frameSmoothingAlpha,
+  MAX_FRAME_DELTA,
+  POINTER_SETTLE_PER_FRAME,
+  POINTER_TILT_X,
+  POINTER_TILT_Z,
+  REFERENCE_FRAME_RATE,
+} from '../src/scripts/device-frame.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
@@ -32,13 +41,68 @@ test('home uses semantic routes over one progressive Three.js renderer', async (
   assert.doesNotMatch(bootstrap, /from 'three'|WebGLRenderer|WebGLRenderTarget/);
 });
 
+test('pointer parallax amplitudes stay sub-pixel', () => {
+  // Imported directly rather than text-matched: the overlay projection is only
+  // valid while the chassis tilt is small enough to stay under a pixel.
+  assert.equal(POINTER_TILT_Z, 0.009);
+  assert.equal(POINTER_TILT_X, 0.006);
+  assert.ok(POINTER_TILT_Z < 0.02 && POINTER_TILT_X < 0.02);
+});
+
+test('frame smoothing converges identically at 60Hz and 120Hz', () => {
+  // The one genuinely behavioural assertion available here: drive the pure
+  // smoothing helper with synthetic frame sequences and compare the settle in
+  // wall-clock terms, not in frames.
+  const settleTowardsOne = (hz: number, seconds: number): number => {
+    const dt = 1 / hz;
+    let value = 0;
+    for (let frame = 0; frame < Math.round(hz * seconds); frame += 1) {
+      value += (1 - value) * frameSmoothingAlpha(POINTER_SETTLE_PER_FRAME, dt);
+    }
+    return value;
+  };
+
+  for (const seconds of [0.25, 0.5, 1, 2]) {
+    const at60 = settleTowardsOne(60, seconds);
+    const at120 = settleTowardsOne(120, seconds);
+    assert.ok(
+      Math.abs(at60 - at120) < 1e-3,
+      `60Hz (${at60}) and 120Hz (${at120}) must agree after ${seconds}s`,
+    );
+  }
+
+  // A frame-rate dependent alpha would diverge; prove the comparison can fail.
+  const naive = (hz: number, seconds: number): number => {
+    let value = 0;
+    for (let frame = 0; frame < Math.round(hz * seconds); frame += 1) {
+      value += (1 - value) * POINTER_SETTLE_PER_FRAME;
+    }
+    return value;
+  };
+  assert.ok(Math.abs(naive(60, 1) - naive(120, 1)) > 1e-3);
+
+  // At the reference rate the generalised alpha reproduces the tuned constant.
+  assert.ok(
+    Math.abs(
+      frameSmoothingAlpha(POINTER_SETTLE_PER_FRAME, 1 / REFERENCE_FRAME_RATE)
+        - POINTER_SETTLE_PER_FRAME,
+    ) < 1e-12,
+  );
+  assert.equal(frameSmoothingAlpha(POINTER_SETTLE_PER_FRAME, 0), 0);
+});
+
+test('frame deltas are clamped so a resumed loop never applies one huge step', () => {
+  assert.equal(frameDelta(1_000, 0), MAX_FRAME_DELTA);
+  assert.equal(frameDelta(1_016, 1_000), 0.016);
+  assert.equal(frameDelta(1_000, 1_000), 0);
+  assert.ok(frameDelta(Number.MAX_SAFE_INTEGER, 0) <= MAX_FRAME_DELTA);
+});
+
 test('subtle pointer parallax stays wired, bounded, and reduced-motion aware', async () => {
   const device = await read('src/scripts/device-renderer.ts');
-  assert.match(device, /const POINTER_TILT_Z = 0\.009;/);
-  assert.match(device, /const POINTER_TILT_X = 0\.006;/);
   assert.match(device, /addEventListener\('pointermove', onPointer, \{ passive: true \}\)/);
   assert.match(device, /removeEventListener\('pointermove', onPointer\)/);
-  assert.match(device, /pointerCurrent\.lerp\(pointerTarget, 1 - Math\.pow\(1 - 0\.045, dt \* 60\)\)/);
+  assert.match(device, /pointerCurrent\.lerp\(pointerTarget, frameSmoothingAlpha\(POINTER_SETTLE_PER_FRAME, dt\)\)/);
   assert.match(device, /world\.rotation\.z = -pointerCurrent\.x \* POINTER_TILT_Z/);
   assert.match(device, /world\.rotation\.x = pointerCurrent\.y \* POINTER_TILT_X/);
   assert.match(device, /if \(reducedMotion\.matches\) return;/);
@@ -213,17 +277,22 @@ test('binding Work and answered-guide states retain reference hierarchy and publ
 });
 
 test('binding design references retain their approved hashes', async () => {
-  const expected: Record<string, string> = {
-    '01-home-muted-threejs.png': '92fa8bff310564a6264994382f4621428ac5add9d6a1a7afe171111f0e4103b7',
-    '02-work-layout.png': '9ab440d983436c3ab09d938359e18ff5a515629975b678474a60a2b637855d69',
-    '03-project-detail-layout.png': 'a8bb44e484c7f6961db7318f8d3fa31b37b3723f55c6e8259a03d49ef4f3557e',
-    '04-journey-layout.png': '4760cd747760d6ceb45c3ca56e6a9924594d99f6acda7a25310f1bf08c221d43',
-    '05-resume-layout.png': '62b52d2277f74e671b173b441e0227d8a58a9b2fb8c83d530b6ffa9228c88a01',
-    '06-contact-layout.png': 'b336ad3a6848271873fc79768d1831cd68b7a0d8ed1b0c998d8db7423613e14e',
-    '07-dm-right-sidecar-muted.png': '17eeeebb3a5167434c0d33f40e103e0a284afa09c2ca7cb46965025df7963263',
-  };
+  // The README is the single source for the pinned digests — the test parses
+  // it rather than keeping a second copy that can silently drift.
+  // `08-route-horizon-rail.png` is deliberately untracked and unlisted, so it
+  // is not pinned here; adding it to the README is what would pin it.
+  const readme = await read('docs/design/contextual-guide-reset/README.md');
+  const expected = [...readme.matchAll(/^- `([\w.-]+\.png)` — `([0-9a-f]{64})`$/gm)]
+    .map(([, file, hash]) => [file, hash] as const);
 
-  for (const [file, hash] of Object.entries(expected)) {
+  assert.ok(expected.length >= 7, 'README must still list the approved reference digests');
+  assert.equal(
+    expected.some(([file]) => file.startsWith('08-')),
+    false,
+    'the untracked route-horizon reference must not be pinned',
+  );
+
+  for (const [file, hash] of expected) {
     const bytes = await readFile(new URL(`docs/design/contextual-guide-reset/${file}`, root));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), hash, file);
   }
