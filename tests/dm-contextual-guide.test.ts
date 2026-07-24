@@ -21,11 +21,9 @@ const VALID_CONTEXTS: DMPageContext[] = [
   { kind: 'library', path: '/library' },
   { kind: 'project', path: '/projects/evalgate', reference: 'evalgate' },
   { kind: 'journey', path: '/journey' },
-  { kind: 'hiring', path: '/hiring' },
-  { kind: 'fit-check', path: '/fit-check' },
 ];
 
-test('all six public route contexts validate to stable server context ids', () => {
+test('all four public route contexts validate to stable server context ids', () => {
   assert.deepEqual(
     VALID_CONTEXTS.map((context) => dmPageContextId(parseDMPageContext(context))),
     [
@@ -33,8 +31,6 @@ test('all six public route contexts validate to stable server context ids', () =
       'library:/library:',
       'project:/projects/evalgate:evalgate',
       'journey:/journey:',
-      'hiring:/hiring:',
-      'fit-check:/fit-check:',
     ],
   );
 });
@@ -49,7 +45,10 @@ test('forged, unknown, private, and mismatched route contexts are rejected', asy
     { kind: 'project', path: '/projects\\evalgate', reference: 'evalgate' },
     { kind: 'project', path: '/projects/private/../evalgate', reference: 'evalgate' },
     { kind: 'project', path: '/projects/%2e%2e/evalgate', reference: 'evalgate' },
-    { kind: 'hiring', path: '/hiring', privateSources: true },
+    { kind: 'journey', path: '/journey', privateSources: true },
+    // Retired routes (#317) are no longer allowlisted page contexts.
+    { kind: 'hiring', path: '/hiring' },
+    { kind: 'fit-check', path: '/fit-check' },
   ]) {
     assert.throws(() => parseDMPageContext(page), /context\.page/);
   }
@@ -100,21 +99,12 @@ test('project page context keeps its public slug distinct from internal project 
   assert.equal(parsed.context?.projectIds, undefined);
 });
 
-test('fit-check context remains route-bound and sanitizes private contact data', async () => {
-  const page = { kind: 'fit-check', path: '/fit-check' } as const;
-  const parsed = await parseDMChatRequest(requestFor(page, 'Assess this role.', [], {
-    fitCheck: {
-      kind: 'job-description',
-      jobDescription: `${'Email recruiter@example.com and open https://private.example/job. '.repeat(3)}Build reliable TypeScript and PostgreSQL services.`,
-    },
-  }));
-  assert.match(parsed.context?.fitCheck?.jobDescription ?? '', /\[email removed\]/);
-  assert.match(parsed.context?.fitCheck?.jobDescription ?? '', /\[link removed\]/);
-  assert.doesNotMatch(parsed.context?.fitCheck?.jobDescription ?? '', /recruiter@example\.com|private\.example/);
-
+test('the retired fit-check transient context is no longer an accepted request field', async () => {
   await assert.rejects(
-    parseRequest({ kind: 'home', path: '/' }, { fitCheck: parsed.context?.fitCheck }),
-    /only on the fit-check route/,
+    parseRequest({ kind: 'home', path: '/' }, {
+      fitCheck: { kind: 'job-description', jobDescription: 'Build reliable TypeScript and PostgreSQL services.' },
+    }),
+    /context contains unsupported fields/,
   );
 });
 
@@ -139,7 +129,7 @@ test('actions are server-authored, allowlisted, and traceable to route or same-r
   });
   assert.ok(actions.every((action) => isAllowedGuideActionDestination(action.href)));
   assert.ok(actions.every((action) => action.source.kind === 'route' || action.source.kind === 'evidence'));
-  for (const href of ['https://evil.example', '//evil.example', '/admin', '/projects/../admin', '/library?private=1', 'javascript:alert(1)']) {
+  for (const href of ['https://evil.example', '//evil.example', '/admin', '/projects/../admin', '/library?private=1', 'javascript:alert(1)', '/hiring', '/fit-check']) {
     assert.equal(isAllowedGuideActionDestination(href), false, href);
   }
 });

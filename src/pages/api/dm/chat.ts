@@ -27,14 +27,11 @@ import type { DMChatContext, DMChatRequest, DMUIMessage } from '@/lib/dm/contrac
 import { dmPageContextId, DMPageContextError, parseDMPageContext } from '@/lib/dm/guide';
 import { loadPublicProfileEntries } from '@/data/profile';
 import { resolvePublicProjectSourceMode, type PublicProjectSourceMode } from '@/lib/public-projects';
-import {
-  FIT_CHECK_INPUT_LIMIT,
-  FIT_CHECK_MIN_CHARS,
-  FIT_CHECK_REQUEST_BODY_LIMIT,
-  sanitizeJobDescriptionForFitCheck,
-} from '@/lib/dm/fit-check';
 
 export const prerender = false;
+
+/** Hard ceiling on an accepted chat request body, in bytes. */
+const REQUEST_BODY_LIMIT = 64_000;
 
 export interface DMPostHandlerDeps {
   config?: DMRuntimeConfig;
@@ -184,7 +181,7 @@ function assertRequestSize(request: Request): void {
   const contentLength = request.headers.get('content-length');
   if (!contentLength) return;
   const size = Number.parseInt(contentLength, 10);
-  if (Number.isFinite(size) && size > FIT_CHECK_REQUEST_BODY_LIMIT) {
+  if (Number.isFinite(size) && size > REQUEST_BODY_LIMIT) {
     throw badRequest('Request body is too large.');
   }
 }
@@ -237,7 +234,7 @@ function parseContext(value: unknown): DMChatContext {
   }
 
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).some((key) => !['page', 'projectIds', 'resumeTrackIds', 'fitCheck'].includes(key))) {
+  if (Object.keys(record).some((key) => !['page', 'projectIds', 'resumeTrackIds'].includes(key))) {
     throw badRequest('context contains unsupported fields.');
   }
   let page: DMChatContext['page'];
@@ -249,7 +246,6 @@ function parseContext(value: unknown): DMChatContext {
   }
   const projectIds = parseStringArray(record.projectIds, 'context.projectIds');
   const resumeTrackIds = parseStringArray(record.resumeTrackIds, 'context.resumeTrackIds');
-  const fitCheck = parseFitCheckContext(record.fitCheck);
   // Project route references are public slugs, not necessarily internal project
   // IDs. Keep the slug in the validated page contract and let the public
   // getProject tool resolve it through its slug input.
@@ -262,11 +258,7 @@ function parseContext(value: unknown): DMChatContext {
   if (!sameOptionalStringArray(resumeTrackIds, expectedResumeTrackIds)) {
     throw badRequest('context.resumeTrackIds must be derived from the active journey route.');
   }
-  if (fitCheck && page.kind !== 'fit-check') {
-    throw badRequest('context.fitCheck is allowed only on the fit-check route.');
-  }
-
-  return { page, projectIds: expectedProjectIds, resumeTrackIds: expectedResumeTrackIds, fitCheck };
+  return { page, projectIds: expectedProjectIds, resumeTrackIds: expectedResumeTrackIds };
 }
 
 function parseStringArray(value: unknown, field: string): string[] | undefined {
@@ -282,39 +274,6 @@ function parseStringArray(value: unknown, field: string): string[] | undefined {
 function sameOptionalStringArray(actual: string[] | undefined, expected: string[] | undefined): boolean {
   if (!actual && !expected) return true;
   return Boolean(actual && expected && actual.length === expected.length && actual.every((item, index) => item === expected[index]));
-}
-
-function parseFitCheckContext(value: unknown): DMChatContext['fitCheck'] {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== 'object') {
-    throw badRequest('context.fitCheck must be an object when provided.');
-  }
-
-  const record = value as Record<string, unknown>;
-  if (record.kind !== 'job-description') {
-    throw badRequest('context.fitCheck.kind must be job-description.');
-  }
-  if (typeof record.jobDescription !== 'string') {
-    throw badRequest('context.fitCheck.jobDescription must be a string.');
-  }
-  if (record.jobDescription.length > FIT_CHECK_INPUT_LIMIT) {
-    throw badRequest(`context.fitCheck.jobDescription must be ${FIT_CHECK_INPUT_LIMIT} characters or fewer.`);
-  }
-
-  const sanitized = sanitizeJobDescriptionForFitCheck(record.jobDescription);
-  if (sanitized.jobDescription.length < FIT_CHECK_MIN_CHARS) {
-    throw badRequest(`context.fitCheck.jobDescription must be at least ${FIT_CHECK_MIN_CHARS} characters after sanitizing.`);
-  }
-
-  return {
-    kind: 'job-description',
-    jobDescription: sanitized.jobDescription,
-    originalLength:
-      typeof record.originalLength === 'number' && Number.isFinite(record.originalLength)
-        ? Math.max(0, Math.trunc(record.originalLength))
-        : sanitized.originalLength,
-    truncated: Boolean(record.truncated) || sanitized.truncated,
-  };
 }
 
 function jsonError(status: number, code: string, message: string, traceId?: string, extraHeaders: HeadersInit = {}): Response {

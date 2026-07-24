@@ -6,8 +6,6 @@
  *
  * Route families included:
  *   /                       — concierge landing (#60)
- *   /fit-check              — recruiter job-description fit-check flow (#108)
- *   /hiring                 — "I'm hiring" guided tour (#62)
  *   /library                — all-work library
  *   /library/<slug>         — filtered project indexes (from PLAYLIST_SLUGS)
  *   /projects/<id-or-slug>  — project detail pages from the active source
@@ -36,8 +34,6 @@ import { loadPublicProjectDetails } from '@/lib/public-projects';
 function canonicalPaths(projectPaths: string[]): string[] {
   return [
     '/',
-    '/fit-check/',
-    '/hiring/',
     '/library/',
     ...Object.values(PLAYLIST_SLUGS).map((slug) => `/library/${slug}/`),
     ...projectPaths,

@@ -23,7 +23,7 @@ test('shared JSON-LD serializer preserves data without allowing hostile script t
 });
 
 test('all public layouts use the shared JSON-LD serializer', async () => {
-  for (const layout of ['Device.astro', 'Tour.astro', 'DM.astro']) {
+  for (const layout of ['Device.astro']) {
     const source = await readFile(resolve(ROOT, 'src', 'layouts', layout), 'utf8');
     assert.match(source, /serializeJsonLd\((?:jsonLd|meta\.jsonLd)\)/, layout);
     assert.equal(source.includes('JSON.stringify(jsonLd)'), false, layout);

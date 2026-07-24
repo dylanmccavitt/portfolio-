@@ -8,8 +8,6 @@ import {
   AGENT_NAME,
   completedAssistantHistoryText,
   DM_ENDPOINT,
-  fitCheckValidationMessage,
-  sanitizeJobDescriptionForFitCheck,
   validateFinalizationResult,
 } from '@/lib/dm/client';
 import type {
@@ -397,11 +395,6 @@ function initRoot(root: HTMLElement): void {
     page,
     ...(page.kind === 'journey' && page.reference ? { resumeTrackIds: [page.reference] } : {}),
   };
-  const fitForm = root.querySelector<HTMLFormElement>('[data-dm-fit-form]');
-  const fitInput = root.querySelector<HTMLTextAreaElement>('[data-dm-fit-input]');
-  const fitSubmit = root.querySelector<HTMLButtonElement>('[data-dm-fit-submit]');
-  const fitCount = root.querySelector<HTMLElement>('[data-dm-fit-count]');
-  const fitError = root.querySelector<HTMLElement>('[data-dm-fit-error]');
   const history: DMUIMessage[] = [];
   let busy = false;
   let controller: AbortController | null = null;
@@ -415,7 +408,6 @@ function initRoot(root: HTMLElement): void {
     busy = next;
     root.classList.toggle('dm-busy', next);
     if (sendBtn) sendBtn.disabled = next;
-    if (fitSubmit) fitSubmit.disabled = next;
   };
 
   const ask = async (question: string, options: AskOptions = {}): Promise<void> => {
@@ -527,34 +519,6 @@ function initRoot(root: HTMLElement): void {
     }
     void ask(text);
   });
-
-  if (fitForm && fitInput) {
-    const updateFitCount = (): void => {
-      if (fitCount) fitCount.textContent = `${fitInput.value.length.toLocaleString()} / ${fitInput.maxLength.toLocaleString()}`;
-      if (fitError) fitError.hidden = true;
-    };
-    fitInput.addEventListener('input', updateFitCount);
-    updateFitCount();
-    fitForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const validation = fitCheckValidationMessage(fitInput.value);
-      if (validation) {
-        if (fitError) {
-          fitError.textContent = validation;
-          fitError.hidden = false;
-        }
-        fitInput.focus();
-        return;
-      }
-      const sanitized = sanitizeJobDescriptionForFitCheck(fitInput.value);
-      fitInput.value = '';
-      updateFitCount();
-      void ask(
-        "Fit-check this job description against Dylan's portfolio and resume. Present a fit summary, strongest evidence projects, resume/background evidence, gaps or unknowns, and next contact steps. Do not assign a match score or imply a hiring guarantee.",
-        { displayMessage: 'Fit-check pasted job description', transientContext: { fitCheck: { kind: 'job-description', ...sanitized } } },
-      );
-    });
-  }
 
   root.querySelector<HTMLElement>('[data-dm-reset]')?.addEventListener('click', () => {
     generation = resetGuideHistory(history, generation);

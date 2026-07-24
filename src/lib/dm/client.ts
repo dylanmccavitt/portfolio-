@@ -8,19 +8,12 @@ import type {
   DMValidatedAnswer,
 } from './contract';
 import { DM_PAGE_CONTEXT_KINDS, isAllowedGuideActionDestination, type DMGuideAction } from './guide';
-export {
-  FIT_CHECK_CONTEXT_LIMIT,
-  FIT_CHECK_INPUT_LIMIT,
-  FIT_CHECK_MIN_CHARS,
-  fitCheckValidationMessage,
-  sanitizeJobDescriptionForFitCheck,
-} from './fit-check';
 
 export const AGENT_NAME = 'DM';
 export const DM_ENDPOINT = '/api/dm/chat';
 export const GREETING = "I'm DM, Dylan McCavitt's portfolio guide.";
 export const SUBGREETING =
-  'Ask me a question, browse grounded project evidence, read the resume, take the hiring tour, paste a job description, or contact Dylan directly.';
+  'Ask me a question, browse grounded project evidence, read the resume, or contact Dylan directly.';
 export const CONTACT = {
   email: 'dylanmccavitt@outlook.com',
   github: 'https://github.com/DylanMcCavitt',

@@ -1419,7 +1419,6 @@ function contextNote(context: DMChatContext | undefined): string {
       ? `Stable public project ids already resolved by page context: ${context.projectIds.join(', ')}. For a latest-turn reference to one of these ids, call getProject directly; never use searchProjects to rediscover it.`
       : '',
     context.resumeTrackIds?.length ? `Visible resume track ids: ${context.resumeTrackIds.join(', ')}` : '',
-    context.fitCheck?.jobDescription ? `Job description supplied for fit check:\n${context.fitCheck.jobDescription}` : '',
   ].filter(Boolean);
   return lines.length ? `\n\nPage context (not factual evidence; use public tools before making claims):\n${lines.join('\n')}` : '';
 }

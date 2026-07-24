@@ -230,11 +230,9 @@ test('binding design references retain their approved hashes', async () => {
 });
 
 test('Canvas UI attribution and local-only source constraints are durable', async () => {
-  const [license, pkg, dm, tour] = await Promise.all([
+  const [license, pkg] = await Promise.all([
     read('docs/licenses/canvas-ui.md'),
     read('package.json'),
-    read('src/layouts/DM.astro'),
-    read('src/layouts/Tour.astro'),
   ]);
   assert.match(license, /Copyright \(c\) 2026 David Haz/);
   assert.match(license, /MIT \+ Commons Clause/);
@@ -242,6 +240,4 @@ test('Canvas UI attribution and local-only source constraints are durable', asyn
   assert.doesNotMatch(license, /src\/scripts\/device\.ts/);
   assert.match(pkg, /"three"/);
   assert.doesNotMatch(pkg, /"react"/);
-  assert.doesNotMatch(dm, /fonts\.googleapis|fonts\.gstatic/);
-  assert.doesNotMatch(tour, /fonts\.googleapis|fonts\.gstatic/);
 });

@@ -132,7 +132,6 @@ test('a conversational answer completes through the single structured contract',
     [
       { label: 'Browse projects', href: '/library', source: { kind: 'route', context: 'home' } },
       { label: 'View the journey', href: '/journey', source: { kind: 'route', context: 'home' } },
-      { label: 'Take the hiring tour', href: '/hiring', source: { kind: 'route', context: 'home' } },
     ],
   );
 });
@@ -507,52 +506,6 @@ test('the endpoint rate-limits before parsing the request or calling the model',
   assert.equal(response.status, 429);
   assert.equal(response.headers.get('Retry-After'), '60');
   assert.equal(model.doStreamCalls.length, 0);
-});
-
-test('fit-check context removes private contact data and remains non-evidentiary model context', async () => {
-  const source = await createTestProjectSource();
-  const prompts: LanguageModelV4CallOptions[] = [];
-  const request: DMChatRequest = {
-    ...chatRequest('Assess this role.', { kind: 'fit-check', path: '/fit-check' }),
-    context: {
-      page: { kind: 'fit-check', path: '/fit-check' },
-      fitCheck: {
-        kind: 'job-description',
-        jobDescription: `${'Contact recruiter@example.com or https://private.example/job. '.repeat(3)}Build reliable backend systems with TypeScript and PostgreSQL.`,
-      },
-    },
-  };
-  const handler = createDMPostHandler({
-    config,
-    db: emptyDb(),
-    projectLoader: source.projectLoader,
-    model: toolSequenceModel([{
-      toolName: 'finalizeAnswer',
-      input: {
-        segments: [{ kind: 'conversational', act: 'capabilities' }],
-        artifactIntent: 'none',
-        artifacts: [],
-        limitations: [],
-      },
-    }], prompts),
-  });
-  const response = await handler({
-    request: new Request('https://portfolio.test/api/dm/chat', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(request),
-    }),
-  } as never);
-  const observation = await observeDMResponse(response, request);
-  const prompt = JSON.stringify(prompts[0]?.prompt);
-
-  assert.equal(response.status, 200);
-  assert.equal(observation.result?.status, 'accepted');
-  assert.match(prompt, /Build reliable backend systems/);
-  assert.match(prompt, /Page context \(not factual evidence; use public tools before making claims\)/);
-  assert.match(prompt, /\[email removed\]/);
-  assert.match(prompt, /\[link removed\]/);
-  assert.doesNotMatch(prompt, /recruiter@example\.com|private\.example/);
 });
 
 function chatRequest(

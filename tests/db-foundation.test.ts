@@ -1580,11 +1580,11 @@ test('public route project reference resolver matches id/slug and throws on requ
   assert.throws(
     () =>
       resolveRequiredPublicProjectByReference([detail], 'missing-featured-id', {
-        route: 'hiring.astro',
+        route: 'journey/[track].astro',
         source: 'db',
         label: 'featured project id',
       }),
-    /hiring\.astro: featured project id "missing-featured-id" not found in db public project source/,
+    /journey\/\[track\]\.astro: featured project id "missing-featured-id" not found in db public project source/,
   );
 
   // Any admin-published row: internal proj_* id, public slug for card marks.
@@ -1598,7 +1598,6 @@ test('public project routes use the shared public project source boundary', asyn
     'src/pages/library/index.astro',
     'src/pages/library/[filter].astro',
     'src/pages/projects/[id].astro',
-    'src/pages/hiring.astro',
     'src/pages/journey/[track].astro',
     'src/pages/sitemap.xml.ts',
     'src/pages/og/projects/[id].png.ts',
