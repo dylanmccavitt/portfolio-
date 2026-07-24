@@ -5,8 +5,6 @@ export const DM_PAGE_CONTEXT_KINDS = [
   'library',
   'project',
   'journey',
-  'hiring',
-  'fit-check',
 ] as const;
 
 export type DMPageContextKind = (typeof DM_PAGE_CONTEXT_KINDS)[number];
@@ -131,9 +129,7 @@ export function isAllowedGuideActionDestination(href: string): boolean {
     || LIBRARY_PATHS.has(path)
     || path === '/journey'
     || /^\/journey\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)
-    || /^\/projects\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path)
-    || path === '/hiring'
-    || path === '/fit-check';
+    || /^\/projects\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path);
 }
 
 function assertContextRoute(context: DMPageContext): void {
@@ -154,23 +150,15 @@ function assertContextRoute(context: DMPageContext): void {
         return;
       }
       if (!reference || !RESUME_TRACK_IDS.has(reference) || context.path !== `/journey/${reference}`) invalidRoute();
-      return;
-    case 'hiring':
-      if (context.path !== '/hiring' || reference !== undefined) invalidRoute();
-      return;
-    case 'fit-check':
-      if (context.path !== '/fit-check' || reference !== undefined) invalidRoute();
   }
 }
 
 function routeActionCandidates(kind: DMPageContextKind): Array<[string, string, string]> {
   const candidates: Record<DMPageContextKind, Array<[string, string, string]>> = {
-    home: [['library', 'Browse projects', '/library'], ['journey', 'View the journey', '/journey'], ['hiring', 'Take the hiring tour', '/hiring']],
-    library: [['home', 'Back to home', '/'], ['journey', 'View the journey', '/journey'], ['hiring', 'Take the hiring tour', '/hiring']],
-    project: [['library', 'Browse more projects', '/library'], ['journey', 'View the journey', '/journey'], ['hiring', 'Take the hiring tour', '/hiring']],
-    journey: [['library', 'Browse projects', '/library'], ['hiring', 'Take the hiring tour', '/hiring'], ['fit-check', 'Run a fit check', '/fit-check']],
-    hiring: [['library', 'Browse projects', '/library'], ['journey', 'View the journey', '/journey'], ['fit-check', 'Run a fit check', '/fit-check']],
-    'fit-check': [['library', 'Browse projects', '/library'], ['journey', 'View the journey', '/journey'], ['home', 'Back to home', '/']],
+    home: [['library', 'Browse projects', '/library'], ['journey', 'View the journey', '/journey']],
+    library: [['home', 'Back to home', '/'], ['journey', 'View the journey', '/journey']],
+    project: [['library', 'Browse more projects', '/library'], ['journey', 'View the journey', '/journey']],
+    journey: [['library', 'Browse projects', '/library'], ['home', 'Back to home', '/']],
   };
   return candidates[kind];
 }

@@ -9,17 +9,21 @@ import {
   parseDMPageContext,
   type DMPageContext,
 } from '@/lib/dm/guide';
+import {
+  beginGuideHistoryTurn,
+  completeGuideHistoryTurn,
+  resetGuideHistory,
+  rollbackGuideHistoryTurn,
+} from '@/lib/dm/guide-history';
 
 const VALID_CONTEXTS: DMPageContext[] = [
   { kind: 'home', path: '/' },
   { kind: 'library', path: '/library' },
   { kind: 'project', path: '/projects/evalgate', reference: 'evalgate' },
   { kind: 'journey', path: '/journey' },
-  { kind: 'hiring', path: '/hiring' },
-  { kind: 'fit-check', path: '/fit-check' },
 ];
 
-test('all six public route contexts validate to stable server context ids', () => {
+test('all four public route contexts validate to stable server context ids', () => {
   assert.deepEqual(
     VALID_CONTEXTS.map((context) => dmPageContextId(parseDMPageContext(context))),
     [
@@ -27,8 +31,6 @@ test('all six public route contexts validate to stable server context ids', () =
       'library:/library:',
       'project:/projects/evalgate:evalgate',
       'journey:/journey:',
-      'hiring:/hiring:',
-      'fit-check:/fit-check:',
     ],
   );
 });
@@ -43,7 +45,10 @@ test('forged, unknown, private, and mismatched route contexts are rejected', asy
     { kind: 'project', path: '/projects\\evalgate', reference: 'evalgate' },
     { kind: 'project', path: '/projects/private/../evalgate', reference: 'evalgate' },
     { kind: 'project', path: '/projects/%2e%2e/evalgate', reference: 'evalgate' },
-    { kind: 'hiring', path: '/hiring', privateSources: true },
+    { kind: 'journey', path: '/journey', privateSources: true },
+    // Retired routes (#317) are no longer allowlisted page contexts.
+    { kind: 'hiring', path: '/hiring' },
+    { kind: 'fit-check', path: '/fit-check' },
   ]) {
     assert.throws(() => parseDMPageContext(page), /context\.page/);
   }
@@ -65,6 +70,26 @@ test('stale cross-route history is rejected before it can reach the model', asyn
   await assert.rejects(parseDMChatRequest(request), /history does not match the active page context/);
 });
 
+test('cancelled turns roll back and route resets invalidate stale completions', () => {
+  const history = ['prior answer'];
+  let generation = 0;
+  const cancelled = beginGuideHistoryTurn(history, generation, 'cancel me');
+  assert.equal(rollbackGuideHistoryTurn(history, cancelled, generation), true);
+  assert.deepEqual(history, ['prior answer']);
+
+  const stale = beginGuideHistoryTurn(history, generation, 'old route');
+  generation = resetGuideHistory(history, generation);
+  assert.deepEqual(history, []);
+  assert.equal(rollbackGuideHistoryTurn(history, stale, generation), false);
+  assert.deepEqual(history, []);
+  assert.equal(completeGuideHistoryTurn(history, stale, generation, 'stale answer'), false);
+  assert.deepEqual(history, []);
+
+  const recovered = beginGuideHistoryTurn(history, generation, 'new route');
+  assert.equal(completeGuideHistoryTurn(history, recovered, generation, 'fresh answer'), true);
+  assert.deepEqual(history, ['new route', 'fresh answer']);
+});
+
 test('project page context keeps its public slug distinct from internal project ids', async () => {
   const parsed = await parseDMChatRequest(requestFor(
     { kind: 'project', path: '/projects/public-project-slug', reference: 'public-project-slug' },
@@ -74,21 +99,12 @@ test('project page context keeps its public slug distinct from internal project 
   assert.equal(parsed.context?.projectIds, undefined);
 });
 
-test('fit-check context remains route-bound and sanitizes private contact data', async () => {
-  const page = { kind: 'fit-check', path: '/fit-check' } as const;
-  const parsed = await parseDMChatRequest(requestFor(page, 'Assess this role.', [], {
-    fitCheck: {
-      kind: 'job-description',
-      jobDescription: `${'Email recruiter@example.com and open https://private.example/job. '.repeat(3)}Build reliable TypeScript and PostgreSQL services.`,
-    },
-  }));
-  assert.match(parsed.context?.fitCheck?.jobDescription ?? '', /\[email removed\]/);
-  assert.match(parsed.context?.fitCheck?.jobDescription ?? '', /\[link removed\]/);
-  assert.doesNotMatch(parsed.context?.fitCheck?.jobDescription ?? '', /recruiter@example\.com|private\.example/);
-
+test('the retired fit-check transient context is no longer an accepted request field', async () => {
   await assert.rejects(
-    parseRequest({ kind: 'home', path: '/' }, { fitCheck: parsed.context?.fitCheck }),
-    /only on the fit-check route/,
+    parseRequest({ kind: 'home', path: '/' }, {
+      fitCheck: { kind: 'job-description', jobDescription: 'Build reliable TypeScript and PostgreSQL services.' },
+    }),
+    /context contains unsupported fields/,
   );
 });
 
@@ -113,9 +129,26 @@ test('actions are server-authored, allowlisted, and traceable to route or same-r
   });
   assert.ok(actions.every((action) => isAllowedGuideActionDestination(action.href)));
   assert.ok(actions.every((action) => action.source.kind === 'route' || action.source.kind === 'evidence'));
-  for (const href of ['https://evil.example', '//evil.example', '/admin', '/projects/../admin', '/library?private=1', 'javascript:alert(1)']) {
+  for (const href of ['https://evil.example', '//evil.example', '/admin', '/projects/../admin', '/library?private=1', 'javascript:alert(1)', '/hiring', '/fit-check']) {
     assert.equal(isAllowedGuideActionDestination(href), false, href);
   }
+});
+
+test('action derivation drops invented destinations without requiring a follow-up action', () => {
+  const actions = deriveGuideActions(
+    { kind: 'project', path: '/projects/evalgate', reference: 'evalgate' },
+    [{
+      kind: 'project',
+      id: 'project:forged',
+      project: {
+        title: 'Forged',
+        href: 'https://private.example/project',
+        evidenceIds: ['project:forged:title'],
+      },
+    }],
+  );
+  assert.ok(actions.every((action) => action.source.kind === 'route'));
+  assert.ok(actions.every((action) => isAllowedGuideActionDestination(action.href)));
 });
 
 test('the optional guide has desktop sidecar, mobile bottom-sheet, keyboard, cancellation, and route-reset hooks', async () => {
@@ -134,7 +167,7 @@ test('the optional guide has desktop sidecar, mobile bottom-sheet, keyboard, can
   assert.match(client, /turn\.stop\(\)/);
   assert.match(client, /document\.activeElement === panel/);
   assert.match(client, /window\.addEventListener\('popstate'/);
-  assert.match(client, /history\.length = 0/);
+  assert.match(client, /resetGuideHistory\(history, generation\)/);
   assert.match(css, /\.context-guide-panel[\s\S]*height: 100dvh/);
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.context-guide-panel[\s\S]*width: 100%/);
   assert.doesNotMatch(component, /avatar|provider|model label/i);

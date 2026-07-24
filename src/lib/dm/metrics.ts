@@ -1,5 +1,5 @@
 export type DMMetricsOutcome = 'completed' | 'error' | 'timeout' | 'aborted' | 'rate_limited';
-export type DMSourceMode = 'published_db' | 'resume_static' | 'contact_static' | 'rag' | 'mixed' | 'none';
+export type DMSourceMode = 'published_db' | 'resume_static' | 'contact_static' | 'mixed' | 'none';
 export const DM_RUNTIME_ERROR_CATEGORIES = [
   'provider_retry_exhausted',
   'provider_failure',

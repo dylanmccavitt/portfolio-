@@ -11,7 +11,7 @@ leaves.
 - The portfolio remains recruiter-friendly, jargon-light, and static-first
   outside the deliberate guide client island.
 - The contextual-guide runtime is the single public guide contract across
-  home, library, project, journey, hiring, and fit-check contexts. The server
+  the home, library, project, and journey contexts. The server
   validates route context and derives every action from finite public routes or
   same-run evidence; route history never crosses context boundaries.
 - The muted Three.js visual system is owned by GitHub issue #307. Its binding
@@ -24,7 +24,6 @@ leaves.
 Public answers may use only:
 
 - published database project records;
-- approved public RAG sources;
 - static resume and contact data from `src/data/resume.ts`; and
 - the owner-approved public profile in `src/data/profile.ts`.
 
@@ -37,9 +36,9 @@ development, and the explicit `catalog_emergency` rollback source.
 ## Runtime invariants
 
 Retain typed public tools, same-run evidence tracking, rate limiting, metrics,
-request cancellation and deadlines, fit-check sanitization, and sanitized
-errors. Model and provider selection stays configurable outside the repository;
-never commit secrets or provider configuration.
+request cancellation and deadlines, and sanitized errors. Model and provider
+selection stays configurable outside the repository; never commit secrets or
+provider configuration.
 
 ## Delivery and operations
 
@@ -52,16 +51,22 @@ never commit secrets or provider configuration.
   owning GitHub issue.
 - Merge, deploy, promotion, migration, publication, issue closure, provider
   changes, paid evaluations, and destructive cleanup require explicit gates.
-- Keep the durable outbox, review-gated GitHub refresh, and parity-first catalog
-  cutover procedures in their dedicated operator documents.
+- The durable outbox, the review-gated GitHub refresh procedure, the admin
+  publish pipeline, and the Slack control plane were removed with the
+  content-operations backend (#316), along with their operator documents. The
+  parity-first catalog cutover runbook (#190) was retired unexecuted; public
+  project reads are published-DB only and fail closed, and `scripts/db.ts` is
+  now the sole writer to the projects database.
 
 ## Deferred work
 
-- Provider-free contract, accessibility, browser, responsive, and visual proof:
-  issue #308.
+- Agent rework and RAG removal: issue **#318**, blocked pending a specification.
+- Any reinstated publication workflow, scheduled refresh, or content-operations
+  surface is new work, not a restoration — the previous implementations are
+  deleted, not parked.
 - Production model/provider selection, persistent memory, resume/contact DB
-  migration, scheduled refresh/outbox execution, generated visuals, richer
-  artifact types, and blog expansion remain future separately authorized work.
+  migration, generated visuals, richer artifact types, and blog expansion remain
+  future separately authorized work.
 
 ## Naming anchors
 

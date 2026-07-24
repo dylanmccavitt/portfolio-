@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { serializeJsonLd } from '@/lib/seo';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; upgrade-insecure-requests";
+const CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; upgrade-insecure-requests";
 
 test('shared JSON-LD serializer preserves data without allowing hostile script termination', () => {
   const hostile = {
@@ -23,7 +23,7 @@ test('shared JSON-LD serializer preserves data without allowing hostile script t
 });
 
 test('all public layouts use the shared JSON-LD serializer', async () => {
-  for (const layout of ['Device.astro', 'Tour.astro', 'DM.astro']) {
+  for (const layout of ['Device.astro']) {
     const source = await readFile(resolve(ROOT, 'src', 'layouts', layout), 'utf8');
     assert.match(source, /serializeJsonLd\((?:jsonLd|meta\.jsonLd)\)/, layout);
     assert.equal(source.includes('JSON.stringify(jsonLd)'), false, layout);
@@ -84,4 +84,53 @@ test('maintainer-only ruleset payload protects both release branches with the ex
     required_status_checks: [{ context: 'Lint, typecheck, build', integration_id: 15368 }],
     strict_required_status_checks_policy: true,
   });
+});
+
+/**
+ * `test:visual` existed for weeks without ever running in CI, because the CI
+ * test step hand-maintained its own `&&` chain of `test:*` scripts (#323). The
+ * aggregate `npm test` script is now the single entry point; these two gates
+ * keep it that way.
+ */
+test('npm test transitively runs every suite in tests/', async () => {
+  const pkg = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8')) as {
+    scripts: Record<string, string>;
+  };
+  assert.ok(pkg.scripts.test, 'package.json must define an aggregate "test" script');
+
+  // Expand `npm run <name>` transitively from the aggregate script.
+  const reached = new Set<string>();
+  const commands: string[] = [];
+  const walk = (name: string): void => {
+    if (reached.has(name)) return;
+    reached.add(name);
+    const body = pkg.scripts[name];
+    assert.ok(body, `"${name}" is referenced by npm test but is not a package.json script`);
+    commands.push(body);
+    for (const [, referenced] of body.matchAll(/npm run ([\w:-]+)/g)) walk(referenced);
+  };
+  walk('test');
+  const runnerText = commands.join(' && ');
+
+  const suites = (await readdir(resolve(ROOT, 'tests'), { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && /\.test\.(ts|mjs|js)$/.test(entry.name))
+    .map((entry) => entry.name);
+  assert.ok(suites.length > 0);
+
+  for (const suite of suites) {
+    assert.ok(
+      runnerText.includes(`tests/${suite}`),
+      `tests/${suite} is never executed by npm test — add it to a test:* script`,
+    );
+  }
+});
+
+test('CI runs the aggregate test script rather than its own chain', async () => {
+  const workflow = await readFile(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8');
+  assert.match(workflow, /- name: Test\n\s+run: npm test\n/);
+  assert.equal(
+    /run: npm run test:/.test(workflow),
+    false,
+    'CI must not hand-maintain a test:* chain; extend the aggregate "test" script instead',
+  );
 });

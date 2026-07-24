@@ -5,9 +5,11 @@
  * `minmax(360px, 1fr)` columns and collapse to one column at the site-standard
  * 820px breakpoint.
  *
- * Every project-card surface (library index, project-detail "More projects",
- * résumé "Shipped during this era") renders through this single wrapper so the
- * site keeps one card system, never parallel ones.
+ * Scope (#319): this grid is no longer the site's only project surface. The
+ * device-console routes list projects through the `work-list` rows in
+ * `LibraryView.astro`; `journey/[track].astro` is the single remaining consumer
+ * of this grid, for its "Related projects" era rail. Two surfaces exist on
+ * purpose — route any new project listing through one of them, not a third.
  */
 import ProjectCard from './ProjectCard.astro';
 import type { Project } from '@/data/catalog';

@@ -74,8 +74,6 @@ test('site brief includes the canonical career overview, resume tracks, routes, 
     home: '/',
     projects: '/library',
     resume: '/journey',
-    hiring: '/hiring',
-    fitCheck: '/fit-check',
   });
   assert.deepEqual(brief.content.contact, {
     route: `/journey/${current.id}`,
@@ -193,14 +191,18 @@ test('high-entropy ASCII reaches the exact UTF-8 payload cutoff without implying
   let atLimit: ReturnType<typeof buildDMSiteBrief> | null = null;
   let rejectedRows: ProjectDetailReadModel[] | null = null;
 
+  // The two trailing summaries give a 2..2*MAX one-byte-per-step sweep per row
+  // count. That span is wider than one project entry, so consecutive row counts
+  // overlap and every byte total below the limit stays reachable even when the
+  // fixed part of the brief payload changes size.
   for (let count = 2; count <= 60 && !atLimit; count += 1) {
-    for (let finalSummaryCharacters = 1; finalSummaryCharacters <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS; finalSummaryCharacters += 1) {
-      const rows = asciiBudgetProjects(template, count, finalSummaryCharacters);
+    for (let tailSummaryCharacters = 2; tailSummaryCharacters <= DM_SITE_BRIEF_SUMMARY_MAX_CHARS * 2; tailSummaryCharacters += 1) {
+      const rows = asciiBudgetProjects(template, count, tailSummaryCharacters);
       try {
         const brief = buildDMSiteBrief(rows);
         if (brief.utf8ByteCount === DM_SITE_BRIEF_MAX_UTF8_BYTES) {
           atLimit = brief;
-          rejectedRows = asciiBudgetProjects(template, count, finalSummaryCharacters + 1);
+          rejectedRows = asciiBudgetProjects(template, count, tailSummaryCharacters + 1);
           break;
         }
       } catch (error) {
@@ -340,17 +342,27 @@ function unicodeBudgetProjects(
   }));
 }
 
+/**
+ * `tailSummaryCharacters` (2..2*MAX) is split across the last two summaries, so
+ * each increment adds exactly one ASCII byte to the serialized brief.
+ */
 function asciiBudgetProjects(
   template: ProjectDetailReadModel,
   count: number,
-  finalSummaryCharacters: number,
+  tailSummaryCharacters: number,
 ): ProjectDetailReadModel[] {
   const highEntropyAscii = (length: number) => 'aZ09Qx7M'.repeat(Math.ceil(length / 8)).slice(0, length);
+  const lastCharacters = Math.min(tailSummaryCharacters - 1, DM_SITE_BRIEF_SUMMARY_MAX_CHARS);
+  const penultimateCharacters = Math.min(tailSummaryCharacters - lastCharacters, DM_SITE_BRIEF_SUMMARY_MAX_CHARS);
   return variableProjects(template, count).map((project, index) => ({
     ...project,
-    summary: highEntropyAscii(index === count - 1
-      ? finalSummaryCharacters
-      : DM_SITE_BRIEF_SUMMARY_MAX_CHARS),
+    summary: highEntropyAscii(
+      index === count - 1
+        ? lastCharacters
+        : index === count - 2
+          ? penultimateCharacters
+          : DM_SITE_BRIEF_SUMMARY_MAX_CHARS,
+    ),
   }));
 }
 

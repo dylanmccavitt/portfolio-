@@ -8,6 +8,13 @@
  */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {
+  frameDelta,
+  frameSmoothingAlpha,
+  POINTER_SETTLE_PER_FRAME,
+  POINTER_TILT_X,
+  POINTER_TILT_Z,
+} from './device-frame';
 
 export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () => void {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -19,7 +26,8 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
       canvas,
       alpha: true,
       antialias: true,
-      powerPreference: 'high-performance',
+      // Decorative z-index:-1 background: never worth waking a discrete GPU for.
+      powerPreference: 'default',
     });
   } catch {
     document.documentElement.dataset.webgl = 'unavailable';
@@ -39,6 +47,9 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   renderer.toneMappingExposure = 1.03;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Nothing in the scene moves relative to the light, so the shadow map is
+  // rendered on demand (after build, and after every resize) instead of per frame.
+  renderer.shadowMap.autoUpdate = false;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
@@ -47,8 +58,111 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
 
   const world = new THREE.Group();
   scene.add(world);
+  const homeDevice = surface === 'home'
+    ? document.querySelector<HTMLElement>('.home-device')
+    : null;
+  const routeScreen = surface === 'route'
+    ? document.querySelector<HTMLElement>('.device-route-screen')
+    : null;
+  type OverlayRect = {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  type DeviceSurface = {
+    x: number;
+    z: number;
+    width: number;
+    depth: number;
+    y: number;
+  };
+  const dpadLayout = {
+    x: -3.15,
+    z: 2.1,
+    span: 1.16,
+    thickness: 0.5,
+    hitOffset: 0.33,
+    hitSize: 0.56,
+  } as const;
+  const actionControlLayout = {
+    x: 3.15,
+    width: 0.84,
+    depth: 0.78,
+    openZ: 1.48,
+    backZ: 2.72,
+  } as const;
+  const routeAspect = Math.min(window.innerWidth / Math.max(window.innerHeight, 1), 1.75);
+  const routeLayout = {
+    frameWidth: Math.max(10.6, 9.68 * routeAspect),
+    frameDepth: 9.3,
+    screenY: 0.665,
+  } as const;
+  const routeSurface = {
+    x: 0,
+    z: 0,
+    width: routeLayout.frameWidth - 0.78,
+    depth: routeLayout.frameDepth - 0.78,
+    y: routeLayout.screenY,
+  } satisfies DeviceSurface;
+  const homeSurfaces = {
+    hero: { x: 0, z: -2.18, width: 6.82, depth: 2.65, y: 0.715 },
+    menu: { x: 0, z: 2.1, width: 4.36, depth: 2.72, y: 0.745 },
+    up: {
+      x: dpadLayout.x,
+      z: dpadLayout.z - dpadLayout.hitOffset,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    right: {
+      x: dpadLayout.x + dpadLayout.hitOffset,
+      z: dpadLayout.z,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    down: {
+      x: dpadLayout.x,
+      z: dpadLayout.z + dpadLayout.hitOffset,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    left: {
+      x: dpadLayout.x - dpadLayout.hitOffset,
+      z: dpadLayout.z,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    open: {
+      x: actionControlLayout.x,
+      z: actionControlLayout.openZ,
+      width: actionControlLayout.width,
+      depth: actionControlLayout.depth,
+      y: 0.69,
+    },
+    back: {
+      x: actionControlLayout.x,
+      z: actionControlLayout.backZ,
+      width: actionControlLayout.width,
+      depth: actionControlLayout.depth,
+      y: 0.69,
+    },
+  } satisfies Record<string, DeviceSurface>;
+  const overlayBindings = [
+    ['.home-screen--hero', homeSurfaces.hero],
+    ['.home-screen--menu', homeSurfaces.menu],
+    ['.hardware-link--up', homeSurfaces.up],
+    ['.hardware-link--right', homeSurfaces.right],
+    ['.hardware-link--down', homeSurfaces.down],
+    ['.hardware-link--left', homeSurfaces.left],
+    ['.hardware-link--open', homeSurfaces.open],
+    ['.hardware-link--back', homeSurfaces.back],
+  ] as const;
 
-  const moldedTexture = createMoldTexture();
+  const moldedTexture = createMoldTexture(renderer);
   const graphite = new THREE.MeshPhysicalMaterial({
     color: 0x243249,
     roughness: 0.48,
@@ -72,14 +186,16 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     roughness: 0.72,
     metalness: 0.04,
   });
+  // No `transmission`: a non-zero value costs three's whole extra transmission
+  // render pass every frame for this one material. Slightly lower opacity plus a
+  // stronger clearcoat reproduces the same depth without that pass.
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0x071424,
     roughness: 0.12,
     metalness: 0.02,
-    transmission: 0.16,
     transparent: true,
-    opacity: 0.82,
-    clearcoat: 0.82,
+    opacity: 0.78,
+    clearcoat: 0.9,
     clearcoatRoughness: 0.16,
   });
   const controlMaterial = new THREE.MeshPhysicalMaterial({
@@ -97,14 +213,13 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   const key = new THREE.DirectionalLight(0xf3f0ed, 2.55);
   key.position.set(-6.5, 12, -6);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.left = -10;
   key.shadow.camera.right = 10;
   key.shadow.camera.top = 10;
   key.shadow.camera.bottom = -10;
   key.shadow.bias = -0.00018;
   key.shadow.normalBias = 0.035;
-  key.shadow.radius = 5;
   scene.add(key);
   const fill = new THREE.DirectionalLight(0x99abc9, 1.45);
   fill.position.set(7, 8, 6);
@@ -117,14 +232,21 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   face.lookAt(0, 0, 0);
   scene.add(face);
 
+  const deskMaterial = new THREE.MeshStandardMaterial({
+    color: surface === 'route' ? 0x8e88d1 : 0x737788,
+    roughness: 0.92,
+  });
   const desk = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 28),
-    new THREE.MeshStandardMaterial({ color: 0x737788, roughness: 0.92 }),
+    deskMaterial,
   );
   desk.rotation.x = -Math.PI / 2;
   desk.position.y = -0.5;
   desk.receiveShadow = true;
-  scene.add(desk);
+  // Desk and contact shadow belong to `world`, not `scene`: parented to the
+  // scene they hold still while the chassis parallaxes, detaching the baked
+  // shadow from the object casting it.
+  world.add(desk);
   const contact = new THREE.Mesh(
     new THREE.PlaneGeometry(surface === 'home' ? 8.7 : 12.4, surface === 'home' ? 9 : 8.7),
     new THREE.MeshBasicMaterial({
@@ -138,7 +260,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   contact.rotation.x = -Math.PI / 2;
   contact.position.y = -0.485;
   contact.position.z = 0.18;
-  scene.add(contact);
+  world.add(contact);
 
   const statusPass = createDitheredStatus(renderer);
   const guideDialog = document.querySelector<HTMLElement>('[data-dm-dialog]');
@@ -146,6 +268,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   const semanticStatus = document.querySelector<HTMLElement>('[data-device-status]');
   const syncGuideState = () => {
     const guideOpen = guideDialog ? !guideDialog.hidden : false;
+    if (surface === 'route') deskMaterial.color.set(guideOpen ? 0x7d7f8d : 0x8e88d1);
     statusPass.setState(guideOpen ? 'guide-open' : 'ready');
     if (semanticStatus) {
       semanticStatus.textContent = guideOpen
@@ -162,8 +285,13 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   syncGuideState();
   if (surface === 'home') buildHome();
   else buildRoute();
+  renderer.shadowMap.needsUpdate = true;
 
-  const startedAt = performance.now();
+  // Animation time is accumulated from clamped frame deltas (see `frameDelta`)
+  // rather than read from the wall clock, so the paused frames behind
+  // `!visible || !inView` do not pile up into a single jump when the loop resumes.
+  let clock = 0;
+  let lastFrame = performance.now();
   let visible = !document.hidden;
   let inView = true;
   let disposed = false;
@@ -181,36 +309,81 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
 
   const onVisibility = () => {
     visible = !document.hidden;
+    lastFrame = performance.now();
   };
   document.addEventListener('visibilitychange', onVisibility);
 
+  // The canvas is the pinned surface (position: fixed; inset: 0); `stage` can
+  // scroll away while the canvas is still fully on screen.
   const viewObserver = new IntersectionObserver((entries) => {
     inView = entries.at(-1)?.isIntersecting ?? true;
+    lastFrame = performance.now();
   });
-  viewObserver.observe(stage);
+  viewObserver.observe(canvas);
 
+  let appliedPixelRatio = 0;
   const resize = () => {
     const width = Math.max(stage.clientWidth, 1);
     const height = Math.max(stage.clientHeight, 1);
     const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
-    renderer.setPixelRatio(dpr);
+    // setPixelRatio calls setSize internally, so calling it unconditionally
+    // reallocates the drawing buffer twice per resize.
+    if (dpr !== appliedPixelRatio) {
+      appliedPixelRatio = dpr;
+      renderer.setPixelRatio(dpr);
+    }
     renderer.setSize(width, height, false);
+    renderer.shadowMap.needsUpdate = true;
     camera.aspect = width / height;
     camera.fov = surface === 'home' ? 34 : 37;
+    camera.zoom = 1;
     camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    if (surface === 'home') syncHomeOverlay(width, height);
+    else syncRouteOverlay(width, height);
     statusPass.resize(dpr);
   };
-  const resizeObserver = new ResizeObserver(resize);
+  let resizeFrame = 0;
+  const resizeObserver = new ResizeObserver(() => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      if (!disposed) resize();
+    });
+  });
   resizeObserver.observe(stage);
   resize();
 
+  const onContextLost = (event: Event) => {
+    // Without preventDefault the browser never attempts restoration.
+    event.preventDefault();
+    document.documentElement.dataset.webgl = 'unavailable';
+  };
+  const onContextRestored = () => {
+    document.documentElement.dataset.webgl = 'available';
+    lastFrame = performance.now();
+    resize();
+  };
+  canvas.addEventListener('webglcontextlost', onContextLost);
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
+
   renderer.setAnimationLoop(() => {
     if (!visible || !inView || disposed) return;
-    const elapsed = reducedMotion.matches ? 0 : (performance.now() - startedAt) / 1000;
-    pointerCurrent.lerp(pointerTarget, 0.045);
+    const now = performance.now();
+    const dt = frameDelta(now, lastFrame);
+    lastFrame = now;
+    clock += dt;
+    const elapsed = reducedMotion.matches ? 0 : clock;
+    // DOM screen content and the WebGL chassis share one fixed projection so
+    // screen edges never drift outside their physical openings. The pointer
+    // parallax therefore stays inside POINTER_TILT_Z/POINTER_TILT_X, whose
+    // sub-pixel chassis displacement keeps the overlay projection valid.
+    // The exponential alpha is frame-rate independent and reproduces the tuned
+    // POINTER_SETTLE_PER_FRAME settle exactly at 60Hz.
+    pointerCurrent.lerp(pointerTarget, frameSmoothingAlpha(POINTER_SETTLE_PER_FRAME, dt));
     if (!reducedMotion.matches) {
-      world.rotation.z = -pointerCurrent.x * 0.009;
-      world.rotation.x = pointerCurrent.y * 0.006;
+      world.rotation.z = -pointerCurrent.x * POINTER_TILT_Z;
+      world.rotation.x = pointerCurrent.y * POINTER_TILT_X;
     } else {
       world.rotation.set(0, 0, 0);
     }
@@ -225,15 +398,30 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     disposed = true;
     renderer.setAnimationLoop(null);
     resizeObserver.disconnect();
+    if (resizeFrame) cancelAnimationFrame(resizeFrame);
+    resizeFrame = 0;
     viewObserver.disconnect();
     guideObserver?.disconnect();
     window.removeEventListener('pointermove', onPointer);
     document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pagehide', destroy);
+    // Detach before forceContextLoss so the synthetic loss event cannot
+    // overwrite the data-webgl state a caller has already moved on from.
+    canvas.removeEventListener('webglcontextlost', onContextLost);
+    canvas.removeEventListener('webglcontextrestored', onContextRestored);
+    clearHomeOverlay();
+    clearRouteOverlay();
     statusPass.dispose();
+    // disposeObject frees the key light's depth target, which renderer.dispose()
+    // does not; forceContextLoss must then run before dispose to actually
+    // release the context rather than leaking it until GC.
     disposeObject(scene);
+    renderer.forceContextLoss();
     renderer.dispose();
   };
-  window.addEventListener('pagehide', destroy, { once: true });
+  // Not `{ once: true }`: pagehide fires on bfcache entry too, and device.ts
+  // restarts the renderer from pageshow, so teardown has to stay armed.
+  window.addEventListener('pagehide', destroy);
 
   function buildHome() {
     const top = roundedHousing(8.05, 3.72, 0.62);
@@ -269,32 +457,20 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     }
 
     const dpad = new THREE.Group();
-    const padVertical = controlBox(0.64, 1.52, 0.22);
-    const padHorizontal = controlBox(1.52, 0.64, 0.22);
+    const padVertical = controlBox(dpadLayout.thickness, dpadLayout.span, 0.22);
+    const padHorizontal = controlBox(dpadLayout.span, dpadLayout.thickness, 0.22);
     dpad.add(padVertical, padHorizontal);
     const center = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.12, 32), seam);
     center.position.y = 0.25;
     dpad.add(center);
-    for (const [rotation, z, x] of [
-      [0, -0.56, 0],
-      [Math.PI / 2, 0, 0.56],
-      [Math.PI, 0.56, 0],
-      [-Math.PI / 2, 0, -0.56],
-    ] as const) {
-      const marker = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.035, 3), graphiteEdge);
-      marker.rotation.x = Math.PI;
-      marker.rotation.y = rotation;
-      marker.position.set(x, 0.26, z);
-      dpad.add(marker);
-    }
-    dpad.position.set(-2.76, 0.55, 2.12);
+    dpad.position.set(dpadLayout.x, 0.55, dpadLayout.z);
     world.add(dpad);
 
-    const open = controlBox(0.84, 0.78, 0.24);
-    open.position.set(2.82, 0.55, 1.48);
+    const open = controlBox(actionControlLayout.width, actionControlLayout.depth, 0.24);
+    open.position.set(actionControlLayout.x, 0.55, actionControlLayout.openZ);
     world.add(open);
-    const back = controlBox(0.84, 0.78, 0.24);
-    back.position.set(2.82, 0.55, 2.72);
+    const back = controlBox(actionControlLayout.width, actionControlLayout.depth, 0.24);
+    back.position.set(actionControlLayout.x, 0.55, actionControlLayout.backZ);
     world.add(back);
     for (const x of [-2.9, 2.9]) {
       const slot = new THREE.Mesh(new RoundedBoxGeometry(0.55, 0.07, 0.12, 2, 0.04), seam);
@@ -328,13 +504,122 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     world.add(notebook);
   }
 
+  function projectSurface(surfaceRect: DeviceSurface, stageWidth: number, stageHeight: number): OverlayRect {
+    const halfWidth = surfaceRect.width / 2;
+    const halfDepth = surfaceRect.depth / 2;
+    const corners = [
+      new THREE.Vector3(surfaceRect.x - halfWidth, surfaceRect.y, surfaceRect.z - halfDepth),
+      new THREE.Vector3(surfaceRect.x + halfWidth, surfaceRect.y, surfaceRect.z - halfDepth),
+      new THREE.Vector3(surfaceRect.x - halfWidth, surfaceRect.y, surfaceRect.z + halfDepth),
+      new THREE.Vector3(surfaceRect.x + halfWidth, surfaceRect.y, surfaceRect.z + halfDepth),
+    ].map((point) => point.project(camera));
+    const xs = corners.map((point) => (point.x + 1) * stageWidth / 2);
+    const ys = corners.map((point) => (1 - point.y) * stageHeight / 2);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+    return { left, top, width: right - left, height: bottom - top };
+  }
+
+  function homeReferenceRect(stageWidth: number, stageHeight: number): OverlayRect {
+    const hero = projectSurface(homeSurfaces.hero, stageWidth, stageHeight);
+    const width = hero.width / 0.856;
+    const height = hero.height / 0.3255;
+    return {
+      left: hero.left - width * 0.072,
+      top: hero.top - height * 0.0735,
+      width,
+      height,
+    };
+  }
+
+  function syncHomeOverlay(stageWidth: number, stageHeight: number): void {
+    if (!homeDevice) return;
+
+    const initialReference = homeReferenceRect(stageWidth, stageHeight);
+    const fitWidth = Math.min(800, stageWidth * 0.92);
+    const fitHeight = stageHeight * 0.96;
+    camera.zoom = Math.min(
+      fitWidth / Math.max(initialReference.width, 1),
+      fitHeight / Math.max(initialReference.height, 1),
+    );
+    camera.updateProjectionMatrix();
+
+    const reference = homeReferenceRect(stageWidth, stageHeight);
+    homeDevice.dataset.deviceOverlayBound = '';
+    homeDevice.style.setProperty('--home-device-left', `${reference.left}px`);
+    homeDevice.style.setProperty('--home-device-top', `${reference.top}px`);
+    homeDevice.style.setProperty('--home-device-width', `${reference.width}px`);
+    homeDevice.style.setProperty('--home-device-height', `${reference.height}px`);
+
+    for (const [selector, surfaceRect] of overlayBindings) {
+      const element = homeDevice.querySelector<HTMLElement>(selector);
+      if (!element) continue;
+      const rect = projectSurface(surfaceRect, stageWidth, stageHeight);
+      element.style.setProperty('--device-overlay-left', `${rect.left - reference.left}px`);
+      element.style.setProperty('--device-overlay-top', `${rect.top - reference.top}px`);
+      element.style.setProperty('--device-overlay-width', `${rect.width}px`);
+      element.style.setProperty('--device-overlay-height', `${rect.height}px`);
+    }
+  }
+
+  function clearHomeOverlay(): void {
+    if (!homeDevice) return;
+    delete homeDevice.dataset.deviceOverlayBound;
+    for (const property of [
+      '--home-device-left',
+      '--home-device-top',
+      '--home-device-width',
+      '--home-device-height',
+    ]) {
+      homeDevice.style.removeProperty(property);
+    }
+    for (const [selector] of overlayBindings) {
+      const element = homeDevice.querySelector<HTMLElement>(selector);
+      element?.style.removeProperty('--device-overlay-left');
+      element?.style.removeProperty('--device-overlay-top');
+      element?.style.removeProperty('--device-overlay-width');
+      element?.style.removeProperty('--device-overlay-height');
+    }
+  }
+
+  function syncRouteOverlay(stageWidth: number, stageHeight: number): void {
+    if (!routeScreen) return;
+    const initialRect = projectSurface(routeSurface, stageWidth, stageHeight);
+    const fitWidth = stageWidth * 0.92;
+    const fitHeight = stageHeight * 0.92;
+    camera.zoom = Math.min(
+      fitWidth / Math.max(initialRect.width, 1),
+      fitHeight / Math.max(initialRect.height, 1),
+    );
+    camera.updateProjectionMatrix();
+    const rect = projectSurface(routeSurface, stageWidth, stageHeight);
+    routeScreen.dataset.deviceRouteOverlayBound = '';
+    routeScreen.style.setProperty('--device-route-left', `${rect.left}px`);
+    routeScreen.style.setProperty('--device-route-top', `${rect.top}px`);
+    routeScreen.style.setProperty('--device-route-width', `${rect.width}px`);
+    routeScreen.style.setProperty('--device-route-height', `${rect.height}px`);
+  }
+
+  function clearRouteOverlay(): void {
+    if (!routeScreen) return;
+    delete routeScreen.dataset.deviceRouteOverlayBound;
+    for (const property of [
+      '--device-route-left',
+      '--device-route-top',
+      '--device-route-width',
+      '--device-route-height',
+    ]) {
+      routeScreen.style.removeProperty(property);
+    }
+  }
+
   function buildRoute() {
-    const aspect = Math.min(window.innerWidth / Math.max(window.innerHeight, 1), 1.75);
-    const frameWidth = Math.max(9.2, 8.35 * aspect);
-    const frame = roundedHousing(frameWidth, 8.1, 0.52);
+    const frame = roundedHousing(routeLayout.frameWidth, routeLayout.frameDepth, 0.52);
     frame.position.set(0, 0, 0);
     world.add(frame);
-    const routeGlass = screen(frameWidth - 0.72, 7.38);
+    const routeGlass = screen(routeLayout.frameWidth - 0.72, routeLayout.frameDepth - 0.72);
     routeGlass.position.set(0, 0.43, 0);
     world.add(routeGlass);
     const statusPlane = new THREE.Mesh(
@@ -348,7 +633,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
       }),
     );
     statusPlane.rotation.x = -Math.PI / 2;
-    statusPlane.position.set(frameWidth / 2 - 0.74, 0.49, -3.42);
+    statusPlane.position.set(routeLayout.frameWidth / 2 - 0.74, 0.49, -3.42);
     world.add(statusPlane);
   }
 
@@ -571,8 +856,8 @@ function createDitheredStatus(renderer: THREE.WebGLRenderer) {
   };
 }
 
-function createMoldTexture(): THREE.DataTexture {
-  const size = 64;
+function createMoldTexture(renderer: THREE.WebGLRenderer): THREE.DataTexture {
+  const size = 128;
   const data = new Uint8Array(size * size);
   let seed = 307;
   for (let index = 0; index < data.length; index += 1) {
@@ -583,6 +868,12 @@ function createMoldTexture(): THREE.DataTexture {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(8, 8);
+  // DataTexture defaults to nearest sampling with no mipmaps. Tiled 8x8 and
+  // viewed at a grazing angle, that aliases badly under pointer parallax.
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.needsUpdate = true;
   return texture;
 }
@@ -607,6 +898,15 @@ function createContactShadowTexture(): THREE.CanvasTexture {
 
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
+    // `shadow` is declared only on the shadow-casting light subclasses, so the
+    // base type is widened structurally rather than narrowed per light type.
+    const light = object as THREE.Light & { shadow?: { dispose(): void } };
+    if (light.isLight) {
+      // renderer.dispose() does not free shadow depth targets.
+      light.shadow?.dispose();
+      light.dispose();
+      return;
+    }
     const mesh = object as THREE.Mesh;
     mesh.geometry?.dispose();
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

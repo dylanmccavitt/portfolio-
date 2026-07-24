@@ -1,14 +1,6 @@
 import { z } from 'zod';
 import { RESUME, type ResumeTrack } from '@/data/resume';
 import type { ProjectDetailReadModel, ProjectReadQueryable } from '@/lib/db/project-reads';
-import { buildPublicFileSearchTool } from '@/lib/rag/ingestion';
-import {
-  createPublicRagSearchConfig,
-  publicRagSearch,
-  type PublicRagCitation,
-  type PublicRagSearchConfig,
-  type PublicRagSearchOutput,
-} from '@/lib/rag/retrieval';
 import {
   loadPublicProjectDetails,
   type PublicProjectEnv,
@@ -101,6 +93,11 @@ export interface PublicContactRecord {
   evidenceIds: string[];
 }
 
+/**
+ * Payload shape of the `evidence` answer artifact. No public tool produces one
+ * after the vector-search removal (#318); the shape stays only until that
+ * artifact kind is retired from the DM answer contract.
+ */
 export interface PublicSourceRecord {
   id: string;
   projectId: string;
@@ -162,12 +159,6 @@ export const ReadResumeInputSchema = z.strictObject({
 
 export const GetContactInputSchema = z.strictObject({});
 
-export const SearchPublicSourcesInputSchema = z.strictObject({
-  query: z.string().trim().min(1).max(1_000),
-  projectIds: z.array(z.string().trim().min(1).max(200)).max(TOOL_LIMIT_MAX).optional(),
-  limit: z.number().int().min(1).max(TOOL_LIMIT_MAX).optional(),
-});
-
 export const SearchProfileInputSchema = z.strictObject({
   query: z.string().trim().min(1).max(500),
   categories: z.array(z.string().trim().min(1).max(100)).max(TOOL_LIMIT_MAX).optional(),
@@ -178,7 +169,6 @@ export type SearchProjectsInput = z.infer<typeof SearchProjectsInputSchema>;
 export type GetProjectInput = z.infer<typeof GetProjectInputSchema>;
 export type ReadResumeInput = z.infer<typeof ReadResumeInputSchema>;
 export type GetContactInput = z.infer<typeof GetContactInputSchema>;
-export type SearchPublicSourcesInput = z.infer<typeof SearchPublicSourcesInputSchema>;
 export type SearchProfileInput = z.infer<typeof SearchProfileInputSchema>;
 
 export interface SearchProjectsResult extends PublicToolResult {
@@ -197,11 +187,6 @@ export interface ReadResumeResult extends PublicToolResult {
 
 export interface GetContactResult extends PublicToolResult {
   contact: PublicContactRecord | null;
-}
-
-export interface SearchPublicSourcesResult extends PublicToolResult {
-  query: string;
-  sources: PublicSourceRecord[];
 }
 
 export interface SearchProfileResult extends PublicToolResult {
@@ -229,7 +214,6 @@ export interface PublicAgentToolSet {
   getProject: TypedPublicAgentTool<GetProjectInput, GetProjectResult>;
   readResume: TypedPublicAgentTool<ReadResumeInput, ReadResumeResult>;
   getContact: TypedPublicAgentTool<GetContactInput, GetContactResult>;
-  searchPublicSources: TypedPublicAgentTool<SearchPublicSourcesInput, SearchPublicSourcesResult>;
   searchProfile: TypedPublicAgentTool<SearchProfileInput, SearchProfileResult>;
 }
 
@@ -240,7 +224,7 @@ export interface PublicEvidenceLedger {
 }
 
 export interface PublicAgentToolRun extends PublicAgentToolSet {
-  /** Alias for passing the six tools to a later runtime without changing direct callers. */
+  /** Alias for passing the five tools to a later runtime without changing direct callers. */
   tools: PublicAgentToolSet;
   evidenceLedger: PublicEvidenceLedger;
 }
@@ -251,13 +235,6 @@ export interface PublicAgentToolDependencies {
   loadProjects?: () => Promise<ProjectDetailReadModel[]>;
   /** Narrow test seam; cannot replace or mutate published project data. */
   searchProjectsFailure?: () => never | Promise<never>;
-  createRagConfig?: () => Promise<PublicRagSearchConfig | null>;
-  ragSearch?: (
-    query: string,
-    config: PublicRagSearchConfig,
-    options: { apiKey: string; signal?: AbortSignal },
-  ) => Promise<PublicRagSearchOutput>;
-  ragApiKey?: string;
   loadProfileEntries?: () => Promise<PublicProfileSourceEntry[]>;
   timeoutMs?: number;
 }
@@ -316,7 +293,7 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
   );
 
   const getProject = createTool(
-    'Directly read one already-identified published portfolio project when its stable public id or slug is known. A successful same-run getProject is required for every detailed project answer, project artifact, or links artifact; a search result is never a substitute. Use this for resolved subject corrections and later references, including ids supplied by page context. If only a public title is known and its stable id or slug is unresolved, call searchProjects first, once, then call getProject with the resolved id. When the visitor explicitly asks for approved public-source evidence about that project, also call searchPublicSources with the returned project id; project metadata is not a substitute for the requested source evidence.',
+    'Directly read one already-identified published portfolio project when its stable public id or slug is known. A successful same-run getProject is required for every detailed project answer, project artifact, or links artifact; a search result is never a substitute. Use this for resolved subject corrections and later references, including ids supplied by page context. If only a public title is known and its stable id or slug is unresolved, call searchProjects first, once, then call getProject with the resolved id.',
     GetProjectInputSchema,
     async (input, signal) => {
       const projects = await loadProjects();
@@ -418,80 +395,6 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
     defaultTimeoutMs,
   );
 
-  const searchPublicSources = createTool(
-    'Search only indexed, approved public sources linked to published projects. For a project evidence deep dive, also call getProject and pass its published id here; preserve distinctive returned citation evidence exactly instead of substituting project metadata or an unsupported paraphrase.',
-    SearchPublicSourcesInputSchema,
-    async (input, signal) => {
-      const published = await loadProjects();
-      throwIfAborted(signal);
-      const publishedIds = new Set(published.map((project) => project.id));
-      const requestedIds = input.projectIds?.length
-        ? input.projectIds.filter((id) => publishedIds.has(id))
-        : undefined;
-      if (input.projectIds?.length && requestedIds?.length === 0) {
-        return resultWithEvidence({
-          status: 'empty', query: input.query, sources: [], evidence: [], artifactIds: [],
-          limitations: ['no_matching_approved_public_sources'],
-        });
-      }
-
-      const baseConfig = deps.createRagConfig
-        ? await deps.createRagConfig()
-        : await createPublicRagSearchConfig(deps.db, { maxNumResults: input.limit ?? 4 });
-      throwIfAborted(signal);
-      if (!baseConfig) {
-        return resultWithEvidence({
-          status: 'empty', query: input.query, sources: [], evidence: [], artifactIds: [],
-          limitations: ['no_matching_approved_public_sources'],
-        });
-      }
-      const allowedIds = requestedIds ? new Set(requestedIds) : publishedIds;
-      const sources = baseConfig.sources.filter((source) => allowedIds.has(source.project_id));
-      const tool = buildPublicFileSearchTool(sources);
-      if (!tool) {
-        return resultWithEvidence({
-          status: 'empty', query: input.query, sources: [], evidence: [], artifactIds: [],
-          limitations: ['no_matching_approved_public_sources'],
-        });
-      }
-      const limit = input.limit ?? 4;
-      const config: PublicRagSearchConfig = {
-        ...baseConfig,
-        sources,
-        tool: {
-          vectorStoreIds: tool.vector_store_ids,
-          filters: tool.filters,
-          maxNumResults: limit,
-          ranking: baseConfig.tool.ranking,
-        },
-      };
-      const search = deps.ragSearch ?? publicRagSearch;
-      if (search === publicRagSearch && !deps.ragApiKey?.trim()) {
-        throw new PublicToolUnavailableError('public_source_config_unavailable');
-      }
-      const output = await search(input.query, config, { apiKey: deps.ragApiKey ?? '', signal });
-      throwIfAborted(signal);
-      const sourceById = new Map(sources.map((source) => [source.id, source]));
-      const citations = bestAllowedCitations(output.citations, sourceById, allowedIds, config).slice(0, limit);
-      const records = citations.map(publicSourceRecord);
-      const evidence = records.flatMap((record) => publicSourceEvidence(record));
-      return resultWithEvidence({
-        status: records.length === 0 ? 'empty' : output.citations.length > records.length || records.length === limit ? 'partial' : 'complete',
-        query: input.query,
-        sources: records,
-        evidence,
-        artifactIds: records.map((record) => record.id),
-        limitations: records.length === 0
-          ? ['no_matching_approved_public_sources']
-          : output.citations.length > records.length || records.length === limit ? ['result_limit_or_boundary_filter'] : [],
-      });
-    },
-    (input) => ({ query: input.query, sources: [] }),
-    ledger,
-    defaultTimeoutMs,
-    'public_source_unavailable',
-  );
-
   const searchProfile = createTool(
     'Search reviewed, published public profile entries. Use this for biography, working-style, recruiter, and approved-interest questions.',
     SearchProfileInputSchema,
@@ -543,7 +446,6 @@ export function createPublicAgentTools(deps: PublicAgentToolDependencies): Publi
     getProject,
     readResume,
     getContact,
-    searchPublicSources,
     searchProfile,
   };
   return { ...tools, tools, evidenceLedger: ledger.publicLedger };
@@ -768,23 +670,6 @@ function contactEvidence(contact: PublicContactRecord): PublicToolEvidence[] {
   ];
 }
 
-function publicSourceRecord(citation: PublicRagCitation): PublicSourceRecord {
-  const record: PublicSourceRecord = {
-    id: citation.ragSourceId,
-    projectId: citation.projectId,
-    label: citation.filename ?? 'Approved public source',
-    text: citation.text,
-    ...(citation.score === undefined ? {} : { score: citation.score }),
-    evidenceIds: [],
-  };
-  record.evidenceIds = publicSourceEvidence(record).map((entry) => entry.id);
-  return record;
-}
-
-function publicSourceEvidence(source: PublicSourceRecord): PublicToolEvidence[] {
-  return [evidenceAtom(`citation:${source.id}`, 'public_source', source.id, 'text', source.label, source.text)];
-}
-
 function profileRecord(entry: PublicProfileSourceEntry): PublicProfileRecord {
   const href = safePublicHref(entry.href);
   const record: PublicProfileRecord = {
@@ -817,24 +702,6 @@ function evidenceAtom(
   value: string,
 ): PublicToolEvidence {
   return { id, source, recordId, field, label, value };
-}
-
-function bestAllowedCitations(
-  citations: PublicRagCitation[],
-  sourceById: Map<string, PublicRagSearchConfig['sources'][number]>,
-  allowedProjectIds: Set<string>,
-  config: PublicRagSearchConfig,
-): PublicRagCitation[] {
-  const best = new Map<string, PublicRagCitation>();
-  for (const citation of citations) {
-    const source = sourceById.get(citation.ragSourceId);
-    if (!source || source.project_id !== citation.projectId || source.openai_file_id !== citation.fileId) continue;
-    if (!allowedProjectIds.has(citation.projectId) || citation.text.trim().length < config.minTextChars) continue;
-    if (citation.score === undefined || citation.score < config.scoreThreshold) continue;
-    const previous = best.get(citation.ragSourceId);
-    if (!previous || (citation.score ?? 0) > (previous.score ?? 0)) best.set(citation.ragSourceId, citation);
-  }
-  return [...best.values()].sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.ragSourceId.localeCompare(b.ragSourceId));
 }
 
 function projectMatchesFilters(project: ProjectDetailReadModel, filters: SearchProjectsInput['filters']): boolean {

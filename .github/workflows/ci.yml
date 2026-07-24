@@ -24,6 +24,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          # On pull_request, actions/checkout defaults to refs/pull/N/merge — a
+          # synthetic merge commit whose SHA never equals the PR head. The
+          # replacement-quality gate binds proof to the exact live PR head
+          # (AGENTS.md), so check the head out directly. Without this the gate
+          # fails on every pull request with "package head does not match the
+          # checked-out Git head".
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -42,4 +51,17 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npm run test:db && npm run test:discovery && npm run test:slack && npm run test:admin && npm run test:dm && npm run test:metrics && npm run test:rag && npm run test:outbox && npm run test:proof && npm run test:release
+        run: npm test
+
+      - name: Build exact-head replacement quality artifact
+        if: github.event_name == 'pull_request'
+        run: npm run package:quality -- "${{ github.event.pull_request.head.sha }}" "${{ github.event.pull_request.base.sha }}" "$RUNNER_TEMP/replacement-quality-proof" "proof/replacement-quality-visual-review.json"
+
+      - name: Upload exact-head replacement quality artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: replacement-quality-proof-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/replacement-quality-proof
+          if-no-files-found: error
+          retention-days: 90

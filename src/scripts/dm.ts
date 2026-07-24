@@ -8,8 +8,6 @@ import {
   AGENT_NAME,
   completedAssistantHistoryText,
   DM_ENDPOINT,
-  fitCheckValidationMessage,
-  sanitizeJobDescriptionForFitCheck,
   validateFinalizationResult,
 } from '@/lib/dm/client';
 import type {
@@ -26,6 +24,12 @@ import {
   parseDMPageContext,
   type DMGuideAction,
 } from '@/lib/dm/guide';
+import {
+  beginGuideHistoryTurn,
+  completeGuideHistoryTurn,
+  resetGuideHistory,
+  rollbackGuideHistoryTurn,
+} from '@/lib/dm/guide-history';
 import type {
   PublicContactRecord,
   PublicProjectToolRecord,
@@ -100,7 +104,7 @@ class Turn {
     ]);
     this.root = make('article', { class: 'dm-turn' }, [
       make('div', { class: 'dm-user-row' }, [
-        make('span', { class: 'dm-user-tag', text: 'You' }),
+        make('span', { class: 'dm-user-tag', text: 'You asked' }),
         make('p', { class: 'dm-user', text: question }),
       ]),
       this.typingEl,
@@ -133,8 +137,11 @@ class Turn {
       this.proseEl.append(make('p', { class: 'dm-p', text: limitation }));
       this.text += `${this.text ? '\n\n' : ''}${limitation}`;
     }
-    this.renderActions(answer.actions);
     for (const artifact of answer.artifacts) this.renderArtifact(artifact);
+    this.renderActions(answer.actions);
+    if (answer.artifacts.some((artifact) => artifact.kind === 'project')) {
+      this.canvas().append(make('a', { class: 'dm-view-all', href: '/library', text: 'View all work' }));
+    }
     const evidence = uniqueEvidence(answer.segments);
     if (evidence.length > 0) this.renderEvidence(evidence);
     this.completed = true;
@@ -160,18 +167,20 @@ class Turn {
   private renderActions(actions: DMGuideAction[]): void {
     const allowed = actions.filter((action) => isAllowedGuideActionDestination(action.href));
     if (!allowed.length) return;
-    this.proseEl.append(make('nav', { class: 'dm-next', 'aria-label': 'Suggested next steps' }, [
+    const actionsNav = make('nav', { class: 'dm-next', 'aria-label': 'Suggested next steps' }, [
       make('p', { class: 'dm-next-label', text: 'Next steps' }),
       make('div', { class: 'dm-next-chips' }, allowed.map((action) =>
         make('a', { class: 'dm-chip', href: action.href, text: action.label }),
       )),
-    ]));
+    ]);
+    (this.canvasEl ?? this.proseEl).append(actionsNav);
   }
 
   private renderProject(project: PublicProjectToolRecord): void {
     const [statusKind = 'done', statusLabel = 'Published'] = project.status;
     const wrap = make('div', { class: 'dm-projs' }, [
       make('a', { class: 'dm-proj', href: project.href, hue: '#8b7cf6' }, [
+        make('span', { class: 'dm-proj__source-label', text: 'Source' }),
         make('span', { class: 'dm-proj__rule', 'aria-hidden': 'true' }),
         make('span', { class: 'dm-proj__body' }, [
           make('span', { class: 'dm-proj__main' }, [
@@ -386,11 +395,6 @@ function initRoot(root: HTMLElement): void {
     page,
     ...(page.kind === 'journey' && page.reference ? { resumeTrackIds: [page.reference] } : {}),
   };
-  const fitForm = root.querySelector<HTMLFormElement>('[data-dm-fit-form]');
-  const fitInput = root.querySelector<HTMLTextAreaElement>('[data-dm-fit-input]');
-  const fitSubmit = root.querySelector<HTMLButtonElement>('[data-dm-fit-submit]');
-  const fitCount = root.querySelector<HTMLElement>('[data-dm-fit-count]');
-  const fitError = root.querySelector<HTMLElement>('[data-dm-fit-error]');
   const history: DMUIMessage[] = [];
   let busy = false;
   let controller: AbortController | null = null;
@@ -404,7 +408,6 @@ function initRoot(root: HTMLElement): void {
     busy = next;
     root.classList.toggle('dm-busy', next);
     if (sendBtn) sendBtn.disabled = next;
-    if (fitSubmit) fitSubmit.disabled = next;
   };
 
   const ask = async (question: string, options: AskOptions = {}): Promise<void> => {
@@ -412,11 +415,13 @@ function initRoot(root: HTMLElement): void {
     if (!message || busy) return;
     const displayMessage = options.displayMessage?.trim() || message;
     const requestContext = mergeContext(context, options.transientContext);
-    const requestGeneration = generation;
     setBusy(true);
     root.classList.add('dm-started');
-    const historyStart = history.length;
-    history.push(uiTextMessage('user', message, pageId));
+    const historyTurn = beginGuideHistoryTurn(
+      history,
+      generation,
+      uiTextMessage('user', message, pageId),
+    );
 
     const turn = new Turn(displayMessage);
     thread.append(turn.root);
@@ -427,16 +432,20 @@ function initRoot(root: HTMLElement): void {
       turn.finishIfNeeded();
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
-        history.length = historyStart;
+        rollbackGuideHistoryTurn(history, historyTurn, generation);
         turn.stop();
         return;
       }
       console.error('[dm] UIMessage stream failed', { name: error instanceof Error ? error.name : typeof error });
       turn.showError(`${AGENT_NAME} is unavailable right now. Please try again in a moment.`);
     } finally {
-      if (requestGeneration === generation) {
-        const assistantText = turn.historyText();
-        if (assistantText) history.push(uiTextMessage('assistant', assistantText, pageId));
+      const assistantText = turn.historyText();
+      if (completeGuideHistoryTurn(
+        history,
+        historyTurn,
+        generation,
+        assistantText ? uiTextMessage('assistant', assistantText, pageId) : null,
+      )) {
         setBusy(false);
         controller = null;
       }
@@ -511,40 +520,11 @@ function initRoot(root: HTMLElement): void {
     void ask(text);
   });
 
-  if (fitForm && fitInput) {
-    const updateFitCount = (): void => {
-      if (fitCount) fitCount.textContent = `${fitInput.value.length.toLocaleString()} / ${fitInput.maxLength.toLocaleString()}`;
-      if (fitError) fitError.hidden = true;
-    };
-    fitInput.addEventListener('input', updateFitCount);
-    updateFitCount();
-    fitForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const validation = fitCheckValidationMessage(fitInput.value);
-      if (validation) {
-        if (fitError) {
-          fitError.textContent = validation;
-          fitError.hidden = false;
-        }
-        fitInput.focus();
-        return;
-      }
-      const sanitized = sanitizeJobDescriptionForFitCheck(fitInput.value);
-      fitInput.value = '';
-      updateFitCount();
-      void ask(
-        "Fit-check this job description against Dylan's portfolio and resume. Present a fit summary, strongest evidence projects, resume/background evidence, gaps or unknowns, and next contact steps. Do not assign a match score or imply a hiring guarantee.",
-        { displayMessage: 'Fit-check pasted job description', transientContext: { fitCheck: { kind: 'job-description', ...sanitized } } },
-      );
-    });
-  }
-
   root.querySelector<HTMLElement>('[data-dm-reset]')?.addEventListener('click', () => {
-    generation += 1;
+    generation = resetGuideHistory(history, generation);
     controller?.abort();
     controller = null;
     setBusy(false);
-    history.length = 0;
     thread.replaceChildren();
     root.classList.remove('dm-started');
     input.focus();
@@ -552,9 +532,8 @@ function initRoot(root: HTMLElement): void {
 
   window.addEventListener('popstate', () => {
     if (window.location.pathname === page.path) return;
-    generation += 1;
+    generation = resetGuideHistory(history, generation);
     controller?.abort();
-    history.length = 0;
   });
 }
 
@@ -568,7 +547,6 @@ function toolSummary(name: string): string {
     getProject: 'Read a published project',
     readResume: 'Read public resume facts',
     getContact: 'Read public contact details',
-    searchPublicSources: 'Search approved public sources',
     searchProfile: 'Search published profile facts',
   };
   return summaries[name] ?? 'Use a public portfolio tool';

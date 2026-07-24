@@ -16,9 +16,10 @@ yarn-error.log*
 pnpm-debug.log*
 
 
-# environment variables
-.env
-.env.production
+# environment variables — every variant (.env, .env.local, .env.preview,
+# .env.production, `vercel env pull` output, ad-hoc backups) stays untracked.
+.env*
+!.env.example
 
 # macOS-specific files
 .DS_Store
@@ -29,19 +30,12 @@ pnpm-debug.log*
 # superpowers brainstorm sessions
 .superpowers/
 
-# working docs
+# working docs and local agent scratch
 docs/superpowers/
 docs/workflow-playbook/
-docs/handoffs/*.md
-!docs/handoffs/.gitkeep
+work/
+design-qa.md
 
 # local agent worktrees (git worktree storage)
 .codex/
 .claude/worktrees/
-
-# conductor (retired)
-.conductor/
-
-# local DM eval reports (comparison artifacts, never committed)
-.dm-evals/
-.env*.local

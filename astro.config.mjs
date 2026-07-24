@@ -52,9 +52,9 @@ export default defineConfig({
   // Suppress the dev-only toolbar pill — it overlaps the bottom player bar in
   // mobile dev screenshots/audits. Dev-only; `astro build` never ships it.
   devToolbar: { enabled: false },
-  // Slack slash commands/interactions arrive as cross-origin
-  // application/x-www-form-urlencoded POSTs. The Slack endpoint verifies
-  // x-slack-signature before touching services, so allow those webhook posts
-  // through Astro's global form-origin guard.
-  security: { checkOrigin: false },
+  // Astro's global form-origin guard (CSRF protection for form-encoded POSTs).
+  // This was previously disabled so the Slack control-plane webhook could post
+  // cross-origin; that endpoint is gone (#316), and no remaining route accepts
+  // cross-origin form posts, so the guard stays on.
+  security: { checkOrigin: true },
 });
