@@ -10,13 +10,14 @@
  * and brightens on hover/focus, and the id/title pick up the hue. Surfaces stay
  * flat (no boxes); hairlines + whitespace do the framing.
  *
- * This is the one canonical project card site-wide: it never uses screenshots,
- * icons, generated marks, or project initials. Static, zero client JS; links to
+ * When a card is rendered it is this one: it never uses screenshots, icons,
+ * generated marks, or project initials. Static, zero client JS; links to
  * `/projects/{id}` with a visible keyboard focus ring.
  *
- * Reused by the library index, the project-detail "More projects" rail, and the
- * résumé "Shipped during this era" rail; see `ProjectCardGrid.astro` for the
- * responsive grid wrapper.
+ * Scope (#319): the only surface left rendering cards is the journey detail
+ * era rail (`journey/[track].astro`); the library index and its filtered views
+ * use the device-console `work-list` rows instead. See `ProjectCardGrid.astro`
+ * for the responsive grid wrapper and the current surface split.
  */
 import type { Project } from '@/data/catalog';
 import type { ProjectCardReadModel } from '@/lib/db/project-reads';

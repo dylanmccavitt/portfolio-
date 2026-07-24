@@ -1,6 +1,8 @@
 ---
 /**
  * Helpful 404 for the agent-first portfolio. Static, no client JavaScript.
+ * Renders through the shared `device-route-screen` shell so the miss looks like
+ * every other route on the device instead of a standalone full-height page.
  */
 import Editorial from '@/layouts/Editorial.astro';
 import { libraryMeta } from '@/lib/seo';
@@ -12,112 +14,44 @@ const meta = libraryMeta(
 ---
 
 <Editorial title="Page not found · Dylan McCavitt" meta={meta}>
-  <section class="notfound">
-    <a class="nf-mark" href="/" aria-label="Dylan McCavitt home">DM</a>
-    <div class="nf-copy">
-      <p class="code">404</p>
-      <h1>Page not found</h1>
-      <p>
+  <section class="device-route-screen notfound-console">
+    <nav class="screen-nav" aria-label="Primary">
+      <a href="/">DM / 404</a>
+      <span class="screen-nav-links">
+        <a href="/">Home</a>
+        <a href="/library">Work</a>
+        <a href="/journey">Journey</a>
+        <a href="/resume">Resume</a>
+        <a href="/contact">Contact</a>
+      </span>
+    </nav>
+
+    <header class="notfound-console-head">
+      <p class="screen-kicker">404</p>
+      <h1 class="screen-title">Page not found</h1>
+      <p class="screen-lede">
         That portfolio URL is no longer active. DM can answer questions about
         Dylan's work, or you can jump straight to projects, resume, or email.
       </p>
-      <div class="actions">
-        <a class="btn primary" href="/">Ask DM</a>
-        <a class="btn" href="/library">Projects</a>
-        <a class="btn" href="/journey">Resume</a>
-        <a class="text-link" href="mailto:dylanmccavitt@outlook.com">Email Dylan</a>
-      </div>
-    </div>
+    </header>
+
+    <nav class="notfound-console-actions" aria-label="Recovery">
+      <a class="console-button console-button--fill" href="/">Ask DM</a>
+      <a class="console-button" href="/library">Projects</a>
+      <a class="console-button" href="/resume">Resume</a>
+      <a href="mailto:dylanmccavitt@outlook.com">Email Dylan</a>
+    </nav>
+    <p class="screen-footer">Tab move · Enter open · Esc home</p>
   </section>
 </Editorial>
 
 <style>
-  .notfound {
-    min-height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    padding: clamp(18px, 5vw, 40px);
-    color: var(--pl-text);
-    font-family: var(--pl-sans);
-  }
-
-  .nf-mark {
-    width: fit-content;
-    font-family: var(--pl-mono);
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: 1.5px;
-    color: var(--pl-accent);
-    border: 1px solid color-mix(in srgb, var(--pl-accent) 38%, var(--pl-line));
-    border-radius: 7px;
-    padding: 4px 8px;
-    line-height: 1;
-  }
-
-  .nf-copy {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    max-width: 680px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  .code {
-    font-family: var(--pl-mono);
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 2px;
-    color: var(--pl-accent);
-  }
-  h1 {
-    margin-top: 12px;
-    font-size: clamp(36px, 8vw, 76px);
-    line-height: 1;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-  }
-  .nf-copy > p:last-of-type {
-    max-width: 56ch;
-    margin-top: 20px;
-    color: var(--pl-dim);
-    font-size: 16px;
-    line-height: 1.65;
-  }
-
-  .actions {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 30px;
-  }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 42px;
-    padding: 10px 18px;
-    border: 1px solid var(--pl-line);
-    border-radius: 999px;
-    color: var(--pl-text);
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .btn.primary {
-    background: var(--pl-text);
-    color: #111;
-    border-color: transparent;
-  }
-  .btn:hover {
-    border-color: var(--pl-accent);
-  }
-  .text-link {
-    margin-left: 6px;
-    color: var(--pl-dim);
-    font-size: 13px;
-  }
-  .text-link:hover {
-    color: var(--pl-text);
-  }
+  .notfound-console { padding: clamp(30px, 4.7vw, 70px); }
+  .notfound-console-head { border-bottom: 1px solid var(--pl-line); padding-bottom: 1.4rem; }
+  .notfound-console .screen-lede { margin-top: 1.3rem; }
+  .notfound-console-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: clamp(2rem, 5vh, 4rem); }
+  .notfound-console-actions a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--pl-accent); text-transform: uppercase; font-size: .78rem; text-decoration: none; }
+  .console-button { min-width: 180px; padding: .7rem 1.2rem; border: 1px solid var(--pl-accent); }
+  .console-button--fill { background: #7084a9; color: #eef1f7 !important; }
+  @media (max-width: 768px) { .notfound-console-actions { align-items: stretch; flex-direction: column; } .notfound-console-actions a { width: 100%; } }
 </style>

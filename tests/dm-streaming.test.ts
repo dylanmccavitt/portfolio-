@@ -29,7 +29,7 @@ test('the client keeps model text inert and excludes incomplete turns from histo
   assert.doesNotMatch(source, /innerHTML|insertAdjacentHTML|DOMParser|marked\(|markdown-it/);
   assert.match(source, /return completedAssistantHistoryText\(this\.text, this\.completed\)/);
   assert.match(source, /const assistantText = turn\.historyText\(\)/);
-  assert.match(source, /generation \+= 1/);
+  assert.match(source, /resetGuideHistory\(history, generation\)/);
 });
 
 test('cancelled or malformed turns cannot enter history and a later success recovers', () => {

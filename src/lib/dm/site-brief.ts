@@ -53,8 +53,6 @@ export interface DMSiteBriefContent {
     home: '/';
     projects: '/library';
     resume: '/journey';
-    hiring: '/hiring';
-    fitCheck: '/fit-check';
   };
   projects: DMSiteBriefProject[];
   resumeTracks: DMSiteBriefResumeTrack[];
@@ -167,8 +165,6 @@ export function buildDMSiteBrief(
       home: '/',
       projects: '/library',
       resume: '/journey',
-      hiring: '/hiring',
-      fitCheck: '/fit-check',
     },
     projects,
     resumeTracks,

@@ -66,16 +66,16 @@ const ogImage = new URL(meta?.ogImage ?? OG_FALLBACK, Astro.site).href;
       <main id="main" class:list={['device-content', `device-content--${surface}`]} tabindex="-1">
         <slot />
       </main>
+      {
+        guideKind && (
+          <ContextualGuide
+            kind={guideKind}
+            path={path}
+            reference={guideReference}
+          />
+        )
+      }
     </div>
-    {
-      guideKind && (
-        <ContextualGuide
-          kind={guideKind}
-          path={path}
-          reference={guideReference}
-        />
-      )
-    }
     <script src="../scripts/device.ts"></script>
     {guideKind && <script src="../scripts/dm.ts"></script>}
   </body>

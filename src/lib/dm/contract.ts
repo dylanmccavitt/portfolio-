@@ -14,12 +14,6 @@ export interface DMChatContext {
   page: DMPageContext;
   projectIds?: string[];
   resumeTrackIds?: string[];
-  fitCheck?: {
-    kind: 'job-description';
-    jobDescription: string;
-    originalLength?: number;
-    truncated?: boolean;
-  };
 }
 
 export type DMUIData = Record<string, unknown> & {

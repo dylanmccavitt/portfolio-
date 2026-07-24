@@ -1,5 +1,5 @@
 /**
- * Fallback OG image for home, library, resume, and hiring routes.
+ * Fallback OG image for home, library, resume, and journey routes.
  */
 import type { APIRoute } from 'astro';
 import { renderOgImage } from '@/lib/og';
