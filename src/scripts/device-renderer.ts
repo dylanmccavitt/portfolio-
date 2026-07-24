@@ -27,7 +27,8 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
       canvas,
       alpha: true,
       antialias: true,
-      powerPreference: 'high-performance',
+      // Decorative z-index:-1 background: never worth waking a discrete GPU for.
+      powerPreference: 'default',
     });
   } catch {
     document.documentElement.dataset.webgl = 'unavailable';
@@ -47,6 +48,9 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   renderer.toneMappingExposure = 1.03;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Nothing in the scene moves relative to the light, so the shadow map is
+  // rendered on demand (after build, and after every resize) instead of per frame.
+  renderer.shadowMap.autoUpdate = false;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
@@ -159,7 +163,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     ['.hardware-link--back', homeSurfaces.back],
   ] as const;
 
-  const moldedTexture = createMoldTexture();
+  const moldedTexture = createMoldTexture(renderer);
   const graphite = new THREE.MeshPhysicalMaterial({
     color: 0x243249,
     roughness: 0.48,
@@ -183,14 +187,16 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     roughness: 0.72,
     metalness: 0.04,
   });
+  // No `transmission`: a non-zero value costs three's whole extra transmission
+  // render pass every frame for this one material. Slightly lower opacity plus a
+  // stronger clearcoat reproduces the same depth without that pass.
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0x071424,
     roughness: 0.12,
     metalness: 0.02,
-    transmission: 0.16,
     transparent: true,
-    opacity: 0.82,
-    clearcoat: 0.82,
+    opacity: 0.78,
+    clearcoat: 0.9,
     clearcoatRoughness: 0.16,
   });
   const controlMaterial = new THREE.MeshPhysicalMaterial({
@@ -208,14 +214,13 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   const key = new THREE.DirectionalLight(0xf3f0ed, 2.55);
   key.position.set(-6.5, 12, -6);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.left = -10;
   key.shadow.camera.right = 10;
   key.shadow.camera.top = 10;
   key.shadow.camera.bottom = -10;
   key.shadow.bias = -0.00018;
   key.shadow.normalBias = 0.035;
-  key.shadow.radius = 5;
   scene.add(key);
   const fill = new THREE.DirectionalLight(0x99abc9, 1.45);
   fill.position.set(7, 8, 6);
@@ -239,7 +244,10 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   desk.rotation.x = -Math.PI / 2;
   desk.position.y = -0.5;
   desk.receiveShadow = true;
-  scene.add(desk);
+  // Desk and contact shadow belong to `world`, not `scene`: parented to the
+  // scene they hold still while the chassis parallaxes, detaching the baked
+  // shadow from the object casting it.
+  world.add(desk);
   const contact = new THREE.Mesh(
     new THREE.PlaneGeometry(surface === 'home' ? 8.7 : 12.4, surface === 'home' ? 9 : 8.7),
     new THREE.MeshBasicMaterial({
@@ -253,7 +261,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   contact.rotation.x = -Math.PI / 2;
   contact.position.y = -0.485;
   contact.position.z = 0.18;
-  scene.add(contact);
+  world.add(contact);
 
   const statusPass = createDitheredStatus(renderer);
   const guideDialog = document.querySelector<HTMLElement>('[data-dm-dialog]');
@@ -278,8 +286,13 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
   syncGuideState();
   if (surface === 'home') buildHome();
   else buildRoute();
+  renderer.shadowMap.needsUpdate = true;
 
-  const startedAt = performance.now();
+  // Animation time is accumulated from clamped frame deltas rather than read
+  // from the wall clock, so the paused frames behind `!visible || !inView` do
+  // not pile up into a single jump when the loop resumes.
+  let clock = 0;
+  let lastFrame = performance.now();
   let visible = !document.hidden;
   let inView = true;
   let disposed = false;
@@ -297,20 +310,31 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
 
   const onVisibility = () => {
     visible = !document.hidden;
+    lastFrame = performance.now();
   };
   document.addEventListener('visibilitychange', onVisibility);
 
+  // The canvas is the pinned surface (position: fixed; inset: 0); `stage` can
+  // scroll away while the canvas is still fully on screen.
   const viewObserver = new IntersectionObserver((entries) => {
     inView = entries.at(-1)?.isIntersecting ?? true;
+    lastFrame = performance.now();
   });
-  viewObserver.observe(stage);
+  viewObserver.observe(canvas);
 
+  let appliedPixelRatio = 0;
   const resize = () => {
     const width = Math.max(stage.clientWidth, 1);
     const height = Math.max(stage.clientHeight, 1);
     const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
-    renderer.setPixelRatio(dpr);
+    // setPixelRatio calls setSize internally, so calling it unconditionally
+    // reallocates the drawing buffer twice per resize.
+    if (dpr !== appliedPixelRatio) {
+      appliedPixelRatio = dpr;
+      renderer.setPixelRatio(dpr);
+    }
     renderer.setSize(width, height, false);
+    renderer.shadowMap.needsUpdate = true;
     camera.aspect = width / height;
     camera.fov = surface === 'home' ? 34 : 37;
     camera.zoom = 1;
@@ -320,18 +344,44 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     else syncRouteOverlay(width, height);
     statusPass.resize(dpr);
   };
-  const resizeObserver = new ResizeObserver(resize);
+  let resizeFrame = 0;
+  const resizeObserver = new ResizeObserver(() => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      if (!disposed) resize();
+    });
+  });
   resizeObserver.observe(stage);
   resize();
 
+  const onContextLost = (event: Event) => {
+    // Without preventDefault the browser never attempts restoration.
+    event.preventDefault();
+    document.documentElement.dataset.webgl = 'unavailable';
+  };
+  const onContextRestored = () => {
+    document.documentElement.dataset.webgl = 'available';
+    lastFrame = performance.now();
+    resize();
+  };
+  canvas.addEventListener('webglcontextlost', onContextLost);
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
+
   renderer.setAnimationLoop(() => {
     if (!visible || !inView || disposed) return;
-    const elapsed = reducedMotion.matches ? 0 : (performance.now() - startedAt) / 1000;
+    const now = performance.now();
+    const dt = Math.min((now - lastFrame) / 1000, 0.05);
+    lastFrame = now;
+    clock += dt;
+    const elapsed = reducedMotion.matches ? 0 : clock;
     // DOM screen content and the WebGL chassis share one fixed projection so
     // screen edges never drift outside their physical openings. The pointer
     // parallax therefore stays inside POINTER_TILT_Z/POINTER_TILT_X, whose
     // sub-pixel chassis displacement keeps the overlay projection valid.
-    pointerCurrent.lerp(pointerTarget, 0.045);
+    // The exponential alpha is frame-rate independent and reproduces the tuned
+    // 0.045-per-frame settle exactly at 60Hz.
+    pointerCurrent.lerp(pointerTarget, 1 - Math.pow(1 - 0.045, dt * 60));
     if (!reducedMotion.matches) {
       world.rotation.z = -pointerCurrent.x * POINTER_TILT_Z;
       world.rotation.x = pointerCurrent.y * POINTER_TILT_X;
@@ -349,17 +399,30 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     disposed = true;
     renderer.setAnimationLoop(null);
     resizeObserver.disconnect();
+    if (resizeFrame) cancelAnimationFrame(resizeFrame);
+    resizeFrame = 0;
     viewObserver.disconnect();
     guideObserver?.disconnect();
     window.removeEventListener('pointermove', onPointer);
     document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pagehide', destroy);
+    // Detach before forceContextLoss so the synthetic loss event cannot
+    // overwrite the data-webgl state a caller has already moved on from.
+    canvas.removeEventListener('webglcontextlost', onContextLost);
+    canvas.removeEventListener('webglcontextrestored', onContextRestored);
     clearHomeOverlay();
     clearRouteOverlay();
     statusPass.dispose();
+    // disposeObject frees the key light's depth target, which renderer.dispose()
+    // does not; forceContextLoss must then run before dispose to actually
+    // release the context rather than leaking it until GC.
     disposeObject(scene);
+    renderer.forceContextLoss();
     renderer.dispose();
   };
-  window.addEventListener('pagehide', destroy, { once: true });
+  // Not `{ once: true }`: pagehide fires on bfcache entry too, and device.ts
+  // restarts the renderer from pageshow, so teardown has to stay armed.
+  window.addEventListener('pagehide', destroy);
 
   function buildHome() {
     const top = roundedHousing(8.05, 3.72, 0.62);
@@ -794,8 +857,8 @@ function createDitheredStatus(renderer: THREE.WebGLRenderer) {
   };
 }
 
-function createMoldTexture(): THREE.DataTexture {
-  const size = 64;
+function createMoldTexture(renderer: THREE.WebGLRenderer): THREE.DataTexture {
+  const size = 128;
   const data = new Uint8Array(size * size);
   let seed = 307;
   for (let index = 0; index < data.length; index += 1) {
@@ -806,6 +869,12 @@ function createMoldTexture(): THREE.DataTexture {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(8, 8);
+  // DataTexture defaults to nearest sampling with no mipmaps. Tiled 8x8 and
+  // viewed at a grazing angle, that aliases badly under pointer parallax.
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.needsUpdate = true;
   return texture;
 }
@@ -830,6 +899,15 @@ function createContactShadowTexture(): THREE.CanvasTexture {
 
 function disposeObject(root: THREE.Object3D): void {
   root.traverse((object) => {
+    // `shadow` is declared only on the shadow-casting light subclasses, so the
+    // base type is widened structurally rather than narrowed per light type.
+    const light = object as THREE.Light & { shadow?: { dispose(): void } };
+    if (light.isLight) {
+      // renderer.dispose() does not free shadow depth targets.
+      light.shadow?.dispose();
+      light.dispose();
+      return;
+    }
     const mesh = object as THREE.Mesh;
     mesh.geometry?.dispose();
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

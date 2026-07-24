@@ -24,11 +24,17 @@ async function syncRenderer(): Promise<void> {
 }
 
 desktopRenderer.addEventListener('change', () => void syncRenderer());
+// pagehide also fires when the page enters the bfcache, so teardown must stay
+// re-armed: the matching pageshow restart is what keeps Back from leaving a
+// dead canvas behind data-webgl='available'.
 window.addEventListener('pagehide', () => {
   loadVersion += 1;
   stopRenderer?.();
   stopRenderer = undefined;
-}, { once: true });
+});
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) void syncRenderer();
+});
 
 void syncRenderer();
 

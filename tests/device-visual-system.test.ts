@@ -38,7 +38,7 @@ test('subtle pointer parallax stays wired, bounded, and reduced-motion aware', a
   assert.match(device, /const POINTER_TILT_X = 0\.006;/);
   assert.match(device, /addEventListener\('pointermove', onPointer, \{ passive: true \}\)/);
   assert.match(device, /removeEventListener\('pointermove', onPointer\)/);
-  assert.match(device, /pointerCurrent\.lerp\(pointerTarget, 0\.045\)/);
+  assert.match(device, /pointerCurrent\.lerp\(pointerTarget, 1 - Math\.pow\(1 - 0\.045, dt \* 60\)\)/);
   assert.match(device, /world\.rotation\.z = -pointerCurrent\.x \* POINTER_TILT_Z/);
   assert.match(device, /world\.rotation\.x = pointerCurrent\.y \* POINTER_TILT_X/);
   assert.match(device, /if \(reducedMotion\.matches\) return;/);
