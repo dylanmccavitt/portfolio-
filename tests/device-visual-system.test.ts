@@ -113,9 +113,11 @@ test('static and mobile fallbacks preserve usable document surfaces', async () =
 });
 
 test('binding Work and answered-guide states retain reference hierarchy and public content order', async () => {
-  const [work, deviceCss, guide, dmCss, client] = await Promise.all([
+  const [work, deviceCss, device, home, guide, dmCss, client] = await Promise.all([
     read('src/components/LibraryView.astro'),
     read('src/styles/device.css'),
+    read('src/scripts/device-renderer.ts'),
+    read('src/pages/index.astro'),
     read('src/components/ContextualGuide.astro'),
     read('src/styles/dm.css'),
     read('src/scripts/dm.ts'),
@@ -147,10 +149,28 @@ test('binding Work and answered-guide states retain reference hierarchy and publ
   assert.match(deviceCss, /\.hardware-link--right \{[\s\S]*?left: 19%/);
   assert.match(deviceCss, /\.hardware-link--down \{[\s\S]*?left: 11\.6%/);
   assert.match(deviceCss, /\.hardware-link--left \{[\s\S]*?left: 4\.2%/);
+  assert.match(deviceCss, /\.home-device\[data-device-overlay-bound\][\s\S]*?--home-device-width/);
+  assert.match(deviceCss, /\.home-title \{[\s\S]*?font-size: clamp\([^;]+cqw[\s\S]*?white-space: nowrap/);
+  assert.match(device, /function projectSurface/);
+  assert.match(device, /camera\.updateMatrixWorld\(\)/);
+  assert.match(device, /syncHomeOverlay\(width, height\)/);
+  assert.match(device, /fitHeight = stageHeight \* 0\.96/);
+  assert.match(device, /--device-overlay-left/);
+  assert.match(device, /const dpadLayout = \{[\s\S]*?x: -3\.15,[\s\S]*?span: 1\.16/);
   assert.match(
-    deviceCss,
-    /\.hardware-link--up,[\s\S]*?\.hardware-link--left \{[\s\S]*?color: transparent/,
+    device,
+    /controlBox\(dpadLayout\.thickness, dpadLayout\.span, 0\.22\)[\s\S]*?dpad\.position\.set\(dpadLayout\.x/,
   );
+  assert.match(device, /const actionControlLayout = \{[\s\S]*?x: 3\.15,[\s\S]*?openZ: 1\.48,[\s\S]*?backZ: 2\.72/);
+  assert.match(
+    device,
+    /open\.position\.set\(actionControlLayout\.x[\s\S]*?back\.position\.set\(actionControlLayout\.x/,
+  );
+  assert.doesNotMatch(device, /dpad\.position\.set\(-2\.78/);
+  assert.doesNotMatch(device, /(?:open|back)\.position\.set\(2\.78/);
+  assert.doesNotMatch(device, /new THREE\.ConeGeometry\(0\.11/);
+  assert.match(home, /aria-label="Directional pad up: Work"><\/a>/);
+  assert.doesNotMatch(home, /Directional pad (?:up|right|down|left): [^"]+">[↑→↓←]/);
   assert.match(deviceCss, /body:has\(\.context-guide-backdrop:not\(\[hidden\]\)\) \.work-console/);
   assert.match(guide, /DM \/ Work context/);
   assert.match(guide, /Public sources only · resets on route change/);

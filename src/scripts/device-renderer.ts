@@ -47,6 +47,93 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
 
   const world = new THREE.Group();
   scene.add(world);
+  const homeDevice = surface === 'home'
+    ? document.querySelector<HTMLElement>('.home-device')
+    : null;
+  type OverlayRect = {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  type DeviceSurface = {
+    x: number;
+    z: number;
+    width: number;
+    depth: number;
+    y: number;
+  };
+  const dpadLayout = {
+    x: -3.15,
+    z: 2.1,
+    span: 1.16,
+    thickness: 0.5,
+    hitOffset: 0.33,
+    hitSize: 0.56,
+  } as const;
+  const actionControlLayout = {
+    x: 3.15,
+    width: 0.84,
+    depth: 0.78,
+    openZ: 1.48,
+    backZ: 2.72,
+  } as const;
+  const homeSurfaces = {
+    hero: { x: 0, z: -2.18, width: 6.82, depth: 2.65, y: 0.715 },
+    menu: { x: 0, z: 2.1, width: 4.36, depth: 2.72, y: 0.745 },
+    up: {
+      x: dpadLayout.x,
+      z: dpadLayout.z - dpadLayout.hitOffset,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    right: {
+      x: dpadLayout.x + dpadLayout.hitOffset,
+      z: dpadLayout.z,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    down: {
+      x: dpadLayout.x,
+      z: dpadLayout.z + dpadLayout.hitOffset,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    left: {
+      x: dpadLayout.x - dpadLayout.hitOffset,
+      z: dpadLayout.z,
+      width: dpadLayout.hitSize,
+      depth: dpadLayout.hitSize,
+      y: 0.79,
+    },
+    open: {
+      x: actionControlLayout.x,
+      z: actionControlLayout.openZ,
+      width: actionControlLayout.width,
+      depth: actionControlLayout.depth,
+      y: 0.69,
+    },
+    back: {
+      x: actionControlLayout.x,
+      z: actionControlLayout.backZ,
+      width: actionControlLayout.width,
+      depth: actionControlLayout.depth,
+      y: 0.69,
+    },
+  } satisfies Record<string, DeviceSurface>;
+  const overlayBindings = [
+    ['.home-screen--hero', homeSurfaces.hero],
+    ['.home-screen--menu', homeSurfaces.menu],
+    ['.hardware-link--up', homeSurfaces.up],
+    ['.hardware-link--right', homeSurfaces.right],
+    ['.hardware-link--down', homeSurfaces.down],
+    ['.hardware-link--left', homeSurfaces.left],
+    ['.hardware-link--open', homeSurfaces.open],
+    ['.hardware-link--back', homeSurfaces.back],
+  ] as const;
 
   const moldedTexture = createMoldTexture();
   const graphite = new THREE.MeshPhysicalMaterial({
@@ -191,7 +278,10 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.fov = surface === 'home' ? 34 : 37;
+    camera.zoom = 1;
     camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    if (surface === 'home') syncHomeOverlay(width, height);
     statusPass.resize(dpr);
   };
   const resizeObserver = new ResizeObserver(resize);
@@ -218,6 +308,7 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     viewObserver.disconnect();
     guideObserver?.disconnect();
     document.removeEventListener('visibilitychange', onVisibility);
+    clearHomeOverlay();
     statusPass.dispose();
     disposeObject(scene);
     renderer.dispose();
@@ -258,32 +349,20 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     }
 
     const dpad = new THREE.Group();
-    const padVertical = controlBox(0.64, 1.52, 0.22);
-    const padHorizontal = controlBox(1.52, 0.64, 0.22);
+    const padVertical = controlBox(dpadLayout.thickness, dpadLayout.span, 0.22);
+    const padHorizontal = controlBox(dpadLayout.span, dpadLayout.thickness, 0.22);
     dpad.add(padVertical, padHorizontal);
     const center = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.12, 32), seam);
     center.position.y = 0.25;
     dpad.add(center);
-    for (const [rotation, z, x] of [
-      [0, -0.56, 0],
-      [Math.PI / 2, 0, 0.56],
-      [Math.PI, 0.56, 0],
-      [-Math.PI / 2, 0, -0.56],
-    ] as const) {
-      const marker = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.035, 3), graphiteEdge);
-      marker.rotation.x = Math.PI;
-      marker.rotation.y = rotation;
-      marker.position.set(x, 0.26, z);
-      dpad.add(marker);
-    }
-    dpad.position.set(-2.78, 0.55, 2.1);
+    dpad.position.set(dpadLayout.x, 0.55, dpadLayout.z);
     world.add(dpad);
 
-    const open = controlBox(0.84, 0.78, 0.24);
-    open.position.set(2.78, 0.55, 1.48);
+    const open = controlBox(actionControlLayout.width, actionControlLayout.depth, 0.24);
+    open.position.set(actionControlLayout.x, 0.55, actionControlLayout.openZ);
     world.add(open);
-    const back = controlBox(0.84, 0.78, 0.24);
-    back.position.set(2.78, 0.55, 2.72);
+    const back = controlBox(actionControlLayout.width, actionControlLayout.depth, 0.24);
+    back.position.set(actionControlLayout.x, 0.55, actionControlLayout.backZ);
     world.add(back);
     for (const x of [-2.9, 2.9]) {
       const slot = new THREE.Mesh(new RoundedBoxGeometry(0.55, 0.07, 0.12, 2, 0.04), seam);
@@ -315,6 +394,86 @@ export function startDevice(stage: HTMLElement, canvas: HTMLCanvasElement): () =
     notebook.rotation.y = -0.13;
     notebook.castShadow = true;
     world.add(notebook);
+  }
+
+  function projectSurface(surfaceRect: DeviceSurface, stageWidth: number, stageHeight: number): OverlayRect {
+    const halfWidth = surfaceRect.width / 2;
+    const halfDepth = surfaceRect.depth / 2;
+    const corners = [
+      new THREE.Vector3(surfaceRect.x - halfWidth, surfaceRect.y, surfaceRect.z - halfDepth),
+      new THREE.Vector3(surfaceRect.x + halfWidth, surfaceRect.y, surfaceRect.z - halfDepth),
+      new THREE.Vector3(surfaceRect.x - halfWidth, surfaceRect.y, surfaceRect.z + halfDepth),
+      new THREE.Vector3(surfaceRect.x + halfWidth, surfaceRect.y, surfaceRect.z + halfDepth),
+    ].map((point) => point.project(camera));
+    const xs = corners.map((point) => (point.x + 1) * stageWidth / 2);
+    const ys = corners.map((point) => (1 - point.y) * stageHeight / 2);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+    return { left, top, width: right - left, height: bottom - top };
+  }
+
+  function homeReferenceRect(stageWidth: number, stageHeight: number): OverlayRect {
+    const hero = projectSurface(homeSurfaces.hero, stageWidth, stageHeight);
+    const width = hero.width / 0.856;
+    const height = hero.height / 0.3255;
+    return {
+      left: hero.left - width * 0.072,
+      top: hero.top - height * 0.0735,
+      width,
+      height,
+    };
+  }
+
+  function syncHomeOverlay(stageWidth: number, stageHeight: number): void {
+    if (!homeDevice) return;
+
+    const initialReference = homeReferenceRect(stageWidth, stageHeight);
+    const fitWidth = Math.min(800, stageWidth * 0.92);
+    const fitHeight = stageHeight * 0.96;
+    camera.zoom = Math.min(
+      fitWidth / Math.max(initialReference.width, 1),
+      fitHeight / Math.max(initialReference.height, 1),
+    );
+    camera.updateProjectionMatrix();
+
+    const reference = homeReferenceRect(stageWidth, stageHeight);
+    homeDevice.dataset.deviceOverlayBound = '';
+    homeDevice.style.setProperty('--home-device-left', `${reference.left}px`);
+    homeDevice.style.setProperty('--home-device-top', `${reference.top}px`);
+    homeDevice.style.setProperty('--home-device-width', `${reference.width}px`);
+    homeDevice.style.setProperty('--home-device-height', `${reference.height}px`);
+
+    for (const [selector, surfaceRect] of overlayBindings) {
+      const element = homeDevice.querySelector<HTMLElement>(selector);
+      if (!element) continue;
+      const rect = projectSurface(surfaceRect, stageWidth, stageHeight);
+      element.style.setProperty('--device-overlay-left', `${rect.left - reference.left}px`);
+      element.style.setProperty('--device-overlay-top', `${rect.top - reference.top}px`);
+      element.style.setProperty('--device-overlay-width', `${rect.width}px`);
+      element.style.setProperty('--device-overlay-height', `${rect.height}px`);
+    }
+  }
+
+  function clearHomeOverlay(): void {
+    if (!homeDevice) return;
+    delete homeDevice.dataset.deviceOverlayBound;
+    for (const property of [
+      '--home-device-left',
+      '--home-device-top',
+      '--home-device-width',
+      '--home-device-height',
+    ]) {
+      homeDevice.style.removeProperty(property);
+    }
+    for (const [selector] of overlayBindings) {
+      const element = homeDevice.querySelector<HTMLElement>(selector);
+      element?.style.removeProperty('--device-overlay-left');
+      element?.style.removeProperty('--device-overlay-top');
+      element?.style.removeProperty('--device-overlay-width');
+      element?.style.removeProperty('--device-overlay-height');
+    }
   }
 
   function buildRoute() {
