@@ -126,3 +126,13 @@ test('the player Contact link reaches the on-site contact destination', async ()
   );
   assert.equal(await routeExists('/journey/now'), true);
 });
+
+test('the hiring route copy clearly addresses the visitor', async () => {
+  const home = await readFile(path.join(DIST, 'index.html'), 'utf8');
+  const hiring = await readFile(path.join(DIST, 'hiring', 'index.html'), 'utf8');
+
+  assert.match(home, /I'm a hiring manager/);
+  assert.doesNotMatch(home, /I'm hiring/);
+  assert.match(hiring, /<title>For hiring managers · Dylan McCavitt<\/title>/);
+  assert.doesNotMatch(hiring, /I'm hiring/);
+});

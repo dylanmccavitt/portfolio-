@@ -1,8 +1,8 @@
 ---
 /**
- * `/hiring` — the "I'm hiring" guided tour (#62). A standalone, stepped tour
+ * `/hiring` — the hiring-manager guided tour (#62). A standalone, stepped tour
  * (the prototype's T1 format from `18-hiring-tour.html`): one beat per screen,
- * Back/Next + dots, opened from the concierge's "I'm hiring" route (#60).
+ * Back/Next + dots, opened from the concierge's hiring-manager route (#60).
  *
  * Nine beats in order:
  *   0  hook / agenda      — name, title, "In this tour" numbered list
@@ -72,14 +72,14 @@ const AGENDA: [label: string, detail: string][] = [
 
 const meta = {
   ...libraryMeta(
-    "I'm hiring · Dylan McCavitt",
+    'For hiring managers · Dylan McCavitt',
     'A 2-minute guided tour: best work, then the resume. Software engineer · Backend · AI.',
   ),
   jsonLd: personJsonLd(),
 };
 ---
 
-<Tour title="I'm hiring · Dylan McCavitt" meta={meta}>
+<Tour title="For hiring managers · Dylan McCavitt" meta={meta}>
   <main class="tour-main">
     <div class="tbar">
       <a class="tour-back" href="/" title="Back to the concierge">‹ What brings you here?</a>
