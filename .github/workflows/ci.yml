@@ -13,6 +13,9 @@ on:
       - claude/**
       - glm/**
       - cursor/**
+      # Temporary stacked base for the visual-fidelity leaf; remove after #328
+      # lands and this pull request retargets to preview/agent-first-redesign.
+      - issue-328-bind-horizon-rail
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -45,3 +48,44 @@ jobs:
 
       - name: Test
         run: npm test
+
+  visual-fidelity:
+    name: Exact-head browser evidence
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Capture exact PR head
+        env:
+          EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVIDENCE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVIDENCE_REPOSITORY: ${{ github.repository }}
+        run: >-
+          npm run capture:visual --
+          "$EVIDENCE_HEAD_SHA"
+          "$EVIDENCE_BASE_SHA"
+          "$RUNNER_TEMP/visual-fidelity-evidence"
+          "$EVIDENCE_REPOSITORY"
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-fidelity-evidence-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/visual-fidelity-evidence
+          if-no-files-found: error
+          retention-days: 30

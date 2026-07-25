@@ -19,7 +19,9 @@
     "test:metrics": "node --import tsx --test tests/dm-metrics.test.ts",
     "test:routes": "node --import tsx --test tests/route-coverage.test.ts",
     "test:visual": "node --import tsx --test tests/device-visual-system.test.ts",
-    "test:quality": "node --import tsx --test tests/replacement-quality-proof.test.ts",
+    "test:quality": "node --import tsx --test tests/replacement-quality-proof.test.ts tests/visual-fidelity-evidence.test.ts",
+    "test:evidence": "node --import tsx --test tests/visual-fidelity-evidence.test.ts",
+    "capture:visual": "tsx scripts/capture-visual-fidelity.ts",
     "proof:quality": "tsx scripts/replacement-quality-proof.ts",
     "package:quality": "tsx scripts/build-replacement-quality-artifact.ts",
     "typecheck": "astro check",
@@ -54,6 +56,7 @@
     "@types/three": "^0.185.1",
     "eslint": "^10.1.0",
     "eslint-plugin-astro": "^1.6.0",
+    "playwright": "^1.58.2",
     "sharp": "^0.34.5",
     "tsx": "^4.22.4",
     "typescript-eslint": "^8.58.0"

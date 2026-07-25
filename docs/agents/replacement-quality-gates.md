@@ -1,153 +1,135 @@
-# Replacement portfolio quality gates
+# Automated replacement-quality evidence
 
-These provider-free gates replace the retired model-race release vetoes. They
-verify the route-aware contextual guide and muted Three.js portfolio without
-calling a paid service or recording conversational content.
+The replacement-quality gate is a provider-free Playwright capture run. It is
+generic repository infrastructure: the evidence does not contain an issue
+number, visitor text, network payload, provider output, credentials, or private
+URLs.
 
-## Authority and exact-head identity
+## Run it
 
-Run the complete repository checks with Node 24, then inspect the local build in
-the user’s in-app browser. Record the exact Git head before capture. Every
-capture and the resulting JSON artifact belongs to that head only; any code,
-test, reference, or documentation change invalidates the artifact.
-
-Deployment, preview promotion, production mutation, and paid evaluation remain
-fresh authority gates. This procedure does not authorize them.
-
-## Provider-free checks
+Use Node 24 from a clean exact-head checkout. Install the pinned Chromium once:
 
 ```sh
-npm run test:dm
-npm run test:visual
-npm run test:quality
+npx playwright install chromium
+npm run capture:visual -- \
+  "$(git rev-parse HEAD)" \
+  "<exact-base-sha>" \
+  "/absolute/output/directory" \
+  "owner/repository"
 ```
 
-The DM tests cover route-context validation, same-route history, reset and
-cancellation rollback, server-derived action destinations, and public-source
-isolation. The visual tests cover keyboard ownership, reduced-motion hooks,
-WebGL failure handling, responsive/static surfaces, and the binding reference
-hashes. Optional action quality is diagnostic: an absent follow-up action never
-fails release by itself.
+The script starts a local Astro development server with database and AI
+configuration explicitly blank, blocks non-local browser requests, and creates:
 
-## Browser proof matrix
+- `captures/desktop-home.png` at 1440 × 900;
+- `captures/desktop-guide.png` at 1440 × 900 with the guide open;
+- `captures/desktop-library.png` at 1440 × 900 for the expanded route;
+- `captures/tablet-library.png` at 768 × 1024;
+- `captures/mobile-contact.png` at 390 × 844;
+- `visual-fidelity-evidence.json`.
 
-Use only local catalog-development data and a local fixture interception for the
-DM stream. Do not configure credentials. Do not record request bodies, visitor
-text, streamed fixture data, or network payloads in the proof.
+The desktop run installs an automation-only `document.hidden`/visibility-state
+spoof before page code and dispatches `visibilitychange` before capture. The
+production renderer remains authoritative and still pauses when
+`document.hidden` is genuinely true.
 
-| Surface | Required proof |
-| --- | --- |
-| Desktop, 1440 × 900 | Home navigation; expanded Work; guide open/close; keyboard focus; fixture streaming, cancellation, failure recovery, and route-context isolation; Contact behavior; all core routes |
-| Small tablet, 768 × 1024 | Static document surface, navigation and guide controls, no horizontal overflow |
-| Mobile, 390 × 844 | Full-width document and bottom sheet, touch-size controls, form usefulness, no horizontal overflow |
-| WebGL unavailable | Semantic content and routes remain usable after renderer failure |
-| Reduced motion | No pointer or time-based visual movement; content and controls remain usable |
-| JavaScript disabled | Home, Work, Journey, Resume, Contact, and project navigation remain useful |
+The normal desktop-home PNG retains the visible canvas. The runner also takes a
+temporary in-memory screenshot with only that canvas hidden, decodes both PNGs,
+and records how many composed-page pixels changed. At least one percent of the
+viewport must change by eight or more channel levels. This deliberately loose
+structural threshold proves that the Three.js canvas contributes rendered
+pixels while avoiding a brittle global reference-image diff. The hidden-canvas
+comparison is not retained.
 
-The core routes are `/`, `/library`, one `/projects/<slug>`, `/journey`,
-`/resume`, and `/contact`. The contextual guide is optional and must not block
-any of them.
+The separate desktop-guide state opens `[data-dm-open]`, waits for the existing
+dialog to become visible, and captures without sending a prompt or invoking a
+provider.
 
-## Exact-head visual comparison
+## Transitional coarse regression baselines
 
-Compare same-viewport implementation captures against these byte-bound
-references:
+Three sanitized historical proof inputs provide coarse pre-Horizon regression
+evidence:
 
-| Gate | Reference | SHA-256 |
-| --- | --- | --- |
-| Muted home | `docs/design/contextual-guide-reset/01-home-muted-threejs.png` | `92fa8bff310564a6264994382f4621428ac5add9d6a1a7afe171111f0e4103b7` |
-| Expanded Work | `docs/design/contextual-guide-reset/02-work-layout.png` | `9ab440d983436c3ab09d938359e18ff5a515629975b678474a60a2b637855d69` |
-| Selected DM right sidecar | `docs/design/contextual-guide-reset/07-dm-right-sidecar-muted.png` | `17eeeebb3a5167434c0d33f40e103e0a284afa09c2ca7cb46965025df7963263` |
+| Capture | Baseline | Maximum normalized distance |
+| --- | --- | ---: |
+| Desktop home | `visual-home-muted.png` | 0.08 |
+| Desktop library | `visual-work-expanded.png` | 0.20 |
+| Desktop guide | `visual-dm-right-sidecar.png` | 0.24 |
 
-Review typography, layout, palette, geometry, and copy for each gate. Record
-visible differences as P0–P3. Any unresolved P0, P1, or P2 difference fails the
-artifact. P3 observations may remain diagnostic. The comparison must be
-performed independently from the package builder and persisted in
-`proof/replacement-quality-visual-review.json`.
+The runner copies these bound inputs into the artifact, decodes each current and
+baseline PNG, removes alpha, downsamples to 64 × 40, and records the normalized
+mean absolute RGB distance. It also records luminance variance, mean RGB-channel
+variance, edge density, and a spatial edge-anchor similarity from the normalized
+current capture. It additionally records high-frequency retention: the ratio of
+the current capture's Laplacian variance to the bound baseline's after both are
+decoded, converted to luminance, and normalized to 256 × 160. The spatial metric
+compares the absolute edge-energy centroid to both the packaged pre-Horizon
+baseline anchor and the accepted current exact-head anchor, preserving the two
+intentionally tolerated compositions without becoming mirror/rotation
+invariant. The validator recomputes all six measurements from the packaged
+PNGs.
 
-## Sanitized artifact schema
+Home requires at least `0.01` luminance/color variance and `0.05` edge density;
+library requires `0.012`, `0.015`, and `0.05`; guide requires `0.012`, `0.012`,
+and `0.06`. Current exact-head captures retain several-fold margin above these
+floors. Every bound desktop capture also requires spatial similarity of at
+least `0.98`. High-frequency retention must be at least `0.40` for home, `0.50`
+for library, and `0.25` for guide. Those per-capture floors retain margin below
+the accepted current captures while rejecting a 20px Gaussian blur. The
+deliberately tolerant distance ceilings plus low structural floors, anchored
+similarity, and sharpness retention catch blank, solid median/black,
+wrong-palette, full-screen-quad, mirrored, vertically flipped, rotated,
+materially displaced, and heavily blurred substitutions without imposing byte
+equality or a global pixel-perfect cutover.
 
-The artifact is a local JSON file with this required top-level shape:
+These are transitional pre-Horizon regression baselines, not visual acceptance
+and not a claim that the current renderer matches the final Horizon Rail
+reference. They remain until the later live visual-acceptance gate approves and
+binds replacement captures.
 
-```json
-{
-  "schemaVersion": 1,
-  "issue": 308,
-  "repository": "dylanmccavitt/portfolio-",
-  "baseSha": "<40 lowercase hex>",
-  "headSha": "<40 lowercase hex>",
-  "createdAt": "<ISO timestamp>",
-  "executionMode": "local-fixture",
-  "viewports": [],
-  "interactionChecks": [],
-  "fallbackChecks": [],
-  "visualComparisons": [],
-  "diagnostics": []
-}
-```
+The same run executes reduced-motion, WebGL-unavailable, and JavaScript-disabled
+fallback checks. It never sends a guide prompt or contacts a provider.
+The reduced-motion fallback is behavioral: after renderer readiness under
+`prefers-reduced-motion: reduce`, it captures two composed frames 250 ms apart.
+Byte equality passes immediately; otherwise their decoded 64 × 40 normalized
+distance must be at most `0.001`.
 
-The executable schema is
-[`scripts/replacement-quality-proof.ts`](../../scripts/replacement-quality-proof.ts).
-It requires all three viewport records, all interaction and fallback IDs, the
-three bound visual comparisons, SHA-256-matching image files, exact viewport
-dimensions, and the live Git head plus reviewed base. The runtime schema is
-closed at every object level: undeclared fields fail validation. Capture paths
-are relative to the artifact, every path component must be a regular
-non-symlink entry under the real artifact directory, and every capture must
-decode as a PNG. Viewport captures must be exactly 1440 × 900, 768 × 1024, and
-390 × 844; each visual-comparison capture must be exactly 1440 × 900.
+## Fail-capable evidence
 
-The schema rejects URLs, credential-like values, and fields named for provider
-data, model data, prompts, payloads, credentials, authorization, cookies,
-secrets, or tokens. Store no private URLs, personal visitor input, network
-captures, or service responses. Free-form browser notes are not part of the
-schema. Visual observations are limited to a P3 priority, one reviewed
-dimension, and the `minor-drift` code; any P0–P2 observation must fail the gate
-outside the artifact rather than be serialized as a passing record.
+[`scripts/visual-fidelity-evidence.ts`](../../scripts/visual-fidelity-evidence.ts)
+is the closed executable schema. It binds the repository, exact base, exact
+head, timestamp, five capture PNGs, three packaged baseline PNGs, SHA-256
+hashes, decoded image dimensions, viewport dimensions, document overflow,
+semantic main/navigation/heading presence, render mode, visibility spoof,
+canvas contribution, guide visibility, and fallback results.
 
-The visual-review input is a closed, sanitized object that names the independent
-reviewer task, the reviewed source commit, the exact reference/capture set
-digest, and a pass disposition with enumerated evidence for all five dimensions
-of every comparison. Its final binding commit may change only that input file.
-The package builder rejects missing, stale, self-generated, mismatched, or
-materially failing review input. The CI package records the input file and its
-SHA-256 so another reviewer can inspect the judgment separately from the
-generated proof.
+Both passing and failing artifacts are valid representations. Material mismatch
+produces bounded findings and `result: "fail"`; the capture command then exits
+non-zero. Validation rejects stale bindings, unknown fields, missing or
+symlinked/escaping paths, malformed images, hash mismatches, unrecognized
+findings, and URL/credential/provider-shaped data. Focused adversarial coverage
+lives in `tests/visual-fidelity-evidence.test.ts`.
 
-Validate the completed artifact from the exact candidate head:
+Navigation, renderer readiness, and guide interaction are closed setup fields.
+Expected page-state misses are captured in their current state and serialize as
+`result: "fail"` findings rather than aborting before JSON is written. Each
+fallback also records setup separately; setup exceptions become fail records.
+Only catastrophic build, browser launch, page crash, or artifact-write failures
+may end without evidence JSON.
 
-```sh
-npm run proof:quality -- \
-  /absolute/path/to/replacement-quality-proof.json \
-  <reviewed-base-sha>
-```
+## Pull-request artifact
 
-Success prints only the exact head and artifact SHA-256. Persist that compact
-result with the issue’s implementation proof; do not paste browser or stream
-content into GitHub.
+On a pull request, CI checks out
+`github.event.pull_request.head.sha` directly, passes the exact PR base SHA,
+installs the pinned Chromium, runs the capture, and uploads
+`visual-fidelity-evidence-<full-head-sha>` for 30 days. The upload step runs even
+after a material capture failure so reviewers can inspect any evidence that was
+successfully written. Any head change requires a fresh artifact.
 
-## Reviewer-accessible CI package
+While this leaf is stacked, the workflow explicitly includes
+`issue-328-bind-horizon-rail` as a temporary pull-request base. Remove that
+single filter entry after the dependency lands and this pull request retargets
+to `preview/agent-first-redesign`.
 
-The committed files under `proof/replacement-quality-inputs/` are sanitized,
-provider-free browser captures only. They contain no request payloads, private
-visitor content, provider output, credentials, or private URLs. On every pull
-request head, CI runs:
-
-```sh
-npm run package:quality -- \
-  "$GITHUB_SHA" \
-  "<pull-request-base-sha>" \
-  "$RUNNER_TEMP/replacement-quality-proof" \
-  "proof/replacement-quality-visual-review.json"
-```
-
-The package builder verifies that the checked-out head is a one-file review
-binding commit whose parent is the reviewed source commit, copies the committed
-captures and independent review input, injects the workflow’s exact head and
-base SHAs, computes every hash, writes the strict JSON artifact, and validates
-the completed package before upload. CI uploads it as
-`replacement-quality-proof-<full-head-sha>` for 90 days. The managed issue proof
-must link the exact successful Actions run and artifact download, record the
-artifact name, expiration, and JSON SHA-256 printed by the builder, and be
-refreshed after every head change. A local-only hash without that inspectable
-package is not sufficient review evidence.
+This gate is automated evidence, not visual acceptance. Merge, deployment,
+promotion, and production changes remain separate authority gates.
