@@ -8,9 +8,11 @@ Selected July 22, 2026. These images are the production visual references for th
 - The device uses matte molded-plastic materials, beveled housings, a working hinge seam, recessed glass screens, restrained scanlines, soft contact shadows, and subtle pointer/parallax response.
 - The production palette is the muted palette in `01-home-muted-threejs.png` and `07-dm-right-sidecar-muted.png`: graphite blue hardware, charcoal navy screens, dusty steel-blue focus, cool gray-white type, and a low-saturation gray-lilac environment.
 - The brighter blue in layout references `02` through `06` is superseded by the muted production palette. Their information hierarchy, spacing, button placement, and route structure remain binding.
-- Home keeps the complete device in view. Route navigation zooms into the active display so the screen fills most of the viewport and the hardware becomes a thin frame.
+- Home keeps the complete handheld in view as shown in `01-home-muted-threejs.png`. It remains real-time Three.js geometry and is not replaced by the route treatment.
+- Expanded desktop routes use the Horizon Rail composition in `08-route-horizon-rail.png`: semantic DOM content sits over the existing Three.js route surface, the left rail reflects the active route, and the hardware recedes to a restrained frame rather than becoming a second content container. Route copy and records remain sourced from the application rather than baked into the reference.
 - DM opens as the right-side contextual sidecar shown in `07-dm-right-sidecar-muted.png`. It uses direct prose, public source labels, server-derived actions, and one composer. It does not use chat bubbles, avatars, model names, or invented destinations.
 - Controls are purposeful: filled primary action, bordered secondary action, plain text navigation/back action. The homepage directional pad, OPEN, and BACK controls map to the same keyboard-accessible routes.
+- Pointer/parallax response is bounded decoration: it never moves semantic hit targets or route content, and reduced motion disables it.
 - No project screenshots appear on the homepage or library surface.
 
 ## Responsive behavior
@@ -29,6 +31,7 @@ Selected July 22, 2026. These images are the production visual references for th
 - `05-resume-layout.png` — `62b52d2277f74e671b173b441e0227d8a58a9b2fb8c83d530b6ffa9228c88a01`
 - `06-contact-layout.png` — `b336ad3a6848271873fc79768d1831cd68b7a0d8ed1b0c998d8db7423613e14e`
 - `07-dm-right-sidecar-muted.png` — `17eeeebb3a5167434c0d33f40e103e0a284afa09c2ca7cb46965025df7963263`
+- `08-route-horizon-rail.png` — `bf53c3407633a54fb44760d375b9c9d35125bf7aa8d565bf5f39ebf394cd00ea`
 
 ## Implementation gates
 

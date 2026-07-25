@@ -279,17 +279,15 @@ test('binding Work and answered-guide states retain reference hierarchy and publ
 test('binding design references retain their approved hashes', async () => {
   // The README is the single source for the pinned digests — the test parses
   // it rather than keeping a second copy that can silently drift.
-  // `08-route-horizon-rail.png` is deliberately untracked and unlisted, so it
-  // is not pinned here; adding it to the README is what would pin it.
   const readme = await read('docs/design/contextual-guide-reset/README.md');
   const expected = [...readme.matchAll(/^- `([\w.-]+\.png)` — `([0-9a-f]{64})`$/gm)]
     .map(([, file, hash]) => [file, hash] as const);
 
-  assert.ok(expected.length >= 7, 'README must still list the approved reference digests');
+  assert.ok(expected.length >= 8, 'README must still list the approved reference digests');
   assert.equal(
-    expected.some(([file]) => file.startsWith('08-')),
-    false,
-    'the untracked route-horizon reference must not be pinned',
+    expected.some(([file]) => file === '08-route-horizon-rail.png'),
+    true,
+    'the binding route-horizon reference must remain pinned',
   );
 
   for (const [file, hash] of expected) {
