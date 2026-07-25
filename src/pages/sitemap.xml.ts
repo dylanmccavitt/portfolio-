@@ -9,7 +9,7 @@
  *
  * Canonical set (32 URLs):
  *   /                        — the concierge landing (#60)
- *   /hiring                  — the "I'm hiring" guided tour (#62)
+ *   /hiring                  — the hiring-manager guided tour (#62)
  *   /library                 — all-work library (relocated from `/` in #60)
  *   /library/<slug>          — 8 filtered playlists (wip, 7 areas)
  *   /projects/<id>           — 13 project detail pages
