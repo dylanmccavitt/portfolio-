@@ -12,7 +12,8 @@
     "astro": "astro",
     "lint": "eslint .",
     "typecheck": "astro check",
-    "verify": "npm run lint && npm run typecheck && npm run build"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "verify": "npm run lint && npm run typecheck && npm test"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.8",

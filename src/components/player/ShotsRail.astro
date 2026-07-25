@@ -15,8 +15,11 @@ export interface Props {
   shots: ProjectShot[];
   /** Project accent hue, threaded into skeleton accents. */
   hue: string;
+  /** Namespaces lightbox fragment ids when several rails share a page. */
+  idPrefix?: string;
 }
-const { shots, hue } = Astro.props;
+const { shots, hue, idPrefix } = Astro.props;
+const lightboxId = (index: number) => idPrefix ? `${idPrefix}-shot-${index}` : `shot-${index}`;
 
 /** Explicit pixel dimensions per shot variant, so images reserve layout.
  * `wide` matches the 3:2 frame below; real screenshots cluster ~1.4-1.6 and
@@ -34,7 +37,7 @@ const isPhone = (shot: ProjectShot) =>
       return isImageShot(shot) ? (
         <a
           class:list={['shot', { phone }]}
-          href={`#shot-${i}`}
+          href={`#${lightboxId(i)}`}
           aria-label={`Expand screenshot: ${shot.cap}`}
         >
           <img
@@ -96,15 +99,16 @@ const isPhone = (shot: ProjectShot) =>
 </div>
 
 {/*
-  Zero-JS lightbox: each real screenshot links to `#shot-N`; `:target` reveals
-  the matching fixed overlay with the full image. The overlay itself is the
-  close link (`#!` matches nothing, so :target clears and nothing scrolls).
+  Zero-JS lightbox: each real screenshot links to its matching fragment;
+  `:target` reveals the fixed overlay with the full image. The overlay itself
+  is the close link (`#!` matches nothing, so :target clears and nothing
+  scrolls). `idPrefix` keeps fragments unique on multi-project pages.
 */}
 {
   shots.map(
     (shot, i) =>
       isImageShot(shot) && (
-        <a class="lightbox" id={`shot-${i}`} href="#!" aria-label="Close screenshot">
+        <a class="lightbox" id={lightboxId(i)} href="#!" aria-label="Close screenshot">
           <img src={shot.img} alt={shot.cap} loading="lazy" decoding="async" />
           <span class="lb-cap">{shot.cap}</span>
         </a>
