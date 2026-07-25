@@ -169,7 +169,11 @@ const meta = {
                     </details>
                   </div>
                   <div class="wshot">
-                    <ShotsRail shots={project.shots} hue={project.hue} />
+                    <ShotsRail
+                      shots={project.shots}
+                      hue={project.hue}
+                      idPrefix={project.id}
+                    />
                   </div>
                 </div>
               </div>

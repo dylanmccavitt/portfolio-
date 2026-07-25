@@ -27,7 +27,7 @@ const { now = CATALOG[0] } = Astro.props;
 const CONTACT = {
   github: 'https://github.com/DylanMcCavitt',
   resume: 'https://dylanmccavitt.xyz/resume.pdf',
-  email: 'mailto:dylanmccavitt@outlook.com',
+  contact: '/journey/now',
 };
 
 /**
@@ -107,7 +107,7 @@ const PLAYLIST = {
   <nav class="pb-right" aria-label="Contact and links">
     <a href={CONTACT.github} target="_blank" rel="noopener">github</a>
     <a href={CONTACT.resume} target="_blank" rel="noopener">resume</a>
-    <a href={CONTACT.email}>contact</a>
+    <a href={CONTACT.contact}>contact</a>
   </nav>
 </footer>
 
