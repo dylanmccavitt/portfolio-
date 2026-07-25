@@ -141,8 +141,16 @@ async function captureScenario(
     let interaction: VisualFidelityCapture['setup']['interaction'] = 'not-required';
     if (id === 'desktop-guide') {
       try {
-        await page.locator('[data-dm-open]').click({ timeout: 5_000 });
-        await page.locator('[data-dm-dialog]').waitFor({ state: 'visible', timeout: 5_000 });
+        await page.waitForFunction(
+          () => {
+            const dialog = document.querySelector<HTMLElement>('[data-dm-dialog]');
+            if (!dialog || !dialog.hidden) return Boolean(dialog);
+            document.querySelector<HTMLElement>('[data-dm-open]')?.click();
+            return !dialog.hidden;
+          },
+          undefined,
+          { polling: 100, timeout: 10_000 },
+        );
         interaction = 'pass';
       } catch {
         interaction = 'fail';

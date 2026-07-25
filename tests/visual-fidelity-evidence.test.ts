@@ -244,6 +244,15 @@ test('production hidden-document pause policy remains source-bound and automatio
   assert.match(harness, /frameDistance <= MAX_REDUCED_MOTION_DISTANCE/);
 });
 
+test('guide capture retries opening until visible within a bounded deadline', async () => {
+  const harness = await readFile(
+    new URL('../scripts/capture-visual-fidelity.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(harness, /document\.querySelector<HTMLElement>\('\[data-dm-open\]'\)\?\.click\(\)/);
+  assert.match(harness, /\{ polling: 100, timeout: 10_000 \}/);
+});
+
 async function createFixture(t: test.TestContext): Promise<{
   directory: string;
   artifactPath: string;
