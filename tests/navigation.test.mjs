@@ -131,7 +131,8 @@ test('the hiring route copy clearly addresses the visitor', async () => {
   const home = await readFile(path.join(DIST, 'index.html'), 'utf8');
   const hiring = await readFile(path.join(DIST, 'hiring', 'index.html'), 'utf8');
 
-  assert.match(home, /I'm a hiring manager/);
+  assert.match(home, /Are you a hiring manager\?/);
+  assert.doesNotMatch(home, /I'm a hiring manager/);
   assert.doesNotMatch(home, /I'm hiring/);
   assert.match(hiring, /<title>For hiring managers · Dylan McCavitt<\/title>/);
   assert.doesNotMatch(hiring, /I'm hiring/);
