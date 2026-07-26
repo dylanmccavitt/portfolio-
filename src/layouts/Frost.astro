@@ -38,6 +38,31 @@ const ogImage = new URL(meta?.ogImage ?? OG_FALLBACK, Astro.site).href;
     {meta?.jsonLd && <script is:inline type="application/ld+json" set:html={serializeJsonLd(meta.jsonLd)} />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <style>
+      /* Frost palette inlined: the --frost-* tokens are scoped to .frost, and this link sits outside it. */
+      .skip-link {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 100;
+        transform: translateY(-150%);
+        transition: transform 0.15s ease;
+        background: #eef2f4;
+        color: #26343d;
+        border: 1.5px solid #26343d;
+        border-radius: 7px;
+        padding: 8px 14px;
+        font-family: "Geist Variable", "Helvetica Neue", Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .skip-link:focus-visible {
+        transform: translateY(0);
+        outline: 2px solid #26343d;
+        outline-offset: 2px;
+      }
+    </style>
   </head>
   <body style="margin:0">
     <a class="skip-link" href="#main">Skip to content</a>
