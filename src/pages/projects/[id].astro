@@ -1,5 +1,5 @@
 ---
-import Editorial from '@/layouts/Editorial.astro';
+import Frost from '@/layouts/Frost.astro';
 import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
 import { loadPublicProjectDetailBySlug, loadPublicProjectDetails } from '@/lib/public-projects';
 import { projectMeta } from '@/lib/seo';
@@ -17,92 +17,57 @@ const p = project;
 const meta = projectMeta(p);
 ---
 
-<Editorial title={meta.title} meta={meta}>
-  <article class="device-route-screen project-console">
-    <nav class="screen-nav" aria-label="Primary">
-      <a href="/library">DM / Work / {p.title}</a>
-      <span class="screen-nav-links">
-        <a href="/library">All work</a>
-        <a href="/journey">Journey</a>
-        <a href="/resume">Resume</a>
-        <a href="/contact">Contact</a>
-        <button type="button" data-open-guide>Ask DM</button>
-      </span>
-    </nav>
-
-    <header class="project-console-head">
-      <h1 class="screen-title">{p.title}</h1>
-      <p class="screen-lede">{p.line}</p>
-      <dl class="project-meta">
-        <div><dt>Area</dt><dd>{p.area}</dd></div>
-        <div><dt>Status</dt><dd>{p.status[1]}</dd></div>
-        <div><dt>Year</dt><dd>{p.year}</dd></div>
-      </dl>
+<Frost title={meta.title} meta={meta}>
+  <main class="frost frost-doc" id="main">
+    <header class="frost-doc-head">
+      <a href="/">Dylan McCavitt</a>
+      <nav aria-label="Primary">
+        <a href="/#about">About</a>
+        <a href="/#work">Work</a>
+        <a href="/#journey">Journey</a>
+        <a href="/#contact">Contact</a>
+      </nav>
     </header>
 
-    <div class="project-console-grid">
-      <section>
-        <h2>What shipped</h2>
-        {p.about.slice(0, 1).map((paragraph) => <p>{paragraph}</p>)}
-      </section>
-      <section>
-        <h2>Evidence</h2>
-        <dl class="project-evidence">
-          {p.metrics.slice(0, 3).map((metric) => <div><dt>{metric.value}</dt><dd>{metric.label}</dd></div>)}
-        </dl>
-      </section>
+    <div class="frost-doc-title">
+      <h1>{p.title}</h1>
+      <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
+      <p style="max-width:640px; margin:14px 0 0; font-size:15px; line-height:1.6;">{p.line}</p>
     </div>
 
-    <nav class="project-actions" aria-label="Project actions">
-      {p.links.map((link, index) => (
-        <a class:list={['console-button', { 'console-button--fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label}</a>
+    <section class="frost-doc-section" aria-labelledby="project-shipped">
+      <h2 id="project-shipped">What shipped</h2>
+      {p.about.slice(0, 1).map((paragraph) => (
+        <p style="max-width:640px; margin:0; font-size:14px; line-height:1.65; color:var(--frost-muted);">{paragraph}</p>
       ))}
-      <button class="console-button" type="button" data-open-guide>Ask DM about this</button>
-      <a href="/library">← All work</a>
+    </section>
+
+    <section class="frost-doc-section" aria-labelledby="project-evidence">
+      <h2 id="project-evidence">Evidence</h2>
+      <div class="frost-doc-facts">
+        {p.metrics.slice(0, 3).map((metric) => <span>{metric.value} — {metric.label}</span>)}
+      </div>
+    </section>
+
+    {(p.about.length > 1 || p.notes.length > 0) && (
+      <section class="frost-doc-section" aria-labelledby="project-more">
+        <h2 id="project-more">More detail</h2>
+        {p.about.slice(1).map((paragraph) => (
+          <p style="max-width:640px; margin:0 0 12px; font-size:14px; line-height:1.65; color:var(--frost-muted);">{paragraph}</p>
+        ))}
+        {p.notes.length > 0 && (
+          <ul style="max-width:640px; margin:0; padding-left:18px; font-size:13.5px; line-height:1.7; color:var(--frost-muted);">
+            {p.notes.map((note) => <li>{note}</li>)}
+          </ul>
+        )}
+      </section>
+    )}
+
+    <nav class="frost-doc-actions" aria-label="Project actions">
+      {p.links.map((link, index) => (
+        <a class:list={[{ 'is-fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label}</a>
+      ))}
+      <a class="is-quiet" href="/#work">← All work</a>
     </nav>
-    {
-      (p.about.length > 1 || p.notes.length > 0) && (
-        <details class="project-more">
-          <summary>More project detail</summary>
-          {p.about.slice(1).map((paragraph) => <p>{paragraph}</p>)}
-          <ul>{p.notes.map((note) => <li>{note}</li>)}</ul>
-        </details>
-      )
-    }
-    <p class="screen-footer">Tab move · Enter open · Esc back</p>
-  </article>
-</Editorial>
-
-<script is:inline>
-  document.querySelectorAll('[data-open-guide]').forEach((button) => {
-    button.addEventListener('click', () => document.querySelector('[data-dm-open]')?.click());
-  });
-</script>
-
-<style>
-  .project-console { padding: clamp(28px, 3.7vw, 52px); }
-  .project-console .screen-title { font-size: clamp(2.55rem, 5vw, 4.65rem); }
-  .screen-nav button { min-height: 44px; padding: 0 .75rem; color: inherit; background: transparent; border: 1px solid var(--pl-accent); text-transform: uppercase; cursor: pointer; }
-  .project-console-head { border-bottom: 1px solid var(--pl-line); }
-  .project-console-head .screen-lede { max-width: none; margin: 1.1rem 0; text-transform: uppercase; }
-  .project-meta { display: grid; grid-template-columns: repeat(3, 1fr); margin: 1.5rem 0 0; border-top: 1px solid var(--pl-line); }
-  .project-meta div { display: flex; gap: 1rem; padding: 1rem .5rem; text-transform: uppercase; }
-  .project-meta dt { color: var(--pl-accent); }
-  .project-meta dd { margin: 0; }
-  .project-console-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 4rem); margin-top: clamp(1.7rem, 3.8vh, 3rem); }
-  .project-console h2 { margin: 0 0 1.3rem; padding-bottom: .8rem; border-bottom: 1px solid var(--pl-accent); color: var(--pl-text); font-size: 1.1rem; font-weight: 500; text-transform: uppercase; }
-  .project-console-grid section > p { color: #c8d1df; font-size: .9rem; line-height: 1.72; }
-  .project-console-grid section > p + p { margin-top: 1rem; }
-  .project-evidence { margin: 0; }
-  .project-evidence div { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 1rem; min-height: 68px; border-bottom: 1px solid var(--pl-line); }
-  .project-evidence dt { color: var(--pl-text); font-size: 1.5rem; }
-  .project-evidence dd { margin: 0; color: var(--pl-accent); text-transform: uppercase; }
-  .project-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 2rem; }
-  .project-actions a, .project-actions button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--pl-accent); background: transparent; border: 0; text-transform: uppercase; text-decoration: none; cursor: pointer; }
-  .project-actions .console-button { min-width: 190px; padding: .7rem 1.2rem; border: 1px solid var(--pl-accent); }
-  .project-actions .console-button--fill { color: #f1f3f7; background: #7185aa; }
-  .project-more { margin-top: 1.25rem; color: var(--pl-dim); font-size: .78rem; line-height: 1.65; }
-  .project-more summary { min-height: 44px; display: flex; align-items: center; color: var(--pl-accent); cursor: pointer; text-transform: uppercase; }
-  .project-more ul { padding-left: 1.2rem; }
-  @media (max-width: 768px) { .project-console-grid, .project-meta { grid-template-columns: 1fr; } .project-meta div + div { border-top: 1px solid var(--pl-line); } .project-actions { align-items: stretch; flex-direction: column; } .project-actions > * { width: 100%; } }
-</style>
+  </main>
+</Frost>

@@ -5,8 +5,7 @@
 
 Refs #<issue>
 
-<!-- Link the GitHub issue that contains the approved gepetto-research contract.
-Do not use a closing keyword unless issue-closure authority was explicitly granted. -->
+<!-- Link the GitHub issue this PR delivers, if the work is tracked. -->
 
 ## Exact delivery refs
 
