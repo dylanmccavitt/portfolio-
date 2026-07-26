@@ -1,6 +1,7 @@
 ---
 import Frost from '@/layouts/Frost.astro';
 import FrostSite from '@/components/frost/FrostSite.jsx';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 const meta = {
@@ -10,8 +11,24 @@ const meta = {
   ),
   jsonLd: personJsonLd(),
 };
+
+const { projects } = await loadPublicProjectDetails();
+const workProjects = projects.map((project) => ({
+  id: project.id,
+  href: project.href,
+  title: project.title,
+  statusLabel: project.status[1],
+  year: project.year,
+  line: project.line,
+  summary: project.summary,
+  metrics: project.metrics,
+  links: project.links,
+  shots: project.shots
+    .filter((shot) => shot.kind === 'image')
+    .map((shot) => ({ src: shot.src, caption: shot.caption })),
+}));
 ---
 
 <Frost title="Dylan McCavitt · Software engineer" meta={meta}>
-  <FrostSite client:load />
+  <FrostSite client:load projects={workProjects} />
 </Frost>

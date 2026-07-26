@@ -51,11 +51,22 @@
 }
 
 .frost-work li {
+  border-bottom: 1px solid var(--frost-line);
+}
+
+.frost-work li > a {
   display: flex;
   align-items: center;
   gap: 18px;
   padding: 16px 2px;
-  border-bottom: 1px solid var(--frost-line);
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.frost-work li > a:hover,
+.frost-work li > a:focus-visible {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .frost-work strong {
@@ -65,42 +76,24 @@
   letter-spacing: -0.02em;
 }
 
-.frost-work li > div > span {
+.frost-work a > div > span {
   display: block;
   margin-top: 3px;
   font-size: 13px;
   color: var(--frost-muted);
 }
 
-.frost-work small,
-.frost-work button {
+.frost-work small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-.frost-work small {
   color: var(--frost-muted);
-}
-
-.frost-work button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 13px;
-  border: 1.5px solid var(--frost-ink);
-  border-radius: 8px;
-  color: var(--frost-ink);
-  background: transparent;
-  cursor: pointer;
-}
-
-.frost-work button:hover {
-  background: #fff;
 }
 
 .frost-journey {

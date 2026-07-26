@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Hammer, Wrench, X } from "lucide-react";
 import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-mono";
@@ -8,6 +8,21 @@ import { SUBGREETING } from "@/lib/dm/client";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
 import "./frost.css";
 
+/**
+ * @typedef {object} PublishedWorkProject The lean build-time shape index.astro
+ * passes in, mapped from the published project detail read models.
+ * @property {string} id
+ * @property {string} href
+ * @property {string} title
+ * @property {string} statusLabel
+ * @property {number} year
+ * @property {string} line
+ * @property {string} summary
+ * @property {Array<{value: string, label: string}>} metrics
+ * @property {Array<{label: string, href: string}>} links
+ * @property {Array<{src: string, caption: string}>} shots
+ */
+
 const DESTINATIONS = [
   { id: "about", label: "About" },
   { id: "work", label: "Work" },
@@ -15,23 +30,79 @@ const DESTINATIONS = [
   { id: "contact", label: "Contact" },
 ];
 
-function WorkRows({ onBella }) {
+function shapeWorkProject(project) {
+  return {
+    id: project.id,
+    href: project.href,
+    title: project.title,
+    eyebrow: `${project.statusLabel} · ${project.year}`,
+    line: project.line,
+    summary: project.summary,
+    proof: (project.metrics ?? []).map((metric) => `${metric.value} · ${metric.label}`),
+    links: project.links ?? [],
+    shots: project.shots ?? [],
+  };
+}
+
+/**
+ * The published set drives the list; the curated entries in frost-data.js are
+ * owner-approved homepage copy and lead the order. Without published projects
+ * (island rendered standalone) the curated four still make a complete section.
+ */
+function buildWorkList(published) {
+  if (!published?.length) {
+    return PROJECTS.map((curated) => ({
+      id: curated.id,
+      href: `/projects/${curated.id}`,
+      title: curated.title,
+      eyebrow: curated.eyebrow,
+      line: curated.line,
+      summary: curated.summary,
+      proof: curated.proof ?? [],
+      links: [],
+      shots: [],
+    }));
+  }
+
+  const publishedById = new Map(published.map((project) => [project.id, project]));
+  const curated = PROJECTS.filter((entry) => publishedById.has(entry.id));
+  const curatedIds = new Set(curated.map((entry) => entry.id));
+
+  return [
+    ...curated.map((entry) => ({
+      ...shapeWorkProject(publishedById.get(entry.id)),
+      title: entry.title,
+      eyebrow: entry.eyebrow,
+      line: entry.line,
+      summary: entry.summary,
+      proof: entry.proof ?? [],
+    })),
+    ...published.filter((project) => !curatedIds.has(project.id)).map(shapeWorkProject),
+  ];
+}
+
+function WorkRows({ projects, onOpen }) {
   return (
     <ol className="frost-work">
-      {PROJECTS.map((project) => (
+      {projects.map((project, index) => (
         <li key={project.id}>
-          <span className="frost-num">{project.number}</span>
-          <div>
-            <strong>{project.title}</strong>
-            <span>{project.line}</span>
-          </div>
-          {project.id === "bellas-beads" ? (
-            <button onClick={onBella}>
-              Full focus <ArrowUpRight size={14} />
-            </button>
-          ) : (
-            <small>{project.eyebrow}</small>
-          )}
+          <a
+            href={project.href}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              onOpen(project);
+            }}
+          >
+            <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
+            <div>
+              <strong>{project.title}</strong>
+              <span>{project.line}</span>
+            </div>
+            <small>
+              {project.eyebrow} <ArrowUpRight size={13} />
+            </small>
+          </a>
         </li>
       ))}
     </ol>
@@ -76,7 +147,7 @@ function AboutBlock() {
   );
 }
 
-function SiteLayout({ shatterRef, onBella, onDm }) {
+function SiteLayout({ shatterRef, workList, onOpenProject, onDm }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -146,8 +217,8 @@ function SiteLayout({ shatterRef, onBella, onDm }) {
 
       <section className="frost-site-section" id="work">
         <h2>Work</h2>
-        <p className="frost-kicker">Four projects · shipped and building</p>
-        <WorkRows onBella={onBella} />
+        <p className="frost-kicker">{workList.length} projects · shipped and building</p>
+        <WorkRows projects={workList} onOpen={onOpenProject} />
       </section>
 
       <section className="frost-site-section" id="journey">
@@ -165,9 +236,7 @@ function SiteLayout({ shatterRef, onBella, onDm }) {
   );
 }
 
-function BellaFocus({ onClose }) {
-  const bella = PROJECTS[0];
-
+function ProjectFocus({ project, onClose }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -178,32 +247,42 @@ function BellaFocus({ onClose }) {
 
   return (
     <div className="frost-backdrop" onMouseDown={onClose}>
-      <article className="frost-modal" onMouseDown={(event) => event.stopPropagation()}>
-        <button className="frost-close" onClick={onClose} aria-label="Close Bella's Beads focus">
+      <article
+        className="frost-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="frost-focus-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button className="frost-close" onClick={onClose} aria-label={`Close ${project.title}`}>
           <X size={19} />
         </button>
-        <p className="frost-kicker">Shipped client work / 2025</p>
-        <h2>Bella&rsquo;s Beads</h2>
-        <p>{bella.summary}</p>
-        <div className="frost-proof">
-          {bella.proof.map((proof) => <span key={proof}>{proof}</span>)}
-        </div>
-        <div className="frost-gallery">
-          {bella.images.map((src, index) => (
-            <figure key={src}>
-              <img
-                src={src}
-                alt={[
-                  "Bella's Beads storefront landing page",
-                  "Bella's Beads product page",
-                  "Bella's Beads Stripe checkout",
-                  "Bella's Beads administration dashboard",
-                ][index]}
-              />
-              <figcaption>{["Storefront", "Product", "Checkout", "Operations"][index]}</figcaption>
-            </figure>
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <h2 id="frost-focus-title">{project.title}</h2>
+        <p>{project.summary}</p>
+        {project.proof.length > 0 && (
+          <div className="frost-proof">
+            {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+          </div>
+        )}
+        {project.shots.length > 0 && (
+          <div className="frost-gallery">
+            {project.shots.map((shot) => (
+              <figure key={shot.src}>
+                <img src={shot.src} alt={shot.caption} loading="lazy" />
+                <figcaption>{shot.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+        <nav className="frost-doc-actions" aria-label={`${project.title} links`}>
+          {project.links.map((link) => (
+            <a key={link.href} href={link.href} target="_blank" rel="noopener">{link.label}</a>
           ))}
-        </div>
+          <a className="is-quiet" href={project.href}>
+            Project page <ArrowUpRight size={14} />
+          </a>
+        </nav>
       </article>
     </div>
   );
@@ -242,10 +321,13 @@ function DmPanel({ onClose }) {
   );
 }
 
-export default function FrostSite() {
-  const [bellaOpen, setBellaOpen] = useState(false);
+/** @param {{ projects?: PublishedWorkProject[] }} props */
+export default function FrostSite({ projects = [] }) {
+  const [focusedProject, setFocusedProject] = useState(null);
   const [dmOpen, setDmOpen] = useState(false);
   const shatterRef = useRef(null);
+
+  const workList = useMemo(() => buildWorkList(projects), [projects]);
 
   const effectMode = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("effect")
@@ -288,7 +370,8 @@ export default function FrostSite() {
         <div className="frost-page">
           <SiteLayout
             shatterRef={shatterRef}
-            onBella={() => setBellaOpen(true)}
+            workList={workList}
+            onOpenProject={setFocusedProject}
             onDm={() => setDmOpen(true)}
           />
           <footer className="frost-footer">
@@ -298,7 +381,9 @@ export default function FrostSite() {
         </div>
       </Wrapper>
 
-      {bellaOpen && <BellaFocus onClose={() => setBellaOpen(false)} />}
+      {focusedProject && (
+        <ProjectFocus project={focusedProject} onClose={() => setFocusedProject(null)} />
+      )}
       {dmOpen && <DmPanel onClose={() => setDmOpen(false)} />}
     </main>
   );

@@ -15,6 +15,7 @@ if (!project) return new Response(null, { status: 404, statusText: 'Not Found' }
 
 const p = project;
 const meta = projectMeta(p);
+const imageShots = p.shots.filter((shot) => shot.kind === 'image');
 ---
 
 <Frost title={meta.title} meta={meta}>
@@ -48,6 +49,20 @@ const meta = projectMeta(p);
         {p.metrics.slice(0, 3).map((metric) => <span>{metric.value} — {metric.label}</span>)}
       </div>
     </section>
+
+    {imageShots.length > 0 && (
+      <section class="frost-doc-section" aria-labelledby="project-screens">
+        <h2 id="project-screens">Screens</h2>
+        <div class="frost-gallery">
+          {imageShots.map((shot) => (
+            <figure>
+              <img src={shot.src} alt={shot.caption} loading="lazy" />
+              <figcaption>{shot.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+    )}
 
     {(p.about.length > 1 || p.notes.length > 0) && (
       <section class="frost-doc-section" aria-labelledby="project-more">
