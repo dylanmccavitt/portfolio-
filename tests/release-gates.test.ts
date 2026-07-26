@@ -23,16 +23,17 @@ test('shared JSON-LD serializer preserves data without allowing hostile script t
 });
 
 test('all public layouts use the shared JSON-LD serializer', async () => {
-  for (const layout of ['Device.astro']) {
+  // Filesystem-driven so a new layout that skips the serializer fails here
+  // instead of shipping raw JSON.stringify into a script tag.
+  const layouts = (await readdir(resolve(ROOT, 'src', 'layouts'))).filter((name) => name.endsWith('.astro'));
+  assert.ok(layouts.includes('Frost.astro'), 'Frost.astro is the public layout');
+
+  for (const layout of layouts) {
     const source = await readFile(resolve(ROOT, 'src', 'layouts', layout), 'utf8');
+    if (!source.includes('jsonLd')) continue;
     assert.match(source, /serializeJsonLd\((?:jsonLd|meta\.jsonLd)\)/, layout);
     assert.equal(source.includes('JSON.stringify(jsonLd)'), false, layout);
   }
-
-  const editorial = await readFile(resolve(ROOT, 'src', 'layouts', 'Editorial.astro'), 'utf8');
-  assert.match(editorial, /import Device from '@\/layouts\/Device\.astro'/);
-  assert.match(editorial, /<Device[\s\S]*meta=\{meta\}/);
-  assert.equal(editorial.includes('JSON.stringify(jsonLd)'), false);
 });
 
 test('Vercel applies the exact global CSP without wildcards or unsafe-eval', async () => {

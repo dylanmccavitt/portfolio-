@@ -23,13 +23,14 @@ test('the client validates the structured answer envelope', () => {
 });
 
 test('the client keeps model text inert and excludes incomplete turns from history', async () => {
-  const source = await readFile(new URL('../src/scripts/dm.ts', import.meta.url), 'utf8');
+  // The client is the Frost chat panel since #339; React text nodes keep model
+  // output inert as long as no raw-HTML escape hatch appears in the source.
+  const source = await readFile(new URL('../src/components/frost/DmChat.jsx', import.meta.url), 'utf8');
 
-  assert.match(source, /this\.streamedProseEl\.textContent = this\.text/);
-  assert.doesNotMatch(source, /innerHTML|insertAdjacentHTML|DOMParser|marked\(|markdown-it/);
-  assert.match(source, /return completedAssistantHistoryText\(this\.text, this\.completed\)/);
-  assert.match(source, /const assistantText = turn\.historyText\(\)/);
-  assert.match(source, /resetGuideHistory\(history, generation\)/);
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML|innerHTML|insertAdjacentHTML|DOMParser|marked\(|markdown-it/);
+  assert.match(source, /completedAssistantHistoryText\(text, true\)/);
+  assert.match(source, /const assistantText = turnHistoryText\(live\)/);
+  assert.match(source, /assistantText \? uiTextMessage\("assistant", assistantText\) : null/);
 });
 
 test('cancelled or malformed turns cannot enter history and a later success recovers', () => {

@@ -1,13 +1,16 @@
 /**
- * Route coverage gate (#323).
+ * Route coverage gate (#323, reconciled to the Frost site in #342).
  *
  * The owner's "routes working" criterion had no check behind it. This suite
  * enumerates every HTML route the site actually serves — discovered from
  * `src/pages`, with dynamic segments expanded from the same data the pages use —
  * and asserts three things per route:
  *
- *   1. it appears in `src/pages/sitemap.xml.ts`'s rendered output;
- *   2. it renders through the device route shell (or is explicitly exempted);
+ *   1. it appears in `src/pages/sitemap.xml.ts`'s rendered output, unless it is
+ *      a redirect stub (a meta-refresh page into a `/#anchor`), which must be
+ *      absent from the sitemap instead;
+ *   2. it renders through the Frost shell (the FrostSite island on `/`,
+ *      `.frost-doc` pages on the rest) or is a redirect stub;
  *   3. it is reachable by the agent's route allowlist in `src/lib/dm/guide.ts`.
  *
  * Discovery is filesystem-driven on purpose: adding `src/pages/about.astro`
@@ -34,8 +37,6 @@ for (const key of [
   delete process.env[key];
 }
 
-const { PLAYLIST_SLUGS } = await import('@/data/catalog');
-const { RESUME } = await import('@/data/resume');
 const { loadPublicProjectDetails } = await import('@/lib/public-projects');
 const { isAllowedGuideActionDestination } = await import('@/lib/dm/guide');
 const { GET: sitemapGet } = await import('@/pages/sitemap.xml.ts');
@@ -56,23 +57,25 @@ const NON_ROUTE_ENTRIES: Record<string, string> = {
 };
 
 /**
- * Routes exempt from a rule, each with the reason. Exemptions are the only way
- * a route is allowed to miss a criterion.
+ * Redirect stubs: pages whose whole purpose is a meta-refresh into a Frost
+ * anchor. They are served (so old links don't 404 without JS) but are
+ * deliberately absent from the sitemap and carry no shell or allowlist duty.
  */
-const DEVICE_SHELL_EXEMPT: Record<string, string> = {
-  '/': 'home renders the full device via layouts/Device.astro (surface="home"), not a route screen',
+const REDIRECT_STUBS: Record<string, string> = {
+  '/contact': 'meta-refresh into /#contact since the Frost cutover',
+  '/journey': 'meta-refresh into /#journey since the Frost cutover',
+  '/library': 'meta-refresh into /#work since the Frost cutover',
 };
 
 /**
- * `/resume` and `/contact` are served and sitemapped but are absent from the
- * agent's route allowlist: `DMPageContextKind` has no value for them, and
- * adding one has to propagate through the guide, the runtime, the client, and
- * the tool boundary. Tracked as issue #318 — agent-rework scope, deliberately
- * not fixed here. This allowance keeps the gap visible instead of silent.
+ * `/resume` is served and sitemapped but absent from the agent's route
+ * allowlist: `DMPageContextKind` has no value for it, and adding one has to
+ * propagate through the guide, the runtime, the client, and the tool boundary.
+ * Tracked as issue #318 — agent-rework scope, deliberately not fixed here.
+ * This allowance keeps the gap visible instead of silent.
  */
 const AGENT_ALLOWLIST_EXEMPT: Record<string, string> = {
   '/resume': 'no DMPageContextKind for the résumé route yet — see issue #318',
-  '/contact': 'no DMPageContextKind for the contact route yet — see issue #318',
 };
 
 /** Normalise to a leading-slash, no-trailing-slash comparison key. */
@@ -114,10 +117,6 @@ async function discoverRoutePatterns(dir = '', prefix = ''): Promise<Array<{ pat
 /** Expand a discovered pattern's dynamic segment into the paths it serves. */
 async function expandPattern(pattern: string): Promise<string[]> {
   switch (pattern) {
-    case '/library/[filter]':
-      return Object.values(PLAYLIST_SLUGS).map((slug) => `/library/${slug}`);
-    case '/journey/[track]':
-      return RESUME.tracks.map((track) => `/journey/${track.id}`);
     case '/projects/[id]': {
       const { projects } = await loadPublicProjectDetails();
       assert.ok(projects.length > 0, 'the public project source must serve at least one project');
@@ -151,7 +150,7 @@ const sitemapPaths = await (async () => {
 })();
 
 test('route discovery found the expected route families', () => {
-  assert.ok(routes.length >= 8, `expected the full route set, found ${routes.length}`);
+  assert.ok(routes.length >= 6, `expected the full route set, found ${routes.length}`);
   for (const expected of ['/', '/library', '/journey', '/resume', '/contact']) {
     assert.ok(
       routes.some((route) => route.path === expected),
@@ -163,8 +162,29 @@ test('route discovery found the expected route families', () => {
   assert.equal(new Set(routes.map((route) => route.path)).size, routes.length);
 });
 
-test('every served route is present in the sitemap', () => {
+test('redirect stubs really are meta-refresh pages into Frost anchors', async () => {
+  for (const path of Object.keys(REDIRECT_STUBS)) {
+    const file = routes.find((route) => route.path === path)?.file;
+    assert.ok(file, `${path} is listed as a redirect stub but no page in src/pages serves it`);
+    const source = await read(`src/pages/${file}`);
+    assert.match(
+      source,
+      /http-equiv="refresh" content="0;url=\/#[a-z]+"/,
+      `${path} (src/pages/${file}) must meta-refresh into a Frost anchor`,
+    );
+    assert.match(source, /<a href="\/#[a-z]+"/, `${path} must keep a plain-HTML link fallback`);
+  }
+});
+
+test('every served route is present in the sitemap; redirect stubs are absent', () => {
   for (const { path, file } of routes) {
+    if (path in REDIRECT_STUBS) {
+      assert.ok(
+        !sitemapPaths.has(path),
+        `${path} is a redirect stub (${REDIRECT_STUBS[path]}) and must stay out of sitemap.xml.ts`,
+      );
+      continue;
+    }
     assert.ok(sitemapPaths.has(path), `${path} (src/pages/${file}) is missing from sitemap.xml.ts`);
   }
 });
@@ -176,54 +196,32 @@ test('the sitemap emits no route the site does not serve', () => {
   }
 });
 
-test('every served route renders through the device route shell', async () => {
-  const shellSources = new Map<string, string>();
-  const sourceFor = async (file: string) => {
-    let source = shellSources.get(file);
-    if (source === undefined) {
-      source = await read(`src/pages/${file}`);
-      shellSources.set(file, source);
-    }
-    return source;
-  };
-
-  // Components a page may delegate its route screen to.
-  const shellComponents = ['LibraryView'];
-
+test('every served route renders through the Frost shell', async () => {
   for (const { path, file } of routes) {
-    if (path in DEVICE_SHELL_EXEMPT) {
-      const source = await sourceFor(file);
-      assert.match(
-        source,
-        /@\/layouts\/Device\.astro/,
-        `${path} is device-shell exempt (${DEVICE_SHELL_EXEMPT[path]}) but does not use Device.astro`,
-      );
+    if (path in REDIRECT_STUBS) continue;
+    const source = await read(`src/pages/${file}`);
+    if (path === '/') {
+      // Home is the Frost single-page island with its semantic fallback.
+      assert.match(source, /FrostSite/, '/ must render the FrostSite island');
       continue;
     }
-    const source = await sourceFor(file);
-    assert.match(source, /@\/layouts\/Editorial\.astro/, `${path} must render inside Editorial.astro`);
-    const delegates = shellComponents.some((component) => source.includes(`<${component}`));
-    if (!delegates) {
-      assert.match(
-        source,
-        /class="device-route-screen/,
-        `${path} must render a .device-route-screen surface`,
-      );
-    }
+    assert.match(source, /@\/layouts\/Frost\.astro/, `${path} must render inside Frost.astro`);
+    assert.match(source, /class="frost-doc/, `${path} must render a .frost-doc surface`);
   }
 
-  // The delegated shell really does carry the route screen class.
-  const libraryView = await read('src/components/LibraryView.astro');
-  assert.match(libraryView, /class="device-route-screen/);
-
-  // Editorial is the shell: it wraps its slot in Device.astro with surface="route".
-  const editorial = await read('src/layouts/Editorial.astro');
-  assert.match(editorial, /@\/layouts\/Device\.astro/);
-  assert.match(editorial, /surface="route"/);
+  // The island page really carries the client directive and the layout.
+  const home = await read('src/pages/index.astro');
+  assert.match(home, /client:load/);
+  assert.match(home, /@\/layouts\/Frost\.astro/);
 });
 
 test('every served route is reachable by the agent route allowlist', () => {
   for (const { path } of routes) {
+    if (path in REDIRECT_STUBS) {
+      // Stubs immediately leave the page; the allowlist governs destinations,
+      // and `/` (where they land) is asserted below via the home route.
+      continue;
+    }
     const reason = AGENT_ALLOWLIST_EXEMPT[path];
     if (reason) {
       // Documented, tracked gap — assert it is still a gap so the exemption is
@@ -244,7 +242,7 @@ test('every served route is reachable by the agent route allowlist', () => {
 
 test('allowlist exemptions stay small and documented', () => {
   const exempt = Object.keys(AGENT_ALLOWLIST_EXEMPT);
-  assert.deepEqual(exempt.sort(), ['/contact', '/resume']);
+  assert.deepEqual(exempt.sort(), ['/resume']);
   for (const [path, reason] of Object.entries(AGENT_ALLOWLIST_EXEMPT)) {
     assert.match(reason, /#318/, `${path} exemption must cite its tracking issue`);
   }
