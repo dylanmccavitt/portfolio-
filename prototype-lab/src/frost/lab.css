@@ -119,13 +119,27 @@ body {
   color: var(--lab-muted);
 }
 
+/* The canvasui wrappers (Frost/Ripple/Clouds/Droplets) have no intrinsic
+   height on the native html-in-canvas path — children render inside an
+   absolutely-positioned canvas — so page-level uses get the viewport and
+   scroll inside the effect region. */
+.frost-effect--canvasui {
+  height: 100vh;
+}
+
 /* Popout variants */
 .frost-backdrop.is-frozen {
   background: rgba(38, 52, 61, 0.14);
 }
 
+/* Thaw card: a hidden copy of the content sizes the card; the Frost pane
+   overlays it exactly (position:absolute set inline on the component). */
 .popout-thaw {
-  display: block;
+  position: relative;
+}
+
+.popout-thaw-sizer {
+  visibility: hidden;
 }
 
 .lab-gallery ol {

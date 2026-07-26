@@ -95,7 +95,7 @@ function EffectShell({ slug, children }) {
   if (slug === "freeze") {
     return (
       <Frost
-        className="frost-effect"
+        className="frost-effect frost-effect--canvasui"
         frost={0.45}
         opacity={0.7}
         meltStrength={0}
@@ -173,7 +173,7 @@ function EffectShell({ slug, children }) {
   if (slug === "thaw") {
     return (
       <Frost
-        className="frost-effect"
+        className="frost-effect frost-effect--canvasui"
         frost={0.07}
         opacity={0.62}
         meltRadius={0.24}
@@ -192,7 +192,7 @@ function EffectShell({ slug, children }) {
   if (slug === "pond") {
     return (
       <Ripple
-        className="frost-effect"
+        className="frost-effect frost-effect--canvasui"
         trigger="click"
         amplitude={0.55}
         wavelength={90}
@@ -211,7 +211,7 @@ function EffectShell({ slug, children }) {
   if (slug === "mist") {
     return (
       <Clouds
-        className="frost-effect"
+        className="frost-effect frost-effect--canvasui"
         color="#dfe9f0"
         opacity={0.6}
         cover={0.12}
@@ -229,7 +229,7 @@ function EffectShell({ slug, children }) {
   if (slug === "rain") {
     return (
       <Droplets
-        className="frost-effect"
+        className="frost-effect frost-effect--canvasui"
         intensity={0.45}
         scale={0.42}
         refraction={0.24}
@@ -432,20 +432,28 @@ function ProjectFocus({ project, onClose, variant = "plain" }) {
           <X size={19} />
         </button>
         {variant === "thaw-card" ? (
-          <Frost
-            className="popout-thaw"
-            frost={0.34}
-            opacity={0.72}
-            meltRadius={0.32}
-            meltStrength={0.9}
-            refreeze={10}
-            introDuration={0.8}
-            haze={0.55}
-            detail={2}
-            tintStrength={0.3}
-          >
-            {body}
-          </Frost>
+          /* The canvasui wrappers have no intrinsic height on the native
+             html-in-canvas path (children live inside an absolute canvas),
+             so a hidden copy of the content sizes the card and the Frost
+             pane overlays it exactly. */
+          <div className="popout-thaw">
+            <div className="popout-thaw-sizer" aria-hidden="true">{body}</div>
+            <Frost
+              className="popout-thaw-effect"
+              style={{ position: "absolute", inset: 0 }}
+              frost={0.34}
+              opacity={0.72}
+              meltRadius={0.32}
+              meltStrength={0.9}
+              refreeze={10}
+              introDuration={0.8}
+              haze={0.55}
+              detail={2}
+              tintStrength={0.3}
+            >
+              {body}
+            </Frost>
+          </div>
         ) : (
           body
         )}
