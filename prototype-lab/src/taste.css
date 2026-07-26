@@ -1,0 +1,1137 @@
+/*
+ * Second visual pass: the shared content stays factual; each route gets a world.
+ * This file intentionally sits after the structural prototype stylesheet.
+ */
+
+:root {
+  --taste-black: #151515;
+  --taste-paper: #f3f0e8;
+  --taste-blue: #2368f5;
+  --taste-sky: #9fdcff;
+  --taste-lime: #d9ff43;
+  --taste-red: #ff4d38;
+  --taste-pink: #ff74bc;
+  --taste-violet: #7a52ff;
+  --taste-yellow: #ffd936;
+}
+
+body {
+  background: var(--taste-paper);
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Lab index — a poster, not a dashboard. */
+.prototype-index {
+  min-height: 100dvh;
+  padding: 0;
+  background:
+    linear-gradient(90deg, transparent 49.8%, var(--taste-black) 49.8%, var(--taste-black) 50.2%, transparent 50.2%),
+    var(--taste-paper);
+  color: var(--taste-black);
+}
+
+.prototype-index > header {
+  position: relative;
+  max-width: none;
+  min-height: 63dvh;
+  margin-bottom: 0;
+  padding: 58px clamp(24px, 6vw, 88px) 64px;
+  overflow: hidden;
+  background: var(--taste-blue);
+  border-bottom: 4px solid var(--taste-black);
+}
+
+.prototype-index > header::before {
+  content: "PICK A WORLD";
+  position: absolute;
+  top: 42px;
+  right: -42px;
+  padding: 12px 64px;
+  background: var(--taste-yellow);
+  border: 3px solid var(--taste-black);
+  color: var(--taste-black);
+  font: 600 0.8rem/1 var(--mono);
+  transform: rotate(8deg);
+}
+
+.prototype-index > header::after {
+  content: "✦";
+  position: absolute;
+  right: 8vw;
+  bottom: -9vw;
+  color: var(--taste-lime);
+  font-size: clamp(12rem, 28vw, 30rem);
+  line-height: 0.7;
+}
+
+.prototype-index > header > p:first-child,
+.prototype-index .section-label,
+.prototype-index .eyebrow {
+  color: var(--taste-black);
+}
+
+.prototype-index h1 {
+  position: relative;
+  z-index: 1;
+  max-width: 1050px;
+  margin: 13vh 0 26px;
+  color: white;
+  font-size: clamp(4.5rem, 10vw, 9.5rem);
+  font-weight: 600;
+  letter-spacing: -0.075em;
+  line-height: 0.78;
+}
+
+.prototype-index > header > p:last-child {
+  position: relative;
+  z-index: 1;
+  max-width: 580px;
+  margin-left: 38vw;
+  padding: 18px 22px;
+  background: var(--taste-paper);
+  border: 3px solid var(--taste-black);
+  box-shadow: 8px 8px 0 var(--taste-black);
+  color: var(--taste-black);
+  font-size: 1rem;
+  line-height: 1.45;
+  transform: rotate(-1.5deg);
+}
+
+.prototype-index .family-grid {
+  border-bottom: 4px solid var(--taste-black);
+}
+
+.prototype-index .family-card {
+  padding: clamp(34px, 5vw, 72px);
+  background: var(--taste-lime);
+  border-color: var(--taste-black);
+}
+
+.prototype-index .family-card--2 {
+  background: var(--taste-pink);
+}
+
+.prototype-index .family-card > div > span,
+.prototype-index .family-card li a > span,
+.prototype-index .family-card > div > p {
+  color: var(--taste-black);
+}
+
+.prototype-index .family-card h2 {
+  font-weight: 600;
+  letter-spacing: -0.06em;
+}
+
+.prototype-index .family-card li {
+  border-color: rgba(21, 21, 21, 0.45);
+}
+
+.prototype-index .family-card li a {
+  color: var(--taste-black);
+}
+
+.prototype-index .family-card li a:hover {
+  padding-inline: 14px;
+  background: var(--taste-paper);
+  box-shadow: 6px 6px 0 var(--taste-black);
+  transform: translate(-3px, -3px) rotate(-0.5deg);
+}
+
+.prototype-index .family-card li small {
+  color: rgba(21, 21, 21, 0.62);
+}
+
+.prototype-index footer {
+  padding: 28px clamp(24px, 6vw, 88px);
+  color: var(--taste-black);
+  background: var(--taste-yellow);
+}
+
+.prototype-index footer a {
+  color: var(--taste-black);
+  font-weight: 600;
+}
+
+/* A compact, physical-feeling route switcher. */
+.prototype-route {
+  --route-bg: var(--taste-paper);
+  --route-ink: var(--taste-black);
+  --route-accent: var(--taste-red);
+  --route-panel: white;
+  background: var(--route-bg);
+  color: var(--route-ink);
+}
+
+.lab-header {
+  grid-template-columns: 180px minmax(240px, 0.8fr) minmax(420px, 1.4fr);
+  min-height: 76px;
+  background: var(--route-bg);
+  border-bottom: 3px solid var(--route-ink);
+  color: var(--route-ink);
+}
+
+.lab-brand,
+.lab-header nav a {
+  color: var(--route-ink);
+}
+
+.lab-brand {
+  font-weight: 700;
+}
+
+.lab-brand span,
+.lab-current span {
+  color: var(--route-ink);
+  opacity: 0.58;
+}
+
+.lab-header nav a {
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.lab-header nav a:hover,
+.lab-header nav a.is-active {
+  color: var(--route-ink);
+  background: var(--route-panel);
+  border-color: var(--route-ink);
+  box-shadow: 3px 3px 0 var(--route-ink);
+  transform: translate(-2px, -2px);
+}
+
+.capability-badge {
+  top: 91px;
+  right: 22px;
+  color: var(--route-ink);
+  background: color-mix(in srgb, var(--route-panel) 90%, transparent);
+  border: 2px solid var(--route-ink);
+  border-radius: 999px;
+}
+
+.capability-badge span {
+  background: var(--route-accent);
+}
+
+.canvasui-page {
+  inset-block-start: 76px;
+}
+
+.html-document {
+  background: var(--route-bg);
+  color: var(--route-ink);
+}
+
+.intro-world {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(420px, 1.05fr);
+  min-height: calc(100dvh - 76px);
+  border-bottom: 3px solid var(--route-ink);
+}
+
+.portfolio-intro,
+.portfolio-intro.is-compact {
+  align-content: center;
+  min-height: 100%;
+  padding: clamp(100px, 12vh, 150px) clamp(28px, 5vw, 82px) 64px;
+  border: 0;
+}
+
+.portfolio-intro h1 {
+  margin-top: 24px;
+  color: var(--route-ink);
+  font-size: clamp(4.5rem, 8vw, 8.8rem);
+  font-weight: 600;
+  letter-spacing: -0.08em;
+  line-height: 0.78;
+}
+
+.eyebrow,
+.section-label {
+  color: var(--route-ink);
+  font-weight: 600;
+}
+
+.intro-focus {
+  color: var(--route-accent);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.intro-summary,
+.bella-case header > p:last-child,
+.project-preview > p,
+.journey-preview header p:last-child {
+  color: color-mix(in srgb, var(--route-ink) 72%, transparent);
+}
+
+.intro-actions a,
+.intro-actions button,
+.journey-actions a,
+.journey-actions button,
+.case-actions a,
+.case-actions button,
+.dm-actions a,
+.dm-actions button {
+  min-height: 54px;
+  padding: 14px 20px;
+  color: var(--route-ink);
+  background: var(--route-panel);
+  border: 2px solid var(--route-ink);
+  border-radius: 14px;
+  box-shadow: 5px 5px 0 var(--route-ink);
+  font-weight: 600;
+}
+
+.intro-actions a,
+.case-actions a,
+.journey-actions a {
+  color: var(--route-ink);
+  background: var(--route-accent);
+}
+
+.intro-actions a:hover,
+.intro-actions button:hover,
+.journey-actions a:hover,
+.journey-actions button:hover,
+.case-actions a:hover,
+.case-actions button:hover {
+  box-shadow: 2px 2px 0 var(--route-ink);
+  transform: translate(3px, 3px);
+}
+
+.portfolio-world {
+  position: relative;
+  min-height: 700px;
+  overflow: hidden;
+  border-left: 3px solid var(--route-ink);
+}
+
+.portfolio-world img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* 01 / Refractive Editorial — an electric studio table. */
+.refractive-route {
+  --route-bg: #f0e7d8;
+  --route-ink: #1c1815;
+  --route-accent: #ff4b31;
+  --route-panel: #fffaf0;
+}
+
+.portfolio-world--refractive {
+  background:
+    radial-gradient(circle at 76% 22%, #ffc5e2 0 10%, transparent 10.5%),
+    radial-gradient(circle at 34% 76%, #ffe43b 0 18%, transparent 18.5%),
+    #2864f0;
+}
+
+.portfolio-world--refractive::before,
+.portfolio-world--refractive::after {
+  content: "";
+  position: absolute;
+  border: 3px solid var(--route-ink);
+}
+
+.portfolio-world--refractive::before {
+  inset: 8% 9% 15% 17%;
+  border-radius: 46% 54% 38% 62%;
+  transform: rotate(-8deg);
+}
+
+.portfolio-world--refractive::after {
+  width: 190px;
+  height: 190px;
+  right: -60px;
+  bottom: 10%;
+  background: var(--taste-lime);
+  border-radius: 50%;
+}
+
+.refractive-window {
+  position: absolute;
+  overflow: hidden;
+  background: white;
+  border: 3px solid var(--route-ink);
+  box-shadow: 12px 12px 0 var(--route-ink);
+}
+
+.refractive-window--store {
+  top: 20%;
+  left: 8%;
+  width: 67%;
+  height: 38%;
+  transform: rotate(-5deg);
+}
+
+.refractive-window--admin {
+  right: 7%;
+  bottom: 10%;
+  width: 47%;
+  height: 32%;
+  transform: rotate(7deg);
+}
+
+.refractive-sticker {
+  position: absolute;
+  top: 12%;
+  right: 7%;
+  display: grid;
+  place-items: center;
+  width: 130px;
+  height: 130px;
+  z-index: 2;
+  background: var(--taste-lime);
+  border: 3px solid var(--route-ink);
+  border-radius: 50%;
+  color: var(--route-ink);
+  font: 700 1.2rem/0.9 var(--mono);
+  text-align: center;
+  transform: rotate(12deg);
+}
+
+.portfolio-world--refractive > p {
+  position: absolute;
+  left: 7%;
+  bottom: 8%;
+  z-index: 2;
+  margin: 0;
+  color: white;
+  font-size: clamp(2.2rem, 4vw, 4.4rem);
+  font-weight: 600;
+  letter-spacing: -0.06em;
+  line-height: 0.88;
+  text-shadow: 3px 3px 0 var(--route-ink);
+}
+
+.refractive-route .work-composition,
+.refractive-route .material-work {
+  background: #ffb8d7;
+}
+
+/* 02 / Particle Storyline — kinetic night, signal paths, no fake sci-fi chrome. */
+.particle-route {
+  --route-bg: #16131f;
+  --route-ink: #f7f1e6;
+  --route-accent: #d9ff43;
+  --route-panel: #8067ff;
+}
+
+.portfolio-world--particle {
+  background:
+    radial-gradient(circle, rgba(217, 255, 67, 0.9) 0 2px, transparent 2.5px) 0 0 / 31px 31px,
+    #ff5a44;
+}
+
+.portfolio-world--particle::before {
+  content: "";
+  position: absolute;
+  inset: 13% 10%;
+  border: 4px solid var(--route-ink);
+  border-radius: 50%;
+  transform: skew(-8deg);
+}
+
+.particle-orbit {
+  position: absolute;
+  border: 3px solid var(--route-ink);
+  border-radius: 50%;
+}
+
+.particle-orbit--1 {
+  width: 320px;
+  height: 320px;
+  top: 15%;
+  left: 14%;
+}
+
+.particle-orbit--2 {
+  width: 520px;
+  height: 170px;
+  right: -12%;
+  bottom: 14%;
+  transform: rotate(-18deg);
+}
+
+.particle-sun {
+  position: absolute;
+  top: 16%;
+  right: 12%;
+  display: grid;
+  place-items: center;
+  width: 230px;
+  height: 230px;
+  z-index: 2;
+  background: var(--taste-yellow);
+  border: 3px solid var(--route-ink);
+  border-radius: 50%;
+  color: var(--taste-black);
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  transform: rotate(9deg);
+}
+
+.particle-screen {
+  position: absolute;
+  left: 10%;
+  bottom: 12%;
+  width: 58%;
+  height: 38%;
+  z-index: 1;
+  overflow: hidden;
+  border: 3px solid var(--route-ink);
+  border-radius: 34px;
+  box-shadow: 12px 12px 0 var(--taste-lime);
+  transform: rotate(-3deg);
+}
+
+.portfolio-world--particle > p {
+  position: absolute;
+  right: 7%;
+  bottom: 6%;
+  z-index: 2;
+  width: 210px;
+  margin: 0;
+  padding: 18px;
+  background: var(--taste-paper);
+  border: 3px solid var(--taste-black);
+  color: var(--taste-black);
+  font-size: 1.25rem;
+  font-weight: 600;
+  transform: rotate(4deg);
+}
+
+.particle-route .project-index {
+  background: var(--taste-lime);
+  color: var(--taste-black);
+}
+
+.particle-route .portfolio-intro h1 {
+  font-size: clamp(4rem, 6.4vw, 7rem);
+}
+
+.particle-route .intro-focus {
+  font-size: clamp(1.35rem, 2.45vw, 2.6rem);
+}
+
+.particle-route .active-project {
+  background: #231e30;
+}
+
+/* 03 / Layered Material — printed matter laid out on a desk. */
+.material-route {
+  --route-bg: #ffe7a7;
+  --route-ink: #1f1912;
+  --route-accent: #f4432e;
+  --route-panel: #fffaf0;
+}
+
+.html-document--material .portfolio-intro {
+  background: var(--route-bg);
+  color: var(--route-ink);
+}
+
+.portfolio-world--material {
+  background:
+    linear-gradient(120deg, transparent 0 48%, rgba(255,255,255,.24) 48% 52%, transparent 52%),
+    #a7d7ff;
+}
+
+.material-card {
+  position: absolute;
+  display: grid;
+  align-content: center;
+  padding: 28px;
+  overflow: hidden;
+  border: 3px solid var(--route-ink);
+  box-shadow: 10px 10px 0 var(--route-ink);
+  color: var(--route-ink);
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  line-height: 0.82;
+}
+
+.material-card--blue {
+  top: 12%;
+  left: 8%;
+  width: 44%;
+  height: 28%;
+  background: var(--taste-blue);
+  color: white;
+  font-size: clamp(2rem, 4vw, 4rem);
+  transform: rotate(-6deg);
+}
+
+.material-card--image {
+  top: 32%;
+  right: 7%;
+  width: 58%;
+  height: 44%;
+  padding: 0;
+  background: white;
+  transform: rotate(4deg);
+}
+
+.material-card--red {
+  left: 9%;
+  bottom: 9%;
+  z-index: 2;
+  width: 31%;
+  height: 34%;
+  background: var(--taste-red);
+  color: white;
+  font-size: clamp(1.7rem, 3vw, 3.3rem);
+  transform: rotate(-2deg);
+}
+
+.material-flower {
+  position: absolute;
+  top: 6%;
+  right: 5%;
+  color: var(--taste-red);
+  font-size: 9rem;
+  line-height: 1;
+  transform: rotate(13deg);
+}
+
+.material-route .material-work {
+  background: #f4b4d3;
+}
+
+/* Shared case study — credible evidence with editorial punch. */
+.work-composition,
+.material-work {
+  grid-template-columns: minmax(280px, 0.28fr) minmax(0, 0.72fr);
+  border-bottom: 3px solid var(--route-ink);
+}
+
+.project-index {
+  top: 76px;
+  min-height: calc(100dvh - 76px);
+  padding: 72px 32px;
+  background: var(--route-panel);
+  border-color: var(--route-ink);
+}
+
+.project-index > button {
+  color: var(--route-ink);
+  border-color: color-mix(in srgb, var(--route-ink) 35%, transparent);
+}
+
+.project-index > button.is-active {
+  padding-left: 14px;
+  background: var(--route-accent);
+  border: 2px solid var(--route-ink);
+  box-shadow: 5px 5px 0 var(--route-ink);
+  transform: rotate(-1deg);
+}
+
+.project-index > button.is-active > span {
+  color: var(--route-ink);
+}
+
+.active-project,
+.material-stage {
+  padding: clamp(74px, 8vw, 126px) clamp(28px, 6vw, 92px);
+  color: var(--route-ink);
+}
+
+.bella-case h2,
+.project-preview h2,
+.journey-preview h2 {
+  color: var(--route-ink);
+  font-weight: 650;
+  letter-spacing: -0.07em;
+}
+
+.bella-hero {
+  border: 3px solid var(--route-ink);
+  box-shadow: 12px 12px 0 var(--route-ink);
+  transform: rotate(-0.8deg);
+}
+
+.bella-hero img,
+.bella-gallery img {
+  border: 0;
+}
+
+.bella-hero figcaption {
+  color: var(--route-ink);
+}
+
+.bella-proof,
+.bella-proof > div,
+.bella-gallery figure,
+.journey-preview,
+.journey-preview li {
+  border-color: var(--route-ink);
+}
+
+.bella-proof > div {
+  background: var(--route-panel);
+}
+
+.bella-proof span {
+  background: var(--route-accent);
+}
+
+.bella-gallery {
+  gap: 14px;
+}
+
+.bella-gallery figure {
+  overflow: hidden;
+  border: 3px solid var(--route-ink);
+  box-shadow: 6px 6px 0 var(--route-ink);
+}
+
+.bella-gallery figure:nth-child(2) {
+  transform: rotate(1.5deg);
+}
+
+.journey-preview {
+  padding: clamp(68px, 8vw, 124px);
+  background: var(--taste-blue);
+  color: white;
+  border-top: 0;
+}
+
+.journey-preview h2,
+.journey-preview .section-label,
+.journey-preview li strong {
+  color: white;
+}
+
+.journey-preview ol {
+  border: 3px solid var(--taste-black);
+  box-shadow: 10px 10px 0 var(--taste-black);
+}
+
+.journey-preview li {
+  background: var(--taste-paper);
+  color: var(--taste-black);
+}
+
+.journey-preview li span {
+  color: var(--taste-red);
+}
+
+.journey-preview li strong {
+  color: var(--taste-black);
+}
+
+.journey-preview li p {
+  color: rgba(21, 21, 21, 0.7);
+}
+
+.material-peel .bella-case {
+  background: #fff7e6;
+  color: var(--taste-black);
+  border: 3px solid var(--taste-black);
+}
+
+.material-peel .bella-case h2 {
+  color: var(--taste-black);
+}
+
+/* DM behaves like a card pushed onto the scene. */
+.dm-backdrop {
+  background: rgba(30, 18, 43, 0.65);
+}
+
+.dm-panel {
+  margin: 18px;
+  height: calc(100% - 36px);
+  color: var(--taste-black);
+  background: var(--taste-yellow);
+  border: 3px solid var(--taste-black);
+  border-radius: 26px;
+  box-shadow: 12px 12px 0 var(--taste-black);
+}
+
+.dm-panel-head p,
+.dm-panel h2,
+.dm-greeting,
+.dm-subgreeting,
+.dm-unavailable span {
+  color: var(--taste-black);
+}
+
+.dm-panel-head button {
+  color: var(--taste-black);
+  background: white;
+  border: 2px solid var(--taste-black);
+  border-radius: 999px;
+}
+
+.dm-unavailable {
+  border-color: var(--taste-black);
+}
+
+.dm-unavailable strong {
+  color: #c72f20;
+}
+
+/* Infinite-canvas lane — three spatial worlds, not a whiteboard. */
+.spatial-route {
+  --route-bg: #f4da43;
+  --route-ink: #17130e;
+  --route-panel: #fff8e8;
+  --route-accent: #ef4935;
+}
+
+.spatial-route--archipelago {
+  --route-bg: #54d0c5;
+  --route-ink: #17201d;
+  --route-panel: #fff3d8;
+  --route-accent: #ff5d4a;
+}
+
+.spatial-route--ribbon {
+  --route-bg: #17141d;
+  --route-ink: #f7f0de;
+  --route-panel: #d9ff43;
+  --route-accent: #ff73bd;
+}
+
+.tldraw-stage {
+  inset-block-start: 76px;
+}
+
+.spatial-route .tl-container,
+.spatial-route .tl-background {
+  background:
+    radial-gradient(circle at 20px 20px, rgba(21,21,21,.13) 0 2px, transparent 2.5px) 0 0 / 40px 40px,
+    var(--route-bg) !important;
+}
+
+.spatial-route--archipelago .tl-container,
+.spatial-route--archipelago .tl-background {
+  background:
+    radial-gradient(ellipse at 15% 22%, rgba(255,255,255,.28) 0 12%, transparent 12.5%),
+    radial-gradient(ellipse at 78% 68%, rgba(255,255,255,.22) 0 16%, transparent 16.5%),
+    var(--route-bg) !important;
+}
+
+.spatial-route--ribbon .tl-container,
+.spatial-route--ribbon .tl-background {
+  background:
+    linear-gradient(178deg, transparent 47%, rgba(217,255,67,.23) 47.3% 48%, transparent 48.3%),
+    var(--route-bg) !important;
+}
+
+.spatial-controls {
+  top: 94px;
+  gap: 7px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--route-bg) 85%, transparent);
+  border: 2px solid var(--route-ink);
+  border-radius: 18px;
+  box-shadow: 6px 6px 0 var(--route-ink);
+}
+
+.spatial-controls button,
+.spatial-controls a {
+  min-height: 42px;
+  padding: 10px 14px;
+  color: var(--route-ink);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.spatial-controls button:hover,
+.spatial-controls a:hover {
+  color: var(--route-ink);
+  background: var(--route-panel);
+  border-color: var(--route-ink);
+}
+
+.spatial-hint {
+  color: var(--route-ink);
+  background: var(--route-panel);
+  border: 2px solid var(--route-ink);
+  border-radius: 999px;
+}
+
+.portfolio-shape {
+  color: var(--taste-black);
+}
+
+.shape-content {
+  background: #fff8e8;
+  border: 4px solid var(--taste-black);
+  box-shadow: 14px 14px 0 var(--taste-black);
+}
+
+.shape-content > p:first-child {
+  color: var(--taste-black);
+  font-weight: 700;
+}
+
+.shape-intro {
+  background: #f6f0df;
+  color: var(--taste-black);
+}
+
+.shape-intro strong {
+  color: #ef4935;
+}
+
+.shape-intro > span,
+.shape-project > span,
+.shape-bella-copy > span,
+.shape-contact > span,
+.shape-dm > span,
+.shape-dm > small {
+  color: rgba(21, 21, 21, 0.7);
+}
+
+.shape-project {
+  background: #fff8e8;
+  border-top: 18px solid var(--shape-hue);
+}
+
+.shape-project > strong {
+  color: color-mix(in srgb, var(--shape-hue) 70%, var(--taste-black));
+}
+
+.shape-project li,
+.shape-bella li {
+  color: var(--taste-black);
+  border: 2px solid var(--taste-black);
+  border-radius: 999px;
+}
+
+.shape-bella {
+  background: #ff74bc;
+  border-color: var(--taste-black);
+}
+
+.shape-bella-copy > strong {
+  color: var(--taste-black);
+}
+
+.shape-bella-images img {
+  border: 3px solid var(--taste-black);
+}
+
+.shape-journey {
+  background: #2368f5;
+  color: white;
+}
+
+.shape-journey > p:first-child,
+.shape-journey h2 {
+  color: white;
+}
+
+.shape-journey ol,
+.shape-journey li {
+  border-color: white;
+}
+
+.shape-journey li span {
+  color: var(--taste-yellow);
+}
+
+.shape-contact {
+  background: var(--taste-lime);
+  color: var(--taste-black);
+}
+
+.shape-contact a {
+  color: var(--taste-black);
+  font-weight: 700;
+}
+
+.shape-dm {
+  background: var(--taste-yellow);
+  color: var(--taste-black);
+  border-color: var(--taste-black);
+}
+
+.shape-dm > strong {
+  color: #c72f20;
+}
+
+.portfolio-shape--constellation:nth-of-type(2n) .shape-content {
+  transform: rotate(-1.4deg);
+}
+
+.portfolio-shape--constellation:nth-of-type(3n) .shape-content {
+  transform: rotate(1.8deg);
+}
+
+.portfolio-shape--archipelago .shape-content {
+  border-radius: 70px 30px 80px 42px;
+  box-shadow: 18px 18px 0 rgba(21, 21, 21, 0.3);
+}
+
+.portfolio-shape--archipelago.portfolio-shape--bella .shape-content {
+  background: #ff754e;
+}
+
+.portfolio-shape--archipelago.portfolio-shape--project .shape-content {
+  background: #fff3d8;
+}
+
+.portfolio-shape--ribbon .shape-content {
+  background: #f5f0df;
+  border-width: 4px;
+  box-shadow: 0 18px 0 #ff73bd;
+}
+
+.portfolio-shape--ribbon.portfolio-shape--project .shape-content {
+  border-top-color: var(--taste-lime);
+}
+
+.portfolio-shape--ribbon.portfolio-shape--bella .shape-content {
+  background: var(--taste-lime);
+}
+
+.portfolio-shape--ribbon.portfolio-shape--journey .shape-content {
+  background: #7a52ff;
+}
+
+@media (max-width: 900px) {
+  .prototype-index {
+    background: var(--taste-paper);
+  }
+
+  .prototype-index > header {
+    min-height: 72dvh;
+  }
+
+  .prototype-index > header > p:last-child {
+    margin-left: 0;
+  }
+
+  .intro-world {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-world {
+    min-height: 70dvh;
+    border-top: 3px solid var(--route-ink);
+    border-left: 0;
+  }
+
+  .work-composition,
+  .material-work {
+    grid-template-columns: 1fr;
+  }
+
+  .project-index {
+    position: static;
+    min-height: auto;
+  }
+
+  .lab-header {
+    min-height: 116px;
+  }
+
+  .canvasui-page {
+    inset-block-start: 116px;
+  }
+
+  .capability-badge {
+    top: 130px;
+  }
+
+  .tldraw-stage {
+    inset-block-start: 116px;
+  }
+
+  .spatial-controls {
+    top: 134px;
+  }
+}
+
+@media (max-width: 640px) {
+  .prototype-index h1 {
+    margin-top: 16vh;
+    font-size: 4.25rem;
+  }
+
+  .prototype-index > header::after {
+    right: -12vw;
+    bottom: -5vw;
+    font-size: 15rem;
+  }
+
+  .prototype-index > header > p:last-child {
+    max-width: 90%;
+    font-size: 0.9rem;
+  }
+
+  .portfolio-intro,
+  .portfolio-intro.is-compact {
+    padding-block: 132px 54px;
+  }
+
+  .portfolio-intro h1 {
+    font-size: 4.4rem;
+  }
+
+  .portfolio-world {
+    min-height: 540px;
+  }
+
+  .refractive-sticker {
+    width: 96px;
+    height: 96px;
+    font-size: 0.9rem;
+  }
+
+  .portfolio-world--refractive > p {
+    font-size: 2.4rem;
+  }
+
+  .particle-sun {
+    width: 150px;
+    height: 150px;
+    font-size: 1.7rem;
+  }
+
+  .particle-screen {
+    width: 70%;
+  }
+
+  .material-card--red {
+    width: 40%;
+  }
+
+  .active-project,
+  .material-stage,
+  .journey-preview {
+    padding: 58px 20px;
+  }
+
+  .dm-panel {
+    margin: 8px;
+    height: calc(100% - 16px);
+  }
+
+  .spatial-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prototype-index .family-card li a,
+  .lab-header nav a,
+  .intro-actions a,
+  .intro-actions button,
+  .project-index > button {
+    transition: none;
+  }
+}
