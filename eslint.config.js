@@ -19,6 +19,15 @@ export default [
     },
   },
   {
-    ignores: ["dist/", ".astro/", ".vercel/", "node_modules/", ".claude/"],
+    ignores: [
+      "dist/",
+      ".astro/",
+      ".vercel/",
+      "node_modules/",
+      ".claude/",
+      // Inert reference copy of the Frost prototype: own package.json, not
+      // built by Astro, tests not wired into the root test script.
+      "prototype-lab/",
+    ],
   },
 ];
