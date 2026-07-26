@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { CurrentFrost, EFFECTS } from "./frost/CurrentFrost.jsx";
+import { CurrentFrost, EFFECTS, POPOUTS } from "./frost/CurrentFrost.jsx";
 import "./frost/lab.css";
 
 function Gallery({ navigate }) {
@@ -17,6 +17,7 @@ function Gallery({ navigate }) {
         that is live — with a different canvas effect over it. The layout is
         not a variable; only the surface changes.
       </p>
+      <h2 className="lab-section">Homepage surface <span>selected: 01 Fracture</span></h2>
       <ol>
         {EFFECTS.map((effect) => (
           <li key={effect.slug}>
@@ -34,6 +35,30 @@ function Gallery({ navigate }) {
               </div>
               <small>
                 {effect.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
+      </ol>
+
+      <h2 className="lab-section">Project popouts <span>on the fracture surface · deciding</span></h2>
+      <ol>
+        {POPOUTS.map((variant) => (
+          <li key={variant.slug}>
+            <a
+              href={`/popout/${variant.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/popout/${variant.slug}`);
+              }}
+            >
+              <span className="lab-num">{variant.number}</span>
+              <div>
+                <strong>{variant.name}</strong>
+                <span className="lab-note">{variant.instruction}</span>
+              </div>
+              <small>
+                {variant.component} <ArrowUpRight size={12} />
               </small>
             </a>
           </li>
@@ -58,9 +83,14 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  const match = path.match(/^\/frost\/([a-z-]+)\/?$/);
-  const effect = match && EFFECTS.find((entry) => entry.slug === match[1]);
+  const effectMatch = path.match(/^\/frost\/([a-z-]+)\/?$/);
+  const effect = effectMatch && EFFECTS.find((entry) => entry.slug === effectMatch[1]);
+  const popoutMatch = path.match(/^\/popout\/([a-z-]+)\/?$/);
+  const popoutVariant = popoutMatch && POPOUTS.find((entry) => entry.slug === popoutMatch[1]);
 
+  if (popoutVariant) {
+    return <CurrentFrost effect="fracture" popout={popoutVariant.slug} navigate={navigate} />;
+  }
   return effect ? (
     <CurrentFrost effect={effect.slug} navigate={navigate} />
   ) : (

@@ -67,7 +67,48 @@ export const EFFECTS = [
   },
 ];
 
+export const POPOUTS = [
+  {
+    slug: "plain",
+    number: "01",
+    name: "Plain",
+    instruction: "Baseline — the ProjectFocus popout exactly as it ships in PR #347. A project opens on load; press Escape or close it, then click any row.",
+    component: "No effect",
+  },
+  {
+    slug: "thaw-card",
+    number: "02",
+    name: "Thaw card",
+    instruction: "The project card opens under a frozen pane; reading it is melting it. Left alone, it slowly ices back over.",
+    component: "Frost (canvasui) on the card",
+  },
+  {
+    slug: "freeze-world",
+    number: "03",
+    name: "Freeze world",
+    instruction: "Opening a project freezes the page behind it; closing thaws the site back to the fracture surface.",
+    component: "Frost (canvasui) on the page",
+  },
+];
+
 function EffectShell({ slug, children }) {
+  if (slug === "freeze") {
+    return (
+      <Frost
+        className="frost-effect"
+        frost={0.45}
+        opacity={0.7}
+        meltStrength={0}
+        introDuration={1}
+        haze={0.6}
+        detail={2}
+        tintStrength={0.35}
+      >
+        {children}
+      </Frost>
+    );
+  }
+
   if (slug === "glaze") {
     return (
       <Shatter
@@ -353,7 +394,7 @@ function SiteLayout({ workList, onOpenProject, onDm }) {
   );
 }
 
-function ProjectFocus({ project, onClose }) {
+function ProjectFocus({ project, onClose, variant = "plain" }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -362,8 +403,24 @@ function ProjectFocus({ project, onClose }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  const body = (
+    <>
+      <p className="frost-kicker">{project.eyebrow}</p>
+      <h2 id="frost-focus-title">{project.title}</h2>
+      <p>{project.summary}</p>
+      {project.proof.length > 0 && (
+        <div className="frost-proof">
+          {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <div className="frost-backdrop" onMouseDown={onClose}>
+    <div
+      className={`frost-backdrop${variant === "freeze-world" ? " is-frozen" : ""}`}
+      onMouseDown={onClose}
+    >
       <article
         className="frost-modal"
         role="dialog"
@@ -374,13 +431,23 @@ function ProjectFocus({ project, onClose }) {
         <button className="frost-close" onClick={onClose} aria-label={`Close ${project.title}`}>
           <X size={19} />
         </button>
-        <p className="frost-kicker">{project.eyebrow}</p>
-        <h2 id="frost-focus-title">{project.title}</h2>
-        <p>{project.summary}</p>
-        {project.proof.length > 0 && (
-          <div className="frost-proof">
-            {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
-          </div>
+        {variant === "thaw-card" ? (
+          <Frost
+            className="popout-thaw"
+            frost={0.34}
+            opacity={0.72}
+            meltRadius={0.32}
+            meltStrength={0.9}
+            refreeze={10}
+            introDuration={0.8}
+            haze={0.55}
+            detail={2}
+            tintStrength={0.3}
+          >
+            {body}
+          </Frost>
+        ) : (
+          body
         )}
       </article>
     </div>
@@ -419,8 +486,9 @@ function DmPanel({ onClose }) {
   );
 }
 
-export function CurrentFrost({ effect, navigate }) {
-  const meta = EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0];
+export function CurrentFrost({ effect, popout, navigate }) {
+  const popoutMeta = popout ? POPOUTS.find((entry) => entry.slug === popout) ?? POPOUTS[0] : null;
+  const meta = popoutMeta ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
   const [dmOpen, setDmOpen] = useState(false);
   const workList = useMemo(() => buildWorkList(), []);
@@ -430,18 +498,33 @@ export function CurrentFrost({ effect, navigate }) {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [meta.name]);
 
+  // Popout routes ride on the selected homepage surface (fracture) and open
+  // a project immediately so the treatment is visible without hunting.
+  useEffect(() => {
+    if (popoutMeta) setFocusedProject(workList[0]);
+  }, [popoutMeta?.slug, workList]);
+
+  const pageSlug = popoutMeta
+    ? popoutMeta.slug === "freeze-world" && focusedProject
+      ? "freeze"
+      : "fracture"
+    : meta.slug;
+
+  const navEntries = popoutMeta ? POPOUTS : EFFECTS;
+  const navBase = popoutMeta ? "/popout" : "/frost";
+
   return (
     <div className="lab-route">
       <div className="lab-bar">
         <button onClick={() => navigate("/")}>
-          <ArrowLeft size={13} /> All effects
+          <ArrowLeft size={13} /> {popoutMeta ? "All prototypes" : "All effects"}
         </button>
-        <nav aria-label="Effects">
-          {EFFECTS.map((entry) => (
+        <nav aria-label={popoutMeta ? "Popout variants" : "Effects"}>
+          {navEntries.map((entry) => (
             <button
               key={entry.slug}
               className={entry.slug === meta.slug ? "is-active" : ""}
-              onClick={() => navigate(`/frost/${entry.slug}`)}
+              onClick={() => navigate(`${navBase}/${entry.slug}`)}
             >
               {entry.number} {entry.name}
             </button>
@@ -451,7 +534,7 @@ export function CurrentFrost({ effect, navigate }) {
       </div>
 
       <main className="frost" id="main">
-        <EffectShell slug={meta.slug}>
+        <EffectShell slug={pageSlug} key={pageSlug}>
           <div className="frost-page">
             <SiteLayout
               workList={workList}
@@ -466,7 +549,11 @@ export function CurrentFrost({ effect, navigate }) {
         </EffectShell>
 
         {focusedProject && (
-          <ProjectFocus project={focusedProject} onClose={() => setFocusedProject(null)} />
+          <ProjectFocus
+            project={focusedProject}
+            variant={popoutMeta?.slug ?? "plain"}
+            onClose={() => setFocusedProject(null)}
+          />
         )}
         {dmOpen && <DmPanel onClose={() => setDmOpen(false)} />}
       </main>
