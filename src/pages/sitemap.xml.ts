@@ -5,14 +5,12 @@
  * selected public project source (`loadPublicProjectDetails()`).
  *
  * Route families included:
- *   /                       — device console home with the contextual guide
- *   /library                — all-work library
- *   /library/<slug>         — filtered project indexes (from PLAYLIST_SLUGS)
+ *   /                       — single-page Frost site (About/Work/Journey/Contact anchors)
  *   /projects/<id-or-slug>  — project detail pages from the active source
- *   /journey                — resume timeline
- *   /journey/<track>        — one route per resume entry
  *   /resume                 — concise recruiter résumé
- *   /contact                — direct contact surface
+ *
+ * /library, /journey, and /contact are now client redirects into the
+ * single-page anchors and are deliberately absent.
  *
  * Total URL count is source-dependent: deployed database mode uses published
  * rows only; offline development and explicit emergency mode use the catalog.
@@ -22,8 +20,6 @@
  * source — are deliberately absent.
  */
 import type { APIRoute } from 'astro';
-import { PLAYLIST_SLUGS } from '@/data/catalog';
-import { RESUME } from '@/data/resume';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
 
 /**
@@ -35,13 +31,8 @@ import { loadPublicProjectDetails } from '@/lib/public-projects';
 function canonicalPaths(projectPaths: string[]): string[] {
   return [
     '/',
-    '/library/',
-    ...Object.values(PLAYLIST_SLUGS).map((slug) => `/library/${slug}/`),
     ...projectPaths,
-    '/journey/',
-    ...RESUME.tracks.map((t) => `/journey/${t.id}/`),
     '/resume/',
-    '/contact/',
   ];
 }
 

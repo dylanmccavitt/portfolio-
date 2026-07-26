@@ -1,58 +1,17 @@
 ---
-import Device from '@/layouts/Device.astro';
+import Frost from '@/layouts/Frost.astro';
+import FrostSite from '@/components/frost/FrostSite.jsx';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 const meta = {
   ...libraryMeta(
     'Dylan McCavitt',
-    'Software engineer in New York City building practical product, backend, and AI tools. Browse selected work or ask DM.',
+    'Software engineer in New York City building practical product, backend, and AI tools.',
   ),
   jsonLd: personJsonLd(),
 };
-
-const menu = [
-  ['Work', '/library'],
-  ['Journey', '/journey'],
-  ['Resume', '/resume'],
-  ['Contact', '/contact'],
-] as const;
 ---
 
-<Device title="Dylan McCavitt · Software engineer" meta={meta} surface="home" guideKind="home">
-  <section class="home-device" aria-label="Portfolio navigation console">
-    <section class="home-screen home-screen--hero" aria-labelledby="home-title">
-      <div class="home-hero-copy">
-        <p class="home-kicker">DM / portfolio OS</p>
-        <h1 class="home-title" id="home-title">Dylan McCavitt</h1>
-        <p class="home-role">
-          Software engineer
-          <span class="home-ready">/ ready</span>
-        </p>
-      </div>
-    </section>
-
-    <section class="home-screen home-screen--menu" aria-labelledby="home-menu-title">
-      <p class="screen-kicker" id="home-menu-title">Portfolio OS</p>
-      <nav class="home-menu" aria-label="Portfolio">
-        {menu.map(([label, href]) => <a href={href}>{label}</a>)}
-        <button class="home-menu-guide" type="button" data-home-guide>Ask DM</button>
-      </nav>
-      <p class="home-menu-help">Arrows move · Enter open · Esc back</p>
-    </section>
-
-    <button class="hardware-link hardware-link--up" type="button" data-device-direction="up" aria-label="Move menu selection up"></button>
-    <button class="hardware-link hardware-link--right" type="button" data-device-direction="right" aria-label="Move menu selection right"></button>
-    <button class="hardware-link hardware-link--down" type="button" data-device-direction="down" aria-label="Move menu selection down"></button>
-    <button class="hardware-link hardware-link--left" type="button" data-device-direction="left" aria-label="Move menu selection left"></button>
-    <button class="hardware-link hardware-link--open" type="button" data-device-open>Open</button>
-    <a class="hardware-link hardware-link--back" href="/">Back</a>
-  </section>
-
-  <a class="home-simple-nav" href="/library">Open simple navigation</a>
-</Device>
-
-<script is:inline>
-  document.querySelector('[data-home-guide]')?.addEventListener('click', () => {
-    document.querySelector('[data-dm-open]')?.click();
-  });
-</script>
+<Frost title="Dylan McCavitt · Software engineer" meta={meta}>
+  <FrostSite client:load />
+</Frost>

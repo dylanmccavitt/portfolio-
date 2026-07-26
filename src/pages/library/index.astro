@@ -1,25 +1,16 @@
 ---
-/**
- * All-work library. The home route is the DM chat shell; `/library` is the canonical project
- * index, with filtered indexes under `/library/[filter]`.
- */
-import Editorial from '@/layouts/Editorial.astro';
-import LibraryView from '@/components/LibraryView.astro';
-import { filterPublicProjectDetails, loadPublicProjectDetails } from '@/lib/public-projects';
-import { libraryMeta } from '@/lib/seo';
-
-const { projects } = await loadPublicProjectDetails();
-const allProjects = filterPublicProjectDetails(projects, 'all');
-const title = 'Dylan McCavitt · All work';
-const meta = {
-  ...libraryMeta(
-    'All work',
-    `All work, ${allProjects.length} projects: ${allProjects.map((p) => p.title).join(', ')}.`,
-  ),
-  title,
-};
+// The work library now lives on the single-page Frost site.
 ---
 
-<Editorial title={title} meta={meta}>
-  <LibraryView filter="all" projects={projects} />
-</Editorial>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=/#work" />
+    <link rel="canonical" href="https://dylanmccavitt.xyz/" />
+    <title>Dylan McCavitt</title>
+  </head>
+  <body>
+    <p><a href="/#work">Continue to dylanmccavitt.xyz/#work</a></p>
+  </body>
+</html>

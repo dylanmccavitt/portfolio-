@@ -3,6 +3,7 @@ import console from 'node:console';
 import process from 'node:process';
 import { defineConfig } from 'astro/config';
 import vercel from '@astrojs/vercel';
+import react from '@astrojs/react';
 import { resolvePublicProjectSourceModeFromEnv } from './src/lib/public-project-source-mode.ts';
 
 function publicProjectPagesRenderLive() {
@@ -45,7 +46,7 @@ function livePublicProjectPages() {
 // https://astro.build/config
 export default defineConfig({
   adapter: vercel(),
-  integrations: [livePublicProjectPages()],
+  integrations: [react(), livePublicProjectPages()],
   // Canonical origin — drives `Astro.site`, the `<link rel="canonical">` in the
   // layouts, and the absolute URLs in `src/pages/sitemap.xml.ts` (#25).
   site: 'https://dylanmccavitt.xyz',
