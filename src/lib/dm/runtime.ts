@@ -296,11 +296,18 @@ export function createDMChatResponse(
           } satisfies DMFinalizationResult;
         }
         finalized = true;
-        // Grounding failures fail closed. A repeated artifact-envelope failure
-        // keeps the model's own grounded prose and drops the artifacts.
-        finalizationResult = validation.evidenceViolation
-          ? limitedResult(true, request.context)
-          : degradedResult(input, publicRun, artifacts, request.context);
+        // Grounding failures fail closed with no answer at all: the run ends
+        // without a data-dm-answer chunk and the client renders its own error
+        // state with the direct-email link (#344). A repeated artifact-envelope
+        // failure keeps the model's own grounded prose and drops the artifacts.
+        if (validation.evidenceViolation) {
+          return {
+            status: 'rejected',
+            errors: validation.errors,
+            remainingAttempts: 1,
+          } satisfies DMFinalizationResult;
+        }
+        finalizationResult = degradedResult(input, publicRun, request.context);
         return finalizationResult;
       },
     }),
@@ -402,18 +409,20 @@ export function createDMChatResponse(
           metrics.error('unknown');
           return;
         }
-        finalizationResult ??= limitedResult(finalizationAttempts > 0, request.context);
-        if (
-          finalizationResult.status === 'limited'
-          && finalizationAttempts > 0
-        ) {
+        // No valid finalization means no answer chunk: the canned "limited"
+        // non-answer was removed ahead of the DM rework (#344). The client's
+        // own error state (with the direct-email link) covers this outcome.
+        const isLimited = finalizationResult === null || finalizationResult.status === 'limited';
+        if (isLimited && finalizationAttempts > 0) {
           metrics.setErrorCategory('finalization_validation');
         }
         const evidence = publicRun.evidenceLedger.snapshot();
-        metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, finalizationResult.status === 'limited');
+        metrics.setSource(sourceMode(evidence.map((item) => item.source)), evidence.length, isLimited);
         metrics.setUsage(inputTokens, outputTokens);
-        writer.write({ type: 'data-dm-answer', data: finalizationResult });
-        metrics.visibleOutput();
+        if (finalizationResult !== null) {
+          writer.write({ type: 'data-dm-answer', data: finalizationResult });
+          metrics.visibleOutput();
+        }
         writer.write({ type: 'finish' });
         metrics.finish('completed');
       } catch (error) {
@@ -676,7 +685,7 @@ function validateFinalAnswer(
       segments: modelAuthoredSegments(input, run),
       artifacts: resolvedArtifacts,
       actions: deriveGuideActions(context?.page, resolvedArtifacts),
-      limitations: serverObservedLimitations(artifacts),
+      limitations: [],
     },
   };
 }
@@ -696,17 +705,6 @@ function modelAuthoredSegments(input: FinalAnswerInput, run: PublicAgentToolRun)
 }
 
 /**
- * Runtime disclosures the model is not separately required to acknowledge.
- * Empty and unavailable public-source outcomes are excluded here because
- * `limitationOutcomeErrors` already forces the model to state them itself.
- */
-function serverObservedLimitations(artifacts: RunArtifacts): string[] {
-  return [...new Set(
-    effectiveLimitations(artifacts).map(humanLimitation).filter((item): item is string => Boolean(item)),
-  )];
-}
-
-/**
  * Degraded finalization: the artifact envelope failed validation twice, but the
  * prose itself is grounded, so the visitor gets the model's words without the
  * artifacts rather than a canned non-answer.
@@ -714,7 +712,6 @@ function serverObservedLimitations(artifacts: RunArtifacts): string[] {
 function degradedResult(
   input: FinalAnswerInput,
   run: PublicAgentToolRun,
-  artifacts: RunArtifacts,
   context: DMChatContext | undefined,
 ): Extract<DMFinalizationResult, { status: 'limited' }> {
   return {
@@ -724,7 +721,7 @@ function degradedResult(
       segments: modelAuthoredSegments(input, run),
       artifacts: [],
       actions: deriveGuideActions(context?.page, []),
-      limitations: serverObservedLimitations(artifacts),
+      limitations: [],
     },
   };
 }
@@ -1308,14 +1305,6 @@ function reserveToolOutcome(artifacts: RunArtifacts): number {
   return artifacts.nextOutcomeOrdinal;
 }
 
-function effectiveLimitations(artifacts: RunArtifacts): string[] {
-  return [
-    ...artifacts.limitations,
-    ...[...artifacts.outcomeLimitations.entries()].flatMap(([toolName, limitations]) =>
-      emptyOutcomeHasRetainedArtifacts(artifacts, toolName) ? [] : limitations),
-  ];
-}
-
 function emptyOutcomeHasRetainedArtifacts(
   artifacts: RunArtifacts,
   toolName: LimitationTrackedTool,
@@ -1323,49 +1312,6 @@ function emptyOutcomeHasRetainedArtifacts(
   if (artifacts.outcomes.get(toolName) !== 'empty') return false;
   if (toolName === 'searchProjects' || toolName === 'getProject') return artifacts.projects.size > 0;
   return false;
-}
-
-/**
- * Server-side disclosure of tool outcomes the model is not separately forced to
- * state. Empty and unavailable public-source outcomes are deliberately absent:
- * `requiredOutcomeLimitations` makes the model acknowledge those in its own
- * words, so repeating server copy underneath would only restore boilerplate.
- */
-function humanLimitation(code: string): string | null {
-  switch (code) {
-    case 'published_project_links_unavailable':
-      return 'Some published portfolio data was unavailable for this answer.';
-    case 'timeout':
-      return 'A public source took too long to respond.';
-    case 'cancelled':
-      return 'A public-source read was cancelled.';
-    case 'unknown_track_ids_omitted':
-      return 'Unknown resume entries were omitted.';
-    case 'result_limit':
-      return 'The answer uses a bounded subset of the available public results.';
-    default:
-      return null;
-  }
-}
-
-function limitedResult(
-  repairAttempted: boolean,
-  context?: DMChatContext,
-): Extract<DMFinalizationResult, { status: 'limited' }> {
-  return {
-    status: 'limited',
-    repairAttempted,
-    answer: {
-      segments: [{
-        text: 'I could not verify a complete answer from the public evidence returned in this run.',
-        evidenceIds: [],
-        evidence: [],
-      }],
-      artifacts: [],
-      actions: deriveGuideActions(context?.page, []),
-      limitations: ['No unverified factual answer was shown.'],
-    },
-  };
 }
 
 const LATEST_TURN_CONTROL = [
@@ -1503,20 +1449,12 @@ async function raceWithRequestSignal<T>(promise: Promise<T>, signal: AbortSignal
   });
 }
 
-// Voice target: the retired dm-voice doc governed register and
-// judgment only; it never widens the public-source boundary or the same-run
-// evidence rules restated below.
-const DM_VOICE_INSTRUCTIONS = [
-  "You are DM, the guide to Dylan McCavitt's published work. That is the whole job: you are not a general assistant, not a salesperson, and not a persona with a backstory or a favorite project.",
-  'Your visitor is usually a recruiter or hiring manager deciding whether to spend another ten minutes. They are not necessarily technical, and they arrive with a few concrete questions: has he shipped anything real, what kind of engineer is he, is he available, how do I reach him. Write for the non-technical reader and let the specifics serve the technical one.',
-  'Write your own sentences. Every segment you send to finalizeAnswer carries prose you wrote; nothing is substituted for you.',
-  'Register: plain, specific, warm without being chummy. Short sentences, one idea each. Prefer concrete nouns and real numbers over adjectives. First person singular is normal, and Dylan is "Dylan", never "the candidate".',
-  'Never open with "Great question", "Absolutely", "Certainly", or "I\'d be happy to". No exclamation marks. No emoji. No stacked hedges. Do not end with "Let me know if you have any other questions", "Feel free to ask", or any variant; if a next step genuinely exists, name one specific thing instead.',
-  'Never narrate the machinery. Do not say you are searching, looking things up, or working from returned evidence, and never mention tools, segments, artifacts, or limitation codes. Look things up, then answer.',
-  'Vary your openings. Two visitors on the same route must not receive the same sentence. A greeting says what the visitor can get here, uses the current route, and runs one or two sentences; it is not a capability list and not "Ask me anything".',
-  'Answer first, then point. Route suggestions and cards are rendered by the surface, so point in plain language ("the full timeline is on the journey page") and never invent a path, URL, or link label. One destination per answer.',
-  'Answer the latest question first. Normally use two to five concise sentences across no more than five answer segments.',
-];
+// Voice and register instructions were deliberately removed ahead of the DM
+// rework (#344): nothing here tells the agent how to write. What remains is
+// identity, grounding, and tool routing — the parts that mirror server-side
+// enforcement and the public-source boundary.
+const DM_IDENTITY_INSTRUCTION =
+  "You are DM, the guide to Dylan McCavitt's published work.";
 
 const DM_GROUNDING_INSTRUCTIONS = [
   'Never claim anything about Dylan that did not come back from a tool result in this same run. Enthusiasm is not evidence and plausibility is not evidence.',
@@ -1526,7 +1464,7 @@ const DM_GROUNDING_INSTRUCTIONS = [
 ];
 
 const DM_BASE_SYSTEM_INSTRUCTIONS = [
-  ...DM_VOICE_INSTRUCTIONS,
+  DM_IDENTITY_INSTRUCTION,
   ...DM_GROUNDING_INSTRUCTIONS,
   'Use the typed public tools when a claim needs facts. Avoid tools for greetings, capability questions, and other purely conversational turns.',
   'Treat every multi-part request as a checklist. Call the public tool needed for each requested aspect, and do not finalize until every successful source in the requested composition pair is cited or an unavailable aspect has an explicit limitation.',
