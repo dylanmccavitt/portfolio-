@@ -3,6 +3,8 @@ import { ArrowUpRight, Hammer, Wrench, X } from "lucide-react";
 import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-mono";
 import { Shatter } from "./Shatter.jsx";
+import DmChat from "./DmChat.jsx";
+import { SUBGREETING } from "@/lib/dm/client";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
 import "./frost.css";
 
@@ -230,12 +232,10 @@ function DmPanel({ onClose }) {
         </button>
         <p className="frost-kicker">Public portfolio guide</p>
         <h2 id="frost-dm-title">Ask DM about Dylan&rsquo;s work.</h2>
-        <p>
-          DM is being refit for the new design and will be back shortly.
-          In the meantime, email works best.
-        </p>
+        <p>{SUBGREETING}</p>
+        <DmChat />
         <a href={`mailto:${PROFILE.email}`}>
-          Contact Dylan instead <ArrowUpRight size={16} />
+          Contact Dylan directly <ArrowUpRight size={16} />
         </a>
       </section>
     </div>
