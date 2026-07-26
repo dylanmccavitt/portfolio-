@@ -1,7 +1,47 @@
 import { useEffect, useState } from "react";
-import { PrototypeGallery, PrototypeRoute, PROTOTYPES } from "./PrototypeRoutes.jsx";
-import { SignalRemixRoute } from "./SignalRemixes.jsx";
-import { FrostRoute } from "./FrostRoute.jsx";
+import { ArrowUpRight } from "lucide-react";
+import { CurrentFrost, EFFECTS } from "./frost/CurrentFrost.jsx";
+import "./frost/lab.css";
+
+function Gallery({ navigate }) {
+  useEffect(() => {
+    document.title = "Frost effect lab · Dylan McCavitt";
+  }, []);
+
+  return (
+    <main className="lab-gallery">
+      <p className="lab-kicker">Prototype lab · one layout, many surfaces</p>
+      <h1>Frost effect lab</h1>
+      <p className="lab-lede">
+        Every prototype below is the current Frost site layout — the one
+        that is live — with a different canvas effect over it. The layout is
+        not a variable; only the surface changes.
+      </p>
+      <ol>
+        {EFFECTS.map((effect) => (
+          <li key={effect.slug}>
+            <a
+              href={`/frost/${effect.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/frost/${effect.slug}`);
+              }}
+            >
+              <span className="lab-num">{effect.number}</span>
+              <div>
+                <strong>{effect.name}</strong>
+                <span className="lab-note">{effect.instruction}</span>
+              </div>
+              <small>
+                {effect.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </main>
+  );
+}
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
@@ -18,17 +58,12 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  const prototype = PROTOTYPES.find((item) => item.path === path);
+  const match = path.match(/^\/frost\/([a-z-]+)\/?$/);
+  const effect = match && EFFECTS.find((entry) => entry.slug === match[1]);
 
-  return prototype ? (
-    prototype.slug === "signal-frost" ? (
-      <FrostRoute prototype={prototype} navigate={navigate} />
-    ) : prototype.remix ? (
-      <SignalRemixRoute prototype={prototype} navigate={navigate} />
-    ) : (
-      <PrototypeRoute prototype={prototype} navigate={navigate} />
-    )
+  return effect ? (
+    <CurrentFrost effect={effect.slug} navigate={navigate} />
   ) : (
-    <PrototypeGallery navigate={navigate} />
+    <Gallery navigate={navigate} />
   );
 }
