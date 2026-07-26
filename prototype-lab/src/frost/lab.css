@@ -142,6 +142,18 @@ body {
   visibility: hidden;
 }
 
+.popout-thaw-body {
+  min-height: 100%;
+  background: var(--frost-surface, #eef2f4);
+}
+
+/* The effect's internal content region scrolls; its scrollbar reads as a
+   seam inside the card. */
+.popout-thaw-effect ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .lab-gallery ol {
   margin: 0;
   padding: 0;

@@ -437,7 +437,9 @@ function ProjectFocus({ project, onClose, variant = "plain" }) {
              so a hidden copy of the content sizes the card and the Frost
              pane overlays it exactly. */
           <div className="popout-thaw">
-            <div className="popout-thaw-sizer" aria-hidden="true">{body}</div>
+            <div className="popout-thaw-sizer" aria-hidden="true">
+              <div className="popout-thaw-body">{body}</div>
+            </div>
             <Frost
               className="popout-thaw-effect"
               style={{ position: "absolute", inset: 0 }}
@@ -451,7 +453,9 @@ function ProjectFocus({ project, onClose, variant = "plain" }) {
               detail={2}
               tintStrength={0.3}
             >
-              {body}
+              {/* Opaque surface: the native path samples this subtree into a
+                  canvas, and a transparent background reads back as black. */}
+              <div className="popout-thaw-body">{body}</div>
             </Frost>
           </div>
         ) : (
