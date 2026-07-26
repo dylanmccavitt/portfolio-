@@ -1503,7 +1503,7 @@ async function raceWithRequestSignal<T>(promise: Promise<T>, signal: AbortSignal
   });
 }
 
-// Voice target: docs/agents/dm-voice.md. That file governs register and
+// Voice target: the retired dm-voice doc governed register and
 // judgment only; it never widens the public-source boundary or the same-run
 // evidence rules restated below.
 const DM_VOICE_INSTRUCTIONS = [
