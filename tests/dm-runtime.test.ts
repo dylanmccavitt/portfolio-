@@ -53,16 +53,21 @@ test('system instructions retain the public-source and same-run evidence boundar
   assert.match(instructions, /finalizeAnswer/);
 });
 
-test('system instructions carry the voice target and the no-evidence failure behaviour', async () => {
+test('system instructions keep identity and grounding but carry no voice or register rules', async () => {
+  // The voice/register layer was deliberately removed ahead of the DM rework
+  // (#344). Identity, grounding, and tool routing are all that remain.
   const source = await createTestProjectSource();
   const instructions = buildDMSystemInstructions(buildDMSiteBrief(await source.projectLoader()));
 
-  assert.match(instructions, /Write your own sentences/i);
-  assert.match(instructions, /Vary your openings/i);
-  assert.match(instructions, /Never narrate the machinery/i);
+  assert.match(instructions, /You are DM, the guide to Dylan McCavitt's published work\./);
   assert.match(instructions, /say the gap plainly in your own words/i);
   assert.match(instructions, /offer the nearest thing you do know, or ask one clarifying question/i);
   assert.match(instructions, /Never claim anything about Dylan that did not come back from a tool result/i);
+  assert.doesNotMatch(instructions, /Write your own sentences/i);
+  assert.doesNotMatch(instructions, /Vary your openings/i);
+  assert.doesNotMatch(instructions, /Never narrate the machinery/i);
+  assert.doesNotMatch(instructions, /Register: plain, specific/i);
+  assert.doesNotMatch(instructions, /Great question/i);
   assert.doesNotMatch(instructions, /server-controlled conversational act/i);
 });
 
@@ -259,10 +264,11 @@ test('unknown evidence exhausts one repair attempt and fails closed', async () =
     metricsLogger: (line) => metricsLines.push(line),
   }), request);
 
-  assert.equal(observation.result?.status, 'limited');
-  assert.equal(observation.result?.repairAttempted, true);
-  assert.doesNotMatch(observation.answerText, /hidden project|private-hidden/i);
-  assert.match(observation.answerText, /could not verify/i);
+  // A double grounding failure now ships no answer chunk at all (#344): the
+  // client renders its own error state with the direct-email link.
+  assert.equal(observation.result, null);
+  assert.equal(observation.outcome, 'incomplete');
+  assert.doesNotMatch(JSON.stringify(observation), /hidden project|private-hidden/i);
   assert.equal(parseMetricsRecord(metricsLines).errorCategory, 'finalization_validation');
 });
 
@@ -294,10 +300,11 @@ test('a changed artifact intent cannot ship ungrounded prose', async () => {
     ]),
   }), request);
 
-  assert.equal(observation.result?.status, 'limited');
-  assert.doesNotMatch(observation.answerText, /Google|Search ranking/i);
-  assert.doesNotMatch(JSON.stringify(observation), /totally:made:up/);
-  assert.match(observation.answerText, /could not verify/i);
+  // Fails closed with no answer chunk (#344): the fabricated claim and its
+  // invented evidence ids never reach the visitor in any form.
+  assert.equal(observation.result, null);
+  assert.equal(observation.outcome, 'incomplete');
+  assert.doesNotMatch(JSON.stringify(observation), /Google|Search ranking|totally:made:up/i);
 });
 
 test('a persistent artifact-envelope miss degrades to the grounded model prose, not boilerplate', async () => {
