@@ -5,7 +5,7 @@ Recruiter-facing portfolio (Astro + Vercel) on the agent-first redesign preview 
 ## Environment and checks
 
 - Node 24 required (`mise use node@24`). Local dev only — no container.
-- `npm run verify` = lint + typecheck + build. `npm run build` is the trustworthy gate today; `test:routes` and `test:visual` still assert the removed device-shell world and need reconciling before CI is authoritative again.
+- `npm run verify` = lint + typecheck + build. `npm test` runs all suites; `.github/workflows/ci.yml` runs both and is the authoritative check set (reconciled to the Frost world in #342).
 - Tests need no external services or secrets (in-memory Postgres via pglite).
 
 ## Current state (July 2026)

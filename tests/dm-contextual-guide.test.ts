@@ -151,26 +151,31 @@ test('action derivation drops invented destinations without requiring a follow-u
   assert.ok(actions.every((action) => isAllowedGuideActionDestination(action.href)));
 });
 
-test('the optional guide has desktop sidecar, mobile bottom-sheet, keyboard, cancellation, and route-reset hooks', async () => {
-  const [component, client, css] = await Promise.all([
-    readFile(new URL('../src/components/ContextualGuide.astro', import.meta.url), 'utf8'),
-    readFile(new URL('../src/scripts/dm.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../src/styles/dm.css', import.meta.url), 'utf8'),
+test('the Frost DM panel keeps modal, keyboard, cancellation, and history hooks', async () => {
+  // The guide UI is the Frost homepage panel since #339 (the device-shell
+  // ContextualGuide and its vanilla client were deleted in the Frost cutover).
+  const [host, chat] = await Promise.all([
+    readFile(new URL('../src/components/frost/FrostSite.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/components/frost/DmChat.jsx', import.meta.url), 'utf8'),
   ]);
-  assert.match(component, /data-dm-open/);
-  assert.match(component, /data-dm-close/);
-  assert.match(component, /data-dm-cancel/);
-  assert.match(component, /aria-modal="true"/);
-  assert.match(client, /event\.key === 'Escape'/);
-  assert.match(client, /event\.key !== 'Tab'/);
-  assert.match(client, /controller\?\.abort\(\)/);
-  assert.match(client, /turn\.stop\(\)/);
-  assert.match(client, /document\.activeElement === panel/);
-  assert.match(client, /window\.addEventListener\('popstate'/);
-  assert.match(client, /resetGuideHistory\(history, generation\)/);
-  assert.match(css, /\.context-guide-panel[\s\S]*height: 100dvh/);
-  assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.context-guide-panel[\s\S]*width: 100%/);
-  assert.doesNotMatch(component, /avatar|provider|model label/i);
+  // Host modal: open control, dialog semantics, Escape and explicit close.
+  assert.match(host, /frost-dm-button/);
+  assert.match(host, /role="dialog"/);
+  assert.match(host, /aria-modal="true"/);
+  assert.match(host, /event\.key === "Escape"/);
+  assert.match(host, /aria-label="Close DM"/);
+  // Chat client: abortable turns, unmount cleanup, bounded history through the
+  // shared helpers, answers gated by the shared validator.
+  assert.match(chat, /controllerRef\.current\?\.abort\(\)/);
+  assert.match(chat, /beginGuideHistoryTurn/);
+  assert.match(chat, /rollbackGuideHistoryTurn/);
+  assert.match(chat, /completeGuideHistoryTurn/);
+  assert.match(chat, /history\.slice\(-13\)/);
+  assert.match(chat, /validateFinalizationResult/);
+  assert.match(chat, /maxLength=\{4000\}/);
+  // No persona chrome: the panel presents DM, not a model vendor.
+  assert.doesNotMatch(host, /avatar|provider|model label/i);
+  assert.doesNotMatch(chat, /avatar|provider|model label/i);
 });
 
 function requestFor(

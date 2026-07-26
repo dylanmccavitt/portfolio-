@@ -1593,11 +1593,11 @@ test('public route project reference resolver matches id/slug and throws on requ
 });
 
 test('public project routes use the shared public project source boundary', async () => {
+  // The Frost cutover (#342) reduced project readers to three: the project
+  // detail page, the sitemap, and the project OG image. Library/journey pages
+  // are meta-refresh stubs and must not read the project source at all.
   const routeFiles = [
-    'src/pages/library/index.astro',
-    'src/pages/library/[filter].astro',
     'src/pages/projects/[id].astro',
-    'src/pages/journey/[track].astro',
     'src/pages/sitemap.xml.ts',
     'src/pages/og/projects/[id].png.ts',
   ];
@@ -1607,17 +1607,14 @@ test('public project routes use the shared public project source boundary', asyn
     assert.match(source, /loadPublicProjectDetails/);
   }
 
-  const projectCard = await readFile('src/components/ProjectCard.astro', 'utf8');
-  assert.match(projectCard, /projectPublicMark/);
-
   const projectRoute = await readFile('src/pages/projects/[id].astro', 'utf8');
   assert.match(projectRoute, /loadPublicProjectDetailBySlug/);
   const projectOgRoute = await readFile('src/pages/og/projects/[id].png.ts', 'utf8');
   assert.match(projectOgRoute, /loadPublicProjectDetailBySlug/);
-  const libraryFilterRoute = await readFile('src/pages/library/[filter].astro', 'utf8');
-  assert.match(libraryFilterRoute, /if \(!filter\)/);
-  const journeyRoute = await readFile('src/pages/journey/[track].astro', 'utf8');
-  assert.match(journeyRoute, /resolveRequiredPublicProjectByReference/);
+  for (const stub of ['src/pages/library/index.astro', 'src/pages/journey.astro', 'src/pages/contact.astro']) {
+    const source = await readFile(stub, 'utf8');
+    assert.doesNotMatch(source, /loadPublicProject|public-projects/, `${stub} is a redirect stub and must not read the project source`);
+  }
 
   const vercelConfig = JSON.parse(await readFile('vercel.json', 'utf8')) as {
     redirects: Array<{ source: string; destination: string }>;
@@ -1630,4 +1627,7 @@ test('public project routes use the shared public project source boundary', asyn
   assert.equal(redirects.get('/library/school'), '/library/coursework');
   assert.equal(redirects.get('/library/infrastructure'), '/library/side-projects-experiments');
   assert.equal(redirects.get('/library/research'), '/library/side-projects-experiments');
+  // Frost-era additions (#340): old about/journey-track URLs land on anchors.
+  assert.equal(redirects.get('/about'), '/#about');
+  assert.equal(redirects.get('/journey/:slug'), '/#journey');
 });
