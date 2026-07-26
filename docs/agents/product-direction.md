@@ -42,13 +42,9 @@ provider configuration.
 
 ## Delivery and operations
 
-- Agent-first redesign work targets the stack rooted at
-  `preview/agent-first-redesign` unless a persisted issue contract says
-  otherwise.
-- One independently reviewable leaf maps to one issue, writer, worktree,
-  branch, and linked pull request.
-- Gepetto-managed research and exact-head implementation proof live on the
-  owning GitHub issue.
+- Agent-first redesign work targets `preview/agent-first-redesign`.
+- One independently reviewable piece of work maps to one issue, branch, and
+  linked pull request when tracked delivery is in use.
 - Merge, deploy, promotion, migration, publication, issue closure, provider
   changes, paid evaluations, and destructive cleanup require explicit gates.
 - The durable outbox, the review-gated GitHub refresh procedure, the admin
