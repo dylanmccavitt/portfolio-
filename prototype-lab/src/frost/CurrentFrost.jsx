@@ -38,6 +38,7 @@ export const EFFECTS = [
     slug: "pond",
     number: "03",
     name: "Pond",
+    flagOnly: true,
     instruction: "Perfectly legible at rest. Every click sends rings across the surface that bend the type as they pass.",
     component: "Ripple (canvasui)",
   },
@@ -148,6 +149,7 @@ export const FX = [
     number: "01",
     name: "Echo",
     surface: "pond",
+    flagOnly: true,
     instruction: "Every click rings outward from where it happened — rows, nav, closing a card. The pond answers your actions.",
     component: "Ripple (canvasui)",
   },
@@ -172,7 +174,8 @@ export const FX = [
     number: "04",
     name: "Loupe",
     surface: "glass",
-    instruction: "A reading lens follows the cursor and snaps onto project titles and the email, magnifying what matters. NEEDS THE HTML-IN-CANVAS FLAG — inert in stock Chrome.",
+    instruction: "A reading lens follows the cursor and snaps onto project titles and the email, magnifying what matters.",
+    flagOnly: true,
     component: "Glass (canvasui) with targets",
   },
   {
@@ -180,7 +183,8 @@ export const FX = [
     number: "05",
     name: "Settle",
     surface: "particle-scroll",
-    instruction: "Below the fold the page is loose sand; scrolling settles it into crisp UI as you arrive. NEEDS THE HTML-IN-CANVAS FLAG — inert in stock Chrome.",
+    instruction: "Below the fold the page is loose sand; scrolling settles it into crisp UI as you arrive.",
+    flagOnly: true,
     component: "Particle Scroll (canvasui)",
   },
 ];
@@ -251,6 +255,7 @@ export const ENTERS = [
     slug: "settle-in",
     number: "02",
     name: "Settle in",
+    flagOnly: true,
     instruction: "Open project: the page assembles from loose sand as you land — the settle surface, given a job.",
     component: "Particle Scroll entry",
   },
@@ -260,6 +265,18 @@ export const ENTERS = [
     name: "Hero sheet",
     instruction: "Open project: the title docks as the page hero and the sections slide in beneath it.",
     component: "Staggered entrance",
+  },
+];
+
+/** Everything that has been approved or leads its category, combined into
+    one walkable journey. */
+export const FLOW = [
+  {
+    slug: "flow",
+    number: "01",
+    name: "One flow",
+    instruction: "Cracks mark what you can click; a row breaks open into the dossier card; the card grows into the page; contact means breaking the ice.",
+    component: "fracture + affordance + break-open + dossier + grow + break-ice",
   },
 ];
 
@@ -983,13 +1000,14 @@ function DmPanel({ onClose }) {
   );
 }
 
-export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }) {
+export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navigate }) {
   const popoutMeta = popout ? POPOUTS.find((entry) => entry.slug === popout) ?? POPOUTS[0] : null;
   const playMeta = play ? PLAYS.find((entry) => entry.slug === play) ?? PLAYS[0] : null;
   const fxMeta = fx ? FX.find((entry) => entry.slug === fx) ?? FX[0] : null;
   const cardMeta = card ? CARDS.find((entry) => entry.slug === card) ?? CARDS[0] : null;
   const enterMeta = enter ? ENTERS.find((entry) => entry.slug === enter) ?? ENTERS[0] : null;
-  const meta = popoutMeta ?? playMeta ?? fxMeta ?? cardMeta ?? enterMeta
+  const flowMeta = flow ? FLOW[0] : null;
+  const meta = popoutMeta ?? playMeta ?? fxMeta ?? cardMeta ?? enterMeta ?? flowMeta
     ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -1028,7 +1046,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
   const openPage = (event) => {
     const project = focusedProject;
     if (!project) return;
-    if (enterMeta?.slug === "grow") {
+    if (enterMeta?.slug === "grow" || flowMeta) {
       const rect = event.currentTarget.closest(".frost-modal")?.getBoundingClientRect();
       if (rect) {
         setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -1044,13 +1062,13 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
   // Affordance play: fracture strength follows whether the pointer is over
   // something clickable inside the page.
   useEffect(() => {
-    if (playMeta?.slug !== "affordance") return;
+    if (playMeta?.slug !== "affordance" && !flowMeta) return;
     const onOver = (event) => {
       setOverInteractive(Boolean(event.target?.closest?.(".frost-page a, .frost-page button")));
     };
     document.addEventListener("pointerover", onOver);
     return () => document.removeEventListener("pointerover", onOver);
-  }, [playMeta?.slug]);
+  }, [playMeta?.slug, flowMeta]);
 
   // Press play: holding the pointer down charges the fracture field wider;
   // releasing lets it ease back.
@@ -1115,7 +1133,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
       setExpandedId((prev) => (prev === project.id ? null : project.id));
       return;
     }
-    if (popoutMeta?.slug === "break-open" && event) {
+    if ((popoutMeta?.slug === "break-open" || flowMeta) && event) {
       const { clientX, clientY } = event;
       burstFracture(clientX, clientY);
       setBurstOrigin([clientX, clientY]);
@@ -1129,13 +1147,13 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
     ? popoutMeta.slug === "freeze-world" && focusedProject
       ? "freeze"
       : "fracture"
-    : playMeta || cardMeta || enterMeta
+    : playMeta || cardMeta || enterMeta || flowMeta
       ? "fracture"
       : fxMeta
         ? fxMeta.surface
         : meta.slug;
 
-  const fractureOverrides = playMeta?.slug === "affordance"
+  const fractureOverrides = playMeta?.slug === "affordance" || flowMeta
     ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
     : playMeta?.slug === "press"
       ? {
@@ -1153,8 +1171,8 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
           }
         : undefined;
 
-  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : fxMeta ? FX : cardMeta ? CARDS : enterMeta ? ENTERS : EFFECTS;
-  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : fxMeta ? "/fx" : cardMeta ? "/card" : enterMeta ? "/enter" : "/frost";
+  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : fxMeta ? FX : cardMeta ? CARDS : enterMeta ? ENTERS : flowMeta ? FLOW : EFFECTS;
+  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : fxMeta ? "/fx" : cardMeta ? "/card" : enterMeta ? "/enter" : flowMeta ? "/flow" : "/frost";
 
   return (
     <div className="lab-route">
@@ -1184,7 +1202,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
               onOpenProject={openProject}
               onDm={() => setDmOpen(true)}
               expandedId={popoutMeta?.slug === "expand-row" ? expandedId : null}
-              contactVariant={playMeta?.slug === "break-ice" ? "sealed" : "plain"}
+              contactVariant={playMeta?.slug === "break-ice" || flowMeta ? "sealed" : "plain"}
               play={playMeta?.slug ?? fxMeta?.slug}
             />
             <footer className="frost-footer">
@@ -1197,16 +1215,16 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }
         {focusedProject && (
           <ProjectFocus
             project={focusedProject}
-            variant={popoutMeta?.slug ?? "plain"}
+            variant={popoutMeta?.slug ?? (flowMeta ? "break-open" : "plain")}
             origin={burstOrigin}
-            cardStyle={cardMeta?.slug ?? "classic"}
-            onOpenPage={enterMeta || cardMeta ? openPage : undefined}
+            cardStyle={cardMeta?.slug ?? (flowMeta ? "dossier" : "classic")}
+            onOpenPage={enterMeta || cardMeta || flowMeta ? openPage : undefined}
             onClose={() => setFocusedProject(null)}
           />
         )}
         {docProject && (
           <div
-            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? "plain"}`}
+            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta ? "grow" : "plain")}`}
             style={growFrom ? (growLive ? { top: 0, left: 0, width: "100%", height: "100%" } : growFrom) : undefined}
           >
             {enterMeta?.slug === "settle-in" ? (
