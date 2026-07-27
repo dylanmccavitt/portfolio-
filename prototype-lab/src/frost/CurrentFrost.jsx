@@ -588,7 +588,7 @@ function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, on
             <div
               className="frost-reveal"
               aria-hidden="true"
-              style={{ opacity: revealCharge, maxHeight: `${Math.round(revealCharge * 190)}px` }}
+              style={{ opacity: revealCharge }}
             >
               <p>{project.summary}</p>
               {project.proof.length > 0 && (
