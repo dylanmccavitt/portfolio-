@@ -72,6 +72,7 @@ const FLAGGED = [
 ].map((e, index) => ({ ...e, number: String(index + 1).padStart(2, "0") }));
 
 const ROUTES = [
+  { prefix: "flow", entries: FLOW, props: (slug) => ({ flow: slug }) },
   { prefix: "frost", entries: EFFECTS, props: (slug) => ({ effect: slug }) },
   { prefix: "popout", entries: POPOUTS, props: (slug) => ({ effect: "fracture", popout: slug }) },
   { prefix: "play", entries: PLAYS, props: (slug) => ({ effect: "fracture", play: slug }) },
@@ -95,8 +96,8 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  if (/^\/flow(\/flow)?\/?$/.test(path)) {
-    return <CurrentFrost flow navigate={navigate} />;
+  if (/^\/flow\/?$/.test(path)) {
+    return <CurrentFrost flow="flow" navigate={navigate} />;
   }
   for (const route of ROUTES) {
     const match = path.match(new RegExp(`^\\/${route.prefix}\\/([a-z-]+)\\/?$`));

@@ -342,7 +342,26 @@ export const FLOW = [
     instruction: "Cracks mark what you can click; a row breaks open into the dossier card; the card grows into the page; contact means breaking the ice.",
     component: "fracture + affordance + break-open + dossier + grow + break-ice",
   },
+  {
+    slug: "mist-flow",
+    number: "02",
+    name: "Mist flow",
+    instruction: "No glass at all — the site rests under fog. Wind parts the mist over where you're headed, cards clear to their facts on hover, a gust opens the project, and contact still means breaking the ice.",
+    component: "Clouds surface + wind nav + mist cards + Frost seal — no Shatter",
+  },
 ];
+
+/** The mist-reveal weather: dense enough that the fog itself is a presence
+    on the page, not a rumor — the reveal reads as wind doing real work. */
+const MIST_REVEAL_OVERRIDES = {
+  cover: 0.38,
+  opacity: 0.8,
+  density: 2.6,
+  shading: 0.09,
+  wind: 1,
+  windRadius: 320,
+  speed: 0.3,
+};
 
 function EffectShell({ slug, overrides, children }) {
   if (slug === "freeze") {
@@ -865,6 +884,8 @@ function ScratchStrip({ project }) {
 function tearToward(section) {
   const host = document.querySelector(".frost-effect");
   if (!host) return;
+  // Shatter listens on the wrapper; Clouds on the content div inside it.
+  const content = host.querySelector(":scope > div");
   const head = document.querySelector(".frost-site-head");
   const startY = head ? head.getBoundingClientRect().bottom + 10 : 70;
   const startX = window.innerWidth * 0.5;
@@ -876,7 +897,9 @@ function tearToward(section) {
     const targetY = Math.min(Math.max(rect.top + 60, 90), window.innerHeight - 80);
     const x = startX + Math.sin(t * Math.PI * 3.2) * 70 * (1 - t * 0.4);
     const y = startY + (targetY - startY) * t;
-    host.dispatchEvent(new PointerEvent("pointermove", { clientX: x, clientY: y }));
+    const move = new PointerEvent("pointermove", { clientX: x, clientY: y });
+    host.dispatchEvent(move);
+    content?.dispatchEvent(move);
     if (t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -1211,7 +1234,8 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const fxMeta = fx ? FX.find((entry) => entry.slug === fx) ?? FX[0] : null;
   const cardMeta = card ? CARDS.find((entry) => entry.slug === card) ?? CARDS[0] : null;
   const enterMeta = enter ? ENTERS.find((entry) => entry.slug === enter) ?? ENTERS[0] : null;
-  const flowMeta = flow ? FLOW[0] : null;
+  const flowMeta = flow ? FLOW.find((entry) => entry.slug === flow) ?? FLOW[0] : null;
+  const mistFlow = flowMeta?.slug === "mist-flow";
   const meta = popoutMeta ?? playMeta ?? fxMeta ?? cardMeta ?? enterMeta ?? flowMeta
     ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
@@ -1260,7 +1284,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   // never resets on hover changes, so moving row to row hands the opening
   // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
-    if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug)) return;
+    if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug) && !mistFlow) return;
     let raf = 0;
     let charge = 0;
     let sent = -1;
@@ -1277,13 +1301,13 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [popoutMeta?.slug]);
+  }, [popoutMeta?.slug, mistFlow]);
 
   // Mist reveal: while a card is hovered, sweep synthetic wind across it so
   // the fog parts over the whole card, not just around the cursor. Clouds
   // listens on its content div, so dispatch there (~30Hz is plenty).
   useEffect(() => {
-    if (popoutMeta?.slug !== "mist-cards") return;
+    if (popoutMeta?.slug !== "mist-cards" && !mistFlow) return;
     let raf = 0;
     let lastSent = 0;
     const loop = (now) => {
@@ -1305,7 +1329,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [popoutMeta?.slug]);
+  }, [popoutMeta?.slug, mistFlow]);
 
   // Enter routes: the card's "Open project" action transitions into the
   // in-lab project page per variant.
@@ -1326,9 +1350,10 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   };
 
   // Affordance play: fracture strength follows whether the pointer is over
-  // something clickable inside the page.
+  // something clickable inside the page. (The mist flow has no fracture to
+  // gate, so it opts out.)
   useEffect(() => {
-    if (playMeta?.slug !== "affordance" && !flowMeta) return;
+    if (playMeta?.slug !== "affordance" && flowMeta?.slug !== "flow") return;
     const onOver = (event) => {
       setOverInteractive(Boolean(event.target?.closest?.(".frost-page a, .frost-page button")));
     };
@@ -1399,7 +1424,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       setExpandedId((prev) => (prev === project.id ? null : project.id));
       return;
     }
-    if ((popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug)) && event) {
+    if ((popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug) || mistFlow) && event) {
       burstFracture(event.clientX, event.clientY);
       const rect = event.currentTarget.getBoundingClientRect();
       setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -1427,11 +1452,13 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       : popoutMeta.slug === "mist-cards"
         ? "mist"
         : "fracture"
-    : playMeta || cardMeta || enterMeta || flowMeta
-      ? "fracture"
-      : fxMeta
-        ? fxMeta.surface
-        : meta.slug;
+    : mistFlow
+      ? "mist"
+      : playMeta || cardMeta || enterMeta || flowMeta
+        ? "fracture"
+        : fxMeta
+          ? fxMeta.surface
+          : meta.slug;
 
   const fractureOverrides = popoutMeta?.slug === "cards"
     ? {
@@ -1446,8 +1473,8 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         shards: 0.9,
         followSpeed: 6,
       }
-    : popoutMeta?.slug === "mist-cards"
-      ? { cover: 0.3, opacity: 0.7, density: 2.2, wind: 1, windRadius: 320, speed: 0.35 }
+    : popoutMeta?.slug === "mist-cards" || mistFlow
+      ? MIST_REVEAL_OVERRIDES
       : popoutMeta?.slug === "reveal"
     ? {
         radius: 0.13 + revealCharge * 0.2,
@@ -1510,12 +1537,12 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
               onDm={() => setDmOpen(true)}
               expandedId={popoutMeta?.slug === "expand-row" ? expandedId : null}
               contactVariant={playMeta?.slug === "break-ice" || flowMeta ? "sealed" : "plain"}
-              play={playMeta?.slug ?? fxMeta?.slug}
+              play={playMeta?.slug ?? fxMeta?.slug ?? (mistFlow ? "clearing" : undefined)}
               reveal={popoutMeta?.slug === "reveal"}
               cardVariant={
                 popoutMeta?.slug === "cards" ? "fracture"
                 : popoutMeta?.slug === "thaw-cards" ? "thaw"
-                : popoutMeta?.slug === "mist-cards" ? "mist"
+                : popoutMeta?.slug === "mist-cards" || mistFlow ? "mist"
                 : null
               }
               hoveredId={hoveredId}
