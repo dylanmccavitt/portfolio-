@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Hammer, Wrench, X } from "lucide-react";
+import { ArrowUpRight, X } from "lucide-react";
 import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-mono";
-import { Shatter } from "./Shatter.jsx";
+import { SnapshotFx } from "./SnapshotFx.jsx";
+import { createGlitch } from "./glitch.jsx";
 import DmChat from "./DmChat.jsx";
 import { SUBGREETING } from "@/lib/dm/client";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
@@ -15,26 +16,114 @@ const DESTINATIONS = [
   { id: "contact", label: "Contact" },
 ];
 
-function WorkRows({ onBella }) {
+const GLITCH_OPTIONS = { interval: 0, intensity: 1, slices: 26, shift: 34, rgbShift: 5, blocks: 0.6, noise: 0.4 };
+
+/** Reveals children once, softly, when they first scroll into view. The
+    hidden state is applied only under `@media (scripting: enabled)`, so
+    the no-JS page stays complete. */
+function FlowIn({ className, children }) {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.12 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <ol className="frost-work">
-      {PROJECTS.map((project) => (
-        <li key={project.id}>
-          <span className="frost-num">{project.number}</span>
-          <div>
-            <strong>{project.title}</strong>
-            <span>{project.line}</span>
+    <div ref={ref} className={`frost-flow-in${seen ? " is-in" : ""}${className ? ` ${className}` : ""}`}>
+      {children}
+    </div>
+  );
+}
+
+/** About condenses in: the prose blurs to sharp, staggered, the first
+    time the section scrolls into view. Pure CSS transition. */
+function CondenseAbout() {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.35 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className={`frost-about-condense${seen ? " is-in" : ""}`}>
+      <p>Software Engineer currently focused on Agentic AI.</p>
+    </div>
+  );
+}
+
+/** Glitch-through card: the teaser rides a snapshot-fed constant-glitch
+    canvas held invisible; hover flashes the corrupted frame while the
+    facts underneath resolve. All reveal motion is CSS on :hover — the
+    engine just keeps the corrupted frame ready. The card is a real
+    anchor to its project page, so the no-JS/`?effect=off` path is a
+    plain link. */
+function GlitchCard({ project, fx }) {
+  const teaser = (
+    <div className="frost-glitch-teaser">
+      <span className="frost-num">{project.number}</span>
+      <p className="frost-kicker">{project.eyebrow}</p>
+      <strong>{project.title}</strong>
+    </div>
+  );
+
+  return (
+    <li className="frost-glitch-cell">
+      <a
+        className="frost-glitch-open"
+        href={`/projects/${project.id}`}
+        aria-label={`Open ${project.title}`}
+      />
+      <div className="frost-glitch-facts" aria-hidden="true">
+        <p>{project.summary}</p>
+        {project.proof.length > 0 && (
+          <div className="frost-proof">
+            {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
           </div>
-          {project.id === "bellas-beads" ? (
-            <button onClick={onBella}>
-              Full focus <ArrowUpRight size={14} />
-            </button>
-          ) : (
-            <small>{project.eyebrow}</small>
-          )}
-        </li>
-      ))}
-    </ol>
+        )}
+        <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+      </div>
+      <div className="frost-glitch-top" aria-hidden="true">
+        {fx ? (
+          <SnapshotFx create={createGlitch} options={GLITCH_OPTIONS} className="frost-glitch-snap">
+            {teaser}
+          </SnapshotFx>
+        ) : (
+          <div className="frost-glitch-snap">{teaser}</div>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -56,27 +145,13 @@ function ContactBlock() {
   return (
     <div className="frost-contact">
       <a href={`mailto:${PROFILE.email}`}>
-        {PROFILE.email} <ArrowUpRight size={24} strokeWidth={1.6} />
+        {PROFILE.email} <ArrowUpRight size={16} strokeWidth={1.6} />
       </a>
-      <p>{PROFILE.status} · replies within a day.</p>
     </div>
   );
 }
 
-function AboutBlock() {
-  return (
-    <div className="frost-about">
-      <p>{PROFILE.summary}</p>
-      <p>
-        I build backend systems, product software, and practical AI tools. I
-        care about visible state, inspectable decisions, and products that make
-        complicated work feel ordinary.
-      </p>
-    </div>
-  );
-}
-
-function SiteLayout({ shatterRef, onBella, onDm }) {
+function SiteLayout({ fx, onDm }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -103,108 +178,65 @@ function SiteLayout({ shatterRef, onBella, onDm }) {
 
   return (
     <div className="frost-site">
-      <header className="frost-site-head">
-        <button className="frost-site-brand" onClick={() => go("about")}>
-          Dylan McCavitt
-        </button>
-        <nav aria-label="Sections">
-          {DESTINATIONS.map((destination) => (
-            <button
-              key={destination.id}
-              className={destination.id === current ? "is-active" : ""}
-              onClick={() => go(destination.id)}
-            >
-              {destination.label}
-            </button>
-          ))}
-        </nav>
-        <div className="frost-site-actions">
+      <div className="frost-boot-fade">
+        <header className="frost-site-head">
           <button
-            className="frost-site-icon"
-            title="Shatter the page"
-            aria-label="Shatter the page"
-            onClick={() => shatterRef.current?.crack?.()}
+            className="frost-site-brand"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           >
-            <Hammer size={14} />
+            Dylan McCavitt
           </button>
-          <button
-            className="frost-site-icon"
-            title="Repair the page"
-            aria-label="Repair the page"
-            onClick={() => shatterRef.current?.repair?.()}
-          >
-            <Wrench size={14} />
-          </button>
-          <button className="frost-dm-button" onClick={onDm}>Ask DM</button>
-        </div>
-      </header>
+          <nav aria-label="Sections">
+            {DESTINATIONS.map((destination) => (
+              <button
+                key={destination.id}
+                className={destination.id === current ? "is-active" : ""}
+                onClick={() => go(destination.id)}
+              >
+                {destination.label}
+              </button>
+            ))}
+          </nav>
+          <div className="frost-site-actions">
+            <button className="frost-dm-button" onClick={onDm}>Ask DM</button>
+          </div>
+        </header>
+      </div>
 
-      <section className="frost-site-section frost-site-hero" id="about">
-        <p className="frost-kicker">Software engineer · New York City · {PROFILE.status.toLowerCase()}</p>
-        <AboutBlock />
+      <h1 className="frost-sr-only">{PROFILE.name} — {PROFILE.role}</h1>
+
+      <section className="frost-site-section" id="about">
+        <h2>About</h2>
+        <p className="frost-kicker">The short version</p>
+        <CondenseAbout />
       </section>
 
       <section className="frost-site-section" id="work">
-        <h2>Work</h2>
-        <p className="frost-kicker">Four projects · shipped and building</p>
-        <WorkRows onBella={onBella} />
+        <FlowIn>
+          <h2>Work</h2>
+          <p className="frost-kicker">{PROJECTS.length} projects · shipped and building</p>
+          <ol className="frost-cards">
+            {PROJECTS.map((project) => (
+              <GlitchCard key={project.id} project={project} fx={fx} />
+            ))}
+          </ol>
+        </FlowIn>
       </section>
 
       <section className="frost-site-section" id="journey">
-        <h2>Journey</h2>
-        <p className="frost-kicker">2019 — now</p>
-        <JourneyRows />
+        <FlowIn>
+          <h2>Journey</h2>
+          <p className="frost-kicker">2019 — now</p>
+          <JourneyRows />
+        </FlowIn>
       </section>
 
       <section className="frost-site-section" id="contact">
-        <h2>Contact</h2>
-        <p className="frost-kicker">Say hello</p>
-        <ContactBlock />
+        <FlowIn>
+          <h2>Contact</h2>
+          <ContactBlock />
+        </FlowIn>
       </section>
-    </div>
-  );
-}
-
-function BellaFocus({ onClose }) {
-  const bella = PROJECTS[0];
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return (
-    <div className="frost-backdrop" onMouseDown={onClose}>
-      <article className="frost-modal" onMouseDown={(event) => event.stopPropagation()}>
-        <button className="frost-close" onClick={onClose} aria-label="Close Bella's Beads focus">
-          <X size={19} />
-        </button>
-        <p className="frost-kicker">Shipped client work / 2025</p>
-        <h2>Bella&rsquo;s Beads</h2>
-        <p>{bella.summary}</p>
-        <div className="frost-proof">
-          {bella.proof.map((proof) => <span key={proof}>{proof}</span>)}
-        </div>
-        <div className="frost-gallery">
-          {bella.images.map((src, index) => (
-            <figure key={src}>
-              <img
-                src={src}
-                alt={[
-                  "Bella's Beads storefront landing page",
-                  "Bella's Beads product page",
-                  "Bella's Beads Stripe checkout",
-                  "Bella's Beads administration dashboard",
-                ][index]}
-              />
-              <figcaption>{["Storefront", "Product", "Checkout", "Operations"][index]}</figcaption>
-            </figure>
-          ))}
-        </div>
-      </article>
     </div>
   );
 }
@@ -243,62 +275,24 @@ function DmPanel({ onClose }) {
 }
 
 export default function FrostSite() {
-  const [bellaOpen, setBellaOpen] = useState(false);
   const [dmOpen, setDmOpen] = useState(false);
-  const shatterRef = useRef(null);
 
   const effectMode = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("effect")
     : null;
 
-  const Wrapper = effectMode === "off" ? "div" : Shatter;
-  const wrapperProps = effectMode === "off"
-    ? { className: "frost-effect" }
-    : {
-        className: "frost-effect",
-        controlRef: shatterRef,
-        snapshot: true,
-        forceSnapshot: effectMode === "snapshot",
-        invert: true,
-        persist: true,
-        regrow: 0,
-        radius: 0.3,
-        softness: 0.75,
-        tileSize: 44,
-        shards: 0.9,
-        corner: 4,
-        lift: 10,
-        tilt: 0.8,
-        scatter: 3,
-        perspective: 1700,
-        gapColor: [0.78, 0.87, 0.93],
-        shadow: 0.2,
-        shading: 0.34,
-        refraction: 0.9,
-        dispersion: 0.12,
-        floatSpeed: 0.25,
-        strength: 0.9,
-        baseStrength: 0.5,
-        followSpeed: 4.5,
-      };
-
   return (
     <main className="frost" id="main">
-      <Wrapper {...wrapperProps}>
+      <div className="frost-effect">
         <div className="frost-page">
-          <SiteLayout
-            shatterRef={shatterRef}
-            onBella={() => setBellaOpen(true)}
-            onDm={() => setDmOpen(true)}
-          />
+          <SiteLayout fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
           <footer className="frost-footer">
             <span>&copy; 2026 Dylan McCavitt</span>
-            <span>Move the cursor: the glaze is crazed but readable; where you polish, it clears for good.</span>
+            <span>Hover a project to see what shipped.</span>
           </footer>
         </div>
-      </Wrapper>
+      </div>
 
-      {bellaOpen && <BellaFocus onClose={() => setBellaOpen(false)} />}
       {dmOpen && <DmPanel onClose={() => setDmOpen(false)} />}
     </main>
   );

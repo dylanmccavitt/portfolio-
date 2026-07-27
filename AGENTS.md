@@ -1,6 +1,6 @@
 # Portfolio
 
-Recruiter-facing portfolio (Astro + Vercel) on the agent-first redesign preview branch. The homepage is the **Signal Frost** site — a React island (`src/components/frost/FrostSite.jsx`) with an HTML-in-canvas shatter/heal surface (`src/components/frost/Shatter.jsx`: native → snapshot → semantic renderer tiers, `?effect=off|snapshot` switch). **DM** is the public portfolio agent (`src/lib/dm/`, `/api/dm/chat`). `docs/agents/product-direction.md` is the sole authority for product names and for DM's public-source/privacy boundary — don't restate either elsewhere. **Eve** and the retired player shell must never be restored. `vercel.json` is the redirect authority for legacy routes.
+Recruiter-facing portfolio (Astro + Vercel) on the agent-first redesign preview branch. The homepage is the **Signal Frost** site — a React island (`src/components/frost/FrostSite.jsx`) with no page-level canvas: a smooth landing, then Work cards whose hover reveal flashes a snapshot-fed glitch canvas (`SnapshotFx.jsx` + `glitch.js`, `?effect=off` disables the canvases). The chromatic fringe (magenta/cyan RGB split) is the accent language. **DM** is the public portfolio agent (`src/lib/dm/`, `/api/dm/chat`). `docs/agents/product-direction.md` is the sole authority for product names and for DM's public-source/privacy boundary — don't restate either elsewhere. **Eve** and the retired player shell must never be restored. `vercel.json` is the redirect authority for legacy routes.
 
 ## Environment and checks
 
@@ -20,7 +20,7 @@ Recruiter-facing portfolio (Astro + Vercel) on the agent-first redesign preview 
 
 - `/api/dm/chat` returns 503 `missing_config` without a database URL plus `AI_GATEWAY_API_KEY` or `OPENAI_API_KEY`; the site and all tests work without them.
 - Deployed public project reads are published-DB only and fail closed. `src/data/catalog.ts` is a migration/offline/`catalog_emergency` source only — never a runtime fallback.
-- Shatter's snapshot tier rasterizes via SVG foreignObject: WebKit requires retina scaling through an inner `transform: scale(n)`, never SVG viewBox scaling.
+- `SnapshotFx` rasterizes via SVG foreignObject: WebKit requires retina scaling through an inner `transform: scale(n)`, never SVG viewBox scaling. Text-only content — external `<img>` elements don't survive foreignObject.
 
 ## Conventions
 
