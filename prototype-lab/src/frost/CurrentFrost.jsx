@@ -558,7 +558,7 @@ function ProjectDoc({ project, onBack }) {
   );
 }
 
-function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, onHover }) {
+function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, onHover, revealCharge = 0 }) {
   return (
     <ol className="frost-work">
       {projects.map((project, index) => (
@@ -585,7 +585,11 @@ function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, on
           </a>
           {scratch && project.proof.length > 0 && <ScratchStrip project={project} />}
           {reveal && hoveredId === project.id && (
-            <div className="frost-reveal" aria-hidden="true">
+            <div
+              className="frost-reveal"
+              aria-hidden="true"
+              style={{ opacity: revealCharge, maxHeight: `${Math.round(revealCharge * 190)}px` }}
+            >
               <p>{project.summary}</p>
               {project.proof.length > 0 && (
                 <div className="frost-proof">
@@ -716,7 +720,7 @@ function tearToward(section) {
   requestAnimationFrame(step);
 }
 
-function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, hoveredId, onHover }) {
+function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, hoveredId, onHover, revealCharge }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -788,6 +792,7 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
           reveal={reveal}
           hoveredId={hoveredId}
           onHover={onHover}
+          revealCharge={revealCharge}
         />
       </section>
 
@@ -1040,6 +1045,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const [expandedId, setExpandedId] = useState(null);
   const [burstOrigin, setBurstOrigin] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
+  const [revealCharge, setRevealCharge] = useState(0);
   const [dmOpen, setDmOpen] = useState(false);
   const [overInteractive, setOverInteractive] = useState(false);
   const [pressCharge, setPressCharge] = useState(0);
@@ -1068,6 +1074,26 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     if (popoutMeta.slug === "expand-row") setExpandedId(workList[0].id);
     else if (popoutMeta.slug !== "break-open" && popoutMeta.slug !== "reveal") setFocusedProject(workList[0]);
   }, [popoutMeta?.slug, cardMeta?.slug, enterMeta?.slug, workList]);
+
+  // Fracture reveal: hovering charges the opening slowly (~700ms) so the
+  // crack widens and the facts underneath surface together, cleanly.
+  useEffect(() => {
+    if (popoutMeta?.slug !== "reveal") return;
+    let raf = 0;
+    let charge = 0;
+    let last = performance.now();
+    const loop = (now) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      const target = hoveredId ? 1 : 0;
+      charge += (target - charge) * Math.min(dt * (hoveredId ? 3.2 : 4.5), 1);
+      if (Math.abs(target - charge) < 0.01) charge = target;
+      setRevealCharge(Math.round(charge * 40) / 40);
+      if (charge !== target) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [popoutMeta?.slug, hoveredId]);
 
   // Enter routes: the card's "Open project" action transitions into the
   // in-lab project page per variant.
@@ -1194,9 +1220,15 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         : meta.slug;
 
   const fractureOverrides = popoutMeta?.slug === "reveal"
-    ? hoveredId
-      ? { radius: 0.32, lift: 26, scatter: 8, tilt: 1.5, strength: 0.96, shards: 0.95, followSpeed: 6 }
-      : { radius: 0.14, strength: 0.55 }
+    ? {
+        radius: 0.13 + revealCharge * 0.2,
+        lift: 10 + revealCharge * 16,
+        scatter: 3 + revealCharge * 5,
+        tilt: 0.9 + revealCharge * 0.6,
+        strength: 0.5 + revealCharge * 0.46,
+        shards: 0.85 + revealCharge * 0.1,
+        followSpeed: 5,
+      }
     : playMeta?.slug === "affordance" || flowMeta
     ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
     : playMeta?.slug === "press"
@@ -1253,6 +1285,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
               reveal={popoutMeta?.slug === "reveal"}
               hoveredId={hoveredId}
               onHover={setHoveredId}
+              revealCharge={revealCharge}
             />
             <footer className="frost-footer">
               <span>&copy; 2026 Dylan McCavitt</span>
