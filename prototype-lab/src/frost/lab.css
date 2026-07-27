@@ -1124,20 +1124,15 @@ body {
   text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
 }
 
-/* Title block voices (Dylan, lock-in round 20): the eyebrow carries the
-   title's ink; the project title stays in the site's own heading voice —
-   the same big Geist ink as the homepage name. */
-.look-title .frost-kicker {
-  color: var(--frost-ink);
-  font-weight: 620;
-  text-shadow: none;
-}
-
+/* Title block (Dylan, lock-in final): the project title is the site's
+   bold heading voice CARRYING the chromatic fringe — the glitch accent
+   at full size. The eyebrow stays a plain muted kicker. */
 .look-title h1 {
   margin: 8px 0 12px;
   font-size: clamp(34px, 5vw, 56px);
   letter-spacing: -0.03em;
   line-height: 1.05;
+  text-shadow: -2px 0 rgba(255, 42, 109, 0.45), 2px 0 rgba(0, 174, 255, 0.45);
 }
 
 .look-title-line {

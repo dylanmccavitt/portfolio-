@@ -72,7 +72,7 @@ function Screens({ shots, className }) {
 function TitleBlock({ project, center }) {
   return (
     <div className={`look-title${center ? " look-title--center" : ""}`}>
-      <p className="frost-kicker look-fringe">{project.eyebrow}</p>
+      <p className="frost-kicker">{project.eyebrow}</p>
       <h1>{project.title}</h1>
       <p className="look-title-line">{project.line}</p>
     </div>
