@@ -126,8 +126,8 @@ export const POPOUTS = [
     slug: "mist-cards",
     number: "09",
     name: "Mist reveal",
-    instruction: "Each card rests under its own patch of fog — the page stays glass. Hovering wipes the mist aside and the facts condense out; click enters the project.",
-    component: "Card grid + Clouds (canvasui) per card",
+    instruction: "Each card rests under its own patch of fog — the page itself is bare so the mist is the only weather. Hovering lifts the fog and the facts condense out; click enters the project.",
+    component: "Card grid + Clouds (canvasui) per card, no page effect",
   },
 ];
 
@@ -372,6 +372,12 @@ const MIST_REVEAL_OVERRIDES = {
 };
 
 function EffectShell({ slug, overrides, children }) {
+  // Bare page: no canvas at all — used when a variant should be judged on
+  // its own local effect without the page surface competing.
+  if (slug === "none") {
+    return <div className="frost-effect frost-effect--none">{children}</div>;
+  }
+
   if (slug === "freeze") {
     return (
       <Frost
@@ -1488,7 +1494,9 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const pageSlug = popoutMeta
     ? popoutMeta.slug === "freeze-world" && focusedProject
       ? "freeze"
-      : "fracture"
+      : popoutMeta.slug === "mist-cards"
+        ? "none"
+        : "fracture"
     : mistFlow
       ? "mist"
       : settleFlow
