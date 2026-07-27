@@ -766,10 +766,94 @@ body {
   opacity: 0.1;
 }
 
+/* Crossfade the card surface out as the under-layer charges in — scoped
+   under .lab-route so the snapshot clone keeps the full surface and the
+   shard layer still lifts it. Fixes the mid-fade double-exposure muddle. */
+.frost-cards li > a {
+  transition: opacity 0.4s ease;
+}
+
+.lab-route .frost-cards li.is-hot > a {
+  opacity: 0;
+  transition: opacity 0.5s ease 0.08s;
+}
+
+/* Locked hero: just the name and the role — no paragraph. */
+.frost-hero-name {
+  margin: 0 0 10px;
+  font-size: clamp(38px, 6vw, 64px);
+  font-weight: 660;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+/* Mist cells share the thaw stack (facts under a weather pane, teaser
+   printed on top) — the pane is fog instead of ice. All reveal motion is
+   compositor-only CSS (opacity/transform), zero React renders on hover.
+   The cell keeps the standard frost card chrome (border + card surface)
+   so it reads as the same material as the rest of the site, with a fog
+   wash inside it rather than a foreign weather widget. */
+.frost-cards--mist .frost-thaw-facts {
+  background: var(--frost-card);
+  box-shadow: inset 0 2px 14px rgba(38, 52, 61, 0.1);
+  border: none;
+}
+
+/* On hover the whole fog pane lifts (not just the cursor's rub), so the
+   condensed facts are never read through leftover cloud patches. Only the
+   output canvas fades — the facts render outside it in the fallback tier. */
+.frost-cards--mist .popout-thaw-effect canvas {
+  transition: opacity 0.9s ease;
+}
+
+.frost-cards--mist > li:hover .popout-thaw-effect canvas {
+  opacity: 0.14;
+}
+
+/* The teaser sits centered in the card, title as the anchor point. */
+.frost-cards--mist .frost-thaw-teaser {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 5px;
+}
+
+/* About: no card at all — bare prose under a pane of ice that melts under
+   the pointer, with the whole pane thinning on hover. The body carries the
+   page surface color (opaque) because Frost's native tier samples
+   transparency as black; against the page it reads as no box. */
+.frost-about-reveal {
+  position: relative;
+  max-width: 720px;
+}
+
+.frost-about-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 110px;
+  padding: 6px 0;
+  background: var(--frost-surface);
+}
+
+.frost-about-body p {
+  margin: 0;
+  max-width: 640px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.frost-about-reveal .popout-thaw-effect canvas {
+  transition: opacity 1s ease;
+}
+
+.frost-about-reveal:hover .popout-thaw-effect canvas {
+  opacity: 0.1;
+}
+
 /* Clean ice edges: feather the pane on all four sides so the ice
    dissolves into the page instead of ending at a hard rectangle. */
-.frost-about-reveal .popout-thaw-effect canvas,
-.look-ice-strip .popout-thaw-effect canvas {
+.frost-about-reveal .popout-thaw-effect canvas {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
     linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
   -webkit-mask-composite: source-in;
@@ -833,54 +917,13 @@ body {
    invisible rectangle. Every inline effect canvas is either inside real
    visible chrome (the mist cards' borders) or feathered on all four edges
    so it dissolves into the page. */
-.frost-about-ink canvas,
-.look-fog-head .popout-thaw-effect canvas,
-.look-rain-pane .popout-thaw-effect canvas,
-.look-ink-pane canvas {
+.frost-about-ink canvas {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
     linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
   -webkit-mask-composite: source-in;
   mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
     linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
   mask-composite: intersect;
-}
-
-/* Snapshot-fed blocks: the output canvas repaints the block's own pixels,
-   so the effect boundary IS the content block — no floating pane. The
-   content needs an opaque page-surface background for a clean cover. */
-.look-glitch-body,
-.look-dither-copy {
-  background: var(--frost-surface);
-}
-
-.look-glitch-head {
-  margin-bottom: 8px;
-}
-
-.look-glitch-body {
-  padding: 16px 0 22px;
-}
-
-.look-dither-body {
-  margin-bottom: 34px;
-}
-
-.look-dither-copy {
-  padding: 4px 0 10px;
-  text-align: left;
-}
-
-.look-dither-copy h2 {
-  margin: 0 0 12px;
-  font-size: 15px;
-}
-
-.look-dither-copy h2 + p {
-  max-width: 620px;
-  margin: 0 0 26px;
-  font-size: 14px;
-  line-height: 1.65;
-  color: var(--frost-muted);
 }
 
 /* Glitch-through cards: teaser on top (with its constant-glitch canvas
@@ -992,10 +1035,9 @@ body {
   }
 }
 
-/* Sequenced glitch-in (the boot): each block's content is hidden until
-   its turn — via ancestor-scoped rules the snapshot clone doesn't carry,
-   so the rasterizer still sees it. At its delay the corrupted frame
-   flashes, then the real content fades in just behind it. */
+/* Sequenced glitch-in (kept for the /aboutx/glitch lane): content hidden
+   until its turn via ancestor-scoped rules the snapshot clone doesn't
+   carry, so the rasterizer still sees it. */
 .frost-glitch-in .frost-glitch-in-body {
   opacity: 0;
 }
@@ -1023,20 +1065,45 @@ body {
   }
 }
 
-/* The boot wrapper inherits the header's stickiness (a sticky child can't
-   stick inside a wrapper its own height). */
-.frost-boot-head {
+.frost-about-glitchin {
+  max-width: 720px;
+}
+
+/* Smooth landing: the header fades in and the name rises blur-to-sharp —
+   no glitch on load; the bursts belong to the card reveals only. The
+   fade wrapper takes over the header's stickiness. */
+.frost-boot-fade {
   position: sticky;
   top: 0;
   z-index: 10;
+  animation: frost-fade-in 0.5s ease both;
+  animation-delay: 0.08s;
 }
 
-.frost-boot-head .frost-site-head {
+.frost-boot-fade .frost-site-head {
   position: static;
 }
 
-.frost-about-glitchin {
-  max-width: 720px;
+.lab-route .frost-boot-fade {
+  top: 44px;
+}
+
+.frost-hero-in {
+  animation: frost-rise-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.18s;
+}
+
+@keyframes frost-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
 }
 
 /* Below the boot, sections flow in softly as they arrive. */
@@ -1051,7 +1118,106 @@ body {
   transform: none;
 }
 
-/* ---- Project page looks (layouts × effects) ---- */
+/* ---- Project page looks (locked language: paper, flow, fringe) ---- */
+
+.look-fringe {
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+}
+
+.look-title h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(34px, 5vw, 56px);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.look-title-line {
+  max-width: 560px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.look-title--center {
+  text-align: center;
+}
+
+.look-title--center .look-title-line {
+  margin: 0 auto;
+}
+
+.look-block {
+  margin-top: 44px;
+}
+
+.look-block h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.look-block--center {
+  max-width: 640px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.look-copy {
+  max-width: 620px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--frost-muted);
+}
+
+.look-block--center .look-copy {
+  margin: 0 auto 22px;
+}
+
+/* Evidence sits on the same lifted paper as a revealed card. */
+.look-paper-pane {
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 6px rgba(38, 52, 61, 0.08);
+  border: 1px solid var(--frost-line);
+}
+
+.look-chips-center {
+  justify-content: center;
+}
+
+.look-paper {
+  max-width: 760px;
+}
+
+/* Filmstrip: full-width scrub strip, words beneath. */
+.look-film-strip {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  margin-bottom: 40px;
+}
+
+.look-film-strip figure {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.look-film-strip img {
+  height: 320px;
+  width: auto;
+  border: 1px solid var(--frost-line);
+}
+
+.look-film-strip figcaption {
+  margin-top: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+}
 
 .look-shell {
   max-width: 1060px;
@@ -1063,70 +1229,7 @@ body {
   margin-bottom: 34px;
 }
 
-.look-weather {
-  position: relative;
-}
-
-/* Fog lifts: the title block under mist, opaque body for native sampling,
-   whole pane thins on hover. */
-.look-fog-head {
-  margin-bottom: 40px;
-}
-
-.look-fog-title {
-  padding: 48px 40px;
-  background: var(--frost-surface);
-}
-
-.look-fog-title h1 {
-  margin: 8px 0 12px;
-  font-size: clamp(34px, 5vw, 54px);
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-}
-
-.look-fog-title p:last-child {
-  max-width: 560px;
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-.look-fog-head .popout-thaw-effect canvas {
-  transition: opacity 0.9s ease;
-}
-
-.look-fog-head:hover .popout-thaw-effect canvas {
-  opacity: 0.12;
-}
-
-.look-cols {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  gap: 44px;
-}
-
-.look-cols h2 {
-  margin: 0 0 12px;
-  font-size: 15px;
-  letter-spacing: -0.01em;
-}
-
-.look-cols-story p {
-  max-width: 620px;
-  margin: 0 0 22px;
-  font-size: 14px;
-  line-height: 1.65;
-  color: var(--frost-muted);
-}
-
-.look-cols-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* Rain: sticky facts rail, gallery under droplets. */
+/* Rail layout (shared by the Rail look). */
 .look-rail {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
@@ -1168,71 +1271,7 @@ body {
   color: var(--frost-muted);
 }
 
-.look-rain-body {
-  padding: 14px;
-  background: var(--frost-surface);
-}
-
-.look-rain-pane .popout-thaw-effect canvas {
-  transition: opacity 0.9s ease;
-}
-
-/* Iced evidence: centered editorial, sealed chips. */
-.look-ice {
-  text-align: center;
-}
-
-.look-ice-head h1 {
-  margin: 10px 0 14px;
-  font-size: clamp(44px, 7vw, 76px);
-  letter-spacing: -0.035em;
-  line-height: 1;
-}
-
-.look-ice-head p:last-child {
-  max-width: 540px;
-  margin: 0 auto;
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-.look-ice-summary {
-  max-width: 620px;
-  margin: 26px auto 0;
-  font-size: 14px;
-  line-height: 1.65;
-  color: var(--frost-muted);
-}
-
-.look-ice-h {
-  margin: 44px 0 14px;
-  font-size: 13px;
-  font-family: "IBM Plex Mono", monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--frost-muted);
-}
-
-.look-ice-strip {
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.look-ice-chips {
-  padding: 22px 24px;
-  background: var(--frost-surface);
-}
-
-.look-ice-chips .frost-doc-facts {
-  justify-content: center;
-}
-
-.look-ice .frost-gallery figure {
-  text-align: left;
-}
-
 @media (max-width: 860px) {
-  .look-cols,
   .look-rail {
     grid-template-columns: 1fr;
   }

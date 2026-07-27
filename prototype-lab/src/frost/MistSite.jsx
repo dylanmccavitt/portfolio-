@@ -24,8 +24,8 @@ export const CURRENT = {
   slug: "current",
   number: "01",
   name: "Mist reveal",
-  instruction: "The locked direction: a bare page where the signal glitches — the About bursts open as you arrive, hovering a Work card corrupts through to its facts, click enters the project.",
-  component: "Glitch cards + glitch-open About (canvasui, snapshot-fed)",
+  instruction: "The locked direction: a smooth landing — the page settles in quietly — then hovering a Work card corrupts through to its facts. The chromatic fringe is the accent.",
+  component: "Smooth boot + glitch-through cards (canvasui, snapshot-fed)",
 };
 
 const DESTINATIONS = [
@@ -44,7 +44,7 @@ export const ABOUT_REVEALS = [
     slug: "condense",
     number: "01",
     name: "Condense",
-    instruction: "No canvas at all — the prose condenses in as the section scrolls into view: blur to sharp, staggered, once.",
+    instruction: "PICKED — no canvas at all: the prose condenses in as the section scrolls into view, blur to sharp, staggered, once. The smooth landing.",
     component: "CSS scroll reveal",
   },
   {
@@ -72,7 +72,7 @@ export const ABOUT_REVEALS = [
     slug: "glitch",
     number: "05",
     name: "Glitch open",
-    instruction: "PICKED — the prose glitches open cleanly the first time you arrive: one corruption burst, then crisp type.",
+    instruction: "Tried and set aside (too loud on load): the prose glitches open the first time you arrive.",
     component: "Glitch (canvasui), snapshot-fed, scroll-triggered",
   },
 ];
@@ -261,8 +261,8 @@ function GlitchIn({ delay = 0, className, options, children }) {
   );
 }
 
-/** Everything below the boot sequence flows in softly as it arrives. */
-function FlowIn({ className, children }) {
+/** Everything below the boot flows in softly as it arrives. */
+export function FlowIn({ className, children }) {
   const ref = useRef(null);
   const [seen, setSeen] = useState(false);
 
@@ -515,8 +515,8 @@ const ABOUT_KICKERS = {
   glitch: "The short version",
 };
 
-export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "glitch" }) {
-  const AboutBody = ABOUT_BODIES[aboutVariant] ?? GlitchAbout;
+export function MistSite({ navigate, aboutVariant = "condense", cardVariant = "glitch" }) {
+  const AboutBody = ABOUT_BODIES[aboutVariant] ?? CondenseAbout;
   const Card = cardVariant === "glitch" ? GlitchCard : MistCard;
   const [current, setCurrent] = useState("about");
   const [dmOpen, setDmOpen] = useState(false);
@@ -578,7 +578,7 @@ export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "gli
         <div className="frost-effect frost-effect--none">
           <div className="frost-page">
             <div className="frost-site">
-              <GlitchIn delay={140} className="frost-boot-head">
+              <div className="frost-boot-fade">
                 <header className="frost-site-head">
                   <button className="frost-site-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
                     Dylan McCavitt
@@ -598,13 +598,13 @@ export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "gli
                     <button className="frost-dm-button" onClick={() => setDmOpen(true)}>Ask DM</button>
                   </div>
                 </header>
-              </GlitchIn>
+              </div>
 
               <section className="frost-site-section frost-site-hero">
-                <GlitchIn delay={140}>
+                <div className="frost-hero-in">
                   <h1 className="frost-hero-name">{PROFILE.name}</h1>
                   <p className="frost-kicker">{PROFILE.role}</p>
-                </GlitchIn>
+                </div>
               </section>
 
               <section className="frost-site-section" id="about">
