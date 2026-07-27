@@ -633,6 +633,11 @@ body {
   text-transform: uppercase;
 }
 
+/* The glitch accent carries into the revealed card's way in. */
+.frost-glitch-facts .frost-card-open {
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
+}
+
 /* Settle micro-reveal: the facts land like sand settling — each block
    drops in with a stagger, chips grain-by-grain. Pure DOM, so the settle
    language survives even without the html-in-canvas flag. */

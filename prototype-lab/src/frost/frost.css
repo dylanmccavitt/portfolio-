@@ -205,11 +205,15 @@
 
 .frost-site-head nav button:hover {
   color: var(--frost-ink);
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.3), 1px 0 rgba(0, 174, 255, 0.3);
 }
 
+/* Glitch-native accent: no pill — the active item carries a subtle
+   chromatic fringe, the RGB split at rest. */
 .frost-site-head nav button.is-active {
   color: var(--frost-ink);
-  background: var(--frost-blue);
+  background: transparent;
+  text-shadow: -1.3px 0 rgba(255, 42, 109, 0.5), 1.3px 0 rgba(0, 174, 255, 0.5);
 }
 
 .frost-site-actions {

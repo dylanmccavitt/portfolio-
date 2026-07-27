@@ -292,7 +292,7 @@ function FlowIn({ className, children }) {
 /** Glitch open (About): the boot sequence's third beat. */
 function GlitchAbout() {
   return (
-    <GlitchIn delay={850} className="frost-about-glitchin">
+    <GlitchIn delay={140} className="frost-about-glitchin">
       <div className="frost-about-body">
         {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
       </div>
@@ -578,7 +578,7 @@ export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "gli
         <div className="frost-effect frost-effect--none">
           <div className="frost-page">
             <div className="frost-site">
-              <GlitchIn delay={150} className="frost-boot-head">
+              <GlitchIn delay={140} className="frost-boot-head">
                 <header className="frost-site-head">
                   <button className="frost-site-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
                     Dylan McCavitt
@@ -601,7 +601,7 @@ export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "gli
               </GlitchIn>
 
               <section className="frost-site-section frost-site-hero">
-                <GlitchIn delay={480}>
+                <GlitchIn delay={140}>
                   <h1 className="frost-hero-name">{PROFILE.name}</h1>
                   <p className="frost-kicker">{PROFILE.role}</p>
                 </GlitchIn>
