@@ -78,12 +78,7 @@ function CondenseAbout() {
 
   return (
     <div ref={ref} className={`frost-about-condense${seen ? " is-in" : ""}`}>
-      <p>{PROFILE.summary}</p>
-      <p>
-        I build backend systems, product software, and practical AI tools. I
-        care about visible state, inspectable decisions, and products that make
-        complicated work feel ordinary.
-      </p>
+      <p>Software Engineer currently focused on Agentic AI.</p>
     </div>
   );
 }
@@ -150,9 +145,8 @@ function ContactBlock() {
   return (
     <div className="frost-contact">
       <a href={`mailto:${PROFILE.email}`}>
-        {PROFILE.email} <ArrowUpRight size={24} strokeWidth={1.6} />
+        {PROFILE.email} <ArrowUpRight size={16} strokeWidth={1.6} />
       </a>
-      <p>{PROFILE.status} · replies within a day.</p>
     </div>
   );
 }
@@ -209,12 +203,7 @@ function SiteLayout({ fx, onDm }) {
         </header>
       </div>
 
-      <section className="frost-site-section frost-site-hero">
-        <div className="frost-hero-in">
-          <h1 className="frost-hero-name">{PROFILE.name}</h1>
-          <p className="frost-kicker">{PROFILE.role}</p>
-        </div>
-      </section>
+      <h1 className="frost-sr-only">{PROFILE.name} — {PROFILE.role}</h1>
 
       <section className="frost-site-section" id="about">
         <h2>About</h2>
@@ -245,7 +234,6 @@ function SiteLayout({ fx, onDm }) {
       <section className="frost-site-section" id="contact">
         <FlowIn>
           <h2>Contact</h2>
-          <p className="frost-kicker">Say hello</p>
           <ContactBlock />
         </FlowIn>
       </section>
