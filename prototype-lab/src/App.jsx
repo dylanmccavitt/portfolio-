@@ -47,7 +47,7 @@ function Gallery({ navigate }) {
         that is live — with a different canvas effect or interaction over
         it. The layout is not a variable; only the surface changes.
       </p>
-      <GallerySection title="One flow" note="everything approved, combined — start here" base="/flow" entries={FLOW} navigate={navigate} />
+      <GallerySection title="One flow" note="everything approved, combined — start here" base="/flow" entries={FLOW.filter((e) => !e.flagOnly)} navigate={navigate} />
       <GallerySection title="Homepage surface" note="selected: 01 Fracture" base="/frost" entries={EFFECTS.filter((e) => !e.flagOnly)} navigate={navigate} />
       <GallerySection title="Project popouts" note="selected: 02 Break open" base="/popout" entries={POPOUTS} navigate={navigate} />
       <GallerySection title="Popout card" note="what the card is · exploring" base="/card" entries={CARDS} navigate={navigate} />
@@ -69,6 +69,7 @@ const FLAGGED = [
   ...EFFECTS.filter((e) => e.flagOnly).map((e) => ({ ...e, slug: `frost/${e.slug}` })),
   ...ENTERS.filter((e) => e.flagOnly).map((e) => ({ ...e, slug: `enter/${e.slug}` })),
   ...FX.filter((e) => e.flagOnly).map((e) => ({ ...e, slug: `fx/${e.slug}` })),
+  ...FLOW.filter((e) => e.flagOnly).map((e) => ({ ...e, slug: `flow/${e.slug}` })),
 ].map((e, index) => ({ ...e, number: String(index + 1).padStart(2, "0") }));
 
 const ROUTES = [

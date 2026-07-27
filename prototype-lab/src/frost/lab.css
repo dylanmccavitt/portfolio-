@@ -633,6 +633,49 @@ body {
   text-transform: uppercase;
 }
 
+/* Settle micro-reveal: the facts land like sand settling — each block
+   drops in with a stagger, chips grain-by-grain. Pure DOM, so the settle
+   language survives even without the html-in-canvas flag. */
+.frost-card-under--settle > * {
+  animation: frost-settle 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.frost-card-under--settle > *:nth-child(2) {
+  animation-delay: 0.09s;
+}
+
+.frost-card-under--settle > *:nth-child(3) {
+  animation-delay: 0.18s;
+}
+
+.frost-card-under--settle .frost-proof span {
+  animation: frost-settle 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.frost-card-under--settle .frost-proof span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.frost-card-under--settle .frost-proof span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes frost-settle {
+  from {
+    opacity: 0;
+    transform: translateY(-15px) rotate(0.7deg);
+    filter: blur(2.5px);
+  }
+  65% {
+    filter: blur(0.5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
 /* Crossfade the card surface out as the under-layer charges in — scoped
    under .lab-route so the snapshot clone keeps the full surface and the
    shard layer still lifts it. Fixes the mid-fade double-exposure muddle. */

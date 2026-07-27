@@ -349,6 +349,14 @@ export const FLOW = [
     instruction: "No glass at all — the site rests under fog. Wind parts the mist over where you're headed, cards clear to their facts on hover, a gust opens the project, and contact still means breaking the ice.",
     component: "Clouds surface + wind nav + mist cards + Frost seal — no Shatter",
   },
+  {
+    slug: "settle-flow",
+    number: "03",
+    name: "Settle flow",
+    flagOnly: true,
+    instruction: "The page below the fold is loose sand that settles as you scroll into it; hovering a card settles its facts into place; opening a project, the whole page settles in around you.",
+    component: "ParticleScroll surface + settle-in entry + micro-settle reveal",
+  },
 ];
 
 /** The mist-reveal weather: dense enough that the fog itself is a presence
@@ -776,7 +784,7 @@ function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge, variant
           </a>
           {hoveredId === project.id && (
             <div
-              className="frost-card-under"
+              className={`frost-card-under${variant === "settle" ? " frost-card-under--settle" : ""}`}
               aria-hidden="true"
               style={{ opacity: revealCharge }}
             >
@@ -1236,6 +1244,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const enterMeta = enter ? ENTERS.find((entry) => entry.slug === enter) ?? ENTERS[0] : null;
   const flowMeta = flow ? FLOW.find((entry) => entry.slug === flow) ?? FLOW[0] : null;
   const mistFlow = flowMeta?.slug === "mist-flow";
+  const settleFlow = flowMeta?.slug === "settle-flow";
   const meta = popoutMeta ?? playMeta ?? fxMeta ?? cardMeta ?? enterMeta ?? flowMeta
     ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
@@ -1284,7 +1293,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   // never resets on hover changes, so moving row to row hands the opening
   // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
-    if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug) && !mistFlow) return;
+    if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug) && !mistFlow && !settleFlow) return;
     let raf = 0;
     let charge = 0;
     let sent = -1;
@@ -1301,7 +1310,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [popoutMeta?.slug, mistFlow]);
+  }, [popoutMeta?.slug, mistFlow, settleFlow]);
 
   // Mist reveal: while a card is hovered, sweep synthetic wind across it so
   // the fog parts over the whole card, not just around the cursor. Clouds
@@ -1424,7 +1433,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       setExpandedId((prev) => (prev === project.id ? null : project.id));
       return;
     }
-    if ((popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug) || mistFlow) && event) {
+    if ((popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug) || mistFlow || settleFlow) && event) {
       burstFracture(event.clientX, event.clientY);
       const rect = event.currentTarget.getBoundingClientRect();
       setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -1454,11 +1463,13 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         : "fracture"
     : mistFlow
       ? "mist"
-      : playMeta || cardMeta || enterMeta || flowMeta
-        ? "fracture"
-        : fxMeta
-          ? fxMeta.surface
-          : meta.slug;
+      : settleFlow
+        ? "particle-scroll"
+        : playMeta || cardMeta || enterMeta || flowMeta
+          ? "fracture"
+          : fxMeta
+            ? fxMeta.surface
+            : meta.slug;
 
   const fractureOverrides = popoutMeta?.slug === "cards"
     ? {
@@ -1485,7 +1496,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         shards: 0.85 + revealCharge * 0.1,
         followSpeed: 5,
       }
-    : playMeta?.slug === "affordance" || flowMeta
+    : playMeta?.slug === "affordance" || flowMeta?.slug === "flow"
     ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
     : playMeta?.slug === "press"
       ? {
@@ -1543,6 +1554,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
                 popoutMeta?.slug === "cards" ? "fracture"
                 : popoutMeta?.slug === "thaw-cards" ? "thaw"
                 : popoutMeta?.slug === "mist-cards" || mistFlow ? "mist"
+                : settleFlow ? "settle"
                 : null
               }
               hoveredId={hoveredId}
@@ -1571,7 +1583,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
             className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta || popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug) ? "grow" : "plain")}`}
             style={growFrom ? (growLive ? { top: 0, left: 0, width: "100%", height: "100%" } : growFrom) : undefined}
           >
-            {enterMeta?.slug === "settle-in" ? (
+            {enterMeta?.slug === "settle-in" || settleFlow ? (
               <ParticleScroll className="lab-doc-effect" point={0.62} band={340} spread={190} swirl={60}>
                 <ProjectDoc project={docProject} onBack={() => setDocProject(null)} />
               </ParticleScroll>
