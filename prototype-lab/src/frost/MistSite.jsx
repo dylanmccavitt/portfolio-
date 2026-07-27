@@ -31,6 +31,21 @@ const DESTINATIONS = [
   { id: "contact", label: "Contact" },
 ];
 
+/** Shared ice: tinted to the site's frost blue (the engine default leans
+    lavender — blue channel above 1), edges feathered via CSS mask. */
+export const ICE_PROPS = {
+  frost: 0.5,
+  opacity: 0.88,
+  meltRadius: 0.3,
+  meltStrength: 1,
+  refreeze: 4,
+  haze: 0.6,
+  detail: 2.4,
+  tintThin: [0.78, 0.88, 0.96],
+  tintThick: [0.9, 0.95, 0.99],
+  tintStrength: 0.42,
+};
+
 const MIST_PROPS = {
   color: [0.93, 0.95, 0.96],
   opacity: 0.72,
@@ -125,14 +140,7 @@ function FrostAbout() {
         <Frost
           className="popout-thaw-effect"
           style={{ position: "absolute", inset: 0 }}
-          frost={0.5}
-          opacity={0.9}
-          meltRadius={0.3}
-          meltStrength={1}
-          refreeze={4}
-          haze={0.65}
-          tintStrength={0.38}
-          detail={2.4}
+          {...ICE_PROPS}
         >
           {body}
         </Frost>

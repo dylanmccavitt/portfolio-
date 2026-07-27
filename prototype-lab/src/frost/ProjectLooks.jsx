@@ -4,6 +4,7 @@ import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Droplets } from "../components/canvasui/Droplets.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
 import { PROJECTS } from "./frost-data.js";
+import { ICE_PROPS } from "./MistSite.jsx";
 import "./frost.css";
 import "./lab.css";
 
@@ -208,16 +209,7 @@ function IceLook({ project }) {
       <h2 className="look-ice-h">Evidence · rub to check the receipts</h2>
       <WeatherOver
         Effect={Frost}
-        effectProps={{
-          frost: 0.55,
-          opacity: 0.9,
-          meltRadius: 0.32,
-          meltStrength: 1,
-          refreeze: 0,
-          haze: 0.6,
-          tintStrength: 0.36,
-          detail: 2.4,
-        }}
+        effectProps={{ ...ICE_PROPS, frost: 0.55, meltRadius: 0.32, refreeze: 0 }}
         className="look-ice-strip"
       >
         <div className="look-ice-chips">

@@ -761,6 +761,18 @@ body {
   opacity: 0.1;
 }
 
+/* Clean ice edges: feather the pane on all four sides so the ice
+   dissolves into the page instead of ending at a hard rectangle. */
+.frost-about-reveal .popout-thaw-effect canvas,
+.look-ice-strip .popout-thaw-effect canvas {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
+  mask-composite: intersect;
+}
+
 /* ---- Project page looks (layouts × effects) ---- */
 
 .look-shell {
