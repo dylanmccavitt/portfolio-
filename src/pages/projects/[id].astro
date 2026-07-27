@@ -31,7 +31,7 @@ const story = hasStory
 ---
 
 <Frost title={meta.title} meta={meta}>
-  <main class="frost frost-doc look-paper" id="main">
+  <main class="frost frost-doc" id="main">
     <header class="frost-doc-head">
       <a href="/">Dylan McCavitt</a>
       <nav aria-label="Primary">
@@ -42,6 +42,7 @@ const story = hasStory
       </nav>
     </header>
 
+    <div class="look-paper">
     <div class="frost-flow-in">
       <div class="frost-doc-title look-title">
         <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
@@ -112,6 +113,7 @@ const story = hasStory
       ))}
       <a class="is-quiet" href="/#work">← All work</a>
     </nav>
+    </div>
   </main>
 
   <script>
