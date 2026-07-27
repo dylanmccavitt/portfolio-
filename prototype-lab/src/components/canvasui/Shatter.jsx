@@ -864,8 +864,16 @@ export function createShatter(elements, options = {}) {
   }
   motionQuery.addEventListener("change", onMotionChange);
 
+  let lastContentWidth = content.clientWidth;
   const observer = new ResizeObserver(() => {
     syncCanvasSize();
+    // A stale-width snapshot fractures a copy of the page that no longer
+    // matches the live layout (window resized / moved between monitors),
+    // which reads as a detached extra layer. Re-rasterize on width change.
+    if (wantSnapshot && content.clientWidth !== lastContentWidth) {
+      lastContentWidth = content.clientWidth;
+      scheduleRebuild();
+    }
     start();
   });
   observer.observe(output);

@@ -38,7 +38,10 @@ body {
   backdrop-filter: blur(6px);
 }
 
-.lab-route .frost-page {
+/* Must NOT be scoped under .lab-route: the snapshot rasterizer clones the
+   effect content into a bare <main class="frost"> wrapper, so ancestor-
+   scoped rules vanish from the snapshot and the two layers misregister. */
+.frost-page {
   padding-top: 44px;
 }
 
