@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
 import { Liquid } from "../components/canvasui/Liquid.jsx";
+import { createGlitch } from "../components/canvasui/Glitch.jsx";
 import { createLetterpress } from "../components/canvasui/Letterpress.jsx";
 import { SnapshotFx } from "./SnapshotFx.jsx";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
@@ -66,6 +67,24 @@ export const ABOUT_REVEALS = [
     name: "Letterpress",
     instruction: "The prose is pressed into the page like type into damp paper; the impression deepens under the cursor.",
     component: "Letterpress (canvasui), snapshot-fed in stock Chrome",
+  },
+];
+
+/** Card reveal variants, comparable at /cardsx/<slug>. */
+export const CARD_REVEALS = [
+  {
+    slug: "mist",
+    number: "01",
+    name: "Mist",
+    instruction: "The locked reveal: each card under its own fog; hover lifts it and the facts condense in.",
+    component: "Clouds (canvasui) per card",
+  },
+  {
+    slug: "glitch",
+    number: "02",
+    name: "Glitch through",
+    instruction: "Hover corrupts the card's face in a burst — sliced, RGB-split — and what was underneath resolves: the shipped facts.",
+    component: "Glitch (canvasui) per card, snapshot-fed",
   },
 ];
 
@@ -148,6 +167,49 @@ function MistCard({ project, index, onOpen }) {
         <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
         <p className="frost-kicker">{project.eyebrow}</p>
         <strong>{project.title}</strong>
+      </div>
+    </li>
+  );
+}
+
+/** Glitch-through card: the teaser is a signal — hovering corrupts it in
+    a burst (constant-glitch canvas flashed in by CSS, snapshot-fed so it
+    works in stock Chrome) while the facts underneath resolve. All the
+    reveal motion is CSS on :hover; the engine just keeps the corrupted
+    frame ready. */
+function GlitchCard({ project, index, onOpen }) {
+  return (
+    <li className="frost-glitch-cell">
+      <a
+        className="frost-thaw-open"
+        href={project.href}
+        aria-label={`Open ${project.title}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onOpen(project, event);
+        }}
+      />
+      <div className="frost-glitch-facts" aria-hidden="true">
+        <p>{project.summary}</p>
+        {project.proof.length > 0 && (
+          <div className="frost-proof">
+            {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+          </div>
+        )}
+        <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+      </div>
+      <div className="frost-glitch-top" aria-hidden="true">
+        <SnapshotFx
+          create={createGlitch}
+          options={{ interval: 0, intensity: 1, slices: 26, shift: 34, rgbShift: 5, blocks: 0.6, noise: 0.4 }}
+          className="frost-glitch-snap"
+        >
+          <div className="frost-glitch-teaser">
+            <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
+            <p className="frost-kicker">{project.eyebrow}</p>
+            <strong>{project.title}</strong>
+          </div>
+        </SnapshotFx>
       </div>
     </li>
   );
@@ -367,8 +429,9 @@ const ABOUT_KICKERS = {
   press: "The short version · pressed into the page",
 };
 
-export function MistSite({ navigate, aboutVariant = "condense" }) {
+export function MistSite({ navigate, aboutVariant = "condense", cardVariant = "mist" }) {
   const AboutBody = ABOUT_BODIES[aboutVariant] ?? CondenseAbout;
+  const Card = cardVariant === "glitch" ? GlitchCard : MistCard;
   const [current, setCurrent] = useState("about");
   const [dmOpen, setDmOpen] = useState(false);
   const [docProject, setDocProject] = useState(null);
@@ -463,9 +526,9 @@ export function MistSite({ navigate, aboutVariant = "condense" }) {
               <section className="frost-site-section" id="work">
                 <h2>Work</h2>
                 <p className="frost-kicker">{workList.length} projects · shipped and building</p>
-                <ol className="frost-cards frost-cards--mist">
+                <ol className={`frost-cards frost-cards--${cardVariant}`}>
                   {workList.map((project, index) => (
-                    <MistCard key={project.id} project={project} index={index} onOpen={openProject} />
+                    <Card key={project.id} project={project} index={index} onOpen={openProject} />
                   ))}
                 </ol>
               </section>

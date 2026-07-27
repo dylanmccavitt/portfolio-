@@ -878,6 +878,111 @@ body {
   color: var(--frost-muted);
 }
 
+/* Glitch-through cards: teaser on top (with its constant-glitch canvas
+   held at opacity 0), facts underneath. Hover: the corrupted frame
+   flashes over the swap, then dies out as the facts resolve. The card's
+   real border is the chrome — no invisible rectangle. */
+.frost-glitch-cell {
+  overflow: hidden;
+}
+
+.frost-glitch-facts {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 16px 20px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s ease 0.16s, transform 0.4s ease 0.16s;
+}
+
+.frost-glitch-cell:hover .frost-glitch-facts {
+  opacity: 1;
+  transform: none;
+}
+
+.frost-glitch-facts p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.frost-glitch-facts .frost-proof {
+  margin: 0;
+}
+
+/* In flow so the teaser's min-height sizes the cell (facts are absolute
+   beneath it); raised above the facts layer. */
+.frost-glitch-top {
+  position: relative;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.frost-glitch-snap,
+.frost-glitch-snap > div {
+  height: 100%;
+}
+
+.frost-glitch-teaser {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 5px;
+  height: 100%;
+  min-height: 168px;
+  padding: 18px 20px;
+  background: var(--frost-surface);
+  transition: opacity 0.14s ease 0.1s;
+}
+
+.frost-glitch-teaser .frost-kicker {
+  margin: 0;
+}
+
+.frost-glitch-teaser strong {
+  font-size: 19px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.frost-glitch-teaser .frost-num {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+}
+
+.frost-glitch-cell:hover .frost-glitch-teaser {
+  opacity: 0;
+}
+
+.frost-glitch-snap .snapfx-out {
+  opacity: 0;
+}
+
+.frost-glitch-cell:hover .frost-glitch-snap .snapfx-out {
+  animation: frost-glitch-out 0.6s ease forwards;
+}
+
+@keyframes frost-glitch-out {
+  0% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* ---- Project page looks (layouts × effects) ---- */
 
 .look-shell {

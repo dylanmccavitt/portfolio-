@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { ABOUT_REVEALS, CURRENT, MistSite } from "./frost/MistSite.jsx";
+import { ABOUT_REVEALS, CARD_REVEALS, CURRENT, MistSite } from "./frost/MistSite.jsx";
 import { PROJECT_LOOKS, ProjectLook } from "./frost/ProjectLooks.jsx";
 import "./frost/lab.css";
 
@@ -45,6 +45,29 @@ function Gallery({ navigate }) {
             </small>
           </a>
         </li>
+      </ol>
+      <h2 className="lab-section">Card reveals <span>how a Work card opens · mist locked, glitch trialing</span></h2>
+      <ol>
+        {CARD_REVEALS.map((entry) => (
+          <li key={entry.slug}>
+            <a
+              href={`/cardsx/${entry.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/cardsx/${entry.slug}`);
+              }}
+            >
+              <span className="lab-num">{entry.number}</span>
+              <div>
+                <strong>{entry.name}</strong>
+                <span className="lab-note">{entry.instruction}</span>
+              </div>
+              <small>
+                {entry.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
       </ol>
       <h2 className="lab-section">About reveals <span>how the About prose arrives · exploring</span></h2>
       <ol>
@@ -119,6 +142,10 @@ export function App() {
   const about = path.match(/^\/aboutx\/([a-z-]+)\/?$/);
   if (about && ABOUT_REVEALS.some((entry) => entry.slug === about[1])) {
     return <MistSite aboutVariant={about[1]} navigate={navigate} />;
+  }
+  const cards = path.match(/^\/cardsx\/([a-z-]+)\/?$/);
+  if (cards && CARD_REVEALS.some((entry) => entry.slug === cards[1])) {
+    return <MistSite cardVariant={cards[1]} navigate={navigate} />;
   }
   const look = path.match(/^\/project\/([a-z-]+)\/?$/);
   if (look && PROJECT_LOOKS.some((entry) => entry.slug === look[1])) {
