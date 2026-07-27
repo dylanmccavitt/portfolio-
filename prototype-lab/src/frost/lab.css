@@ -824,6 +824,60 @@ body {
   filter: none;
 }
 
+/* STANDING RULE (Dylan, 2026-07-27): an effect must never read as an
+   invisible rectangle. Every inline effect canvas is either inside real
+   visible chrome (the mist cards' borders) or feathered on all four edges
+   so it dissolves into the page. */
+.frost-about-ink canvas,
+.look-fog-head .popout-thaw-effect canvas,
+.look-rain-pane .popout-thaw-effect canvas,
+.look-ink-pane canvas {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent),
+    linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  mask-composite: intersect;
+}
+
+/* Snapshot-fed blocks: the output canvas repaints the block's own pixels,
+   so the effect boundary IS the content block — no floating pane. The
+   content needs an opaque page-surface background for a clean cover. */
+.look-glitch-body,
+.look-dither-copy {
+  background: var(--frost-surface);
+}
+
+.look-glitch-head {
+  margin-bottom: 8px;
+}
+
+.look-glitch-body {
+  padding: 16px 0 22px;
+}
+
+.look-dither-body {
+  margin-bottom: 34px;
+}
+
+.look-dither-copy {
+  padding: 4px 0 10px;
+  text-align: left;
+}
+
+.look-dither-copy h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.look-dither-copy h2 + p {
+  max-width: 620px;
+  margin: 0 0 26px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--frost-muted);
+}
+
 /* ---- Project page looks (layouts × effects) ---- */
 
 .look-shell {

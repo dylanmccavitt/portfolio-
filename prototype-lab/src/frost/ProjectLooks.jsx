@@ -4,8 +4,11 @@ import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Droplets } from "../components/canvasui/Droplets.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
 import { Liquid } from "../components/canvasui/Liquid.jsx";
+import { createGlitch } from "../components/canvasui/Glitch.jsx";
+import { createRetroDither } from "../components/canvasui/RetroDither.jsx";
 import { PROJECTS } from "./frost-data.js";
 import { ICE_PROPS } from "./MistSite.jsx";
+import { SnapshotFx } from "./SnapshotFx.jsx";
 import "./frost.css";
 import "./lab.css";
 
@@ -51,6 +54,20 @@ export const PROJECT_LOOKS = [
     name: "Ink on the screens",
     instruction: "Same rail layout as Rain, different weather: moving across the screens stirs blue ink through the water over them.",
     component: "Liquid (canvasui) over the gallery + rail layout",
+  },
+  {
+    slug: "glitch",
+    number: "06",
+    name: "Signal glitch",
+    instruction: "The title block is a signal that corrupts in bursts — sliced, RGB-split — then recovers clean. The story below stays calm.",
+    component: "Glitch (canvasui), snapshot-fed in stock Chrome",
+  },
+  {
+    slug: "dither",
+    number: "07",
+    name: "Newsprint",
+    instruction: "The story prints as coarse halftone; the cursor is the loupe that restores crisp type wherever it rests.",
+    component: "RetroDither (canvasui), snapshot-fed in stock Chrome",
   },
 ];
 
@@ -255,6 +272,7 @@ function InkLook({ project }) {
           <p className="look-rail-summary">{project.summary}</p>
           <h2>Screens · stir the water</h2>
           <Liquid
+            className="look-ink-pane"
             color={[0.35, 0.55, 0.78]}
             intensity={1.8}
             distortion={0.35}
@@ -271,12 +289,80 @@ function InkLook({ project }) {
   );
 }
 
+function GlitchLook({ project }) {
+  return (
+    <main className="frost frost-doc look-page look-ice">
+      <SnapshotFx
+        create={createGlitch}
+        options={{ interval: 2.4, duration: 0.45, intensity: 0.9, slices: 22, shift: 26, rgbShift: 4, blocks: 0.45, noise: 0.3 }}
+        className="look-glitch-head"
+      >
+        <div className="look-ice-head look-glitch-body">
+          <p className="frost-kicker">{project.eyebrow}</p>
+          <h1>{project.title}</h1>
+          <p>{project.line}</p>
+        </div>
+      </SnapshotFx>
+      <p className="look-ice-summary">{project.summary}</p>
+      <h2 className="look-ice-h">Evidence</h2>
+      <div className="look-ice-chips" style={{ background: "none" }}>
+        <Chips proof={project.proof} />
+      </div>
+      <h2 className="look-ice-h">Screens</h2>
+      <Screens shots={project.shots} />
+    </main>
+  );
+}
+
+function DitherLook({ project }) {
+  return (
+    <main className="frost frost-doc look-page">
+      <div className="look-rail">
+        <aside className="look-rail-side">
+          <p className="frost-kicker">{project.eyebrow}</p>
+          <h1>{project.title}</h1>
+          <p className="look-rail-line">{project.line}</p>
+        </aside>
+        <div className="look-rail-main">
+          <SnapshotFx
+            create={createRetroDither}
+            options={{
+              radius: 0.45,
+              strength: 0.05,
+              baseStrength: 0.85,
+              pixelSize: 2,
+              levels: 4,
+              colorize: 0.12,
+              contrast: 0.55,
+              darkColor: [0.15, 0.2, 0.24],
+              lightColor: [0.933, 0.949, 0.957],
+              followSpeed: 3.5,
+            }}
+            className="look-dither-body"
+          >
+            <div className="look-dither-copy">
+              <h2>What shipped</h2>
+              <p>{project.summary}</p>
+              <h2>Evidence</h2>
+              <Chips proof={project.proof} />
+            </div>
+          </SnapshotFx>
+          <h2 className="look-ice-h" style={{ textAlign: "left" }}>Screens</h2>
+          <Screens shots={project.shots} />
+        </div>
+      </div>
+    </main>
+  );
+}
+
 const LOOK_BODIES = {
   ledger: LedgerLook,
   fog: FogLook,
   rain: RainLook,
   ice: IceLook,
   ink: InkLook,
+  glitch: GlitchLook,
+  dither: DitherLook,
 };
 
 export function ProjectLook({ slug, navigate }) {

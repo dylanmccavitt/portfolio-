@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
 import { Liquid } from "../components/canvasui/Liquid.jsx";
+import { createLetterpress } from "../components/canvasui/Letterpress.jsx";
+import { SnapshotFx } from "./SnapshotFx.jsx";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
 import "./frost.css";
 import "./lab.css";
@@ -57,6 +59,13 @@ export const ABOUT_REVEALS = [
     name: "Melt the frost",
     instruction: "The earlier take, kept for comparison: bare prose under feathered ice that melts under the pointer.",
     component: "Frost (canvasui)",
+  },
+  {
+    slug: "press",
+    number: "04",
+    name: "Letterpress",
+    instruction: "The prose is pressed into the page like type into damp paper; the impression deepens under the cursor.",
+    component: "Letterpress (canvasui), snapshot-fed in stock Chrome",
   },
 ];
 
@@ -205,6 +214,22 @@ function InkAbout() {
   );
 }
 
+/** Letterpress: the prose pressed into the page, deepening under the
+    cursor — snapshot-fed so it renders in stock Chrome. */
+function PressAbout() {
+  return (
+    <SnapshotFx
+      create={createLetterpress}
+      options={{ depth: 0.16, spread: 1.5, grain: 0.05, threshold: 0.12, background: "#eef2f4" }}
+      className="frost-about-press"
+    >
+      <div className="frost-about-body">
+        {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
+      </div>
+    </SnapshotFx>
+  );
+}
+
 function FrostAbout() {
   const body = (
     <div className="frost-about-body">
@@ -334,11 +359,12 @@ function DmPanel({ onClose }) {
   );
 }
 
-const ABOUT_BODIES = { condense: CondenseAbout, ink: InkAbout, ice: FrostAbout };
+const ABOUT_BODIES = { condense: CondenseAbout, ink: InkAbout, ice: FrostAbout, press: PressAbout };
 const ABOUT_KICKERS = {
   condense: "The short version",
   ink: "The short version · stir the water",
   ice: "The short version · melt the frost",
+  press: "The short version · pressed into the page",
 };
 
 export function MistSite({ navigate, aboutVariant = "condense" }) {
