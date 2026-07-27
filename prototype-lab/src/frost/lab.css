@@ -886,6 +886,8 @@ body {
   overflow: hidden;
 }
 
+/* The revealed state is its own material: a recessed gap-toned pane, not
+   the pale card surface the teaser sits on. */
 .frost-glitch-facts {
   position: absolute;
   inset: 0;
@@ -896,9 +898,18 @@ body {
   align-items: flex-start;
   gap: 9px;
   padding: 16px 20px;
+  background: #dce8f1;
+  box-shadow: inset 0 2px 11px rgba(38, 52, 61, 0.18);
+  color: #3f5261;
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.4s ease 0.16s, transform 0.4s ease 0.16s;
+}
+
+.frost-glitch-facts .frost-proof span {
+  border-radius: 0;
+  border-color: #b3cbdc;
+  opacity: 0.9;
 }
 
 .frost-glitch-cell:hover .frost-glitch-facts {
@@ -981,6 +992,31 @@ body {
   100% {
     opacity: 0;
   }
+}
+
+/* Glitch-open About: prose hidden until the section first arrives — via
+   this ancestor-scoped rule the snapshot clone doesn't carry, so the
+   rasterizer still sees the prose. On .is-in the corrupted frame flashes
+   once while the type resolves. */
+.frost-about-glitch {
+  max-width: 720px;
+}
+
+.frost-about-glitch .frost-about-body {
+  opacity: 0;
+  transition: opacity 0.45s ease 0.3s;
+}
+
+.frost-about-glitch.is-in .frost-about-body {
+  opacity: 1;
+}
+
+.frost-about-glitch .snapfx-out {
+  opacity: 0;
+}
+
+.frost-about-glitch.is-in .snapfx-out {
+  animation: frost-glitch-out 0.7s ease forwards;
 }
 
 /* ---- Project page looks (layouts × effects) ---- */

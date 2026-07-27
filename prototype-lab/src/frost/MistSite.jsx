@@ -24,8 +24,8 @@ export const CURRENT = {
   slug: "current",
   number: "01",
   name: "Mist reveal",
-  instruction: "The locked direction: a bare page where weather does the reveals — hover a Work card to lift its fog, melt the frost off the About prose, click a card to enter the project.",
-  component: "Mist card grid + iced About, Clouds + Frost (canvasui)",
+  instruction: "The locked direction: a bare page where the signal glitches — the About bursts open as you arrive, hovering a Work card corrupts through to its facts, click enters the project.",
+  component: "Glitch cards + glitch-open About (canvasui, snapshot-fed)",
 };
 
 const DESTINATIONS = [
@@ -68,23 +68,30 @@ export const ABOUT_REVEALS = [
     instruction: "The prose is pressed into the page like type into damp paper; the impression deepens under the cursor.",
     component: "Letterpress (canvasui), snapshot-fed in stock Chrome",
   },
+  {
+    slug: "glitch",
+    number: "05",
+    name: "Glitch open",
+    instruction: "PICKED — the prose glitches open cleanly the first time you arrive: one corruption burst, then crisp type.",
+    component: "Glitch (canvasui), snapshot-fed, scroll-triggered",
+  },
 ];
 
 /** Card reveal variants, comparable at /cardsx/<slug>. */
 export const CARD_REVEALS = [
   {
-    slug: "mist",
+    slug: "glitch",
     number: "01",
-    name: "Mist",
-    instruction: "The locked reveal: each card under its own fog; hover lifts it and the facts condense in.",
-    component: "Clouds (canvasui) per card",
+    name: "Glitch through",
+    instruction: "PICKED — hover corrupts the card's face in a burst — sliced, RGB-split — and what was underneath resolves: the shipped facts on a recessed pane.",
+    component: "Glitch (canvasui) per card, snapshot-fed",
   },
   {
-    slug: "glitch",
+    slug: "mist",
     number: "02",
-    name: "Glitch through",
-    instruction: "Hover corrupts the card's face in a burst — sliced, RGB-split — and what was underneath resolves: the shipped facts.",
-    component: "Glitch (canvasui) per card, snapshot-fed",
+    name: "Mist",
+    instruction: "The earlier locked reveal, kept for comparison: each card under its own fog; hover lifts it.",
+    component: "Clouds (canvasui) per card",
   },
 ];
 
@@ -212,6 +219,44 @@ function GlitchCard({ project, index, onOpen }) {
         </SnapshotFx>
       </div>
     </li>
+  );
+}
+
+/** Glitch open: the About prose corrupts into place the first time the
+    section scrolls into view — one burst, then crisp type. The prose is
+    hidden via an ancestor-scoped rule the snapshot clone doesn't have, so
+    the rasterizer still sees it. */
+function GlitchAbout() {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.35 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className={`frost-about-glitch${seen ? " is-in" : ""}`}>
+      <SnapshotFx
+        create={createGlitch}
+        options={{ interval: 0, intensity: 1, slices: 24, shift: 30, rgbShift: 4, blocks: 0.5, noise: 0.35 }}
+      >
+        <div className="frost-about-body">
+          {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
+        </div>
+      </SnapshotFx>
+    </div>
   );
 }
 
@@ -421,16 +466,17 @@ function DmPanel({ onClose }) {
   );
 }
 
-const ABOUT_BODIES = { condense: CondenseAbout, ink: InkAbout, ice: FrostAbout, press: PressAbout };
+const ABOUT_BODIES = { condense: CondenseAbout, ink: InkAbout, ice: FrostAbout, press: PressAbout, glitch: GlitchAbout };
 const ABOUT_KICKERS = {
   condense: "The short version",
   ink: "The short version · stir the water",
   ice: "The short version · melt the frost",
   press: "The short version · pressed into the page",
+  glitch: "The short version",
 };
 
-export function MistSite({ navigate, aboutVariant = "condense", cardVariant = "mist" }) {
-  const AboutBody = ABOUT_BODIES[aboutVariant] ?? CondenseAbout;
+export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "glitch" }) {
+  const AboutBody = ABOUT_BODIES[aboutVariant] ?? GlitchAbout;
   const Card = cardVariant === "glitch" ? GlitchCard : MistCard;
   const [current, setCurrent] = useState("about");
   const [dmOpen, setDmOpen] = useState(false);
