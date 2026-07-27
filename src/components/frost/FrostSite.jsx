@@ -89,7 +89,7 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
-function GlitchCard({ project, index, fx, isHot, onReveal }) {
+function GlitchCard({ project, index, fx, isHot }) {
   const teaser = (
     <div className="frost-glitch-teaser">
       <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
@@ -99,19 +99,15 @@ function GlitchCard({ project, index, fx, isHot, onReveal }) {
   );
 
   return (
-    <li className={`frost-glitch-cell${isHot ? " is-hot" : ""}`}>
+    <li
+      className={`frost-glitch-cell${isHot ? " is-hot" : ""}`}
+      data-project-id={project.id}
+      data-project-href={project.href}
+    >
       <a
         className="frost-glitch-open"
         href={project.href}
         aria-label={`Open ${project.title}`}
-        onClick={(event) => {
-          // Touch has no hover: the first tap plays the reveal, the second
-          // tap navigates. Hover-capable pointers are unaffected.
-          if (!isHot && window.matchMedia("(hover: none)").matches) {
-            event.preventDefault();
-            onReveal(project.id);
-          }
-        }}
       />
       <div className="frost-glitch-facts" aria-hidden="true">
         <p>{project.line}</p>
@@ -163,15 +159,50 @@ function SiteLayout({ projects, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [hotId, setHotId] = useState(null);
 
-  // A tap-revealed card reseals when the next tap lands outside it.
+  // Touch has no hover: the first tap on a card plays the reveal, the second
+  // tap navigates, and a tap outside reseals. Everything resolves the card
+  // from the tap COORDINATES (elementFromPoint), never event.target — iOS
+  // retargets taps on the pointer-events-none teaser to nodes outside the
+  // card, so target-based handling silently never fires there.
   useEffect(() => {
-    if (!hotId) return;
-    const onPointerDown = (event) => {
-      if (!event.target.closest?.(".frost-glitch-cell.is-hot")) setHotId(null);
+    // iOS can dispatch a trailing duplicate click for one tap with a
+    // different coordinate basis (~130px off), so resealing is guarded by
+    // both recency and proximity to the revealed card.
+    let lastRevealAt = 0;
+
+    const onClick = (event) => {
+      if (!window.matchMedia("(hover: none)").matches) return;
+      const el = document.elementFromPoint(event.clientX, event.clientY);
+      const cell = el instanceof Element ? el.closest(".frost-glitch-cell") : null;
+
+      if (!cell || !cell.dataset.projectId) {
+        const hot = document.querySelector(".frost-glitch-cell.is-hot");
+        if (!hot || Date.now() - lastRevealAt < 450) return;
+        const rect = hot.getBoundingClientRect();
+        const near =
+          event.clientX > rect.left - 40 &&
+          event.clientX < rect.right + 40 &&
+          event.clientY > rect.top - 160 &&
+          event.clientY < rect.bottom + 160;
+        if (!near) setHotId(null);
+        return;
+      }
+
+      if (cell.classList.contains("is-hot")) {
+        if (!(event.target instanceof Element && event.target.closest("a"))) {
+          window.location.assign(cell.dataset.projectHref);
+        }
+        return;
+      }
+
+      event.preventDefault();
+      lastRevealAt = Date.now();
+      setHotId(cell.dataset.projectId);
     };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [hotId]);
+
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
 
   useEffect(() => {
     const sections = DESTINATIONS
@@ -242,7 +273,6 @@ function SiteLayout({ projects, fx, onDm }) {
                 index={index}
                 fx={fx}
                 isHot={project.id === hotId}
-                onReveal={setHotId}
               />
             ))}
           </ol>
