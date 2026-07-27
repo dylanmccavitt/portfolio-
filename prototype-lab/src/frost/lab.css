@@ -15,17 +15,35 @@ body {
   font-family: "Geist Variable", "Helvetica Neue", Arial, sans-serif;
 }
 
+/* The bar must NOT sit in the page flow: the Shatter fallback maps its
+   full-viewport canvas from the assumption that the effect content starts
+   at the viewport origin (window.scrollY-based blit). An in-flow bar
+   offset the snapshot ~44px from the real UI, which read as a detached
+   "extra layer" of fracture (Dylan's report, 2026-07-27). Fixed overlay +
+   equal padding inside the effect content keeps both layers in register. */
 .lab-bar {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  box-sizing: border-box;
   z-index: 40;
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 10px 18px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--lab-line);
   background: rgba(238, 242, 244, 0.94);
   backdrop-filter: blur(6px);
+}
+
+.lab-route .frost-page {
+  padding-top: 44px;
+}
+
+.lab-route .frost-site-head {
+  top: 44px;
 }
 
 .lab-bar button {
