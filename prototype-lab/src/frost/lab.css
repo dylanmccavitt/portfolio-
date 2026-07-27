@@ -247,6 +247,122 @@ body {
   font-size: 24px;
 }
 
+/* Popout card variants */
+.frost-modal.is-wide {
+  width: min(940px, 100%);
+}
+
+.frost-modal.is-slim {
+  width: min(460px, 100%);
+}
+
+.lab-card-h {
+  margin: 20px 0 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lab-muted);
+}
+
+.frost-gallery--thumbs {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.lab-card-split {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 26px;
+  align-items: start;
+}
+
+.lab-card-side {
+  margin: 0;
+}
+
+.lab-card-side img {
+  width: 100%;
+  border: 1.5px solid var(--lab-ink);
+  border-radius: 8px;
+}
+
+.lab-card-side figcaption {
+  margin-top: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lab-muted);
+}
+
+.lab-card-strip {
+  display: flex;
+  gap: 10px;
+  margin: 4px 0 18px;
+  overflow-x: auto;
+}
+
+.lab-card-strip img {
+  height: 190px;
+  border: 1.5px solid var(--lab-ink);
+  border-radius: 8px;
+}
+
+/* Into-the-page transitions */
+.lab-doc-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 35;
+  overflow: auto;
+  background: var(--lab-surface);
+}
+
+.lab-doc-overlay.is-grow {
+  overflow: hidden;
+  border: 1.5px solid var(--lab-ink);
+  border-radius: 14px;
+  transition: top 0.4s cubic-bezier(0.2, 0.9, 0.3, 1), left 0.4s cubic-bezier(0.2, 0.9, 0.3, 1),
+    width 0.4s cubic-bezier(0.2, 0.9, 0.3, 1), height 0.4s cubic-bezier(0.2, 0.9, 0.3, 1),
+    border-radius 0.4s ease;
+}
+
+.lab-doc-effect {
+  height: 100%;
+}
+
+.lab-doc--hero-sheet .frost-doc-title {
+  animation: lab-hero-dock 0.45s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.lab-doc--hero-sheet .frost-doc-section,
+.lab-doc--hero-sheet .frost-doc-actions {
+  animation: lab-sheet-up 0.5s ease-out backwards;
+}
+
+.lab-doc--hero-sheet .frost-doc-section:nth-of-type(1) { animation-delay: 0.18s; }
+.lab-doc--hero-sheet .frost-doc-section:nth-of-type(2) { animation-delay: 0.28s; }
+.lab-doc--hero-sheet .frost-doc-section:nth-of-type(3) { animation-delay: 0.38s; }
+.lab-doc--hero-sheet .frost-doc-actions { animation-delay: 0.48s; }
+
+@keyframes lab-hero-dock {
+  from {
+    transform: translateY(16vh) scale(0.94);
+    opacity: 0;
+  }
+}
+
+@keyframes lab-sheet-up {
+  from {
+    transform: translateY(42px);
+    opacity: 0;
+  }
+}
+
 /* Scratch-the-receipts: the sealed proof strip under each Work row. */
 .frost-scratch {
   max-width: 560px;

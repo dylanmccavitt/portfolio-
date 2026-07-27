@@ -1,7 +1,37 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { CurrentFrost, EFFECTS, FX, PLAYS, POPOUTS } from "./frost/CurrentFrost.jsx";
+import { CARDS, CurrentFrost, EFFECTS, ENTERS, FX, PLAYS, POPOUTS } from "./frost/CurrentFrost.jsx";
 import "./frost/lab.css";
+
+function GallerySection({ title, note, base, entries, navigate }) {
+  return (
+    <>
+      <h2 className="lab-section">{title} <span>{note}</span></h2>
+      <ol>
+        {entries.map((entry) => (
+          <li key={entry.slug}>
+            <a
+              href={`${base}/${entry.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`${base}/${entry.slug}`);
+              }}
+            >
+              <span className="lab-num">{entry.number}</span>
+              <div>
+                <strong>{entry.name}</strong>
+                <span className="lab-note">{entry.instruction}</span>
+              </div>
+              <small>
+                {entry.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
 
 function Gallery({ navigate }) {
   useEffect(() => {
@@ -14,107 +44,27 @@ function Gallery({ navigate }) {
       <h1>Frost effect lab</h1>
       <p className="lab-lede">
         Every prototype below is the current Frost site layout — the one
-        that is live — with a different canvas effect over it. The layout is
-        not a variable; only the surface changes.
+        that is live — with a different canvas effect or interaction over
+        it. The layout is not a variable; only the surface changes.
       </p>
-      <h2 className="lab-section">Homepage surface <span>selected: 01 Fracture</span></h2>
-      <ol>
-        {EFFECTS.map((effect) => (
-          <li key={effect.slug}>
-            <a
-              href={`/frost/${effect.slug}`}
-              onClick={(event) => {
-                event.preventDefault();
-                navigate(`/frost/${effect.slug}`);
-              }}
-            >
-              <span className="lab-num">{effect.number}</span>
-              <div>
-                <strong>{effect.name}</strong>
-                <span className="lab-note">{effect.instruction}</span>
-              </div>
-              <small>
-                {effect.component} <ArrowUpRight size={12} />
-              </small>
-            </a>
-          </li>
-        ))}
-      </ol>
-
-      <h2 className="lab-section">Project popouts <span>on the fracture surface · deciding</span></h2>
-      <ol>
-        {POPOUTS.map((variant) => (
-          <li key={variant.slug}>
-            <a
-              href={`/popout/${variant.slug}`}
-              onClick={(event) => {
-                event.preventDefault();
-                navigate(`/popout/${variant.slug}`);
-              }}
-            >
-              <span className="lab-num">{variant.number}</span>
-              <div>
-                <strong>{variant.name}</strong>
-                <span className="lab-note">{variant.instruction}</span>
-              </div>
-              <small>
-                {variant.component} <ArrowUpRight size={12} />
-              </small>
-            </a>
-          </li>
-        ))}
-      </ol>
-
-      <h2 className="lab-section">UI × effects <span>other surfaces reacting to the visitor · exploring</span></h2>
-      <ol>
-        {FX.map((variant) => (
-          <li key={variant.slug}>
-            <a
-              href={`/fx/${variant.slug}`}
-              onClick={(event) => {
-                event.preventDefault();
-                navigate(`/fx/${variant.slug}`);
-              }}
-            >
-              <span className="lab-num">{variant.number}</span>
-              <div>
-                <strong>{variant.name}</strong>
-                <span className="lab-note">{variant.instruction}</span>
-              </div>
-              <small>
-                {variant.component} <ArrowUpRight size={12} />
-              </small>
-            </a>
-          </li>
-        ))}
-      </ol>
-
-      <h2 className="lab-section">Fracture as UI <span>giving the crack a job · exploring</span></h2>
-      <ol>
-        {PLAYS.map((variant) => (
-          <li key={variant.slug}>
-            <a
-              href={`/play/${variant.slug}`}
-              onClick={(event) => {
-                event.preventDefault();
-                navigate(`/play/${variant.slug}`);
-              }}
-            >
-              <span className="lab-num">{variant.number}</span>
-              <div>
-                <strong>{variant.name}</strong>
-                <span className="lab-note">{variant.instruction}</span>
-              </div>
-              <small>
-                {variant.component} <ArrowUpRight size={12} />
-              </small>
-            </a>
-          </li>
-        ))}
-      </ol>
+      <GallerySection title="Homepage surface" note="selected: 01 Fracture" base="/frost" entries={EFFECTS} navigate={navigate} />
+      <GallerySection title="Project popouts" note="selected: 02 Break open" base="/popout" entries={POPOUTS} navigate={navigate} />
+      <GallerySection title="Popout card" note="what the card is · exploring" base="/card" entries={CARDS} navigate={navigate} />
+      <GallerySection title="Into the page" note="expanding a project to its page · exploring" base="/enter" entries={ENTERS} navigate={navigate} />
+      <GallerySection title="UI × effects" note="other surfaces reacting to the visitor · exploring" base="/fx" entries={FX} navigate={navigate} />
+      <GallerySection title="Fracture as UI" note="giving the crack a job · exploring" base="/play" entries={PLAYS} navigate={navigate} />
     </main>
   );
 }
+
+const ROUTES = [
+  { prefix: "frost", entries: EFFECTS, props: (slug) => ({ effect: slug }) },
+  { prefix: "popout", entries: POPOUTS, props: (slug) => ({ effect: "fracture", popout: slug }) },
+  { prefix: "play", entries: PLAYS, props: (slug) => ({ effect: "fracture", play: slug }) },
+  { prefix: "fx", entries: FX, props: (slug) => ({ fx: slug }) },
+  { prefix: "card", entries: CARDS, props: (slug) => ({ effect: "fracture", card: slug }) },
+  { prefix: "enter", entries: ENTERS, props: (slug) => ({ effect: "fracture", enter: slug }) },
+];
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
@@ -131,27 +81,10 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  const effectMatch = path.match(/^\/frost\/([a-z-]+)\/?$/);
-  const effect = effectMatch && EFFECTS.find((entry) => entry.slug === effectMatch[1]);
-  const popoutMatch = path.match(/^\/popout\/([a-z-]+)\/?$/);
-  const popoutVariant = popoutMatch && POPOUTS.find((entry) => entry.slug === popoutMatch[1]);
-  const playMatch = path.match(/^\/play\/([a-z-]+)\/?$/);
-  const playVariant = playMatch && PLAYS.find((entry) => entry.slug === playMatch[1]);
-  const fxMatch = path.match(/^\/fx\/([a-z-]+)\/?$/);
-  const fxVariant = fxMatch && FX.find((entry) => entry.slug === fxMatch[1]);
-
-  if (popoutVariant) {
-    return <CurrentFrost effect="fracture" popout={popoutVariant.slug} navigate={navigate} />;
+  for (const route of ROUTES) {
+    const match = path.match(new RegExp(`^\\/${route.prefix}\\/([a-z-]+)\\/?$`));
+    const entry = match && route.entries.find((candidate) => candidate.slug === match[1]);
+    if (entry) return <CurrentFrost {...route.props(entry.slug)} navigate={navigate} />;
   }
-  if (playVariant) {
-    return <CurrentFrost effect="fracture" play={playVariant.slug} navigate={navigate} />;
-  }
-  if (fxVariant) {
-    return <CurrentFrost fx={fxVariant.slug} navigate={navigate} />;
-  }
-  return effect ? (
-    <CurrentFrost effect={effect.slug} navigate={navigate} />
-  ) : (
-    <Gallery navigate={navigate} />
-  );
+  return <Gallery navigate={navigate} />;
 }

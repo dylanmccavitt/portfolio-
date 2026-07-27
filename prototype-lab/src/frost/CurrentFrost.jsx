@@ -203,6 +203,66 @@ function burstFracture(x, y) {
   }, 26);
 }
 
+/** Popout card designs: what the ProjectFocus card IS, independent of how
+    it enters. All ride the fracture surface with a plain backdrop. */
+export const CARDS = [
+  {
+    slug: "dossier",
+    number: "01",
+    name: "Dossier",
+    instruction: "A denser reading card: what shipped, the evidence, the screens, and the way in — the project page in miniature.",
+    component: "Card layout",
+  },
+  {
+    slug: "split",
+    number: "02",
+    name: "Split",
+    instruction: "An editorial spread: the words on the left, one big screen on the right.",
+    component: "Card layout",
+  },
+  {
+    slug: "filmstrip",
+    number: "03",
+    name: "Filmstrip",
+    instruction: "Screens first: a scrollable strip up top, the words underneath.",
+    component: "Card layout",
+  },
+  {
+    slug: "ticket",
+    number: "04",
+    name: "Ticket",
+    instruction: "A deliberate teaser: title, one line, three chips, one way in. The project page does the talking.",
+    component: "Card layout",
+  },
+];
+
+/** Expanding into the project page: what happens when the visitor wants
+    more than the card. Each route opens the card with an "Open project"
+    action; the transition into the page is the variable. */
+export const ENTERS = [
+  {
+    slug: "grow",
+    number: "01",
+    name: "Grow",
+    instruction: "Open project: the card itself grows until it IS the page — no context switch, the card was the page all along.",
+    component: "FLIP-style expansion",
+  },
+  {
+    slug: "settle-in",
+    number: "02",
+    name: "Settle in",
+    instruction: "Open project: the page assembles from loose sand as you land — the settle surface, given a job.",
+    component: "Particle Scroll entry",
+  },
+  {
+    slug: "hero-sheet",
+    number: "03",
+    name: "Hero sheet",
+    instruction: "Open project: the title docks as the page hero and the sections slide in beneath it.",
+    component: "Staggered entrance",
+  },
+];
+
 function EffectShell({ slug, overrides, children }) {
   if (slug === "freeze") {
     return (
@@ -404,7 +464,7 @@ function buildWorkList() {
     summary: curated.summary,
     proof: curated.proof ?? [],
     links: [],
-    shots: [],
+    shots: curated.shots ?? [],
   }));
 }
 
@@ -418,6 +478,56 @@ function ProjectDetailBody({ project }) {
         </div>
       )}
     </>
+  );
+}
+
+/** The in-lab stand-in for the /projects/[id] frost-doc page, so page-entry
+    transitions have a real destination. */
+function ProjectDoc({ project, onBack }) {
+  const back = (event) => {
+    event.preventDefault();
+    onBack();
+  };
+  return (
+    <main className="frost frost-doc">
+      <header className="frost-doc-head">
+        <a href="/" onClick={back}>Dylan McCavitt</a>
+        <nav aria-label="Primary">
+          <a href={project.href} onClick={back}>← All work</a>
+        </nav>
+      </header>
+      <div className="frost-doc-title">
+        <h1>{project.title}</h1>
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <p style={{ maxWidth: 640, margin: "14px 0 0", fontSize: 15, lineHeight: 1.6 }}>{project.line}</p>
+      </div>
+      <section className="frost-doc-section" aria-labelledby="doc-shipped">
+        <h2 id="doc-shipped">What shipped</h2>
+        <p style={{ maxWidth: 640, margin: 0, fontSize: 14, lineHeight: 1.65, color: "var(--frost-muted)" }}>{project.summary}</p>
+      </section>
+      <section className="frost-doc-section" aria-labelledby="doc-evidence">
+        <h2 id="doc-evidence">Evidence</h2>
+        <div className="frost-doc-facts">
+          {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+      </section>
+      {project.shots.length > 0 && (
+        <section className="frost-doc-section" aria-labelledby="doc-screens">
+          <h2 id="doc-screens">Screens</h2>
+          <div className="frost-gallery">
+            {project.shots.map((shot) => (
+              <figure key={shot.src}>
+                <img src={shot.src} alt={shot.caption} loading="lazy" />
+                <figcaption>{shot.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
+      <nav className="frost-doc-actions" aria-label="Project actions">
+        <a className="is-quiet" href="/#work" onClick={back}>← All work</a>
+      </nav>
+    </main>
   );
 }
 
@@ -654,7 +764,115 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
   );
 }
 
-function ProjectFocus({ project, onClose, variant = "plain", origin }) {
+function CardContent({ project, cardStyle, onOpenPage }) {
+  const actions = (
+    <nav className="frost-doc-actions" aria-label={`${project.title} actions`}>
+      <a
+        className="is-fill"
+        href={project.href}
+        onClick={(event) => {
+          event.preventDefault();
+          onOpenPage?.(event);
+        }}
+      >
+        Open project <ArrowUpRight size={14} />
+      </a>
+    </nav>
+  );
+
+  if (cardStyle === "ticket") {
+    return (
+      <>
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <h2 id="frost-focus-title">{project.title}</h2>
+        <p>{project.line}</p>
+        <div className="frost-proof">
+          {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+        {actions}
+      </>
+    );
+  }
+
+  if (cardStyle === "split") {
+    return (
+      <div className="lab-card-split">
+        <div>
+          <p className="frost-kicker">{project.eyebrow}</p>
+          <h2 id="frost-focus-title">{project.title}</h2>
+          <ProjectDetailBody project={project} />
+          {actions}
+        </div>
+        {project.shots[0] && (
+          <figure className="lab-card-side">
+            <img src={project.shots[0].src} alt={project.shots[0].caption} />
+            <figcaption>{project.shots[0].caption}</figcaption>
+          </figure>
+        )}
+      </div>
+    );
+  }
+
+  if (cardStyle === "filmstrip") {
+    return (
+      <>
+        {project.shots.length > 0 && (
+          <div className="lab-card-strip">
+            {project.shots.map((shot) => (
+              <img key={shot.src} src={shot.src} alt={shot.caption} />
+            ))}
+          </div>
+        )}
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <h2 id="frost-focus-title">{project.title}</h2>
+        <ProjectDetailBody project={project} />
+        {actions}
+      </>
+    );
+  }
+
+  if (cardStyle === "dossier") {
+    return (
+      <>
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <h2 id="frost-focus-title">{project.title}</h2>
+        <p>{project.line}</p>
+        <h3 className="lab-card-h">What shipped</h3>
+        <p>{project.summary}</p>
+        <h3 className="lab-card-h">Evidence</h3>
+        <div className="frost-proof">
+          {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+        {project.shots.length > 0 && (
+          <>
+            <h3 className="lab-card-h">Screens</h3>
+            <div className="frost-gallery frost-gallery--thumbs">
+              {project.shots.map((shot) => (
+                <figure key={shot.src}>
+                  <img src={shot.src} alt={shot.caption} loading="lazy" />
+                  <figcaption>{shot.caption}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </>
+        )}
+        {actions}
+      </>
+    );
+  }
+
+  // classic — the PR #347 card, plus the way in when a page exists.
+  return (
+    <>
+      <p className="frost-kicker">{project.eyebrow}</p>
+      <h2 id="frost-focus-title">{project.title}</h2>
+      <ProjectDetailBody project={project} />
+      {onOpenPage && actions}
+    </>
+  );
+}
+
+function ProjectFocus({ project, onClose, variant = "plain", origin, cardStyle = "classic", onOpenPage }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -689,9 +907,15 @@ function ProjectFocus({ project, onClose, variant = "plain", origin }) {
     );
   }
 
+  const widthClass = cardStyle === "split" || cardStyle === "filmstrip"
+    ? " is-wide"
+    : cardStyle === "ticket"
+      ? " is-slim"
+      : "";
+
   const card = (
     <article
-      className="frost-modal"
+      className={`frost-modal${widthClass}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="frost-focus-title"
@@ -700,9 +924,7 @@ function ProjectFocus({ project, onClose, variant = "plain", origin }) {
       <button className="frost-close" onClick={onClose} aria-label={`Close ${project.title}`}>
         <X size={19} />
       </button>
-      <p className="frost-kicker">{project.eyebrow}</p>
-      <h2 id="frost-focus-title">{project.title}</h2>
-      <ProjectDetailBody project={project} />
+      <CardContent project={project} cardStyle={cardStyle} onOpenPage={onOpenPage} />
     </article>
   );
 
@@ -761,11 +983,14 @@ function DmPanel({ onClose }) {
   );
 }
 
-export function CurrentFrost({ effect, popout, play, fx, navigate }) {
+export function CurrentFrost({ effect, popout, play, fx, card, enter, navigate }) {
   const popoutMeta = popout ? POPOUTS.find((entry) => entry.slug === popout) ?? POPOUTS[0] : null;
   const playMeta = play ? PLAYS.find((entry) => entry.slug === play) ?? PLAYS[0] : null;
   const fxMeta = fx ? FX.find((entry) => entry.slug === fx) ?? FX[0] : null;
-  const meta = popoutMeta ?? playMeta ?? fxMeta ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
+  const cardMeta = card ? CARDS.find((entry) => entry.slug === card) ?? CARDS[0] : null;
+  const enterMeta = enter ? ENTERS.find((entry) => entry.slug === enter) ?? ENTERS[0] : null;
+  const meta = popoutMeta ?? playMeta ?? fxMeta ?? cardMeta ?? enterMeta
+    ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [burstOrigin, setBurstOrigin] = useState(null);
@@ -773,6 +998,9 @@ export function CurrentFrost({ effect, popout, play, fx, navigate }) {
   const [overInteractive, setOverInteractive] = useState(false);
   const [pressCharge, setPressCharge] = useState(0);
   const [idleCharge, setIdleCharge] = useState(0);
+  const [docProject, setDocProject] = useState(null);
+  const [growFrom, setGrowFrom] = useState(null);
+  const [growLive, setGrowLive] = useState(false);
   const workList = useMemo(() => buildWorkList(), []);
 
   useEffect(() => {
@@ -780,15 +1008,38 @@ export function CurrentFrost({ effect, popout, play, fx, navigate }) {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [meta.name]);
 
-  // Popout routes open a project immediately where the treatment is visible
-  // without hunting; entrance-driven variants wait for a real click instead.
+  // Popout/card/enter routes open a project immediately where the treatment
+  // is visible without hunting; entrance-driven variants wait for a click.
   useEffect(() => {
     setFocusedProject(null);
     setExpandedId(null);
+    setDocProject(null);
+    if (cardMeta || enterMeta) {
+      setFocusedProject(workList[0]);
+      return;
+    }
     if (!popoutMeta) return;
     if (popoutMeta.slug === "expand-row") setExpandedId(workList[0].id);
     else if (popoutMeta.slug !== "break-open") setFocusedProject(workList[0]);
-  }, [popoutMeta?.slug, workList]);
+  }, [popoutMeta?.slug, cardMeta?.slug, enterMeta?.slug, workList]);
+
+  // Enter routes: the card's "Open project" action transitions into the
+  // in-lab project page per variant.
+  const openPage = (event) => {
+    const project = focusedProject;
+    if (!project) return;
+    if (enterMeta?.slug === "grow") {
+      const rect = event.currentTarget.closest(".frost-modal")?.getBoundingClientRect();
+      if (rect) {
+        setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+        setGrowLive(false);
+        requestAnimationFrame(() => requestAnimationFrame(() => setGrowLive(true)));
+        setTimeout(() => setGrowFrom(null), 480);
+      }
+    }
+    setDocProject(project);
+    setFocusedProject(null);
+  };
 
   // Affordance play: fracture strength follows whether the pointer is over
   // something clickable inside the page.
@@ -878,7 +1129,7 @@ export function CurrentFrost({ effect, popout, play, fx, navigate }) {
     ? popoutMeta.slug === "freeze-world" && focusedProject
       ? "freeze"
       : "fracture"
-    : playMeta
+    : playMeta || cardMeta || enterMeta
       ? "fracture"
       : fxMeta
         ? fxMeta.surface
@@ -902,8 +1153,8 @@ export function CurrentFrost({ effect, popout, play, fx, navigate }) {
           }
         : undefined;
 
-  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : fxMeta ? FX : EFFECTS;
-  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : fxMeta ? "/fx" : "/frost";
+  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : fxMeta ? FX : cardMeta ? CARDS : enterMeta ? ENTERS : EFFECTS;
+  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : fxMeta ? "/fx" : cardMeta ? "/card" : enterMeta ? "/enter" : "/frost";
 
   return (
     <div className="lab-route">
@@ -948,8 +1199,24 @@ export function CurrentFrost({ effect, popout, play, fx, navigate }) {
             project={focusedProject}
             variant={popoutMeta?.slug ?? "plain"}
             origin={burstOrigin}
+            cardStyle={cardMeta?.slug ?? "classic"}
+            onOpenPage={enterMeta || cardMeta ? openPage : undefined}
             onClose={() => setFocusedProject(null)}
           />
+        )}
+        {docProject && (
+          <div
+            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? "plain"}`}
+            style={growFrom ? (growLive ? { top: 0, left: 0, width: "100%", height: "100%" } : growFrom) : undefined}
+          >
+            {enterMeta?.slug === "settle-in" ? (
+              <ParticleScroll className="lab-doc-effect" point={0.62} band={340} spread={190} swirl={60}>
+                <ProjectDoc project={docProject} onBack={() => setDocProject(null)} />
+              </ParticleScroll>
+            ) : (
+              <ProjectDoc project={docProject} onBack={() => setDocProject(null)} />
+            )}
+          </div>
         )}
         {dmOpen && <DmPanel onClose={() => setDmOpen(false)} />}
       </main>

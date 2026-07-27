@@ -23,6 +23,12 @@ export const PROJECTS = [
     summary:
       "A complete ecommerce platform for a handmade-jewelry business, built from wireframe to production handoff.",
     proof: ["400+ commits to handoff", "4 integrations", "Guest + account checkout"],
+    shots: [
+      { src: "/screenshots/bella/landing.webp", caption: "Storefront" },
+      { src: "/screenshots/bella/product-page.webp", caption: "Product" },
+      { src: "/screenshots/bella/stripe.webp", caption: "Checkout" },
+      { src: "/screenshots/bella/admin-dash.webp", caption: "Operations" },
+    ],
   },
   {
     id: "evalgate",
@@ -41,6 +47,11 @@ export const PROJECTS = [
     summary:
       "A weekday workflow checks a simple RSI(2) signal and journals each proposed entry, simulated fill, and deterministic gate decision.",
     proof: ["15:45 ET", "RSI(2)", "Reviewable decision journal"],
+    shots: [
+      { src: "/screenshots/agentic-trader/journal.webp", caption: "Decision journal" },
+      { src: "/screenshots/agentic-trader/risk-gate.webp", caption: "Gate log" },
+      { src: "/screenshots/agentic-trader/backtest.webp", caption: "Backtest" },
+    ],
   },
   {
     id: "slurmlet",
