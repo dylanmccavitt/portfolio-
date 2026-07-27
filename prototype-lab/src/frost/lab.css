@@ -688,6 +688,23 @@ body {
   transition: opacity 0.5s ease 0.08s;
 }
 
+/* Mist: everything breathes slower — the surface dissolves like it's
+   being absorbed into the fog, and the condensed facts sit on a slightly
+   translucent pane so the weather stays part of the picture. */
+.frost-cards--mist li > a {
+  transition: opacity 0.7s ease;
+}
+
+.lab-route .frost-cards--mist li.is-hot > a {
+  opacity: 0;
+  transition: opacity 0.85s ease 0.1s;
+}
+
+.frost-cards--mist .frost-card-under {
+  background: rgba(220, 232, 241, 0.93);
+  box-shadow: inset 0 2px 14px rgba(38, 52, 61, 0.16);
+}
+
 /* Thaw reveal: per-card ice pane (inline canvasui Frost). The facts are
    the pane's children — snapshot-clone-hidden like every under-layer — and
    the teaser is printed on the ice, fading as hover melts it clear. */

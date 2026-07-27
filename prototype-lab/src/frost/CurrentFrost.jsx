@@ -362,13 +362,13 @@ export const FLOW = [
 /** The mist-reveal weather: dense enough that the fog itself is a presence
     on the page, not a rumor — the reveal reads as wind doing real work. */
 const MIST_REVEAL_OVERRIDES = {
-  cover: 0.38,
-  opacity: 0.8,
-  density: 2.6,
-  shading: 0.09,
+  cover: 0.46,
+  opacity: 0.88,
+  density: 3,
+  shading: 0.12,
   wind: 1,
-  windRadius: 320,
-  speed: 0.3,
+  windRadius: 340,
+  speed: 0.26,
 };
 
 function EffectShell({ slug, overrides, children }) {
@@ -761,7 +761,10 @@ function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge, variant
   }
 
   return (
-    <ol className="frost-cards" ref={variant === "fracture" ? containFracture : undefined}>
+    <ol
+      className={`frost-cards frost-cards--${variant}`}
+      ref={variant === "fracture" ? containFracture : undefined}
+    >
       {projects.map((project, index) => (
         <li
           key={project.id}
@@ -786,7 +789,11 @@ function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge, variant
             <div
               className={`frost-card-under${variant === "settle" ? " frost-card-under--settle" : ""}`}
               aria-hidden="true"
-              style={{ opacity: revealCharge }}
+              style={{
+                opacity: revealCharge,
+                // Mist: the facts drift up into place as they condense.
+                transform: variant === "mist" ? `translateY(${((1 - revealCharge) * 7).toFixed(2)}px)` : undefined,
+              }}
             >
               <p>{project.summary}</p>
               {project.proof.length > 0 && (
@@ -1294,6 +1301,11 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
     if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug) && !mistFlow && !settleFlow) return;
+    // Mist condenses and lifts slower than glass cracks — the reveal should
+    // read as weather changing, not a switch flipping.
+    const mist = popoutMeta?.slug === "mist-cards" || mistFlow;
+    const rateIn = mist ? 2 : 3;
+    const rateOut = mist ? 1.6 : 2.4;
     let raf = 0;
     let charge = 0;
     let sent = -1;
@@ -1302,7 +1314,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const target = hoverRef.current ? 1 : 0;
-      charge += (target - charge) * Math.min(dt * (target ? 3 : 2.4), 1);
+      charge += (target - charge) * Math.min(dt * (target ? rateIn : rateOut), 1);
       if (Math.abs(target - charge) < 0.005) charge = target;
       const q = Math.round(charge * 60) / 60;
       if (q !== sent) { sent = q; setRevealCharge(q); }
@@ -1319,20 +1331,26 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     if (popoutMeta?.slug !== "mist-cards" && !mistFlow) return;
     let raf = 0;
     let lastSent = 0;
+    let sweepId = null;
+    let sweepStart = 0;
     const loop = (now) => {
       raf = requestAnimationFrame(loop);
       if (now - lastSent < 33) return;
       lastSent = now;
       const id = hoveredIdRef.current;
-      if (!id) return;
+      if (!id) { sweepId = null; return; }
+      if (id !== sweepId) { sweepId = id; sweepStart = now; }
       const cell = document.querySelector(`.frost-cards li[data-project="${id}"]`);
       const target = document.querySelector(".frost-effect")?.querySelector(":scope > div");
       if (!cell || !target) return;
+      // Ramp the sweep in over ~1.1s (ease-out) so the wind builds and the
+      // fog parts progressively instead of snapping to the full card.
+      const ramp = 1 - Math.pow(1 - Math.min((now - sweepStart) / 1100, 1), 3);
       const r = cell.getBoundingClientRect();
       const t = now / 1000;
       target.dispatchEvent(new PointerEvent("pointermove", {
-        clientX: r.left + r.width * (0.5 + 0.46 * Math.sin(t * 2.6)),
-        clientY: r.top + r.height * (0.5 + 0.34 * Math.sin(t * 1.8)),
+        clientX: r.left + r.width * (0.5 + 0.46 * ramp * Math.sin(t * 2.2)),
+        clientY: r.top + r.height * (0.5 + 0.34 * ramp * Math.sin(t * 1.5)),
         bubbles: false,
       }));
     };
