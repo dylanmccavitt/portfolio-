@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { CurrentFrost, EFFECTS, PLAYS, POPOUTS } from "./frost/CurrentFrost.jsx";
+import { CurrentFrost, EFFECTS, FX, PLAYS, POPOUTS } from "./frost/CurrentFrost.jsx";
 import "./frost/lab.css";
 
 function Gallery({ navigate }) {
@@ -65,6 +65,30 @@ function Gallery({ navigate }) {
         ))}
       </ol>
 
+      <h2 className="lab-section">UI × effects <span>other surfaces reacting to the visitor · exploring</span></h2>
+      <ol>
+        {FX.map((variant) => (
+          <li key={variant.slug}>
+            <a
+              href={`/fx/${variant.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/fx/${variant.slug}`);
+              }}
+            >
+              <span className="lab-num">{variant.number}</span>
+              <div>
+                <strong>{variant.name}</strong>
+                <span className="lab-note">{variant.instruction}</span>
+              </div>
+              <small>
+                {variant.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
+      </ol>
+
       <h2 className="lab-section">Fracture as UI <span>giving the crack a job · exploring</span></h2>
       <ol>
         {PLAYS.map((variant) => (
@@ -113,12 +137,17 @@ export function App() {
   const popoutVariant = popoutMatch && POPOUTS.find((entry) => entry.slug === popoutMatch[1]);
   const playMatch = path.match(/^\/play\/([a-z-]+)\/?$/);
   const playVariant = playMatch && PLAYS.find((entry) => entry.slug === playMatch[1]);
+  const fxMatch = path.match(/^\/fx\/([a-z-]+)\/?$/);
+  const fxVariant = fxMatch && FX.find((entry) => entry.slug === fxMatch[1]);
 
   if (popoutVariant) {
     return <CurrentFrost effect="fracture" popout={popoutVariant.slug} navigate={navigate} />;
   }
   if (playVariant) {
     return <CurrentFrost effect="fracture" play={playVariant.slug} navigate={navigate} />;
+  }
+  if (fxVariant) {
+    return <CurrentFrost fx={fxVariant.slug} navigate={navigate} />;
   }
   return effect ? (
     <CurrentFrost effect={effect.slug} navigate={navigate} />

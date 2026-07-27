@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Droplets } from "../components/canvasui/Droplets.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
+import { Glass } from "../components/canvasui/Glass.jsx";
+import { ParticleScroll } from "../components/canvasui/ParticleScroll.tsx";
 import { Ripple } from "../components/canvasui/Ripple.tsx";
 import { Shatter } from "../components/canvasui/Shatter.jsx";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
@@ -135,6 +137,51 @@ export const PLAYS = [
     name: "Scratch the receipts",
     instruction: "Every project hides its proof under a strip of ice. Scratch a row's strip to check the receipts.",
     component: "Frost (canvasui) per row",
+  },
+];
+
+/** Non-fracture explorations: the UI reacting to (and through) other
+    html-in-canvas effects. Each play pairs one effect with one UI signal. */
+export const FX = [
+  {
+    slug: "echo",
+    number: "01",
+    name: "Echo",
+    surface: "pond",
+    instruction: "Every click rings outward from where it happened — rows, nav, closing a card. The pond answers your actions.",
+    component: "Ripple (canvasui)",
+  },
+  {
+    slug: "clearing",
+    number: "02",
+    name: "Clearing",
+    surface: "mist",
+    instruction: "Fog rests on the page. Click a nav item: wind parts the mist over where you're headed as you travel.",
+    component: "Clouds (canvasui) + scripted wind",
+  },
+  {
+    slug: "condensation",
+    number: "03",
+    name: "Condensation",
+    surface: "rain",
+    instruction: "Stay idle and the pane fogs up with rain; move again and the weather calms. The page notices neglect.",
+    component: "Droplets (canvasui), idle-driven",
+  },
+  {
+    slug: "loupe",
+    number: "04",
+    name: "Loupe",
+    surface: "glass",
+    instruction: "A reading lens follows the cursor and snaps onto project titles and the email, magnifying what matters. NEEDS THE HTML-IN-CANVAS FLAG — inert in stock Chrome.",
+    component: "Glass (canvasui) with targets",
+  },
+  {
+    slug: "settle",
+    number: "05",
+    name: "Settle",
+    surface: "particle-scroll",
+    instruction: "Below the fold the page is loose sand; scrolling settles it into crisp UI as you arrive. NEEDS THE HTML-IN-CANVAS FLAG — inert in stock Chrome.",
+    component: "Particle Scroll (canvasui)",
   },
 ];
 
@@ -275,9 +322,38 @@ function EffectShell({ slug, overrides, children }) {
         interactionStrength={0.65}
         tint={[0.87, 0.92, 0.97]}
         tintStrength={0.12}
+        {...overrides}
       >
         {children}
       </Droplets>
+    );
+  }
+
+  if (slug === "glass") {
+    return (
+      <Glass
+        className="frost-effect frost-effect--canvasui"
+        size={150}
+        zoom={1.35}
+        follow={0.25}
+        targets="[data-glass-target]"
+      >
+        {children}
+      </Glass>
+    );
+  }
+
+  if (slug === "particle-scroll") {
+    return (
+      <ParticleScroll
+        className="frost-effect frost-effect--canvasui"
+        point={0.66}
+        band={380}
+        spread={200}
+        swirl={70}
+      >
+        {children}
+      </ParticleScroll>
     );
   }
 
@@ -359,7 +435,7 @@ function WorkRows({ projects, onOpen, expandedId, scratch }) {
           >
             <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
             <div>
-              <strong>{project.title}</strong>
+              <strong data-glass-target>{project.title}</strong>
               <span>{project.line}</span>
             </div>
             <small>
@@ -400,7 +476,7 @@ function JourneyRows() {
 function ContactBlock() {
   return (
     <div className="frost-contact">
-      <a href={`mailto:${PROFILE.email}`}>
+      <a href={`mailto:${PROFILE.email}`} data-glass-target>
         {PROFILE.email} <ArrowUpRight size={24} strokeWidth={1.6} />
       </a>
       <p>{PROFILE.status} · replies within a day.</p>
@@ -466,8 +542,9 @@ function ScratchStrip({ project }) {
   );
 }
 
-/** Fault-line nav: walk a jagged pointer path from the header toward the
-    section while the smooth scroll runs, so the glaze tears along the way. */
+/** Scripted pointer path from the header toward a section while the smooth
+    scroll runs. On the fracture surface the glaze tears along the way; on
+    the mist surface the wind parts the fog over the destination. */
 function tearToward(section) {
   const host = document.querySelector(".frost-effect");
   if (!host) return;
@@ -511,7 +588,7 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
   const go = (id) => {
     const section = document.getElementById(id);
     if (!section) return;
-    if (play === "fault-line") tearToward(section);
+    if (play === "fault-line" || play === "clearing") tearToward(section);
     section.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -684,16 +761,18 @@ function DmPanel({ onClose }) {
   );
 }
 
-export function CurrentFrost({ effect, popout, play, navigate }) {
+export function CurrentFrost({ effect, popout, play, fx, navigate }) {
   const popoutMeta = popout ? POPOUTS.find((entry) => entry.slug === popout) ?? POPOUTS[0] : null;
   const playMeta = play ? PLAYS.find((entry) => entry.slug === play) ?? PLAYS[0] : null;
-  const meta = popoutMeta ?? playMeta ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
+  const fxMeta = fx ? FX.find((entry) => entry.slug === fx) ?? FX[0] : null;
+  const meta = popoutMeta ?? playMeta ?? fxMeta ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [burstOrigin, setBurstOrigin] = useState(null);
   const [dmOpen, setDmOpen] = useState(false);
   const [overInteractive, setOverInteractive] = useState(false);
   const [pressCharge, setPressCharge] = useState(0);
+  const [idleCharge, setIdleCharge] = useState(0);
   const workList = useMemo(() => buildWorkList(), []);
 
   useEffect(() => {
@@ -758,6 +837,28 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
     };
   }, [playMeta?.slug]);
 
+  // Condensation fx: rain intensity follows how long the visitor has been
+  // idle — 2s of stillness starts the build-up, ~8s reaches full weather.
+  useEffect(() => {
+    if (fxMeta?.slug !== "condensation") return;
+    let lastActive = performance.now();
+    const poke = () => { lastActive = performance.now(); };
+    const timer = setInterval(() => {
+      const idleMs = performance.now() - lastActive;
+      const next = Math.min(Math.max((idleMs - 2000) / 6000, 0), 1);
+      setIdleCharge(Math.round(next * 25) / 25);
+    }, 400);
+    for (const type of ["pointermove", "pointerdown", "keydown", "wheel"]) {
+      document.addEventListener(type, poke, { passive: true });
+    }
+    return () => {
+      clearInterval(timer);
+      for (const type of ["pointermove", "pointerdown", "keydown", "wheel"]) {
+        document.removeEventListener(type, poke);
+      }
+    };
+  }, [fxMeta?.slug]);
+
   const openProject = (project, event) => {
     if (popoutMeta?.slug === "expand-row") {
       setExpandedId((prev) => (prev === project.id ? null : project.id));
@@ -779,7 +880,9 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
       : "fracture"
     : playMeta
       ? "fracture"
-      : meta.slug;
+      : fxMeta
+        ? fxMeta.surface
+        : meta.slug;
 
   const fractureOverrides = playMeta?.slug === "affordance"
     ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
@@ -791,10 +894,16 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
           scatter: 4 + pressCharge * 5,
           tilt: 1 + pressCharge * 0.8,
         }
-      : undefined;
+      : fxMeta?.slug === "condensation"
+        ? {
+            intensity: 0.2 + idleCharge * 0.8,
+            staticDrops: 0.15 + idleCharge * 0.5,
+            fallSpeed: 1 + idleCharge * 0.6,
+          }
+        : undefined;
 
-  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : EFFECTS;
-  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : "/frost";
+  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : fxMeta ? FX : EFFECTS;
+  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : fxMeta ? "/fx" : "/frost";
 
   return (
     <div className="lab-route">
@@ -825,7 +934,7 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
               onDm={() => setDmOpen(true)}
               expandedId={popoutMeta?.slug === "expand-row" ? expandedId : null}
               contactVariant={playMeta?.slug === "break-ice" ? "sealed" : "plain"}
-              play={playMeta?.slug}
+              play={playMeta?.slug ?? fxMeta?.slug}
             />
             <footer className="frost-footer">
               <span>&copy; 2026 Dylan McCavitt</span>
