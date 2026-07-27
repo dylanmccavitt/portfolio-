@@ -728,6 +728,63 @@ body {
   gap: 5px;
 }
 
+/* About under the same weather: a wide pane, prose left-aligned, with a
+   small centered hint printed on the fog. Same lift-on-hover pattern. */
+.frost-mist-about {
+  position: relative;
+  max-width: 720px;
+  border: 1px solid var(--frost-line);
+  background: var(--frost-card);
+}
+
+.frost-mist-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 120px;
+  padding: 26px 28px;
+  visibility: hidden;
+}
+
+.lab-route .frost-mist-body {
+  visibility: visible;
+}
+
+.frost-mist-body p {
+  margin: 0;
+  max-width: 620px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.frost-mist-body > p {
+  opacity: 0;
+  transform: translateY(7px);
+  transition: opacity 0.7s ease 0.12s, transform 0.7s ease 0.12s;
+}
+
+.frost-mist-about:hover .frost-mist-body > p {
+  opacity: 1;
+  transform: none;
+}
+
+.frost-mist-about .popout-thaw-effect canvas {
+  transition: opacity 0.9s ease;
+}
+
+.frost-mist-about:hover .popout-thaw-effect canvas {
+  opacity: 0.14;
+}
+
+.frost-thaw-teaser.frost-mist-hint {
+  justify-content: center;
+  align-items: center;
+}
+
+.frost-mist-about:hover .frost-mist-hint {
+  opacity: 0;
+}
+
 .frost-cards--mist > li:hover .frost-thaw-teaser {
   opacity: 0;
 }
