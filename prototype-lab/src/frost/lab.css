@@ -481,10 +481,19 @@ body {
    sit recessed INSIDE the opening — gap-toned, inset-shadowed, under the
    glaze. Hidden in the snapshot clone (no .lab-route ancestor there) so
    the shard layer never duplicates them: they read as beneath the surface. */
+.frost-work li {
+  position: relative;
+}
+
 .frost-reveal {
   visibility: hidden;
+  position: absolute;
+  top: 100%;
+  left: 40px;
+  right: 10%;
+  z-index: 15;
   max-width: 640px;
-  margin: -2px 0 16px 40px;
+  margin: 0;
   padding: 12px 16px;
   background: #dce8f1;
   border: 1px solid #c3d7e5;
