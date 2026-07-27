@@ -1029,15 +1029,8 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
       </header>
 
       <section className="frost-site-section frost-site-hero" id="about">
-        <p className="frost-kicker">Software engineer · New York City · {PROFILE.status.toLowerCase()}</p>
-        <div className="frost-about">
-          <p>{PROFILE.summary}</p>
-          <p>
-            I build backend systems, product software, and practical AI tools. I
-            care about visible state, inspectable decisions, and products that make
-            complicated work feel ordinary.
-          </p>
-        </div>
+        <h1 className="frost-hero-name">{PROFILE.name}</h1>
+        <p className="frost-kicker">{PROFILE.role}</p>
       </section>
 
       <section className="frost-site-section" id="work">

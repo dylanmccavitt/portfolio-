@@ -688,6 +688,15 @@ body {
   transition: opacity 0.5s ease 0.08s;
 }
 
+/* Locked hero: just the name and the role — no paragraph. */
+.frost-hero-name {
+  margin: 0 0 10px;
+  font-size: clamp(38px, 6vw, 64px);
+  font-weight: 660;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
 /* Mist cells share the thaw stack (facts under a weather pane, teaser
    printed on top) — the pane is fog instead of ice. All reveal motion is
    compositor-only CSS (opacity/transform), zero React renders on hover.
@@ -709,6 +718,14 @@ body {
 
 .frost-cards--mist > li:hover .popout-thaw-effect canvas {
   opacity: 0.14;
+}
+
+/* The teaser sits centered in the card, title as the anchor point. */
+.frost-cards--mist .frost-thaw-teaser {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 5px;
 }
 
 .frost-cards--mist > li:hover .frost-thaw-teaser {
