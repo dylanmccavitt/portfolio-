@@ -222,11 +222,13 @@ function GlitchCard({ project, index, onOpen }) {
   );
 }
 
-/** Glitch open: the About prose corrupts into place the first time the
-    section scrolls into view — one burst, then crisp type. The prose is
-    hidden via an ancestor-scoped rule the snapshot clone doesn't have, so
-    the rasterizer still sees it. */
-function GlitchAbout() {
+const GLITCH_BURST = { interval: 0, intensity: 1, slices: 24, shift: 30, rgbShift: 4, blocks: 0.5, noise: 0.35 };
+
+/** Sequenced glitch-in: the block bursts open at its turn (delay) once it
+    is on screen — one corruption flash of the snapshot canvas, then the
+    real content fades in. Content is hidden via an ancestor-scoped rule
+    the snapshot clone doesn't carry, so the rasterizer still sees it. */
+function GlitchIn({ delay = 0, className, options, children }) {
   const ref = useRef(null);
   const [seen, setSeen] = useState(false);
 
@@ -240,23 +242,61 @@ function GlitchAbout() {
           io.disconnect();
         }
       },
-      { threshold: 0.35 }
+      { threshold: 0.2 }
     );
     io.observe(node);
     return () => io.disconnect();
   }, []);
 
   return (
-    <div ref={ref} className={`frost-about-glitch${seen ? " is-in" : ""}`}>
-      <SnapshotFx
-        create={createGlitch}
-        options={{ interval: 0, intensity: 1, slices: 24, shift: 30, rgbShift: 4, blocks: 0.5, noise: 0.35 }}
-      >
-        <div className="frost-about-body">
-          {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
-        </div>
+    <div
+      ref={ref}
+      className={`frost-glitch-in${seen ? " is-in" : ""}${className ? ` ${className}` : ""}`}
+      style={{ "--gdelay": `${delay}ms` }}
+    >
+      <SnapshotFx create={createGlitch} options={options ?? GLITCH_BURST}>
+        <div className="frost-glitch-in-body">{children}</div>
       </SnapshotFx>
     </div>
+  );
+}
+
+/** Everything below the boot sequence flows in softly as it arrives. */
+function FlowIn({ className, children }) {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.12 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className={`frost-flow-in${seen ? " is-in" : ""}${className ? ` ${className}` : ""}`}>
+      {children}
+    </div>
+  );
+}
+
+/** Glitch open (About): the boot sequence's third beat. */
+function GlitchAbout() {
+  return (
+    <GlitchIn delay={850} className="frost-about-glitchin">
+      <div className="frost-about-body">
+        {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
+      </div>
+    </GlitchIn>
   );
 }
 
@@ -538,29 +578,33 @@ export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "gli
         <div className="frost-effect frost-effect--none">
           <div className="frost-page">
             <div className="frost-site">
-              <header className="frost-site-head">
-                <button className="frost-site-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-                  Dylan McCavitt
-                </button>
-                <nav aria-label="Sections">
-                  {DESTINATIONS.map((destination) => (
-                    <button
-                      key={destination.id}
-                      className={destination.id === current ? "is-active" : ""}
-                      onClick={() => go(destination.id)}
-                    >
-                      {destination.label}
-                    </button>
-                  ))}
-                </nav>
-                <div className="frost-site-actions">
-                  <button className="frost-dm-button" onClick={() => setDmOpen(true)}>Ask DM</button>
-                </div>
-              </header>
+              <GlitchIn delay={150} className="frost-boot-head">
+                <header className="frost-site-head">
+                  <button className="frost-site-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                    Dylan McCavitt
+                  </button>
+                  <nav aria-label="Sections">
+                    {DESTINATIONS.map((destination) => (
+                      <button
+                        key={destination.id}
+                        className={destination.id === current ? "is-active" : ""}
+                        onClick={() => go(destination.id)}
+                      >
+                        {destination.label}
+                      </button>
+                    ))}
+                  </nav>
+                  <div className="frost-site-actions">
+                    <button className="frost-dm-button" onClick={() => setDmOpen(true)}>Ask DM</button>
+                  </div>
+                </header>
+              </GlitchIn>
 
               <section className="frost-site-section frost-site-hero">
-                <h1 className="frost-hero-name">{PROFILE.name}</h1>
-                <p className="frost-kicker">{PROFILE.role}</p>
+                <GlitchIn delay={480}>
+                  <h1 className="frost-hero-name">{PROFILE.name}</h1>
+                  <p className="frost-kicker">{PROFILE.role}</p>
+                </GlitchIn>
               </section>
 
               <section className="frost-site-section" id="about">
@@ -570,25 +614,31 @@ export function MistSite({ navigate, aboutVariant = "glitch", cardVariant = "gli
               </section>
 
               <section className="frost-site-section" id="work">
-                <h2>Work</h2>
-                <p className="frost-kicker">{workList.length} projects · shipped and building</p>
-                <ol className={`frost-cards frost-cards--${cardVariant}`}>
-                  {workList.map((project, index) => (
-                    <Card key={project.id} project={project} index={index} onOpen={openProject} />
-                  ))}
-                </ol>
+                <FlowIn>
+                  <h2>Work</h2>
+                  <p className="frost-kicker">{workList.length} projects · shipped and building</p>
+                  <ol className={`frost-cards frost-cards--${cardVariant}`}>
+                    {workList.map((project, index) => (
+                      <Card key={project.id} project={project} index={index} onOpen={openProject} />
+                    ))}
+                  </ol>
+                </FlowIn>
               </section>
 
               <section className="frost-site-section" id="journey">
-                <h2>Journey</h2>
-                <p className="frost-kicker">2019 — now</p>
-                <JourneyRows />
+                <FlowIn>
+                  <h2>Journey</h2>
+                  <p className="frost-kicker">2019 — now</p>
+                  <JourneyRows />
+                </FlowIn>
               </section>
 
               <section className="frost-site-section" id="contact">
-                <h2>Contact</h2>
-                <p className="frost-kicker">Say hello</p>
-                <ContactBlock />
+                <FlowIn>
+                  <h2>Contact</h2>
+                  <p className="frost-kicker">Say hello</p>
+                  <ContactBlock />
+                </FlowIn>
               </section>
             </div>
             <footer className="frost-footer">

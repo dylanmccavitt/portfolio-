@@ -886,8 +886,8 @@ body {
   overflow: hidden;
 }
 
-/* The revealed state is its own material: a recessed gap-toned pane, not
-   the pale card surface the teaser sits on. */
+/* The revealed state is its own material but stays in the site's palette:
+   a lifted near-white pane (like the frost-doc pages), not a colored one. */
 .frost-glitch-facts {
   position: absolute;
   inset: 0;
@@ -898,18 +898,11 @@ body {
   align-items: flex-start;
   gap: 9px;
   padding: 16px 20px;
-  background: #dce8f1;
-  box-shadow: inset 0 2px 11px rgba(38, 52, 61, 0.18);
-  color: #3f5261;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 6px rgba(38, 52, 61, 0.08);
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.4s ease 0.16s, transform 0.4s ease 0.16s;
-}
-
-.frost-glitch-facts .frost-proof span {
-  border-radius: 0;
-  border-color: #b3cbdc;
-  opacity: 0.9;
 }
 
 .frost-glitch-cell:hover .frost-glitch-facts {
@@ -994,29 +987,63 @@ body {
   }
 }
 
-/* Glitch-open About: prose hidden until the section first arrives — via
-   this ancestor-scoped rule the snapshot clone doesn't carry, so the
-   rasterizer still sees the prose. On .is-in the corrupted frame flashes
-   once while the type resolves. */
-.frost-about-glitch {
+/* Sequenced glitch-in (the boot): each block's content is hidden until
+   its turn — via ancestor-scoped rules the snapshot clone doesn't carry,
+   so the rasterizer still sees it. At its delay the corrupted frame
+   flashes, then the real content fades in just behind it. */
+.frost-glitch-in .frost-glitch-in-body {
+  opacity: 0;
+}
+
+.frost-glitch-in.is-in .frost-glitch-in-body {
+  animation: frost-fade-in 0.4s ease forwards;
+  animation-delay: calc(var(--gdelay, 0ms) + 240ms);
+}
+
+.frost-glitch-in .snapfx-out {
+  opacity: 0;
+}
+
+.frost-glitch-in.is-in .snapfx-out {
+  animation: frost-glitch-out 0.65s ease forwards;
+  animation-delay: var(--gdelay, 0ms);
+}
+
+@keyframes frost-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The boot wrapper inherits the header's stickiness (a sticky child can't
+   stick inside a wrapper its own height). */
+.frost-boot-head {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.frost-boot-head .frost-site-head {
+  position: static;
+}
+
+.frost-about-glitchin {
   max-width: 720px;
 }
 
-.frost-about-glitch .frost-about-body {
+/* Below the boot, sections flow in softly as they arrive. */
+.frost-flow-in {
   opacity: 0;
-  transition: opacity 0.45s ease 0.3s;
+  transform: translateY(16px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
 }
 
-.frost-about-glitch.is-in .frost-about-body {
+.frost-flow-in.is-in {
   opacity: 1;
-}
-
-.frost-about-glitch .snapfx-out {
-  opacity: 0;
-}
-
-.frost-about-glitch.is-in .snapfx-out {
-  animation: frost-glitch-out 0.7s ease forwards;
+  transform: none;
 }
 
 /* ---- Project page looks (layouts × effects) ---- */
