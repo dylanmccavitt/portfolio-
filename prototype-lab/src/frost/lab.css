@@ -132,8 +132,94 @@ body {
   background: rgba(38, 52, 61, 0.14);
 }
 
-/* Thaw card: a hidden copy of the content sizes the card; the Frost pane
-   overlays it exactly (position:absolute set inline on the component). */
+.frost-backdrop.is-clear {
+  background: rgba(38, 52, 61, 0.22);
+}
+
+/* Break open: the card scales out of the click point where the glaze broke. */
+.frost-burst-layer {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  animation: frost-burst-in 0.36s cubic-bezier(0.18, 0.9, 0.28, 1);
+}
+
+@keyframes frost-burst-in {
+  from {
+    transform: scale(0.42);
+    opacity: 0;
+  }
+}
+
+/* Expand row: the row unfolds in place. */
+.frost-row-detail {
+  max-width: 640px;
+  padding: 2px 2px 22px 40px;
+  animation: frost-unfold 0.24s ease-out;
+}
+
+.frost-row-detail > p {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.frost-row-detail .frost-doc-actions {
+  padding-top: 4px;
+}
+
+@keyframes frost-unfold {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}
+
+/* Side panel: a frost-doc style reading drawer. */
+.frost-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(480px, 92vw);
+  padding: 34px 34px 28px;
+  overflow: auto;
+  border-left: 1.5px solid var(--lab-ink);
+  background: var(--lab-surface);
+  color: var(--lab-ink);
+  animation: frost-slide-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.frost-drawer h2 {
+  margin: 8px 0 10px;
+  font-size: 30px;
+  font-weight: 640;
+  letter-spacing: -0.03em;
+}
+
+.frost-drawer > p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@keyframes frost-slide-in {
+  from {
+    transform: translateX(60px);
+    opacity: 0;
+  }
+}
+
+/* Break the ice: the sealed contact block. Opaque body so the native
+   sampling path never reads transparency as black. */
+.frost-seal-stop {
+  max-width: 640px;
+}
+
+/* Sizer + overlay pattern (shared with the retired thaw card): a hidden
+   copy of the content sizes the box, the effect overlays it exactly. */
 .popout-thaw {
   position: relative;
 }
@@ -142,16 +228,23 @@ body {
   visibility: hidden;
 }
 
-.popout-thaw-body {
-  min-height: 100%;
-  background: var(--frost-surface, #eef2f4);
-}
-
-/* The effect's internal content region scrolls; its scrollbar reads as a
-   seam inside the card. */
 .popout-thaw-effect ::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.frost-seal-body {
+  padding: 18px 20px;
+  overflow: hidden;
+  background: var(--lab-surface);
+  border: 1px solid var(--lab-line);
+  border-radius: 10px;
+}
+
+/* The clamp() size overflows the sealed box on wide screens; the canvas
+   copy then samples a clipped layout and fragments drift. Pin it. */
+.frost-seal-body .frost-contact a {
+  font-size: 24px;
 }
 
 .lab-gallery ol {

@@ -13,7 +13,8 @@ import "./lab.css";
  * The lab's single base layout: the CURRENT Frost site (per the live
  * preview branch + PR #347 — anchor Work rows, ProjectFocus modal, no
  * ellipses, name-first hero). Every prototype mounts a different canvas
- * effect over this exact layout; the layout itself is not a variable.
+ * effect or interaction over this exact layout; the layout itself is not
+ * a variable.
  */
 
 export const EFFECTS = [
@@ -21,7 +22,6 @@ export const EFFECTS = [
     slug: "fracture",
     number: "01",
     name: "Fracture",
-    tagline: "Mouse-made fracture",
     instruction: "The page rests whole. Moving the cursor shatters the glaze nearby; the shards settle back when you leave.",
     component: "Shatter",
   },
@@ -29,7 +29,6 @@ export const EFFECTS = [
     slug: "thaw",
     number: "02",
     name: "Thaw",
-    tagline: "Frozen pane, warm cursor",
     instruction: "Real frost instead of cracked glaze: attention melts it clear, neglect lets it ice back over.",
     component: "Frost (canvasui)",
   },
@@ -37,7 +36,6 @@ export const EFFECTS = [
     slug: "pond",
     number: "03",
     name: "Pond",
-    tagline: "Still surface, click ripples",
     instruction: "Perfectly legible at rest. Every click sends rings across the surface that bend the type as they pass.",
     component: "Ripple (canvasui)",
   },
@@ -45,7 +43,6 @@ export const EFFECTS = [
     slug: "mist",
     number: "04",
     name: "Mist",
-    tagline: "Fog parted by cursor wind",
     instruction: "Cold morning fog over the page; your movement is the wind that thins it.",
     component: "Clouds (canvasui)",
   },
@@ -53,7 +50,6 @@ export const EFFECTS = [
     slug: "rain",
     number: "05",
     name: "Rain",
-    tagline: "Droplets on a cold window",
     instruction: "Condensation runs down the pane while the type stays readable; the cursor sweeps drops aside.",
     component: "Droplets (canvasui)",
   },
@@ -61,7 +57,6 @@ export const EFFECTS = [
     slug: "glaze",
     number: "06",
     name: "Glaze",
-    tagline: "Baseline — live today",
     instruction: "The current production effect: crazed everywhere from the start; where you polish, it clears for good.",
     component: "Shatter (inverted)",
   },
@@ -72,26 +67,75 @@ export const POPOUTS = [
     slug: "plain",
     number: "01",
     name: "Plain",
-    instruction: "Baseline — the ProjectFocus popout exactly as it ships in PR #347. A project opens on load; press Escape or close it, then click any row.",
+    instruction: "Baseline — the ProjectFocus popout exactly as it ships in PR #347. A project opens on load; close it, then click any row.",
     component: "No effect",
   },
   {
-    slug: "thaw-card",
+    slug: "break-open",
     number: "02",
-    name: "Thaw card",
-    instruction: "The project card opens under a frozen pane; reading it is melting it. Left alone, it slowly ices back over.",
-    component: "Frost (canvasui) on the card",
+    name: "Break open",
+    instruction: "Click a row: the glaze cracks at that exact spot and the project bursts out of the break.",
+    component: "Shatter burst + entrance",
+  },
+  {
+    slug: "expand-row",
+    number: "03",
+    name: "Expand row",
+    instruction: "No popout at all — the row itself unfolds in place with the summary, proof, and links.",
+    component: "Inline accordion",
+  },
+  {
+    slug: "side-panel",
+    number: "04",
+    name: "Side panel",
+    instruction: "The project slides in as a reading panel from the right, frost-doc style; the page stays where you left it.",
+    component: "Drawer",
   },
   {
     slug: "freeze-world",
-    number: "03",
+    number: "05",
     name: "Freeze world",
     instruction: "Opening a project freezes the page behind it; closing thaws the site back to the fracture surface.",
     component: "Frost (canvasui) on the page",
   },
 ];
 
-function EffectShell({ slug, children }) {
+export const PLAYS = [
+  {
+    slug: "affordance",
+    number: "01",
+    name: "Affordance cracks",
+    instruction: "The glaze only cracks over things you can click — rows, nav, buttons. Fracture is the affordance, not decoration.",
+    component: "Shatter, gated by hover target",
+  },
+  {
+    slug: "break-ice",
+    number: "02",
+    name: "Break the ice",
+    instruction: "The email address is sealed under a pane of ice. Rub it clear to say hello — it never freezes back.",
+    component: "Frost (canvasui) seal",
+  },
+];
+
+/** Crack burst at a viewport point: feed jittered pointer moves to the page
+    Shatter so the glaze visibly breaks where the visitor clicked. */
+function burstFracture(x, y) {
+  const host = document.querySelector(".frost-effect");
+  if (!host) return;
+  let step = 0;
+  const timer = setInterval(() => {
+    const angle = (step / 11) * Math.PI * 2;
+    const spread = 14 + step * 7;
+    host.dispatchEvent(new PointerEvent("pointermove", {
+      clientX: x + Math.cos(angle * 2.7) * spread,
+      clientY: y + Math.sin(angle * 1.9) * spread * 0.6,
+      bubbles: false,
+    }));
+    if (++step > 11) clearInterval(timer);
+  }, 26);
+}
+
+function EffectShell({ slug, overrides, children }) {
   if (slug === "freeze") {
     return (
       <Frost
@@ -135,35 +179,6 @@ function EffectShell({ slug, children }) {
         strength={0.9}
         baseStrength={0.5}
         followSpeed={4.5}
-      >
-        {children}
-      </Shatter>
-    );
-  }
-
-  if (slug === "fracture") {
-    return (
-      <Shatter
-        className="frost-effect"
-        snapshot
-        radius={0.2}
-        softness={0.66}
-        tileSize={48}
-        shards={0.85}
-        corner={5}
-        lift={15}
-        tilt={1.0}
-        scatter={4}
-        perspective={1700}
-        gapColor={[0.72, 0.82, 0.9]}
-        shadow={0.22}
-        shading={0.32}
-        refraction={0.7}
-        dispersion={0.08}
-        floatSpeed={0.5}
-        strength={0.86}
-        baseStrength={0}
-        followSpeed={5}
       >
         {children}
       </Shatter>
@@ -245,7 +260,34 @@ function EffectShell({ slug, children }) {
     );
   }
 
-  return <div className="frost-effect">{children}</div>;
+  // fracture (default surface)
+  return (
+    <Shatter
+      className="frost-effect"
+      snapshot
+      radius={0.2}
+      softness={0.66}
+      tileSize={48}
+      shards={0.85}
+      corner={5}
+      lift={15}
+      tilt={1.0}
+      scatter={4}
+      perspective={1700}
+      gapColor={[0.72, 0.82, 0.9]}
+      shadow={0.22}
+      shading={0.32}
+      refraction={0.7}
+      dispersion={0.08}
+      floatSpeed={0.5}
+      strength={0.86}
+      baseStrength={0}
+      followSpeed={5}
+      {...overrides}
+    >
+      {children}
+    </Shatter>
+  );
 }
 
 const DESTINATIONS = [
@@ -269,7 +311,20 @@ function buildWorkList() {
   }));
 }
 
-function WorkRows({ projects, onOpen }) {
+function ProjectDetailBody({ project }) {
+  return (
+    <>
+      <p>{project.summary}</p>
+      {project.proof.length > 0 && (
+        <div className="frost-proof">
+          {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function WorkRows({ projects, onOpen, expandedId }) {
   return (
     <ol className="frost-work">
       {projects.map((project, index) => (
@@ -278,7 +333,7 @@ function WorkRows({ projects, onOpen }) {
             href={project.href}
             onClick={(event) => {
               event.preventDefault();
-              onOpen(project);
+              onOpen(project, event);
             }}
           >
             <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
@@ -290,6 +345,16 @@ function WorkRows({ projects, onOpen }) {
               {project.eyebrow} <ArrowUpRight size={13} />
             </small>
           </a>
+          {expandedId === project.id && (
+            <div className="frost-row-detail">
+              <ProjectDetailBody project={project} />
+              <nav className="frost-doc-actions" aria-label={`${project.title} links`}>
+                <a className="is-quiet" href={project.href} onClick={(e) => e.preventDefault()}>
+                  Project page <ArrowUpRight size={14} />
+                </a>
+              </nav>
+            </div>
+          )}
         </li>
       ))}
     </ol>
@@ -310,7 +375,59 @@ function JourneyRows() {
   );
 }
 
-function SiteLayout({ workList, onOpenProject, onDm }) {
+function ContactBlock() {
+  return (
+    <div className="frost-contact">
+      <a href={`mailto:${PROFILE.email}`}>
+        {PROFILE.email} <ArrowUpRight size={24} strokeWidth={1.6} />
+      </a>
+      <p>{PROFILE.status} · replies within a day.</p>
+    </div>
+  );
+}
+
+/** Break-the-ice: the email sits under a thick pane of ice; rubbing melts
+    it clear for good, so making contact starts by literally breaking the
+    ice. Built on the inline-safe canvasui Frost (the Shatter engine only
+    supports full-page mounting), with the sizer/overlay pattern from the
+    thaw card. Rubbing must not crack the page glaze, so a native listener
+    stops pointer moves from reaching the page Shatter's ancestor listener. */
+function SealedContact() {
+  const stopRef = (node) => {
+    node?.addEventListener("pointermove", (event) => event.stopPropagation());
+  };
+
+  const body = (
+    <div className="frost-seal-body">
+      <ContactBlock />
+    </div>
+  );
+
+  return (
+    <div ref={stopRef} className="frost-seal-stop">
+      <div className="popout-thaw">
+        <div className="popout-thaw-sizer" aria-hidden="true">{body}</div>
+        <Frost
+          className="popout-thaw-effect"
+          style={{ position: "absolute", inset: 0 }}
+          frost={0.6}
+          opacity={0.92}
+          meltRadius={0.28}
+          meltStrength={1}
+          refreeze={0}
+          introDuration={1.2}
+          haze={0.7}
+          detail={2.4}
+          tintStrength={0.4}
+        >
+          {body}
+        </Frost>
+      </div>
+    </div>
+  );
+}
+
+function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -371,7 +488,7 @@ function SiteLayout({ workList, onOpenProject, onDm }) {
       <section className="frost-site-section" id="work">
         <h2>Work</h2>
         <p className="frost-kicker">{workList.length} projects · shipped and building</p>
-        <WorkRows projects={workList} onOpen={onOpenProject} />
+        <WorkRows projects={workList} onOpen={onOpenProject} expandedId={expandedId} />
       </section>
 
       <section className="frost-site-section" id="journey">
@@ -382,19 +499,16 @@ function SiteLayout({ workList, onOpenProject, onDm }) {
 
       <section className="frost-site-section" id="contact">
         <h2>Contact</h2>
-        <p className="frost-kicker">Say hello</p>
-        <div className="frost-contact">
-          <a href={`mailto:${PROFILE.email}`}>
-            {PROFILE.email} <ArrowUpRight size={24} strokeWidth={1.6} />
-          </a>
-          <p>{PROFILE.status} · replies within a day.</p>
-        </div>
+        <p className="frost-kicker">
+          {contactVariant === "sealed" ? "Break the ice to say hello" : "Say hello"}
+        </p>
+        {contactVariant === "sealed" ? <SealedContact /> : <ContactBlock />}
       </section>
     </div>
   );
 }
 
-function ProjectFocus({ project, onClose, variant = "plain" }) {
+function ProjectFocus({ project, onClose, variant = "plain", origin }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -403,65 +517,68 @@ function ProjectFocus({ project, onClose, variant = "plain" }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const body = (
-    <>
+  if (variant === "side-panel") {
+    return (
+      <div className="frost-backdrop is-clear" onMouseDown={onClose}>
+        <aside
+          className="frost-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="frost-focus-title"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button className="frost-close" onClick={onClose} aria-label={`Close ${project.title}`}>
+            <X size={19} />
+          </button>
+          <p className="frost-kicker">{project.eyebrow}</p>
+          <h2 id="frost-focus-title">{project.title}</h2>
+          <ProjectDetailBody project={project} />
+          <nav className="frost-doc-actions" aria-label={`${project.title} links`}>
+            <a className="is-quiet" href={project.href} onClick={(e) => e.preventDefault()}>
+              Project page <ArrowUpRight size={14} />
+            </a>
+          </nav>
+        </aside>
+      </div>
+    );
+  }
+
+  const card = (
+    <article
+      className="frost-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="frost-focus-title"
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <button className="frost-close" onClick={onClose} aria-label={`Close ${project.title}`}>
+        <X size={19} />
+      </button>
       <p className="frost-kicker">{project.eyebrow}</p>
       <h2 id="frost-focus-title">{project.title}</h2>
-      <p>{project.summary}</p>
-      {project.proof.length > 0 && (
-        <div className="frost-proof">
-          {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
-        </div>
-      )}
-    </>
+      <ProjectDetailBody project={project} />
+    </article>
   );
+
+  if (variant === "break-open") {
+    return (
+      <div className="frost-backdrop is-clear" onMouseDown={onClose}>
+        <div
+          className="frost-burst-layer"
+          style={origin ? { transformOrigin: `${origin[0]}px ${origin[1]}px` } : undefined}
+        >
+          {card}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       className={`frost-backdrop${variant === "freeze-world" ? " is-frozen" : ""}`}
       onMouseDown={onClose}
     >
-      <article
-        className="frost-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="frost-focus-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <button className="frost-close" onClick={onClose} aria-label={`Close ${project.title}`}>
-          <X size={19} />
-        </button>
-        {variant === "thaw-card" ? (
-          /* The canvasui wrappers have no intrinsic height on the native
-             html-in-canvas path (children live inside an absolute canvas),
-             so a hidden copy of the content sizes the card and the Frost
-             pane overlays it exactly. */
-          <div className="popout-thaw">
-            <div className="popout-thaw-sizer" aria-hidden="true">
-              <div className="popout-thaw-body">{body}</div>
-            </div>
-            <Frost
-              className="popout-thaw-effect"
-              style={{ position: "absolute", inset: 0 }}
-              frost={0.34}
-              opacity={0.72}
-              meltRadius={0.32}
-              meltStrength={0.9}
-              refreeze={10}
-              introDuration={0.8}
-              haze={0.55}
-              detail={2}
-              tintStrength={0.3}
-            >
-              {/* Opaque surface: the native path samples this subtree into a
-                  canvas, and a transparent background reads back as black. */}
-              <div className="popout-thaw-body">{body}</div>
-            </Frost>
-          </div>
-        ) : (
-          body
-        )}
-      </article>
+      {card}
     </div>
   );
 }
@@ -498,11 +615,15 @@ function DmPanel({ onClose }) {
   );
 }
 
-export function CurrentFrost({ effect, popout, navigate }) {
+export function CurrentFrost({ effect, popout, play, navigate }) {
   const popoutMeta = popout ? POPOUTS.find((entry) => entry.slug === popout) ?? POPOUTS[0] : null;
-  const meta = popoutMeta ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
+  const playMeta = play ? PLAYS.find((entry) => entry.slug === play) ?? PLAYS[0] : null;
+  const meta = popoutMeta ?? playMeta ?? (EFFECTS.find((entry) => entry.slug === effect) ?? EFFECTS[0]);
   const [focusedProject, setFocusedProject] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [burstOrigin, setBurstOrigin] = useState(null);
   const [dmOpen, setDmOpen] = useState(false);
+  const [overInteractive, setOverInteractive] = useState(false);
   const workList = useMemo(() => buildWorkList(), []);
 
   useEffect(() => {
@@ -510,28 +631,64 @@ export function CurrentFrost({ effect, popout, navigate }) {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [meta.name]);
 
-  // Popout routes ride on the selected homepage surface (fracture) and open
-  // a project immediately so the treatment is visible without hunting.
+  // Popout routes open a project immediately where the treatment is visible
+  // without hunting; entrance-driven variants wait for a real click instead.
   useEffect(() => {
-    if (popoutMeta) setFocusedProject(workList[0]);
+    setFocusedProject(null);
+    setExpandedId(null);
+    if (!popoutMeta) return;
+    if (popoutMeta.slug === "expand-row") setExpandedId(workList[0].id);
+    else if (popoutMeta.slug !== "break-open") setFocusedProject(workList[0]);
   }, [popoutMeta?.slug, workList]);
+
+  // Affordance play: fracture strength follows whether the pointer is over
+  // something clickable inside the page.
+  useEffect(() => {
+    if (playMeta?.slug !== "affordance") return;
+    const onOver = (event) => {
+      setOverInteractive(Boolean(event.target?.closest?.(".frost-page a, .frost-page button")));
+    };
+    document.addEventListener("pointerover", onOver);
+    return () => document.removeEventListener("pointerover", onOver);
+  }, [playMeta?.slug]);
+
+  const openProject = (project, event) => {
+    if (popoutMeta?.slug === "expand-row") {
+      setExpandedId((prev) => (prev === project.id ? null : project.id));
+      return;
+    }
+    if (popoutMeta?.slug === "break-open" && event) {
+      const { clientX, clientY } = event;
+      burstFracture(clientX, clientY);
+      setBurstOrigin([clientX, clientY]);
+      setTimeout(() => setFocusedProject(project), 330);
+      return;
+    }
+    setFocusedProject(project);
+  };
 
   const pageSlug = popoutMeta
     ? popoutMeta.slug === "freeze-world" && focusedProject
       ? "freeze"
       : "fracture"
-    : meta.slug;
+    : playMeta
+      ? "fracture"
+      : meta.slug;
 
-  const navEntries = popoutMeta ? POPOUTS : EFFECTS;
-  const navBase = popoutMeta ? "/popout" : "/frost";
+  const fractureOverrides = playMeta?.slug === "affordance"
+    ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
+    : undefined;
+
+  const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : EFFECTS;
+  const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : "/frost";
 
   return (
     <div className="lab-route">
       <div className="lab-bar">
         <button onClick={() => navigate("/")}>
-          <ArrowLeft size={13} /> {popoutMeta ? "All prototypes" : "All effects"}
+          <ArrowLeft size={13} /> All prototypes
         </button>
-        <nav aria-label={popoutMeta ? "Popout variants" : "Effects"}>
+        <nav aria-label="Variants">
           {navEntries.map((entry) => (
             <button
               key={entry.slug}
@@ -546,12 +703,14 @@ export function CurrentFrost({ effect, popout, navigate }) {
       </div>
 
       <main className="frost" id="main">
-        <EffectShell slug={pageSlug} key={pageSlug}>
+        <EffectShell slug={pageSlug} key={pageSlug} overrides={fractureOverrides}>
           <div className="frost-page">
             <SiteLayout
               workList={workList}
-              onOpenProject={setFocusedProject}
+              onOpenProject={openProject}
               onDm={() => setDmOpen(true)}
+              expandedId={popoutMeta?.slug === "expand-row" ? expandedId : null}
+              contactVariant={playMeta?.slug === "break-ice" ? "sealed" : "plain"}
             />
             <footer className="frost-footer">
               <span>&copy; 2026 Dylan McCavitt</span>
@@ -564,6 +723,7 @@ export function CurrentFrost({ effect, popout, navigate }) {
           <ProjectFocus
             project={focusedProject}
             variant={popoutMeta?.slug ?? "plain"}
+            origin={burstOrigin}
             onClose={() => setFocusedProject(null)}
           />
         )}

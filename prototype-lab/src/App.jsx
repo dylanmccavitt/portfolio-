@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { CurrentFrost, EFFECTS, POPOUTS } from "./frost/CurrentFrost.jsx";
+import { CurrentFrost, EFFECTS, PLAYS, POPOUTS } from "./frost/CurrentFrost.jsx";
 import "./frost/lab.css";
 
 function Gallery({ navigate }) {
@@ -64,6 +64,30 @@ function Gallery({ navigate }) {
           </li>
         ))}
       </ol>
+
+      <h2 className="lab-section">Fracture as UI <span>giving the crack a job · exploring</span></h2>
+      <ol>
+        {PLAYS.map((variant) => (
+          <li key={variant.slug}>
+            <a
+              href={`/play/${variant.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/play/${variant.slug}`);
+              }}
+            >
+              <span className="lab-num">{variant.number}</span>
+              <div>
+                <strong>{variant.name}</strong>
+                <span className="lab-note">{variant.instruction}</span>
+              </div>
+              <small>
+                {variant.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
+      </ol>
     </main>
   );
 }
@@ -87,9 +111,14 @@ export function App() {
   const effect = effectMatch && EFFECTS.find((entry) => entry.slug === effectMatch[1]);
   const popoutMatch = path.match(/^\/popout\/([a-z-]+)\/?$/);
   const popoutVariant = popoutMatch && POPOUTS.find((entry) => entry.slug === popoutMatch[1]);
+  const playMatch = path.match(/^\/play\/([a-z-]+)\/?$/);
+  const playVariant = playMatch && PLAYS.find((entry) => entry.slug === playMatch[1]);
 
   if (popoutVariant) {
     return <CurrentFrost effect="fracture" popout={popoutVariant.slug} navigate={navigate} />;
+  }
+  if (playVariant) {
+    return <CurrentFrost effect="fracture" play={playVariant.slug} navigate={navigate} />;
   }
   return effect ? (
     <CurrentFrost effect={effect.slug} navigate={navigate} />
