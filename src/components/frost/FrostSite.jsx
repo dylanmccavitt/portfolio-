@@ -89,7 +89,7 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
-function GlitchCard({ project, index, fx }) {
+function GlitchCard({ project, index, fx, isHot, onReveal }) {
   const teaser = (
     <div className="frost-glitch-teaser">
       <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
@@ -99,11 +99,19 @@ function GlitchCard({ project, index, fx }) {
   );
 
   return (
-    <li className="frost-glitch-cell">
+    <li className={`frost-glitch-cell${isHot ? " is-hot" : ""}`}>
       <a
         className="frost-glitch-open"
         href={project.href}
         aria-label={`Open ${project.title}`}
+        onClick={(event) => {
+          // Touch has no hover: the first tap plays the reveal, the second
+          // tap navigates. Hover-capable pointers are unaffected.
+          if (!isHot && window.matchMedia("(hover: none)").matches) {
+            event.preventDefault();
+            onReveal(project.id);
+          }
+        }}
       />
       <div className="frost-glitch-facts" aria-hidden="true">
         <p>{project.line}</p>
@@ -153,6 +161,17 @@ function ContactBlock() {
 
 function SiteLayout({ projects, fx, onDm }) {
   const [current, setCurrent] = useState("about");
+  const [hotId, setHotId] = useState(null);
+
+  // A tap-revealed card reseals when the next tap lands outside it.
+  useEffect(() => {
+    if (!hotId) return;
+    const onPointerDown = (event) => {
+      if (!event.target.closest?.(".frost-glitch-cell.is-hot")) setHotId(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [hotId]);
 
   useEffect(() => {
     const sections = DESTINATIONS
@@ -217,7 +236,14 @@ function SiteLayout({ projects, fx, onDm }) {
           <p className="frost-kicker">{projects.length} projects · shipped and building</p>
           <ol className="frost-cards">
             {projects.map((project, index) => (
-              <GlitchCard key={project.id} project={project} index={index} fx={fx} />
+              <GlitchCard
+                key={project.id}
+                project={project}
+                index={index}
+                fx={fx}
+                isHot={project.id === hotId}
+                onReveal={setHotId}
+              />
             ))}
           </ol>
         </FlowIn>

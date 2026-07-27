@@ -95,7 +95,8 @@
 }
 
 .frost-glitch-cell:hover .frost-glitch-facts,
-.frost-glitch-cell:focus-within .frost-glitch-facts {
+.frost-glitch-cell:focus-within .frost-glitch-facts,
+.frost-glitch-cell.is-hot .frost-glitch-facts {
   opacity: 1;
   transform: none;
 }
@@ -160,7 +161,8 @@
 }
 
 .frost-glitch-cell:hover .frost-glitch-teaser,
-.frost-glitch-cell:focus-within .frost-glitch-teaser {
+.frost-glitch-cell:focus-within .frost-glitch-teaser,
+.frost-glitch-cell.is-hot .frost-glitch-teaser {
   opacity: 0;
 }
 
@@ -169,7 +171,8 @@
 }
 
 .frost-glitch-cell:hover .frost-glitch-snap .snapfx-out,
-.frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out {
+.frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out,
+.frost-glitch-cell.is-hot .frost-glitch-snap .snapfx-out {
   animation: frost-glitch-out 0.6s ease forwards;
 }
 
@@ -1027,7 +1030,8 @@ a.frost-dm-card:hover {
   }
 
   .frost-glitch-cell:hover .frost-glitch-snap .snapfx-out,
-  .frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out {
+  .frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out,
+  .frost-glitch-cell.is-hot .frost-glitch-snap .snapfx-out {
     animation: none;
   }
 }
