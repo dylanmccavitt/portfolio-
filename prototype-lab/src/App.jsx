@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { CURRENT, MistSite } from "./frost/MistSite.jsx";
+import { PROJECT_LOOKS, ProjectLook } from "./frost/ProjectLooks.jsx";
 import "./frost/lab.css";
 
 /**
@@ -45,6 +46,29 @@ function Gallery({ navigate }) {
           </a>
         </li>
       </ol>
+      <h2 className="lab-section">Project page looks <span>layouts × effects · exploring</span></h2>
+      <ol>
+        {PROJECT_LOOKS.map((entry) => (
+          <li key={entry.slug}>
+            <a
+              href={`/project/${entry.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/project/${entry.slug}`);
+              }}
+            >
+              <span className="lab-num">{entry.number}</span>
+              <div>
+                <strong>{entry.name}</strong>
+                <span className="lab-note">{entry.instruction}</span>
+              </div>
+              <small>
+                {entry.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
+      </ol>
     </main>
   );
 }
@@ -68,6 +92,10 @@ export function App() {
   // recent links keep working.
   if (/^\/(current|popout\/mist-cards)\/?$/.test(path)) {
     return <MistSite navigate={navigate} />;
+  }
+  const look = path.match(/^\/project\/([a-z-]+)\/?$/);
+  if (look && PROJECT_LOOKS.some((entry) => entry.slug === look[1])) {
+    return <ProjectLook slug={look[1]} navigate={navigate} />;
   }
   return <Gallery navigate={navigate} />;
 }

@@ -728,61 +728,228 @@ body {
   gap: 5px;
 }
 
-/* About under the same weather: a wide pane, prose left-aligned, with a
-   small centered hint printed on the fog. Same lift-on-hover pattern. */
-.frost-mist-about {
+/* About: no card at all — bare prose under a pane of ice that melts under
+   the pointer, with the whole pane thinning on hover. The body carries the
+   page surface color (opaque) because Frost's native tier samples
+   transparency as black; against the page it reads as no box. */
+.frost-about-reveal {
   position: relative;
   max-width: 720px;
-  border: 1px solid var(--frost-line);
-  background: var(--frost-card);
 }
 
-.frost-mist-body {
+.frost-about-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 120px;
-  padding: 26px 28px;
-  visibility: hidden;
+  min-height: 110px;
+  padding: 6px 0;
+  background: var(--frost-surface);
 }
 
-.lab-route .frost-mist-body {
-  visibility: visible;
-}
-
-.frost-mist-body p {
+.frost-about-body p {
   margin: 0;
-  max-width: 620px;
+  max-width: 640px;
   font-size: 15px;
   line-height: 1.65;
 }
 
-.frost-mist-body > p {
-  opacity: 0;
-  transform: translateY(7px);
-  transition: opacity 0.7s ease 0.12s, transform 0.7s ease 0.12s;
+.frost-about-reveal .popout-thaw-effect canvas {
+  transition: opacity 1s ease;
 }
 
-.frost-mist-about:hover .frost-mist-body > p {
-  opacity: 1;
-  transform: none;
+.frost-about-reveal:hover .popout-thaw-effect canvas {
+  opacity: 0.1;
 }
 
-.frost-mist-about .popout-thaw-effect canvas {
+/* ---- Project page looks (layouts × effects) ---- */
+
+.look-shell {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 26px 32px 80px;
+}
+
+.look-shell .frost-doc-head {
+  margin-bottom: 34px;
+}
+
+.look-weather {
+  position: relative;
+}
+
+/* Fog lifts: the title block under mist, opaque body for native sampling,
+   whole pane thins on hover. */
+.look-fog-head {
+  margin-bottom: 40px;
+}
+
+.look-fog-title {
+  padding: 48px 40px;
+  background: var(--frost-surface);
+}
+
+.look-fog-title h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(34px, 5vw, 54px);
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.look-fog-title p:last-child {
+  max-width: 560px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.look-fog-head .popout-thaw-effect canvas {
   transition: opacity 0.9s ease;
 }
 
-.frost-mist-about:hover .popout-thaw-effect canvas {
-  opacity: 0.14;
+.look-fog-head:hover .popout-thaw-effect canvas {
+  opacity: 0.12;
 }
 
-.frost-thaw-teaser.frost-mist-hint {
+.look-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 44px;
+}
+
+.look-cols h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.look-cols-story p {
+  max-width: 620px;
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--frost-muted);
+}
+
+.look-cols-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Rain: sticky facts rail, gallery under droplets. */
+.look-rail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 44px;
+  align-items: start;
+}
+
+.look-rail-side {
+  position: sticky;
+  top: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.look-rail-side h1 {
+  margin: 0;
+  font-size: clamp(28px, 3.4vw, 40px);
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.look-rail-line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.look-rail-main h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.look-rail-summary {
+  max-width: 620px;
+  margin: 0 0 26px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--frost-muted);
+}
+
+.look-rain-body {
+  padding: 14px;
+  background: var(--frost-surface);
+}
+
+.look-rain-pane .popout-thaw-effect canvas {
+  transition: opacity 0.9s ease;
+}
+
+/* Iced evidence: centered editorial, sealed chips. */
+.look-ice {
+  text-align: center;
+}
+
+.look-ice-head h1 {
+  margin: 10px 0 14px;
+  font-size: clamp(44px, 7vw, 76px);
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.look-ice-head p:last-child {
+  max-width: 540px;
+  margin: 0 auto;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.look-ice-summary {
+  max-width: 620px;
+  margin: 26px auto 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--frost-muted);
+}
+
+.look-ice-h {
+  margin: 44px 0 14px;
+  font-size: 13px;
+  font-family: "IBM Plex Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+}
+
+.look-ice-strip {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.look-ice-chips {
+  padding: 22px 24px;
+  background: var(--frost-surface);
+}
+
+.look-ice-chips .frost-doc-facts {
   justify-content: center;
-  align-items: center;
 }
 
-.frost-mist-about:hover .frost-mist-hint {
-  opacity: 0;
+.look-ice .frost-gallery figure {
+  text-align: left;
+}
+
+@media (max-width: 860px) {
+  .look-cols,
+  .look-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .look-rail-side {
+    position: static;
+  }
 }
 
 .frost-cards--mist > li:hover .frost-thaw-teaser {

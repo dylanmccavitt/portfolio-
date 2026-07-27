@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
+import { Frost } from "../components/canvasui/Frost.tsx";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
 import "./frost.css";
 import "./lab.css";
@@ -19,8 +20,8 @@ export const CURRENT = {
   slug: "current",
   number: "01",
   name: "Mist reveal",
-  instruction: "The locked direction: a bare page where mist does the reveals — hover a Work card or the About pane to lift the fog; click a card to enter the project.",
-  component: "Card grid + About pane, Clouds (canvasui) per surface",
+  instruction: "The locked direction: a bare page where weather does the reveals — hover a Work card to lift its fog, melt the frost off the About prose, click a card to enter the project.",
+  component: "Mist card grid + iced About, Clouds + Frost (canvasui)",
 };
 
 const DESTINATIONS = [
@@ -99,11 +100,15 @@ function MistCard({ project, index, onOpen }) {
   );
 }
 
-/** About under the same weather: the summary rests beneath a wide fog
-    pane; hovering lifts it and the words condense in. */
-function MistAbout() {
+/** About gets a different weather than the cards: no card chrome at all —
+    the prose sits bare on the page under a pane of real ice (canvasui
+    Frost, native in stock Chrome) that melts under the pointer, and the
+    whole pane thins on hover so the words come fully clear. The body
+    carries the page's own surface color because Frost's native tier
+    samples transparent pixels as black. */
+function FrostAbout() {
   const body = (
-    <div className="frost-mist-body">
+    <div className="frost-about-body">
       <p>{PROFILE.summary}</p>
       <p>
         I build backend systems, product software, and practical AI tools. I
@@ -114,19 +119,23 @@ function MistAbout() {
   );
 
   return (
-    <div className="frost-mist-about">
+    <div className="frost-about-reveal">
       <div className="popout-thaw">
         <div className="popout-thaw-sizer" aria-hidden="true">{body}</div>
-        <Clouds
+        <Frost
           className="popout-thaw-effect"
           style={{ position: "absolute", inset: 0 }}
-          {...MIST_PROPS}
+          frost={0.5}
+          opacity={0.9}
+          meltRadius={0.3}
+          meltStrength={1}
+          refreeze={4}
+          haze={0.65}
+          tintStrength={0.38}
+          detail={2.4}
         >
           {body}
-        </Clouds>
-      </div>
-      <div className="frost-thaw-teaser frost-mist-hint" aria-hidden="true">
-        <p className="frost-kicker">Clear the fog</p>
+        </Frost>
       </div>
     </div>
   );
@@ -326,8 +335,8 @@ export function MistSite({ navigate }) {
 
               <section className="frost-site-section" id="about">
                 <h2>About</h2>
-                <p className="frost-kicker">The short version</p>
-                <MistAbout />
+                <p className="frost-kicker">The short version · melt the frost</p>
+                <FrostAbout />
               </section>
 
               <section className="frost-site-section" id="work">
