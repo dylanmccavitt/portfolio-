@@ -286,12 +286,12 @@ function EffectShell({ slug, overrides, children }) {
       <Frost
         className="frost-effect frost-effect--canvasui"
         frost={0.45}
-        opacity={0.7}
+        opacity={0.68}
         meltStrength={0}
         introDuration={1}
-        haze={0.6}
+        haze={0.62}
         detail={2}
-        tintStrength={0.35}
+        tintStrength={0.4}
       >
         {children}
       </Frost>
@@ -334,15 +334,15 @@ function EffectShell({ slug, overrides, children }) {
     return (
       <Frost
         className="frost-effect frost-effect--canvasui"
-        frost={0.07}
-        opacity={0.62}
-        meltRadius={0.24}
-        meltStrength={0.8}
+        frost={0.08}
+        opacity={0.58}
+        meltRadius={0.26}
+        meltStrength={0.85}
         refreeze={5}
-        haze={0.55}
+        haze={0.6}
         detail={2}
         textureScale={2}
-        tintStrength={0.32}
+        tintStrength={0.38}
       >
         {children}
       </Frost>
@@ -372,14 +372,17 @@ function EffectShell({ slug, overrides, children }) {
     return (
       <Clouds
         className="frost-effect frost-effect--canvasui"
-        color="#dfe9f0"
-        opacity={0.6}
-        cover={0.12}
-        density={2.4}
-        wind={0.7}
-        windRadius={380}
-        speed={0.5}
-        shadow={0.04}
+        {...overrides}
+        color={[0.93, 0.96, 0.98]}
+        opacity={0.55}
+        cover={0.07}
+        density={1.7}
+        shading={0.05}
+        wind={0.85}
+        windRadius={430}
+        speed={0.45}
+        shadow={0.015}
+        shadowOffsetX={120}
       >
         {children}
       </Clouds>
@@ -390,15 +393,15 @@ function EffectShell({ slug, overrides, children }) {
     return (
       <Droplets
         className="frost-effect frost-effect--canvasui"
-        intensity={0.45}
-        scale={0.42}
-        refraction={0.24}
-        staticDrops={0.25}
+        intensity={0.4}
+        scale={0.48}
+        refraction={0.3}
+        staticDrops={0.22}
         interactive
         interactionRadius={0.3}
         interactionStrength={0.65}
-        tint={[0.87, 0.92, 0.97]}
-        tintStrength={0.12}
+        tint={[0.8, 0.89, 0.98]}
+        tintStrength={0.85}
         {...overrides}
       >
         {children}
@@ -1165,11 +1168,13 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         }
       : fxMeta?.slug === "condensation"
         ? {
-            intensity: 0.2 + idleCharge * 0.8,
-            staticDrops: 0.15 + idleCharge * 0.5,
+            intensity: 0.15 + idleCharge * 0.85,
+            staticDrops: 0.12 + idleCharge * 0.55,
             fallSpeed: 1 + idleCharge * 0.6,
           }
-        : undefined;
+        : fxMeta?.slug === "clearing"
+          ? { cover: 0.2, opacity: 0.64, density: 2.1 }
+          : undefined;
 
   const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : fxMeta ? FX : cardMeta ? CARDS : enterMeta ? ENTERS : flowMeta ? FLOW : EFFECTS;
   const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : fxMeta ? "/fx" : cardMeta ? "/card" : enterMeta ? "/enter" : flowMeta ? "/flow" : "/frost";
