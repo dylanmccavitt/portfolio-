@@ -119,6 +119,14 @@ body {
   color: var(--lab-muted);
 }
 
+/* The Shatter fallback paints on a fixed canvas at z-index 20; the sticky
+   site header ships at z-index 10, so lifted shards were covering the nav
+   (Dylan's report, 2026-07-27). Keep the chrome above the effect: the page
+   fractures, the header never does. */
+.frost-site-head {
+  z-index: 24;
+}
+
 /* The canvasui wrappers (Frost/Ripple/Clouds/Droplets) have no intrinsic
    height on the native html-in-canvas path — children render inside an
    absolutely-positioned canvas — so page-level uses get the viewport and
