@@ -775,11 +775,11 @@ function MistCard({ project, index, onOpen }) {
         <Clouds
           className="popout-thaw-effect"
           style={{ position: "absolute", inset: 0 }}
-          color={[0.93, 0.96, 0.98]}
-          opacity={0.9}
-          cover={0.55}
-          density={3}
-          shading={0.1}
+          color={[0.93, 0.95, 0.96]}
+          opacity={0.72}
+          cover={0.48}
+          density={2.6}
+          shading={0.05}
           wind={1}
           windRadius={240}
           speed={0.25}
