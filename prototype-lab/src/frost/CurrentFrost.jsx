@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Droplets } from "../components/canvasui/Droplets.tsx";
@@ -1046,6 +1046,12 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const [burstOrigin, setBurstOrigin] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   const [revealCharge, setRevealCharge] = useState(0);
+  const hoverRef = useRef(false);
+  const handleHover = (id) => {
+    hoverRef.current = Boolean(id);
+    if (id) setHoveredId(id);
+    else setTimeout(() => { if (!hoverRef.current) setHoveredId(null); }, 450);
+  };
   const [dmOpen, setDmOpen] = useState(false);
   const [overInteractive, setOverInteractive] = useState(false);
   const [pressCharge, setPressCharge] = useState(0);
@@ -1075,25 +1081,28 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     else if (popoutMeta.slug !== "break-open" && popoutMeta.slug !== "reveal") setFocusedProject(workList[0]);
   }, [popoutMeta?.slug, cardMeta?.slug, enterMeta?.slug, workList]);
 
-  // Fracture reveal: hovering charges the opening slowly (~700ms) so the
-  // crack widens and the facts underneath surface together, cleanly.
+  // Fracture reveal: one continuous eased charge for the whole list. It
+  // never resets on hover changes, so moving row to row hands the opening
+  // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
     if (popoutMeta?.slug !== "reveal") return;
     let raf = 0;
     let charge = 0;
+    let sent = -1;
     let last = performance.now();
     const loop = (now) => {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
-      const target = hoveredId ? 1 : 0;
-      charge += (target - charge) * Math.min(dt * (hoveredId ? 3.2 : 4.5), 1);
-      if (Math.abs(target - charge) < 0.01) charge = target;
-      setRevealCharge(Math.round(charge * 40) / 40);
-      if (charge !== target) raf = requestAnimationFrame(loop);
+      const target = hoverRef.current ? 1 : 0;
+      charge += (target - charge) * Math.min(dt * (target ? 3 : 2.4), 1);
+      if (Math.abs(target - charge) < 0.005) charge = target;
+      const q = Math.round(charge * 60) / 60;
+      if (q !== sent) { sent = q; setRevealCharge(q); }
+      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [popoutMeta?.slug, hoveredId]);
+  }, [popoutMeta?.slug]);
 
   // Enter routes: the card's "Open project" action transitions into the
   // in-lab project page per variant.
@@ -1284,7 +1293,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
               play={playMeta?.slug ?? fxMeta?.slug}
               reveal={popoutMeta?.slug === "reveal"}
               hoveredId={hoveredId}
-              onHover={setHoveredId}
+              onHover={handleHover}
               revealCharge={revealCharge}
             />
             <footer className="frost-footer">
