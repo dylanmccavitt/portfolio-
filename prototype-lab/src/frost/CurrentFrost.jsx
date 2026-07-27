@@ -126,8 +126,8 @@ export const POPOUTS = [
     slug: "mist-cards",
     number: "09",
     name: "Mist reveal",
-    instruction: "The page rests under fog. Hover a card: wind parts the mist over it and the facts condense out. Click enters the project.",
-    component: "Card grid + Clouds wind sweep",
+    instruction: "Each card rests under its own patch of fog — the page stays glass. Hovering wipes the mist aside and the facts condense out; click enters the project.",
+    component: "Card grid + Clouds (canvasui) per card",
   },
 ];
 
@@ -736,7 +736,61 @@ function ThawCard({ project, index, onOpen }) {
         <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
         <p className="frost-kicker">{project.eyebrow}</p>
         <strong>{project.title}</strong>
-        <span className="frost-card-line">{project.line}</span>
+      </div>
+    </li>
+  );
+}
+
+/** Per-card fog: the facts live in the card, a patch of Clouds rests over
+    them, and the teaser is printed above the weather. Hovering wipes the
+    fog aside (Clouds listens on its own content div) while the facts
+    condense in via pure CSS — no React state changes on hover at all, so
+    the reveal costs zero re-renders. The page surface stays glass. */
+function MistCard({ project, index, onOpen }) {
+  const facts = (
+    <div className="frost-thaw-facts">
+      <a
+        className="frost-thaw-open"
+        href={project.href}
+        aria-label={`Open ${project.title}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onOpen(project, event);
+        }}
+      />
+      <p>{project.summary}</p>
+      {project.proof.length > 0 && (
+        <div className="frost-proof">
+          {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+      )}
+      <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+    </div>
+  );
+
+  return (
+    <li className="frost-mist-cell" ref={sealStopRef}>
+      <div className="popout-thaw">
+        <div className="popout-thaw-sizer" aria-hidden="true">{facts}</div>
+        <Clouds
+          className="popout-thaw-effect"
+          style={{ position: "absolute", inset: 0 }}
+          color={[0.93, 0.96, 0.98]}
+          opacity={0.9}
+          cover={0.55}
+          density={3}
+          shading={0.1}
+          wind={1}
+          windRadius={240}
+          speed={0.25}
+        >
+          {facts}
+        </Clouds>
+      </div>
+      <div className="frost-thaw-teaser" aria-hidden="true">
+        <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <strong>{project.title}</strong>
       </div>
     </li>
   );
@@ -747,14 +801,14 @@ function ThawCard({ project, index, onOpen }) {
     snapshot clone (same trick as .frost-reveal) so the shard layer lifts
     only the card surface and the facts read as under the glaze.
     variant: "fracture" pins the page crack inside the hovered card;
-    "mist" leaves raw moves alone (the fog is page-level wind);
-    "thaw" swaps in per-card ice panes. */
+    "thaw"/"mist" swap in per-card ice panes / fog patches. */
 function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge, variant }) {
-  if (variant === "thaw") {
+  if (variant === "thaw" || variant === "mist") {
+    const Card = variant === "thaw" ? ThawCard : MistCard;
     return (
-      <ol className="frost-cards frost-cards--thaw">
+      <ol className={`frost-cards frost-cards--${variant}`}>
         {projects.map((project, index) => (
-          <ThawCard key={project.id} project={project} index={index} onOpen={onOpen} />
+          <Card key={project.id} project={project} index={index} onOpen={onOpen} />
         ))}
       </ol>
     );
@@ -783,17 +837,12 @@ function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge, variant
             <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
             <p className="frost-kicker">{project.eyebrow}</p>
             <strong data-glass-target>{project.title}</strong>
-            <span className="frost-card-line">{project.line}</span>
           </a>
           {hoveredId === project.id && (
             <div
               className={`frost-card-under${variant === "settle" ? " frost-card-under--settle" : ""}`}
               aria-hidden="true"
-              style={{
-                opacity: revealCharge,
-                // Mist: the facts drift up into place as they condense.
-                transform: variant === "mist" ? `translateY(${((1 - revealCharge) * 7).toFixed(2)}px)` : undefined,
-              }}
+              style={{ opacity: revealCharge }}
             >
               <p>{project.summary}</p>
               {project.proof.length > 0 && (
@@ -835,18 +884,21 @@ function ContactBlock() {
   );
 }
 
+/** Native pointermove stopper for inline seals: rubs must not reach the
+    page Shatter's ancestor listener (a React handler runs too late).
+    Module scope so it isn't rebuilt per render, and the stable listener
+    reference makes repeat addEventListener calls no-ops. */
+const stopSealMove = (event) => event.stopPropagation();
+function sealStopRef(node) {
+  node?.addEventListener("pointermove", stopSealMove);
+}
+
 /** Inline ice seal over arbitrary content, built on the inline-safe
     canvasui Frost (the Shatter engine only supports full-page mounting).
-    A hidden copy sizes the box, the pane overlays it exactly, and a native
-    pointermove listener stops rubs from reaching the page Shatter's
-    ancestor listener (a React handler runs too late for that). */
+    A hidden copy sizes the box, the pane overlays it exactly. */
 function SealedReveal({ className, frostProps, children }) {
-  const stopRef = (node) => {
-    node?.addEventListener("pointermove", (event) => event.stopPropagation());
-  };
-
   return (
-    <div ref={stopRef} className={className}>
+    <div ref={sealStopRef} className={className}>
       <div className="popout-thaw">
         <div className="popout-thaw-sizer" aria-hidden="true">{children}</div>
         <Frost
@@ -924,9 +976,10 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
-    const sections = DESTINATIONS
-      .map((d) => document.getElementById(d.id))
-      .filter(Boolean);
+    const sections = DESTINATIONS.flatMap((d) => {
+      const section = document.getElementById(d.id);
+      return section ? [section] : [];
+    });
     const io = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -1260,10 +1313,8 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const [hoveredId, setHoveredId] = useState(null);
   const [revealCharge, setRevealCharge] = useState(0);
   const hoverRef = useRef(false);
-  const hoveredIdRef = useRef(null);
   const handleHover = (id) => {
     hoverRef.current = Boolean(id);
-    hoveredIdRef.current = id;
     if (id) setHoveredId(id);
     else setTimeout(() => { if (!hoverRef.current) setHoveredId(null); }, 450);
   };
@@ -1300,12 +1351,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   // never resets on hover changes, so moving row to row hands the opening
   // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
-    if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug) && !mistFlow && !settleFlow) return;
-    // Mist condenses and lifts slower than glass cracks — the reveal should
-    // read as weather changing, not a switch flipping.
-    const mist = popoutMeta?.slug === "mist-cards" || mistFlow;
-    const rateIn = mist ? 2 : 3;
-    const rateOut = mist ? 1.6 : 2.4;
+    if (!["reveal", "cards"].includes(popoutMeta?.slug) && !settleFlow) return;
     let raf = 0;
     let charge = 0;
     let sent = -1;
@@ -1314,7 +1360,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const target = hoverRef.current ? 1 : 0;
-      charge += (target - charge) * Math.min(dt * (target ? rateIn : rateOut), 1);
+      charge += (target - charge) * Math.min(dt * (target ? 3 : 2.4), 1);
       if (Math.abs(target - charge) < 0.005) charge = target;
       const q = Math.round(charge * 60) / 60;
       if (q !== sent) { sent = q; setRevealCharge(q); }
@@ -1322,41 +1368,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [popoutMeta?.slug, mistFlow, settleFlow]);
-
-  // Mist reveal: while a card is hovered, sweep synthetic wind across it so
-  // the fog parts over the whole card, not just around the cursor. Clouds
-  // listens on its content div, so dispatch there (~30Hz is plenty).
-  useEffect(() => {
-    if (popoutMeta?.slug !== "mist-cards" && !mistFlow) return;
-    let raf = 0;
-    let lastSent = 0;
-    let sweepId = null;
-    let sweepStart = 0;
-    const loop = (now) => {
-      raf = requestAnimationFrame(loop);
-      if (now - lastSent < 33) return;
-      lastSent = now;
-      const id = hoveredIdRef.current;
-      if (!id) { sweepId = null; return; }
-      if (id !== sweepId) { sweepId = id; sweepStart = now; }
-      const cell = document.querySelector(`.frost-cards li[data-project="${id}"]`);
-      const target = document.querySelector(".frost-effect")?.querySelector(":scope > div");
-      if (!cell || !target) return;
-      // Ramp the sweep in over ~1.1s (ease-out) so the wind builds and the
-      // fog parts progressively instead of snapping to the full card.
-      const ramp = 1 - Math.pow(1 - Math.min((now - sweepStart) / 1100, 1), 3);
-      const r = cell.getBoundingClientRect();
-      const t = now / 1000;
-      target.dispatchEvent(new PointerEvent("pointermove", {
-        clientX: r.left + r.width * (0.5 + 0.46 * ramp * Math.sin(t * 2.2)),
-        clientY: r.top + r.height * (0.5 + 0.34 * ramp * Math.sin(t * 1.5)),
-        bubbles: false,
-      }));
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [popoutMeta?.slug, mistFlow]);
+  }, [popoutMeta?.slug, settleFlow]);
 
   // Enter routes: the card's "Open project" action transitions into the
   // in-lab project page per variant.
@@ -1476,9 +1488,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const pageSlug = popoutMeta
     ? popoutMeta.slug === "freeze-world" && focusedProject
       ? "freeze"
-      : popoutMeta.slug === "mist-cards"
-        ? "mist"
-        : "fracture"
+      : "fracture"
     : mistFlow
       ? "mist"
       : settleFlow
@@ -1502,7 +1512,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         shards: 0.9,
         followSpeed: 6,
       }
-    : popoutMeta?.slug === "mist-cards" || mistFlow
+    : mistFlow
       ? MIST_REVEAL_OVERRIDES
       : popoutMeta?.slug === "reveal"
     ? {

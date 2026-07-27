@@ -688,21 +688,26 @@ body {
   transition: opacity 0.5s ease 0.08s;
 }
 
-/* Mist: everything breathes slower — the surface dissolves like it's
-   being absorbed into the fog, and the condensed facts sit on a slightly
-   translucent pane so the weather stays part of the picture. */
-.frost-cards--mist li > a {
-  transition: opacity 0.7s ease;
+/* Mist cells share the thaw stack (facts under a weather pane, teaser
+   printed on top) — the pane is fog instead of ice. All reveal motion is
+   compositor-only CSS (opacity/transform), zero React renders on hover. */
+.frost-cards--mist > li {
+  border: none;
+  background: none;
 }
 
-.lab-route .frost-cards--mist li.is-hot > a {
-  opacity: 0;
-  transition: opacity 0.85s ease 0.1s;
-}
-
-.frost-cards--mist .frost-card-under {
+.frost-cards--mist .frost-thaw-facts {
   background: rgba(220, 232, 241, 0.93);
   box-shadow: inset 0 2px 14px rgba(38, 52, 61, 0.16);
+}
+
+.frost-cards--mist > li:hover .frost-thaw-teaser {
+  opacity: 0;
+}
+
+.frost-cards--mist > li:hover .frost-thaw-facts > :not(.frost-thaw-open) {
+  opacity: 1;
+  transform: none;
 }
 
 /* Thaw reveal: per-card ice pane (inline canvasui Frost). The facts are
@@ -788,16 +793,19 @@ body {
   opacity: 0;
 }
 
-/* The fallback ice is a translucent wash, so full paragraphs would read
-   through it and muddle with the teaser. Keep the recessed pane visible
-   under the ice for depth, but condense its content in only on hover. */
+/* The fallback weather panes are translucent washes, so full paragraphs
+   would read through them and muddle with the teaser. Keep the recessed
+   pane visible for depth, but condense its content in only on hover —
+   drifting up into place, weather-paced. */
 .frost-thaw-facts > :not(.frost-thaw-open) {
   opacity: 0;
-  transition: opacity 0.5s ease 0.1s;
+  transform: translateY(7px);
+  transition: opacity 0.7s ease 0.12s, transform 0.7s ease 0.12s;
 }
 
 .frost-cards--thaw > li:hover .frost-thaw-facts > :not(.frost-thaw-open) {
   opacity: 1;
+  transform: none;
 }
 
 @media (max-width: 700px) {
