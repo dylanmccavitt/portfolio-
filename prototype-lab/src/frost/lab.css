@@ -463,3 +463,39 @@ body {
   white-space: nowrap;
   color: var(--lab-muted);
 }
+
+/* Square editorial card per Dylan — no round borders anywhere on the
+   focus surfaces. */
+.frost-modal,
+.frost-modal .frost-close,
+.frost-modal .frost-gallery img,
+.frost-modal .frost-doc-actions a,
+.frost-modal .frost-proof span,
+.frost-drawer,
+.lab-card-side img,
+.lab-card-strip img {
+  border-radius: 0;
+}
+
+/* Fracture reveal: details surface softly under the hovered row. */
+.frost-reveal {
+  max-width: 640px;
+  padding: 2px 2px 18px 40px;
+  color: var(--lab-muted);
+  animation: frost-unfold 0.28s ease-out;
+}
+
+.frost-reveal p {
+  margin: 0 0 9px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.frost-reveal .frost-proof {
+  margin: 0;
+}
+
+.frost-reveal .frost-proof span {
+  border-radius: 0;
+  opacity: 0.85;
+}

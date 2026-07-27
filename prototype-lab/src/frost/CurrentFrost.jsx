@@ -101,6 +101,13 @@ export const POPOUTS = [
     instruction: "Opening a project freezes the page behind it; closing thaws the site back to the fracture surface.",
     component: "Frost (canvasui) on the page",
   },
+  {
+    slug: "reveal",
+    number: "06",
+    name: "Fracture reveal",
+    instruction: "Hover a row: the glaze cracks and the project's details surface softly beneath it. Click: the page fractures straight into the project overview — no card at all.",
+    component: "Fracture hover + direct page entry",
+  },
 ];
 
 export const PLAYS = [
@@ -551,11 +558,15 @@ function ProjectDoc({ project, onBack }) {
   );
 }
 
-function WorkRows({ projects, onOpen, expandedId, scratch }) {
+function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, onHover }) {
   return (
     <ol className="frost-work">
       {projects.map((project, index) => (
-        <li key={project.id}>
+        <li
+          key={project.id}
+          onMouseEnter={reveal ? () => onHover(project.id) : undefined}
+          onMouseLeave={reveal ? () => onHover(null) : undefined}
+        >
           <a
             href={project.href}
             onClick={(event) => {
@@ -573,6 +584,16 @@ function WorkRows({ projects, onOpen, expandedId, scratch }) {
             </small>
           </a>
           {scratch && project.proof.length > 0 && <ScratchStrip project={project} />}
+          {reveal && hoveredId === project.id && (
+            <div className="frost-reveal" aria-hidden="true">
+              <p>{project.summary}</p>
+              {project.proof.length > 0 && (
+                <div className="frost-proof">
+                  {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+                </div>
+              )}
+            </div>
+          )}
           {expandedId === project.id && (
             <div className="frost-row-detail">
               <ProjectDetailBody project={project} />
@@ -695,7 +716,7 @@ function tearToward(section) {
   requestAnimationFrame(step);
 }
 
-function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play }) {
+function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, hoveredId, onHover }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -764,6 +785,9 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
           onOpen={onOpenProject}
           expandedId={expandedId}
           scratch={play === "scratch"}
+          reveal={reveal}
+          hoveredId={hoveredId}
+          onHover={onHover}
         />
       </section>
 
@@ -1015,6 +1039,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const [focusedProject, setFocusedProject] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [burstOrigin, setBurstOrigin] = useState(null);
+  const [hoveredId, setHoveredId] = useState(null);
   const [dmOpen, setDmOpen] = useState(false);
   const [overInteractive, setOverInteractive] = useState(false);
   const [pressCharge, setPressCharge] = useState(0);
@@ -1041,7 +1066,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     }
     if (!popoutMeta) return;
     if (popoutMeta.slug === "expand-row") setExpandedId(workList[0].id);
-    else if (popoutMeta.slug !== "break-open") setFocusedProject(workList[0]);
+    else if (popoutMeta.slug !== "break-open" && popoutMeta.slug !== "reveal") setFocusedProject(workList[0]);
   }, [popoutMeta?.slug, cardMeta?.slug, enterMeta?.slug, workList]);
 
   // Enter routes: the card's "Open project" action transitions into the
@@ -1136,6 +1161,18 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       setExpandedId((prev) => (prev === project.id ? null : project.id));
       return;
     }
+    if (popoutMeta?.slug === "reveal" && event) {
+      burstFracture(event.clientX, event.clientY);
+      const rect = event.currentTarget.getBoundingClientRect();
+      setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      setGrowLive(false);
+      setTimeout(() => {
+        setDocProject(project);
+        requestAnimationFrame(() => requestAnimationFrame(() => setGrowLive(true)));
+        setTimeout(() => setGrowFrom(null), 520);
+      }, 240);
+      return;
+    }
     if ((popoutMeta?.slug === "break-open" || flowMeta) && event) {
       const { clientX, clientY } = event;
       burstFracture(clientX, clientY);
@@ -1209,6 +1246,9 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
               expandedId={popoutMeta?.slug === "expand-row" ? expandedId : null}
               contactVariant={playMeta?.slug === "break-ice" || flowMeta ? "sealed" : "plain"}
               play={playMeta?.slug ?? fxMeta?.slug}
+              reveal={popoutMeta?.slug === "reveal"}
+              hoveredId={hoveredId}
+              onHover={setHoveredId}
             />
             <footer className="frost-footer">
               <span>&copy; 2026 Dylan McCavitt</span>
@@ -1229,7 +1269,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         )}
         {docProject && (
           <div
-            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta ? "grow" : "plain")}`}
+            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta || popoutMeta?.slug === "reveal" ? "grow" : "plain")}`}
             style={growFrom ? (growLive ? { top: 0, left: 0, width: "100%", height: "100%" } : growFrom) : undefined}
           >
             {enterMeta?.slug === "settle-in" ? (
