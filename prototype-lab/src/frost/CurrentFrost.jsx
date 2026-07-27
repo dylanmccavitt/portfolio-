@@ -108,6 +108,13 @@ export const POPOUTS = [
     instruction: "Hover a row: the glaze cracks and the project's details surface softly beneath it. Click: the page fractures straight into the project overview — no card at all.",
     component: "Fracture hover + direct page entry",
   },
+  {
+    slug: "cards",
+    number: "07",
+    name: "Card reveal",
+    instruction: "Work as a grid of cards. Hover a card: the glaze fractures over it and what's underneath shows through — the shipped facts. Click: fall through the break into the project.",
+    component: "Card grid + fracture hover + direct page entry",
+  },
 ];
 
 export const PLAYS = [
@@ -614,6 +621,52 @@ function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, on
   );
 }
 
+/** Card-reveal grid: each project is a card whose surface carries the
+    teaser; the shipped facts sit absolutely beneath it, hidden from the
+    snapshot clone (same trick as .frost-reveal) so the shard layer lifts
+    only the card surface and the facts read as under the glaze. */
+function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge }) {
+  return (
+    <ol className="frost-cards">
+      {projects.map((project, index) => (
+        <li
+          key={project.id}
+          onMouseEnter={() => onHover(project.id)}
+          onMouseLeave={() => onHover(null)}
+        >
+          <a
+            href={project.href}
+            onClick={(event) => {
+              event.preventDefault();
+              onOpen(project, event);
+            }}
+          >
+            <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
+            <p className="frost-kicker">{project.eyebrow}</p>
+            <strong data-glass-target>{project.title}</strong>
+            <span className="frost-card-line">{project.line}</span>
+          </a>
+          {hoveredId === project.id && (
+            <div
+              className="frost-card-under"
+              aria-hidden="true"
+              style={{ opacity: revealCharge }}
+            >
+              <p>{project.summary}</p>
+              {project.proof.length > 0 && (
+                <div className="frost-proof">
+                  {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+                </div>
+              )}
+              <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+            </div>
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function JourneyRows() {
   return (
     <ol className="frost-journey">
@@ -720,7 +773,7 @@ function tearToward(section) {
   requestAnimationFrame(step);
 }
 
-function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, hoveredId, onHover, revealCharge }) {
+function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, cardGrid, hoveredId, onHover, revealCharge }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -784,16 +837,26 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
       <section className="frost-site-section" id="work">
         <h2>Work</h2>
         <p className="frost-kicker">{workList.length} projects · shipped and building</p>
-        <WorkRows
-          projects={workList}
-          onOpen={onOpenProject}
-          expandedId={expandedId}
-          scratch={play === "scratch"}
-          reveal={reveal}
-          hoveredId={hoveredId}
-          onHover={onHover}
-          revealCharge={revealCharge}
-        />
+        {cardGrid ? (
+          <WorkCards
+            projects={workList}
+            onOpen={onOpenProject}
+            hoveredId={hoveredId}
+            onHover={onHover}
+            revealCharge={revealCharge}
+          />
+        ) : (
+          <WorkRows
+            projects={workList}
+            onOpen={onOpenProject}
+            expandedId={expandedId}
+            scratch={play === "scratch"}
+            reveal={reveal}
+            hoveredId={hoveredId}
+            onHover={onHover}
+            revealCharge={revealCharge}
+          />
+        )}
       </section>
 
       <section className="frost-site-section" id="journey">
@@ -1078,14 +1141,14 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     }
     if (!popoutMeta) return;
     if (popoutMeta.slug === "expand-row") setExpandedId(workList[0].id);
-    else if (popoutMeta.slug !== "break-open" && popoutMeta.slug !== "reveal") setFocusedProject(workList[0]);
+    else if (!["break-open", "reveal", "cards"].includes(popoutMeta.slug)) setFocusedProject(workList[0]);
   }, [popoutMeta?.slug, cardMeta?.slug, enterMeta?.slug, workList]);
 
   // Fracture reveal: one continuous eased charge for the whole list. It
   // never resets on hover changes, so moving row to row hands the opening
   // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
-    if (popoutMeta?.slug !== "reveal") return;
+    if (popoutMeta?.slug !== "reveal" && popoutMeta?.slug !== "cards") return;
     let raf = 0;
     let charge = 0;
     let sent = -1;
@@ -1196,7 +1259,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       setExpandedId((prev) => (prev === project.id ? null : project.id));
       return;
     }
-    if (popoutMeta?.slug === "reveal" && event) {
+    if ((popoutMeta?.slug === "reveal" || popoutMeta?.slug === "cards") && event) {
       burstFracture(event.clientX, event.clientY);
       const rect = event.currentTarget.getBoundingClientRect();
       setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -1228,7 +1291,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         ? fxMeta.surface
         : meta.slug;
 
-  const fractureOverrides = popoutMeta?.slug === "reveal"
+  const fractureOverrides = popoutMeta?.slug === "reveal" || popoutMeta?.slug === "cards"
     ? {
         radius: 0.13 + revealCharge * 0.2,
         lift: 10 + revealCharge * 16,
@@ -1292,6 +1355,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
               contactVariant={playMeta?.slug === "break-ice" || flowMeta ? "sealed" : "plain"}
               play={playMeta?.slug ?? fxMeta?.slug}
               reveal={popoutMeta?.slug === "reveal"}
+              cardGrid={popoutMeta?.slug === "cards"}
               hoveredId={hoveredId}
               onHover={handleHover}
               revealCharge={revealCharge}
@@ -1315,7 +1379,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         )}
         {docProject && (
           <div
-            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta || popoutMeta?.slug === "reveal" ? "grow" : "plain")}`}
+            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta || popoutMeta?.slug === "reveal" || popoutMeta?.slug === "cards" ? "grow" : "plain")}`}
             style={growFrom ? (growLive ? { top: 0, left: 0, width: "100%", height: "100%" } : growFrom) : undefined}
           >
             {enterMeta?.slug === "settle-in" ? (

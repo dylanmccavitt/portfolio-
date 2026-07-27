@@ -529,3 +529,112 @@ body {
   border-color: #b3cbdc;
   opacity: 0.9;
 }
+
+/* Card reveal: Work as a grid of cards. Same under-the-glaze trick as
+   .frost-reveal — the under-layer must stay UNscoped so it vanishes from
+   the snapshot clone and only the card surface rides the shards. */
+.frost-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  border-top: 1.5px solid var(--frost-ink);
+  padding-top: 16px;
+}
+
+.frost-cards li {
+  position: relative;
+  border: 1px solid var(--frost-line);
+  background: var(--frost-card);
+}
+
+.frost-cards li > a {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: 168px;
+  padding: 18px 20px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.frost-cards li > a .frost-kicker {
+  margin: 0;
+}
+
+.frost-cards strong {
+  font-size: 19px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.frost-card-line {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--frost-muted);
+}
+
+.frost-cards .frost-num {
+  align-self: flex-end;
+  position: absolute;
+  top: 14px;
+  right: 16px;
+}
+
+.frost-card-under {
+  visibility: hidden;
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 16px 20px;
+  background: #dce8f1;
+  box-shadow: inset 0 2px 11px rgba(38, 52, 61, 0.24);
+  color: #3f5261;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lab-route .frost-card-under {
+  visibility: visible;
+}
+
+.frost-card-under p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.frost-card-under .frost-proof {
+  margin: 0;
+}
+
+.frost-card-under .frost-proof span {
+  border-radius: 0;
+  border-color: #b3cbdc;
+  opacity: 0.9;
+}
+
+.frost-card-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 700px) {
+  .frost-cards {
+    grid-template-columns: 1fr;
+  }
+}
