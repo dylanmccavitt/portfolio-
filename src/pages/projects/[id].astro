@@ -15,10 +15,11 @@ if (!project) return new Response(null, { status: 404, statusText: 'Not Found' }
 
 const p = project;
 const meta = projectMeta(p);
+const imageShots = p.shots.filter((shot) => shot.kind === 'image');
 ---
 
 <Frost title={meta.title} meta={meta}>
-  <main class="frost frost-doc" id="main">
+  <main class="frost frost-doc look-paper" id="main">
     <header class="frost-doc-head">
       <a href="/">Dylan McCavitt</a>
       <nav aria-label="Primary">
@@ -29,38 +30,60 @@ const meta = projectMeta(p);
       </nav>
     </header>
 
-    <div class="frost-doc-title">
-      <h1>{p.title}</h1>
-      <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
-      <p style="max-width:640px; margin:14px 0 0; font-size:15px; line-height:1.6;">{p.line}</p>
+    <div class="frost-flow-in">
+      <div class="frost-doc-title look-title">
+        <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
+        <h1>{p.title}</h1>
+        <p class="look-title-line">{p.line}</p>
+      </div>
     </div>
 
-    <section class="frost-doc-section" aria-labelledby="project-shipped">
-      <h2 id="project-shipped">What shipped</h2>
-      {p.about.slice(0, 1).map((paragraph) => (
-        <p style="max-width:640px; margin:0; font-size:14px; line-height:1.65; color:var(--frost-muted);">{paragraph}</p>
-      ))}
-    </section>
+    <div class="frost-flow-in">
+      <section class="look-block" aria-labelledby="project-shipped">
+        <h2 id="project-shipped">What shipped</h2>
+        {p.about.slice(0, 1).map((paragraph) => <p class="look-copy">{paragraph}</p>)}
+      </section>
+    </div>
 
-    <section class="frost-doc-section" aria-labelledby="project-evidence">
-      <h2 id="project-evidence">Evidence</h2>
-      <div class="frost-doc-facts">
-        {p.metrics.slice(0, 3).map((metric) => <span>{metric.value} — {metric.label}</span>)}
+    <div class="frost-flow-in">
+      <section class="look-block" aria-labelledby="project-evidence">
+        <h2 id="project-evidence">Evidence</h2>
+        <div class="look-paper-pane">
+          <div class="frost-doc-facts">
+            {p.metrics.slice(0, 3).map((metric) => <span>{metric.value} — {metric.label}</span>)}
+          </div>
+        </div>
+      </section>
+    </div>
+
+    {imageShots.length > 0 && (
+      <div class="frost-flow-in">
+        <section class="look-block" aria-labelledby="project-screens">
+          <h2 id="project-screens">Screens</h2>
+          <div class="frost-gallery">
+            {imageShots.map((shot) => (
+              <figure>
+                <img src={shot.src} alt={shot.caption} loading="lazy" />
+                <figcaption>{shot.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
       </div>
-    </section>
+    )}
 
     {(p.about.length > 1 || p.notes.length > 0) && (
-      <section class="frost-doc-section" aria-labelledby="project-more">
-        <h2 id="project-more">More detail</h2>
-        {p.about.slice(1).map((paragraph) => (
-          <p style="max-width:640px; margin:0 0 12px; font-size:14px; line-height:1.65; color:var(--frost-muted);">{paragraph}</p>
-        ))}
-        {p.notes.length > 0 && (
-          <ul style="max-width:640px; margin:0; padding-left:18px; font-size:13.5px; line-height:1.7; color:var(--frost-muted);">
-            {p.notes.map((note) => <li>{note}</li>)}
-          </ul>
-        )}
-      </section>
+      <div class="frost-flow-in">
+        <section class="look-block" aria-labelledby="project-more">
+          <h2 id="project-more">More detail</h2>
+          {p.about.slice(1).map((paragraph) => <p class="look-copy" style="margin-bottom:12px;">{paragraph}</p>)}
+          {p.notes.length > 0 && (
+            <ul style="max-width:620px; margin:0; padding-left:18px; font-size:13.5px; line-height:1.7; color:var(--frost-muted);">
+              {p.notes.map((note) => <li>{note}</li>)}
+            </ul>
+          )}
+        </section>
+      </div>
     )}
 
     <nav class="frost-doc-actions" aria-label="Project actions">
@@ -70,4 +93,24 @@ const meta = projectMeta(p);
       <a class="is-quiet" href="/#work">← All work</a>
     </nav>
   </main>
+
+  <script>
+    const blocks = document.querySelectorAll('.frost-flow-in');
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-in');
+              io.unobserve(entry.target);
+            }
+          }
+        },
+        { threshold: 0.12 },
+      );
+      blocks.forEach((block) => io.observe(block));
+    } else {
+      blocks.forEach((block) => block.classList.add('is-in'));
+    }
+  </script>
 </Frost>
