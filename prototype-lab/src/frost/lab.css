@@ -477,12 +477,32 @@ body {
   border-radius: 0;
 }
 
-/* Fracture reveal: details surface softly under the hovered row. */
+/* Fracture reveal: the crack widens over the hovered row and the facts
+   sit recessed INSIDE the opening — gap-toned, inset-shadowed, under the
+   glaze. Hidden in the snapshot clone (no .lab-route ancestor there) so
+   the shard layer never duplicates them: they read as beneath the surface. */
 .frost-reveal {
+  visibility: hidden;
   max-width: 640px;
-  padding: 2px 2px 18px 40px;
-  color: var(--lab-muted);
-  animation: frost-unfold 0.28s ease-out;
+  margin: -2px 0 16px 40px;
+  padding: 12px 16px;
+  background: #dce8f1;
+  border: 1px solid #c3d7e5;
+  box-shadow: inset 0 2px 7px rgba(38, 52, 61, 0.2);
+  color: #3f5261;
+  transform-origin: top;
+  animation: frost-slit 0.32s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.lab-route .frost-reveal {
+  visibility: visible;
+}
+
+@keyframes frost-slit {
+  from {
+    transform: scaleY(0.15);
+    opacity: 0;
+  }
 }
 
 .frost-reveal p {
@@ -497,5 +517,6 @@ body {
 
 .frost-reveal .frost-proof span {
   border-radius: 0;
-  opacity: 0.85;
+  border-color: #b3cbdc;
+  opacity: 0.9;
 }

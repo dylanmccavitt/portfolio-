@@ -1193,7 +1193,11 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         ? fxMeta.surface
         : meta.slug;
 
-  const fractureOverrides = playMeta?.slug === "affordance" || flowMeta
+  const fractureOverrides = popoutMeta?.slug === "reveal"
+    ? hoveredId
+      ? { radius: 0.32, lift: 26, scatter: 8, tilt: 1.5, strength: 0.96, shards: 0.95, followSpeed: 6 }
+      : { radius: 0.14, strength: 0.55 }
+    : playMeta?.slug === "affordance" || flowMeta
     ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
     : playMeta?.slug === "press"
       ? {
