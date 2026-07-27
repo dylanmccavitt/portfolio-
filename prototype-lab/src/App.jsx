@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { CURRENT, MistSite } from "./frost/MistSite.jsx";
+import { ABOUT_REVEALS, CURRENT, MistSite } from "./frost/MistSite.jsx";
 import { PROJECT_LOOKS, ProjectLook } from "./frost/ProjectLooks.jsx";
 import "./frost/lab.css";
 
@@ -45,6 +45,29 @@ function Gallery({ navigate }) {
             </small>
           </a>
         </li>
+      </ol>
+      <h2 className="lab-section">About reveals <span>how the About prose arrives · exploring</span></h2>
+      <ol>
+        {ABOUT_REVEALS.map((entry) => (
+          <li key={entry.slug}>
+            <a
+              href={`/aboutx/${entry.slug}`}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(`/aboutx/${entry.slug}`);
+              }}
+            >
+              <span className="lab-num">{entry.number}</span>
+              <div>
+                <strong>{entry.name}</strong>
+                <span className="lab-note">{entry.instruction}</span>
+              </div>
+              <small>
+                {entry.component} <ArrowUpRight size={12} />
+              </small>
+            </a>
+          </li>
+        ))}
       </ol>
       <h2 className="lab-section">Project page looks <span>layouts × effects · exploring</span></h2>
       <ol>
@@ -92,6 +115,10 @@ export function App() {
   // recent links keep working.
   if (/^\/(current|popout\/mist-cards)\/?$/.test(path)) {
     return <MistSite navigate={navigate} />;
+  }
+  const about = path.match(/^\/aboutx\/([a-z-]+)\/?$/);
+  if (about && ABOUT_REVEALS.some((entry) => entry.slug === about[1])) {
+    return <MistSite aboutVariant={about[1]} navigate={navigate} />;
   }
   const look = path.match(/^\/project\/([a-z-]+)\/?$/);
   if (look && PROJECT_LOOKS.some((entry) => entry.slug === look[1])) {

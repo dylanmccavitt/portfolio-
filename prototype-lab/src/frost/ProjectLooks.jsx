@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Droplets } from "../components/canvasui/Droplets.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
+import { Liquid } from "../components/canvasui/Liquid.jsx";
 import { PROJECTS } from "./frost-data.js";
 import { ICE_PROPS } from "./MistSite.jsx";
 import "./frost.css";
@@ -43,6 +44,13 @@ export const PROJECT_LOOKS = [
     name: "Iced evidence",
     instruction: "An oversized editorial title; the evidence chips are sealed under a strip of ice — rub to check the receipts.",
     component: "Frost seal + centered editorial layout",
+  },
+  {
+    slug: "ink",
+    number: "05",
+    name: "Ink on the screens",
+    instruction: "Same rail layout as Rain, different weather: moving across the screens stirs blue ink through the water over them.",
+    component: "Liquid (canvasui) over the gallery + rail layout",
   },
 ];
 
@@ -209,7 +217,17 @@ function IceLook({ project }) {
       <h2 className="look-ice-h">Evidence · rub to check the receipts</h2>
       <WeatherOver
         Effect={Frost}
-        effectProps={{ ...ICE_PROPS, frost: 0.55, meltRadius: 0.32, refreeze: 0 }}
+        effectProps={{
+          // Realism pass: finer crystal detail, deeper haze, quieter tint —
+          // the ice should read as texture, not as a colored film.
+          ...ICE_PROPS,
+          frost: 0.62,
+          detail: 3.4,
+          haze: 0.5,
+          tintStrength: 0.28,
+          meltRadius: 0.32,
+          refreeze: 0,
+        }}
         className="look-ice-strip"
       >
         <div className="look-ice-chips">
@@ -222,11 +240,43 @@ function IceLook({ project }) {
   );
 }
 
+function InkLook({ project }) {
+  return (
+    <main className="frost frost-doc look-page">
+      <div className="look-rail">
+        <aside className="look-rail-side">
+          <p className="frost-kicker">{project.eyebrow}</p>
+          <h1>{project.title}</h1>
+          <p className="look-rail-line">{project.line}</p>
+          <Chips proof={project.proof} />
+        </aside>
+        <div className="look-rail-main">
+          <h2>What shipped</h2>
+          <p className="look-rail-summary">{project.summary}</p>
+          <h2>Screens · stir the water</h2>
+          <Liquid
+            color={[0.35, 0.55, 0.78]}
+            intensity={1.8}
+            distortion={0.35}
+            radius={0.28}
+            force={1.1}
+          >
+            <div className="look-rain-body">
+              <Screens shots={project.shots} />
+            </div>
+          </Liquid>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 const LOOK_BODIES = {
   ledger: LedgerLook,
   fog: FogLook,
   rain: RainLook,
   ice: IceLook,
+  ink: InkLook,
 };
 
 export function ProjectLook({ slug, navigate }) {

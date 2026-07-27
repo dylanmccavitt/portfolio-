@@ -773,6 +773,57 @@ body {
   mask-composite: intersect;
 }
 
+/* Condense About: no canvas — prose blurs in once, staggered, when the
+   section first scrolls into view. */
+.frost-about-condense {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+}
+
+.frost-about-condense p {
+  margin: 0;
+  max-width: 640px;
+  font-size: 15px;
+  line-height: 1.65;
+  opacity: 0;
+  transform: translateY(16px);
+  filter: blur(7px);
+  transition: opacity 0.9s ease, transform 0.9s ease, filter 0.9s ease;
+}
+
+.frost-about-condense p + p {
+  transition-delay: 0.22s;
+}
+
+.frost-about-condense.is-in p {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* Ink About: prose rests soft under still water; hovering clears it while
+   the cursor stirs the (self-drawn, fallback-safe) dye. */
+.frost-about-ink {
+  max-width: 720px;
+}
+
+.frost-ink-body {
+  padding: 10px 0;
+}
+
+.frost-ink-body p {
+  opacity: 0.28;
+  filter: blur(1.5px);
+  transition: opacity 0.8s ease, filter 0.8s ease;
+}
+
+.frost-about-ink:hover .frost-ink-body p {
+  opacity: 1;
+  filter: none;
+}
+
 /* ---- Project page looks (layouts × effects) ---- */
 
 .look-shell {

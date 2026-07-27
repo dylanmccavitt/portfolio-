@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
 import { Clouds } from "../components/canvasui/Clouds.tsx";
 import { Frost } from "../components/canvasui/Frost.tsx";
+import { Liquid } from "../components/canvasui/Liquid.jsx";
 import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
 import "./frost.css";
 import "./lab.css";
@@ -29,6 +30,34 @@ const DESTINATIONS = [
   { id: "work", label: "Work" },
   { id: "journey", label: "Journey" },
   { id: "contact", label: "Contact" },
+];
+
+/** About reveal variants, comparable at /aboutx/<slug>. Only fallback-safe
+    engines: of the untried canvasui set, Glitch/Peel/RetroDither/
+    ParticleReveal/Lamp/Letterpress all sample page content and are inert
+    in stock Chrome — Liquid's dye is self-drawn, so it survives. */
+export const ABOUT_REVEALS = [
+  {
+    slug: "condense",
+    number: "01",
+    name: "Condense",
+    instruction: "No canvas at all — the prose condenses in as the section scrolls into view: blur to sharp, staggered, once.",
+    component: "CSS scroll reveal",
+  },
+  {
+    slug: "ink",
+    number: "02",
+    name: "Stir the water",
+    instruction: "The prose rests soft under still water; moving across it stirs blue ink while the words come clear.",
+    component: "Liquid (canvasui) + CSS clear",
+  },
+  {
+    slug: "ice",
+    number: "03",
+    name: "Melt the frost",
+    instruction: "The earlier take, kept for comparison: bare prose under feathered ice that melts under the pointer.",
+    component: "Frost (canvasui)",
+  },
 ];
 
 /** Shared ice: tinted to the site's frost blue (the engine default leans
@@ -121,15 +150,65 @@ function MistCard({ project, index, onOpen }) {
     whole pane thins on hover so the words come fully clear. The body
     carries the page's own surface color because Frost's native tier
     samples transparent pixels as black. */
+const ABOUT_PARAGRAPHS = [
+  PROFILE.summary,
+  "I build backend systems, product software, and practical AI tools. I care about visible state, inspectable decisions, and products that make complicated work feel ordinary.",
+];
+
+/** Condense: pure CSS — the prose blurs in from nothing the first time the
+    section scrolls into view. */
+function CondenseAbout() {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.35 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className={`frost-about-condense${seen ? " is-in" : ""}`}>
+      {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
+    </div>
+  );
+}
+
+/** Stir the water: the prose rests soft under still water; the cursor
+    stirs self-drawn ink (works in stock Chrome) while CSS clears the
+    words. */
+function InkAbout() {
+  return (
+    <div className="frost-about-ink">
+      <Liquid
+        color={[0.35, 0.55, 0.78]}
+        intensity={1.6}
+        distortion={0.3}
+        radius={0.25}
+        force={1}
+      >
+        <div className="frost-about-body frost-ink-body">
+          {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
+        </div>
+      </Liquid>
+    </div>
+  );
+}
+
 function FrostAbout() {
   const body = (
     <div className="frost-about-body">
-      <p>{PROFILE.summary}</p>
-      <p>
-        I build backend systems, product software, and practical AI tools. I
-        care about visible state, inspectable decisions, and products that make
-        complicated work feel ordinary.
-      </p>
+      {ABOUT_PARAGRAPHS.map((text) => <p key={text.slice(0, 16)}>{text}</p>)}
     </div>
   );
 
@@ -255,7 +334,15 @@ function DmPanel({ onClose }) {
   );
 }
 
-export function MistSite({ navigate }) {
+const ABOUT_BODIES = { condense: CondenseAbout, ink: InkAbout, ice: FrostAbout };
+const ABOUT_KICKERS = {
+  condense: "The short version",
+  ink: "The short version · stir the water",
+  ice: "The short version · melt the frost",
+};
+
+export function MistSite({ navigate, aboutVariant = "condense" }) {
+  const AboutBody = ABOUT_BODIES[aboutVariant] ?? CondenseAbout;
   const [current, setCurrent] = useState("about");
   const [dmOpen, setDmOpen] = useState(false);
   const [docProject, setDocProject] = useState(null);
@@ -343,8 +430,8 @@ export function MistSite({ navigate }) {
 
               <section className="frost-site-section" id="about">
                 <h2>About</h2>
-                <p className="frost-kicker">The short version · melt the frost</p>
-                <FrostAbout />
+                <p className="frost-kicker">{ABOUT_KICKERS[aboutVariant] ?? ABOUT_KICKERS.condense}</p>
+                <AboutBody />
               </section>
 
               <section className="frost-site-section" id="work">
