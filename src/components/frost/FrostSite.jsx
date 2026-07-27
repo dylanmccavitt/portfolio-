@@ -6,7 +6,7 @@ import { SnapshotFx } from "./SnapshotFx.jsx";
 import { createGlitch } from "./glitch.jsx";
 import DmChat from "./DmChat.jsx";
 import { SUBGREETING } from "@/lib/dm/client";
-import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
+import { JOURNEY, PROFILE } from "./frost-data.js";
 import "./frost.css";
 
 const DESTINATIONS = [
@@ -89,10 +89,10 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
-function GlitchCard({ project, fx }) {
+function GlitchCard({ project, index, fx }) {
   const teaser = (
     <div className="frost-glitch-teaser">
-      <span className="frost-num">{project.number}</span>
+      <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
       <p className="frost-kicker">{project.eyebrow}</p>
       <strong>{project.title}</strong>
     </div>
@@ -102,11 +102,11 @@ function GlitchCard({ project, fx }) {
     <li className="frost-glitch-cell">
       <a
         className="frost-glitch-open"
-        href={`/projects/${project.id}`}
+        href={project.href}
         aria-label={`Open ${project.title}`}
       />
       <div className="frost-glitch-facts" aria-hidden="true">
-        <p>{project.summary}</p>
+        <p>{project.line}</p>
         {project.proof.length > 0 && (
           <div className="frost-proof">
             {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
@@ -151,7 +151,7 @@ function ContactBlock() {
   );
 }
 
-function SiteLayout({ fx, onDm }) {
+function SiteLayout({ projects, fx, onDm }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -214,10 +214,10 @@ function SiteLayout({ fx, onDm }) {
       <section className="frost-site-section" id="work">
         <FlowIn>
           <h2>Work</h2>
-          <p className="frost-kicker">{PROJECTS.length} projects · shipped and building</p>
+          <p className="frost-kicker">{projects.length} projects · shipped and building</p>
           <ol className="frost-cards">
-            {PROJECTS.map((project) => (
-              <GlitchCard key={project.id} project={project} fx={fx} />
+            {projects.map((project, index) => (
+              <GlitchCard key={project.id} project={project} index={index} fx={fx} />
             ))}
           </ol>
         </FlowIn>
@@ -274,7 +274,11 @@ function DmPanel({ onClose }) {
   );
 }
 
-export default function FrostSite() {
+/**
+ * @param {{ projects?: Array<{ id: string, href: string, title: string,
+ *   eyebrow: string, line: string, proof: string[] }> }} props
+ */
+export default function FrostSite({ projects = [] }) {
   const [dmOpen, setDmOpen] = useState(false);
 
   const effectMode = typeof window !== "undefined"
@@ -285,7 +289,7 @@ export default function FrostSite() {
     <main className="frost" id="main">
       <div className="frost-effect">
         <div className="frost-page">
-          <SiteLayout fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
+          <SiteLayout projects={projects} fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
           <footer className="frost-footer">
             <span>&copy; 2026 Dylan McCavitt</span>
             <span>Hover a project to see what shipped.</span>

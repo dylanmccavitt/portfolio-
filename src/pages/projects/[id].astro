@@ -16,6 +16,18 @@ if (!project) return new Response(null, { status: 404, statusText: 'Not Found' }
 const p = project;
 const meta = projectMeta(p);
 const imageShots = p.shots.filter((shot) => shot.kind === 'image');
+
+// Catalog convention (#350): `about` is exactly [problem, approach, outcome].
+// Rows published before that convention may carry fewer paragraphs — fail
+// soft to a single About section rather than mislabeling prose.
+const hasStory = p.about.length >= 3;
+const story = hasStory
+  ? [
+      ['Problem', p.about[0]],
+      ['Approach', p.about[1]],
+      ['Outcome', p.about[2]],
+    ]
+  : [];
 ---
 
 <Frost title={meta.title} meta={meta}>
@@ -38,19 +50,41 @@ const imageShots = p.shots.filter((shot) => shot.kind === 'image');
       </div>
     </div>
 
-    <div class="frost-flow-in">
-      <section class="look-block" aria-labelledby="project-shipped">
-        <h2 id="project-shipped">What shipped</h2>
-        {p.about.slice(0, 1).map((paragraph) => <p class="look-copy">{paragraph}</p>)}
-      </section>
-    </div>
+    {hasStory ? (
+      story.map(([heading, paragraph]) => (
+        <div class="frost-flow-in">
+          <section class="look-block" aria-labelledby={`project-${heading.toLowerCase()}`}>
+            <h2 id={`project-${heading.toLowerCase()}`}>{heading}</h2>
+            <p class="look-copy">{paragraph}</p>
+          </section>
+        </div>
+      ))
+    ) : (
+      <div class="frost-flow-in">
+        <section class="look-block" aria-labelledby="project-about">
+          <h2 id="project-about">About</h2>
+          {p.about.map((paragraph) => <p class="look-copy" style="margin-bottom:12px;">{paragraph}</p>)}
+        </section>
+      </div>
+    )}
+
+    {p.stack.length > 0 && (
+      <div class="frost-flow-in">
+        <section class="look-block" aria-labelledby="project-stack">
+          <h2 id="project-stack">Stack</h2>
+          <div class="frost-doc-facts">
+            {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
+          </div>
+        </section>
+      </div>
+    )}
 
     <div class="frost-flow-in">
-      <section class="look-block" aria-labelledby="project-evidence">
-        <h2 id="project-evidence">Evidence</h2>
+      <section class="look-block" aria-labelledby="project-metrics">
+        <h2 id="project-metrics">Metrics</h2>
         <div class="look-paper-pane">
           <div class="frost-doc-facts">
-            {p.metrics.slice(0, 3).map((metric) => <span>{metric.value} — {metric.label}</span>)}
+            {p.metrics.map((metric) => <span>{metric.value} — {metric.label}</span>)}
           </div>
         </div>
       </section>
@@ -68,20 +102,6 @@ const imageShots = p.shots.filter((shot) => shot.kind === 'image');
               </figure>
             ))}
           </div>
-        </section>
-      </div>
-    )}
-
-    {(p.about.length > 1 || p.notes.length > 0) && (
-      <div class="frost-flow-in">
-        <section class="look-block" aria-labelledby="project-more">
-          <h2 id="project-more">More detail</h2>
-          {p.about.slice(1).map((paragraph) => <p class="look-copy" style="margin-bottom:12px;">{paragraph}</p>)}
-          {p.notes.length > 0 && (
-            <ul style="max-width:620px; margin:0; padding-left:18px; font-size:13.5px; line-height:1.7; color:var(--frost-muted);">
-              {p.notes.map((note) => <li>{note}</li>)}
-            </ul>
-          )}
         </section>
       </div>
     )}

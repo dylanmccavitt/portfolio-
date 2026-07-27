@@ -23,21 +23,14 @@ import { CATALOG } from './catalog';
  * project surfaces as a build failure, not a silent dead `era` link.
  */
 const PROJECT_IDS = [
-  'agentic-trader',
-  'exit-manager',
-  'hood',
-  'tradingview-mcp',
+  'agent-skills',
   'evalgate',
-  'dog-log',
-  'chore-ladder',
-  'homeserver',
-  'slurmlet',
   'bellas-beads',
+  'agentic-trader',
+  'slurmlet',
   'nhf',
   'work-orders',
   'epl-ml',
-  'condor-study',
-  'harness-arena',
 ] as const;
 
 /** A catalog project id, constrained to the ids the catalog ships. */
@@ -218,7 +211,7 @@ export const RESUME: ResumeAlbum = {
         ['Location', 'new york city'],
         ['Email', 'dylanmccavitt@outlook.com'],
       ],
-      era: ['evalgate', 'bellas-beads', 'slurmlet', 'agentic-trader'],
+      era: ['agent-skills', 'evalgate', 'bellas-beads', 'slurmlet', 'agentic-trader'],
     },
   ],
 };

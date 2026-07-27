@@ -6,6 +6,7 @@ import {
   generateCatalogParityReport,
   importCatalogShadowRecords,
   runCatalogCutover,
+  syncCatalogPublishedRecords,
 } from '@/lib/db/catalog-shadow';
 
 async function importAndReport(): Promise<void> {
@@ -61,7 +62,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  throw new Error('Usage: tsx scripts/catalog-shadow.ts import-and-report|report|cutover [--apply]');
+  if (command === 'sync') {
+    const db = createQueryable();
+    const result = await syncCatalogPublishedRecords(db, {
+      apply: process.argv.includes('--apply'),
+      retireDbOnly: process.argv.includes('--retire-db-only'),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  throw new Error(
+    'Usage: tsx scripts/catalog-shadow.ts import-and-report|report|cutover|sync [--apply] [--retire-db-only]',
+  );
 }
 
 const isCli = process.argv[1] === fileURLToPath(import.meta.url);
