@@ -112,10 +112,27 @@ export const POPOUTS = [
     slug: "cards",
     number: "07",
     name: "Card reveal",
-    instruction: "Work as a grid of cards. Hover a card: the glaze fractures over it and what's underneath shows through — the shipped facts. Click: fall through the break into the project.",
-    component: "Card grid + fracture hover + direct page entry",
+    instruction: "Work as a grid of cards. Hover a card: the glaze fractures over it — and only it — while the shipped facts surface beneath. Click: fall through the break into the project.",
+    component: "Card grid + fracture pinned to the card",
+  },
+  {
+    slug: "thaw-cards",
+    number: "08",
+    name: "Thaw reveal",
+    instruction: "Each card is a pane of real ice with the teaser printed on it. Hovering melts the pane clear — the facts were frozen underneath all along. Click falls through into the project.",
+    component: "Card grid + Frost (canvasui) per card",
+  },
+  {
+    slug: "mist-cards",
+    number: "09",
+    name: "Mist reveal",
+    instruction: "The page rests under fog. Hover a card: wind parts the mist over it and the facts condense out. Click enters the project.",
+    component: "Card grid + Clouds wind sweep",
   },
 ];
+
+/** Popouts where Work renders as a card grid instead of rows. */
+const CARD_POPOUTS = ["cards", "thaw-cards", "mist-cards"];
 
 export const PLAYS = [
   {
@@ -204,21 +221,54 @@ export const FX = [
 ];
 
 /** Crack burst at a viewport point: feed jittered pointer moves to the page
-    Shatter so the glaze visibly breaks where the visitor clicked. */
+    effect so the glaze visibly breaks (or the fog gusts) where the visitor
+    clicked. Shatter/Frost listen on the wrapper; Clouds listens on the
+    content div inside it — dispatch to both, non-bubbling, so each engine
+    hears it exactly once. */
 function burstFracture(x, y) {
   const host = document.querySelector(".frost-effect");
   if (!host) return;
+  const content = host.querySelector(":scope > div");
   let step = 0;
   const timer = setInterval(() => {
     const angle = (step / 11) * Math.PI * 2;
     const spread = 14 + step * 7;
-    host.dispatchEvent(new PointerEvent("pointermove", {
+    const move = new PointerEvent("pointermove", {
       clientX: x + Math.cos(angle * 2.7) * spread,
       clientY: y + Math.sin(angle * 1.9) * spread * 0.6,
       bubbles: false,
-    }));
+    });
+    host.dispatchEvent(move);
+    content?.dispatchEvent(move);
     if (++step > 11) clearInterval(timer);
   }, 26);
+}
+
+/** Contain the page fracture to the hovered card: swallow raw pointer moves
+    before they bubble to the page Shatter, and re-dispatch them clamped
+    well inside the hovered card so the crack opens in the card and nowhere
+    else — never in the grid gaps, never spilling onto a neighbor. */
+function containFracture(node) {
+  if (!node || node.dataset.contained) return;
+  node.dataset.contained = "1";
+  node.addEventListener("pointermove", (event) => {
+    event.stopPropagation();
+    const host = document.querySelector(".frost-effect");
+    if (!host) return;
+    const card = event.target?.closest?.(".frost-cards > li");
+    if (!card) {
+      host.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }));
+      return;
+    }
+    const r = card.getBoundingClientRect();
+    const mx = r.width * 0.18;
+    const my = r.height * 0.24;
+    host.dispatchEvent(new PointerEvent("pointermove", {
+      clientX: Math.min(Math.max(event.clientX, r.left + mx), r.right - mx),
+      clientY: Math.min(Math.max(event.clientY, r.top + my), r.bottom - my),
+      bubbles: false,
+    }));
+  });
 }
 
 /** Popout card designs: what the ProjectFocus card IS, independent of how
@@ -386,7 +436,6 @@ function EffectShell({ slug, overrides, children }) {
     return (
       <Clouds
         className="frost-effect frost-effect--canvasui"
-        {...overrides}
         color={[0.93, 0.96, 0.98]}
         opacity={0.55}
         cover={0.07}
@@ -397,6 +446,7 @@ function EffectShell({ slug, overrides, children }) {
         speed={0.45}
         shadow={0.015}
         shadowOffsetX={120}
+        {...overrides}
       >
         {children}
       </Clouds>
@@ -621,16 +671,75 @@ function WorkRows({ projects, onOpen, expandedId, scratch, reveal, hoveredId, on
   );
 }
 
+/** Thaw-reveal card: the shipped facts live under a pane of real ice
+    (inline canvasui Frost, fallback-safe in stock Chrome); the teaser is
+    printed on the ice and fades as hover melts the pane clear. The facts
+    are snapshot-clone-hidden so the page glaze's shards never show them. */
+function ThawCard({ project, index, onOpen }) {
+  const facts = (
+    <div className="frost-thaw-facts">
+      <a
+        className="frost-thaw-open"
+        href={project.href}
+        aria-label={`Open ${project.title}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onOpen(project, event);
+        }}
+      />
+      <p>{project.summary}</p>
+      {project.proof.length > 0 && (
+        <div className="frost-proof">
+          {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+        </div>
+      )}
+      <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+    </div>
+  );
+
+  return (
+    <li className="frost-thaw-cell">
+      <SealedReveal
+        className="frost-thaw-card"
+        frostProps={{ frost: 0.55, opacity: 0.94, meltRadius: 0.34, introDuration: 0.9, refreeze: 4, haze: 0.72, tintStrength: 0.36 }}
+      >
+        {facts}
+      </SealedReveal>
+      <div className="frost-thaw-teaser" aria-hidden="true">
+        <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
+        <p className="frost-kicker">{project.eyebrow}</p>
+        <strong>{project.title}</strong>
+        <span className="frost-card-line">{project.line}</span>
+      </div>
+    </li>
+  );
+}
+
 /** Card-reveal grid: each project is a card whose surface carries the
     teaser; the shipped facts sit absolutely beneath it, hidden from the
     snapshot clone (same trick as .frost-reveal) so the shard layer lifts
-    only the card surface and the facts read as under the glaze. */
-function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge }) {
+    only the card surface and the facts read as under the glaze.
+    variant: "fracture" pins the page crack inside the hovered card;
+    "mist" leaves raw moves alone (the fog is page-level wind);
+    "thaw" swaps in per-card ice panes. */
+function WorkCards({ projects, onOpen, hoveredId, onHover, revealCharge, variant }) {
+  if (variant === "thaw") {
+    return (
+      <ol className="frost-cards frost-cards--thaw">
+        {projects.map((project, index) => (
+          <ThawCard key={project.id} project={project} index={index} onOpen={onOpen} />
+        ))}
+      </ol>
+    );
+  }
+
   return (
-    <ol className="frost-cards">
+    <ol className="frost-cards" ref={variant === "fracture" ? containFracture : undefined}>
       {projects.map((project, index) => (
         <li
           key={project.id}
+          data-project={project.id}
+          className={hoveredId === project.id ? "is-hot" : undefined}
           onMouseEnter={() => onHover(project.id)}
           onMouseLeave={() => onHover(null)}
         >
@@ -773,7 +882,7 @@ function tearToward(section) {
   requestAnimationFrame(step);
 }
 
-function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, cardGrid, hoveredId, onHover, revealCharge }) {
+function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play, reveal, cardVariant, hoveredId, onHover, revealCharge }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -837,13 +946,14 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant,
       <section className="frost-site-section" id="work">
         <h2>Work</h2>
         <p className="frost-kicker">{workList.length} projects · shipped and building</p>
-        {cardGrid ? (
+        {cardVariant ? (
           <WorkCards
             projects={workList}
             onOpen={onOpenProject}
             hoveredId={hoveredId}
             onHover={onHover}
             revealCharge={revealCharge}
+            variant={cardVariant}
           />
         ) : (
           <WorkRows
@@ -1110,8 +1220,10 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const [hoveredId, setHoveredId] = useState(null);
   const [revealCharge, setRevealCharge] = useState(0);
   const hoverRef = useRef(false);
+  const hoveredIdRef = useRef(null);
   const handleHover = (id) => {
     hoverRef.current = Boolean(id);
+    hoveredIdRef.current = id;
     if (id) setHoveredId(id);
     else setTimeout(() => { if (!hoverRef.current) setHoveredId(null); }, 450);
   };
@@ -1141,14 +1253,14 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
     }
     if (!popoutMeta) return;
     if (popoutMeta.slug === "expand-row") setExpandedId(workList[0].id);
-    else if (!["break-open", "reveal", "cards"].includes(popoutMeta.slug)) setFocusedProject(workList[0]);
+    else if (!["break-open", "reveal", ...CARD_POPOUTS].includes(popoutMeta.slug)) setFocusedProject(workList[0]);
   }, [popoutMeta?.slug, cardMeta?.slug, enterMeta?.slug, workList]);
 
   // Fracture reveal: one continuous eased charge for the whole list. It
   // never resets on hover changes, so moving row to row hands the opening
   // off fluidly and leaving eases shut instead of snapping.
   useEffect(() => {
-    if (popoutMeta?.slug !== "reveal" && popoutMeta?.slug !== "cards") return;
+    if (!["reveal", "cards", "mist-cards"].includes(popoutMeta?.slug)) return;
     let raf = 0;
     let charge = 0;
     let sent = -1;
@@ -1162,6 +1274,34 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       const q = Math.round(charge * 60) / 60;
       if (q !== sent) { sent = q; setRevealCharge(q); }
       raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [popoutMeta?.slug]);
+
+  // Mist reveal: while a card is hovered, sweep synthetic wind across it so
+  // the fog parts over the whole card, not just around the cursor. Clouds
+  // listens on its content div, so dispatch there (~30Hz is plenty).
+  useEffect(() => {
+    if (popoutMeta?.slug !== "mist-cards") return;
+    let raf = 0;
+    let lastSent = 0;
+    const loop = (now) => {
+      raf = requestAnimationFrame(loop);
+      if (now - lastSent < 33) return;
+      lastSent = now;
+      const id = hoveredIdRef.current;
+      if (!id) return;
+      const cell = document.querySelector(`.frost-cards li[data-project="${id}"]`);
+      const target = document.querySelector(".frost-effect")?.querySelector(":scope > div");
+      if (!cell || !target) return;
+      const r = cell.getBoundingClientRect();
+      const t = now / 1000;
+      target.dispatchEvent(new PointerEvent("pointermove", {
+        clientX: r.left + r.width * (0.5 + 0.46 * Math.sin(t * 2.6)),
+        clientY: r.top + r.height * (0.5 + 0.34 * Math.sin(t * 1.8)),
+        bubbles: false,
+      }));
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -1259,7 +1399,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
       setExpandedId((prev) => (prev === project.id ? null : project.id));
       return;
     }
-    if ((popoutMeta?.slug === "reveal" || popoutMeta?.slug === "cards") && event) {
+    if ((popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug)) && event) {
       burstFracture(event.clientX, event.clientY);
       const rect = event.currentTarget.getBoundingClientRect();
       setGrowFrom({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
@@ -1284,14 +1424,31 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
   const pageSlug = popoutMeta
     ? popoutMeta.slug === "freeze-world" && focusedProject
       ? "freeze"
-      : "fracture"
+      : popoutMeta.slug === "mist-cards"
+        ? "mist"
+        : "fracture"
     : playMeta || cardMeta || enterMeta || flowMeta
       ? "fracture"
       : fxMeta
         ? fxMeta.surface
         : meta.slug;
 
-  const fractureOverrides = popoutMeta?.slug === "reveal" || popoutMeta?.slug === "cards"
+  const fractureOverrides = popoutMeta?.slug === "cards"
+    ? {
+        // Card-sized: the crack must stay inside one card, so the radius
+        // barely grows and the shards stay low — containFracture keeps the
+        // center pinned, this keeps the spread from spilling past an edge.
+        radius: 0.09 + revealCharge * 0.05,
+        lift: 8 + revealCharge * 9,
+        scatter: 2 + revealCharge * 2,
+        tilt: 0.8 + revealCharge * 0.4,
+        strength: 0.4 + revealCharge * 0.5,
+        shards: 0.9,
+        followSpeed: 6,
+      }
+    : popoutMeta?.slug === "mist-cards"
+      ? { cover: 0.3, opacity: 0.7, density: 2.2, wind: 1, windRadius: 320, speed: 0.35 }
+      : popoutMeta?.slug === "reveal"
     ? {
         radius: 0.13 + revealCharge * 0.2,
         lift: 10 + revealCharge * 16,
@@ -1355,7 +1512,12 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
               contactVariant={playMeta?.slug === "break-ice" || flowMeta ? "sealed" : "plain"}
               play={playMeta?.slug ?? fxMeta?.slug}
               reveal={popoutMeta?.slug === "reveal"}
-              cardGrid={popoutMeta?.slug === "cards"}
+              cardVariant={
+                popoutMeta?.slug === "cards" ? "fracture"
+                : popoutMeta?.slug === "thaw-cards" ? "thaw"
+                : popoutMeta?.slug === "mist-cards" ? "mist"
+                : null
+              }
               hoveredId={hoveredId}
               onHover={handleHover}
               revealCharge={revealCharge}
@@ -1379,7 +1541,7 @@ export function CurrentFrost({ effect, popout, play, fx, card, enter, flow, navi
         )}
         {docProject && (
           <div
-            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta || popoutMeta?.slug === "reveal" || popoutMeta?.slug === "cards" ? "grow" : "plain")}`}
+            className={`lab-doc-overlay${growFrom ? " is-grow" : ""} lab-doc--${enterMeta?.slug ?? (flowMeta || popoutMeta?.slug === "reveal" || CARD_POPOUTS.includes(popoutMeta?.slug) ? "grow" : "plain")}`}
             style={growFrom ? (growLive ? { top: 0, left: 0, width: "100%", height: "100%" } : growFrom) : undefined}
           >
             {enterMeta?.slug === "settle-in" ? (

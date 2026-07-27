@@ -633,6 +633,113 @@ body {
   text-transform: uppercase;
 }
 
+/* Crossfade the card surface out as the under-layer charges in — scoped
+   under .lab-route so the snapshot clone keeps the full surface and the
+   shard layer still lifts it. Fixes the mid-fade double-exposure muddle. */
+.frost-cards li > a {
+  transition: opacity 0.4s ease;
+}
+
+.lab-route .frost-cards li.is-hot > a {
+  opacity: 0;
+  transition: opacity 0.5s ease 0.08s;
+}
+
+/* Thaw reveal: per-card ice pane (inline canvasui Frost). The facts are
+   the pane's children — snapshot-clone-hidden like every under-layer — and
+   the teaser is printed on the ice, fading as hover melts it clear. */
+.frost-cards--thaw > li {
+  border: none;
+  background: none;
+}
+
+.frost-thaw-card,
+.frost-thaw-card .popout-thaw {
+  height: 100%;
+}
+
+.frost-thaw-facts {
+  visibility: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 9px;
+  min-height: 168px;
+  padding: 18px 20px;
+  background: #dce8f1;
+  box-shadow: inset 0 2px 11px rgba(38, 52, 61, 0.24);
+  border: 1px solid var(--frost-line);
+  color: #3f5261;
+  overflow: hidden;
+}
+
+.lab-route .frost-thaw-facts {
+  visibility: visible;
+}
+
+.frost-thaw-facts p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.frost-thaw-facts .frost-proof {
+  margin: 0;
+}
+
+.frost-thaw-facts .frost-proof span {
+  border-radius: 0;
+  border-color: #b3cbdc;
+  opacity: 0.9;
+}
+
+.frost-thaw-open {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.frost-thaw-teaser {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 18px 20px;
+  pointer-events: none;
+  transition: opacity 0.55s ease 0.12s;
+}
+
+.frost-thaw-teaser .frost-kicker {
+  margin: 0;
+}
+
+.frost-thaw-teaser strong {
+  font-size: 19px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.frost-cards--thaw > li:hover .frost-thaw-teaser {
+  opacity: 0;
+}
+
+/* The fallback ice is a translucent wash, so full paragraphs would read
+   through it and muddle with the teaser. Keep the recessed pane visible
+   under the ice for depth, but condense its content in only on hover. */
+.frost-thaw-facts > :not(.frost-thaw-open) {
+  opacity: 0;
+  transition: opacity 0.5s ease 0.1s;
+}
+
+.frost-cards--thaw > li:hover .frost-thaw-facts > :not(.frost-thaw-open) {
+  opacity: 1;
+}
+
 @media (max-width: 700px) {
   .frost-cards {
     grid-template-columns: 1fr;
