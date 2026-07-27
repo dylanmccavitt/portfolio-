@@ -115,6 +115,27 @@ export const PLAYS = [
     instruction: "The email address is sealed under a pane of ice. Rub it clear to say hello — it never freezes back.",
     component: "Frost (canvasui) seal",
   },
+  {
+    slug: "fault-line",
+    number: "03",
+    name: "Fault line",
+    instruction: "Click a nav item: a fault line tears down the page toward the section while you travel to it.",
+    component: "Shatter, scripted pointer path",
+  },
+  {
+    slug: "press",
+    number: "04",
+    name: "Press",
+    instruction: "Press and hold anywhere: the glaze strains wider under the pressure. Let go and it settles.",
+    component: "Shatter, charge on hold",
+  },
+  {
+    slug: "scratch",
+    number: "05",
+    name: "Scratch the receipts",
+    instruction: "Every project hides its proof under a strip of ice. Scratch a row's strip to check the receipts.",
+    component: "Frost (canvasui) per row",
+  },
 ];
 
 /** Crack burst at a viewport point: feed jittered pointer moves to the page
@@ -324,7 +345,7 @@ function ProjectDetailBody({ project }) {
   );
 }
 
-function WorkRows({ projects, onOpen, expandedId }) {
+function WorkRows({ projects, onOpen, expandedId, scratch }) {
   return (
     <ol className="frost-work">
       {projects.map((project, index) => (
@@ -345,6 +366,7 @@ function WorkRows({ projects, onOpen, expandedId }) {
               {project.eyebrow} <ArrowUpRight size={13} />
             </small>
           </a>
+          {scratch && project.proof.length > 0 && <ScratchStrip project={project} />}
           {expandedId === project.id && (
             <div className="frost-row-detail">
               <ProjectDetailBody project={project} />
@@ -386,48 +408,87 @@ function ContactBlock() {
   );
 }
 
-/** Break-the-ice: the email sits under a thick pane of ice; rubbing melts
-    it clear for good, so making contact starts by literally breaking the
-    ice. Built on the inline-safe canvasui Frost (the Shatter engine only
-    supports full-page mounting), with the sizer/overlay pattern from the
-    thaw card. Rubbing must not crack the page glaze, so a native listener
-    stops pointer moves from reaching the page Shatter's ancestor listener. */
-function SealedContact() {
+/** Inline ice seal over arbitrary content, built on the inline-safe
+    canvasui Frost (the Shatter engine only supports full-page mounting).
+    A hidden copy sizes the box, the pane overlays it exactly, and a native
+    pointermove listener stops rubs from reaching the page Shatter's
+    ancestor listener (a React handler runs too late for that). */
+function SealedReveal({ className, frostProps, children }) {
   const stopRef = (node) => {
     node?.addEventListener("pointermove", (event) => event.stopPropagation());
   };
 
-  const body = (
-    <div className="frost-seal-body">
-      <ContactBlock />
-    </div>
-  );
-
   return (
-    <div ref={stopRef} className="frost-seal-stop">
+    <div ref={stopRef} className={className}>
       <div className="popout-thaw">
-        <div className="popout-thaw-sizer" aria-hidden="true">{body}</div>
+        <div className="popout-thaw-sizer" aria-hidden="true">{children}</div>
         <Frost
           className="popout-thaw-effect"
           style={{ position: "absolute", inset: 0 }}
-          frost={0.6}
-          opacity={0.92}
-          meltRadius={0.28}
           meltStrength={1}
           refreeze={0}
-          introDuration={1.2}
-          haze={0.7}
           detail={2.4}
-          tintStrength={0.4}
+          {...frostProps}
         >
-          {body}
+          {children}
         </Frost>
       </div>
     </div>
   );
 }
 
-function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant }) {
+/** Break-the-ice: making contact starts by literally breaking the ice. */
+function SealedContact() {
+  return (
+    <SealedReveal
+      className="frost-seal-stop"
+      frostProps={{ frost: 0.6, opacity: 0.92, meltRadius: 0.28, introDuration: 1.2, haze: 0.7, tintStrength: 0.4 }}
+    >
+      <div className="frost-seal-body">
+        <ContactBlock />
+      </div>
+    </SealedReveal>
+  );
+}
+
+/** Scratch-the-receipts: a row's proof chips sit under their own strip of
+    ice; the evidence is there, you just have to scratch for it. */
+function ScratchStrip({ project }) {
+  return (
+    <SealedReveal
+      className="frost-scratch"
+      frostProps={{ frost: 0.55, opacity: 0.9, meltRadius: 0.32, introDuration: 0.9, haze: 0.6, tintStrength: 0.36 }}
+    >
+      <div className="frost-scratch-body">
+        {project.proof.map((proof) => <span key={proof}>{proof}</span>)}
+      </div>
+    </SealedReveal>
+  );
+}
+
+/** Fault-line nav: walk a jagged pointer path from the header toward the
+    section while the smooth scroll runs, so the glaze tears along the way. */
+function tearToward(section) {
+  const host = document.querySelector(".frost-effect");
+  if (!host) return;
+  const head = document.querySelector(".frost-site-head");
+  const startY = head ? head.getBoundingClientRect().bottom + 10 : 70;
+  const startX = window.innerWidth * 0.5;
+  const started = performance.now();
+  const duration = 850;
+  const step = (now) => {
+    const t = Math.min((now - started) / duration, 1);
+    const rect = section.getBoundingClientRect();
+    const targetY = Math.min(Math.max(rect.top + 60, 90), window.innerHeight - 80);
+    const x = startX + Math.sin(t * Math.PI * 3.2) * 70 * (1 - t * 0.4);
+    const y = startY + (targetY - startY) * t;
+    host.dispatchEvent(new PointerEvent("pointermove", { clientX: x, clientY: y }));
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant, play }) {
   const [current, setCurrent] = useState("about");
 
   useEffect(() => {
@@ -448,7 +509,10 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant 
   }, []);
 
   const go = (id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const section = document.getElementById(id);
+    if (!section) return;
+    if (play === "fault-line") tearToward(section);
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -488,7 +552,12 @@ function SiteLayout({ workList, onOpenProject, onDm, expandedId, contactVariant 
       <section className="frost-site-section" id="work">
         <h2>Work</h2>
         <p className="frost-kicker">{workList.length} projects · shipped and building</p>
-        <WorkRows projects={workList} onOpen={onOpenProject} expandedId={expandedId} />
+        <WorkRows
+          projects={workList}
+          onOpen={onOpenProject}
+          expandedId={expandedId}
+          scratch={play === "scratch"}
+        />
       </section>
 
       <section className="frost-site-section" id="journey">
@@ -624,6 +693,7 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
   const [burstOrigin, setBurstOrigin] = useState(null);
   const [dmOpen, setDmOpen] = useState(false);
   const [overInteractive, setOverInteractive] = useState(false);
+  const [pressCharge, setPressCharge] = useState(0);
   const workList = useMemo(() => buildWorkList(), []);
 
   useEffect(() => {
@@ -652,6 +722,42 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
     return () => document.removeEventListener("pointerover", onOver);
   }, [playMeta?.slug]);
 
+  // Press play: holding the pointer down charges the fracture field wider;
+  // releasing lets it ease back.
+  useEffect(() => {
+    if (playMeta?.slug !== "press") return;
+    let raf = 0;
+    let holding = false;
+    let charge = 0;
+    let last = 0;
+    const loop = (now) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      const target = holding ? 1 : 0;
+      charge += (target - charge) * Math.min(dt * (holding ? 2.2 : 4.5), 1);
+      if (Math.abs(target - charge) < 0.01) charge = target;
+      setPressCharge(Math.round(charge * 50) / 50);
+      if (charge !== target) raf = requestAnimationFrame(loop);
+    };
+    const restart = (value) => {
+      holding = value;
+      last = performance.now();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(loop);
+    };
+    const down = () => restart(true);
+    const up = () => restart(false);
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", up);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("pointerdown", down);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", up);
+    };
+  }, [playMeta?.slug]);
+
   const openProject = (project, event) => {
     if (popoutMeta?.slug === "expand-row") {
       setExpandedId((prev) => (prev === project.id ? null : project.id));
@@ -677,7 +783,15 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
 
   const fractureOverrides = playMeta?.slug === "affordance"
     ? { strength: overInteractive ? 0.92 : 0, radius: 0.16, followSpeed: 6 }
-    : undefined;
+    : playMeta?.slug === "press"
+      ? {
+          radius: 0.2 + pressCharge * 0.3,
+          strength: 0.86 + pressCharge * 0.14,
+          lift: 15 + pressCharge * 18,
+          scatter: 4 + pressCharge * 5,
+          tilt: 1 + pressCharge * 0.8,
+        }
+      : undefined;
 
   const navEntries = popoutMeta ? POPOUTS : playMeta ? PLAYS : EFFECTS;
   const navBase = popoutMeta ? "/popout" : playMeta ? "/play" : "/frost";
@@ -711,6 +825,7 @@ export function CurrentFrost({ effect, popout, play, navigate }) {
               onDm={() => setDmOpen(true)}
               expandedId={popoutMeta?.slug === "expand-row" ? expandedId : null}
               contactVariant={playMeta?.slug === "break-ice" ? "sealed" : "plain"}
+              play={playMeta?.slug}
             />
             <footer className="frost-footer">
               <span>&copy; 2026 Dylan McCavitt</span>
