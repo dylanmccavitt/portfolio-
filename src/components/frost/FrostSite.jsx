@@ -170,10 +170,30 @@ function SiteLayout({ projects, fx, onDm }) {
     // both recency and proximity to the revealed card.
     let lastRevealAt = 0;
 
+    // Resolve the tapped card from the target when Safari gives a usable
+    // one, else probe coordinates — including bases shifted by the
+    // collapsed URL-bar delta, which offsets click coords from the layout
+    // viewport that elementFromPoint uses.
+    const cellFrom = (event) => {
+      const fromTarget =
+        event.target instanceof Element ? event.target.closest(".frost-glitch-cell") : null;
+      if (fromTarget) return fromTarget;
+      const deltas = [0];
+      const vv = window.visualViewport;
+      if (vv) {
+        deltas.push(vv.offsetTop, -vv.offsetTop, window.innerHeight - vv.height, vv.height - window.innerHeight);
+      }
+      for (const dy of deltas) {
+        const el = document.elementFromPoint(event.clientX, event.clientY + dy);
+        const cell = el instanceof Element ? el.closest(".frost-glitch-cell") : null;
+        if (cell) return cell;
+      }
+      return null;
+    };
+
     const onClick = (event) => {
       if (!window.matchMedia("(hover: none)").matches) return;
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      const cell = el instanceof Element ? el.closest(".frost-glitch-cell") : null;
+      const cell = cellFrom(event);
 
       if (!cell || !cell.dataset.projectId) {
         const hot = document.querySelector(".frost-glitch-cell.is-hot");
