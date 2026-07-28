@@ -61,7 +61,7 @@ const PROFILE_SOURCE = [
     id: 'recruiter-faq',
     category: 'recruiter',
     title: 'Recruiter basics',
-    summary: 'Dylan is interviewing for full-time software engineering roles, is based in New York City, is a U.S. citizen, and does not require sponsorship.',
+    summary: 'Dylan is based in the NYC/NJ area, is a U.S. citizen, and does not require sponsorship.',
     publicationStatus: 'published',
     visibility: 'public',
   },
@@ -121,7 +121,7 @@ const PROFILE_SOURCE = [
     category: 'recruiter',
     title: 'What Dylan is looking for',
     summary:
-      'Backend or full-stack roles, remote or hybrid, and he is immediately available. Work involving AI agents is the strong preference — building them, orchestrating them, or building the tooling around them. He is based in New York City and would relocate only for an exceptional offer.',
+      'Dylan is focusing on agentic tooling, backed by full-stack experience — some combination of the two is the target. Backend or full-stack roles, remote or hybrid, in the NYC/NJ area; he is available immediately and would relocate only for an exceptional offer.',
     publicationStatus: 'published',
     visibility: 'public',
   },
@@ -130,7 +130,7 @@ const PROFILE_SOURCE = [
     category: 'working-style',
     title: 'How Dylan works with AI agents',
     summary:
-      'Dylan works as the orchestrator — the conductor of the orchestra — directing CLI agents like Claude Code and Codex rather than typing every line himself. The pattern: research the context the task actually needs, plan against what was found, then either one-shot the implementation or run it in checkpoints when the plan needs tighter control; small well-bounded tasks get handed to several agents in parallel. He leans on subagents and MCP tooling (context7 among others), and every hand-off carries the same standing rule: test heavily — browser automation or CI — with agents fixing failures in a loop until green.',
+      'Dylan works as the orchestrator — the conductor of the orchestra — directing CLI agents rather than typing every line himself: Claude Code and Codex day to day, with pi in the mix for tinkering. His agent-skills repo is effectively his workflow written down. The habit that has proven most effective is upfront planning and prototyping: research the context a task actually needs and work the approach out on disposable prototypes before an agent runs off to write code — implementing first and reworking mistakes after makes the code and the project harder to change. From a settled plan he either one-shots the implementation or runs it in checkpoints, hands small bounded tasks to several agents in parallel, leans on subagents and MCP tooling, and every hand-off carries the same standing rule: test heavily — browser automation or CI — with agents fixing failures in a loop until green.',
     publicationStatus: 'published',
     visibility: 'public',
   },
@@ -139,7 +139,7 @@ const PROFILE_SOURCE = [
     category: 'career',
     title: 'What the pre-engineering years left behind',
     summary:
-      'The years before engineering left specific skills. At Paul, Weiss, Dylan served on the committee that stress-tested procedures for the firm’s migration to a new document management system. At Kroll he was client-facing, delivering risk assessments and related services to Fortune 500 companies. Interfacing with clients and gathering technical requirements translates directly into his agentic work today: gathering business requirements and communicating with stakeholders.',
+      'Paul, Weiss and Kroll were Dylan’s work before he decided to switch career paths, and they left real experience operating in a corporate business environment and working directly with clients. At Paul, Weiss he served on the committee that stress-tested procedures for the firm’s migration to a new document management system; at Kroll he was client-facing, delivering risk assessments and related services to Fortune 500 companies.',
     publicationStatus: 'published',
     visibility: 'public',
   },
@@ -148,7 +148,7 @@ const PROFILE_SOURCE = [
     category: 'education',
     title: 'Graduate school, in detail',
     summary:
-      'Dylan finished his M.S. in Computer Science at Stevens with a 3.9 GPA, and made a habit of taking on extra machine-learning coursework whenever the assigned work ran too easy — the EPL match predictor came out of exactly that.',
+      'Dylan finished his M.S. in Computer Science at Stevens in spring 2026 with a 3.61 GPA, focused on algorithms and data structures.',
     publicationStatus: 'published',
     visibility: 'public',
   },
@@ -158,6 +158,14 @@ const PROFILE_SOURCE = [
     title: 'Where to find Dylan online',
     summary:
       'Dylan’s code is public on GitHub at github.com/dylanmccavitt, and he is on LinkedIn as Dylan McCavitt. Email is the fastest way to reach him: dylanmccavitt@outlook.com.',
+    publicationStatus: 'published',
+    visibility: 'public',
+  },
+  {
+    id: 'hobbies',
+    category: 'interest',
+    title: 'Off the clock',
+    summary: 'Outside of building things: video games, chess, and trading on the side.',
     publicationStatus: 'published',
     visibility: 'public',
   },

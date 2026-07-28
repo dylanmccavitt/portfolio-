@@ -2,8 +2,8 @@ export const PROFILE = {
   name: "Dylan McCavitt",
   role: "Software engineer",
   focus: "Backend systems · product software · practical AI tools",
-  location: "New York City",
-  status: "Open to opportunities",
+  location: "NYC/NJ area",
+  status: "Focusing on agentic tooling",
   email: "dylanmccavitt@outlook.com",
   summary:
     "Dylan is a New York City–based software engineer whose path runs from economics through legal operations and cyber risk to an M.S. in computer science.",
@@ -31,5 +31,5 @@ export const JOURNEY = [
   ["2023–2024", "Kroll", "Cyber Strategy & Risk"],
   ["2024–2026", "Stevens", "M.S. Computer Science"],
   ["2025", "Bella's Beads", "Freelance full-stack developer"],
-  ["Now", "Open to opportunities", "Backend, product, and AI tools"],
+  ["Now", "Focusing on agentic tooling", "Full-stack experience · backend & AI"],
 ];
