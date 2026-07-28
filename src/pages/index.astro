@@ -1,6 +1,8 @@
 ---
 import Frost from '@/layouts/Frost.astro';
 import FrostSite from '@/components/frost/FrostSite.jsx';
+import { WORK_ORDER } from '@/components/frost/frost-data.js';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
 
 const meta = {
@@ -10,8 +12,27 @@ const meta = {
   ),
   jsonLd: personJsonLd(),
 };
+
+// Build-time read of the published detail models (published-DB on deploy,
+// catalog offline). WORK_ORDER pins the display order; anything the order
+// list doesn't know lands at the end in source order.
+const { projects } = await loadPublicProjectDetails();
+const rank = (id: string) => {
+  const index = WORK_ORDER.indexOf(id);
+  return index === -1 ? WORK_ORDER.length : index;
+};
+const workProjects = [...projects]
+  .sort((a, b) => rank(a.id) - rank(b.id))
+  .map((project) => ({
+    id: project.id,
+    href: project.href,
+    title: project.title,
+    eyebrow: `${project.area} · ${project.status[1]}`,
+    line: project.line,
+    proof: project.metrics.slice(0, 3).map((metric) => `${metric.value} ${metric.label}`),
+  }));
 ---
 
 <Frost title="Dylan McCavitt · Software engineer" meta={meta}>
-  <FrostSite client:load />
+  <FrostSite client:load projects={workProjects} />
 </Frost>

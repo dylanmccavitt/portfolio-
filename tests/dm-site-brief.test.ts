@@ -43,10 +43,12 @@ test('site brief covers variable published-project counts deterministically with
   }
 });
 
-test('the complete local fixture stays in the approximate 1–2k planning range without claiming a tokenizer bound', async () => {
+test('the complete local fixture stays in the approximate sub-2k planning range without claiming a tokenizer bound', async () => {
+  // Floor guards against an accidentally empty brief; ceiling against bloat.
+  // The 8-project catalog (#350) sits just under 1k approximate tokens.
   const brief = await loadDMSiteBrief({ env: {} });
 
-  assert.ok(brief.approximatePlanningTokens >= 1_000);
+  assert.ok(brief.approximatePlanningTokens >= 500);
   assert.ok(brief.approximatePlanningTokens <= 2_000);
   assert.equal(brief.approximatePlanningTokens, Math.ceil(brief.utf8ByteCount / 4));
 });

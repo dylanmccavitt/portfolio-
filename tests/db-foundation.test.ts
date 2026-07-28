@@ -15,6 +15,7 @@ import {
   generateCatalogParityReport,
   importCatalogShadowRecords,
   runCatalogCutover,
+  syncCatalogPublishedRecords,
   type CatalogShadowRecord,
 } from '@/lib/db/catalog-shadow';
 import {
@@ -891,6 +892,99 @@ test('0006 catalog cutover promotes only legacy shadow rows and preserves a publ
     `SELECT lifecycle_state, count(*)::text AS count FROM projects WHERE source = 'legacy_catalog' GROUP BY lifecycle_state`,
   );
   assert.deepEqual(promotionCounts.rows, [{ lifecycle_state: 'published', count: String(CATALOG.length) }]);
+});
+
+test('catalog sync refreshes published legacy rows and archives ids the catalog dropped', async () => {
+  const db = createTestDb();
+  await applyMigrations(db);
+  await importCatalogShadowRecords(db);
+  await runCatalogCutover(db, { apply: true });
+
+  // Simulate the next catalog revision: the last project is cut and the first
+  // one's copy changed. Non-legacy published rows must stay untouched.
+  const keptProjects = CATALOG.slice(0, -1).map((project, index) =>
+    index === 0 ? { ...project, line: 'revised tagline for sync' } : project,
+  );
+  const cutId = CATALOG.at(-1)!.id;
+  const [template] = buildCatalogShadowRecords(CATALOG.slice(0, 1));
+  await insertProjectRecord(db, {
+    ...template!,
+    id: 'proj_db_only_sync',
+    slug: 'db-only-sync',
+    title: 'DB Only',
+    lifecycle_state: 'published',
+    source: 'github_discovery',
+    published_at: '2026-07-10T00:00:00.000Z',
+  });
+
+  const dryRun = await syncCatalogPublishedRecords(db, {}, keptProjects);
+  assert.equal(dryRun.applied, false);
+  assert.deepEqual(dryRun.refreshed, keptProjects.map((project) => project.id));
+  assert.deepEqual(dryRun.archived, [cutId]);
+  const untouched = await db.query<{ tagline: string; lifecycle_state: string }>(
+    `SELECT tagline, lifecycle_state FROM projects WHERE id = $1`,
+    [keptProjects[0]!.id],
+  );
+  assert.notEqual(untouched.rows[0]?.tagline, 'revised tagline for sync');
+
+  const applied = await syncCatalogPublishedRecords(db, { apply: true }, keptProjects);
+  assert.equal(applied.applied, true);
+  assert.deepEqual(applied.archived, [cutId]);
+
+  const refreshedRow = await db.query<{ tagline: string; lifecycle_state: string }>(
+    `SELECT tagline, lifecycle_state FROM projects WHERE id = $1`,
+    [keptProjects[0]!.id],
+  );
+  assert.equal(refreshedRow.rows[0]?.tagline, 'revised tagline for sync');
+  assert.equal(refreshedRow.rows[0]?.lifecycle_state, 'published');
+
+  const archivedRow = await db.query<{ lifecycle_state: string; archived_at: string | null }>(
+    `SELECT lifecycle_state, archived_at FROM projects WHERE id = $1`,
+    [cutId],
+  );
+  assert.equal(archivedRow.rows[0]?.lifecycle_state, 'archived');
+  assert.ok(archivedRow.rows[0]?.archived_at);
+
+  const dbOnly = await db.query<{ lifecycle_state: string; source: string }>(
+    `SELECT lifecycle_state, source FROM projects WHERE id = 'proj_db_only_sync'`,
+  );
+  assert.equal(dbOnly.rows[0]?.lifecycle_state, 'published');
+  assert.equal(dbOnly.rows[0]?.source, 'github_discovery');
+
+  // Archived rows leave the parity view, so the report passes against the
+  // revised catalog, and a second apply is a no-op.
+  const report = generateCatalogParityReport(await fetchCatalogParityRecords(db), keptProjects);
+  assert.equal(report.status, 'pass');
+  assert.deepEqual(report.extraRecordIds, ['proj_db_only_sync']);
+  const again = await syncCatalogPublishedRecords(db, { apply: true }, keptProjects);
+  assert.deepEqual(again.archived, []);
+  assert.deepEqual(again.retiredDbOnly, []);
+
+  // Published rows from other pipelines leave the set only via the explicit
+  // opt-in flag — never implicitly.
+  const retireDry = await syncCatalogPublishedRecords(
+    db,
+    { retireDbOnly: true },
+    keptProjects,
+  );
+  assert.equal(retireDry.applied, false);
+  assert.deepEqual(retireDry.retiredDbOnly, ['proj_db_only_sync']);
+  const stillPublished = await db.query<{ lifecycle_state: string }>(
+    `SELECT lifecycle_state FROM projects WHERE id = 'proj_db_only_sync'`,
+  );
+  assert.equal(stillPublished.rows[0]?.lifecycle_state, 'published');
+
+  const retireApply = await syncCatalogPublishedRecords(
+    db,
+    { apply: true, retireDbOnly: true },
+    keptProjects,
+  );
+  assert.deepEqual(retireApply.retiredDbOnly, ['proj_db_only_sync']);
+  const retiredRow = await db.query<{ lifecycle_state: string; archived_at: string | null }>(
+    `SELECT lifecycle_state, archived_at FROM projects WHERE id = 'proj_db_only_sync'`,
+  );
+  assert.equal(retiredRow.rows[0]?.lifecycle_state, 'archived');
+  assert.ok(retiredRow.rows[0]?.archived_at);
 });
 
 test('catalog cutover refuses a reviewed-shadow mismatch without publishing anything', async () => {

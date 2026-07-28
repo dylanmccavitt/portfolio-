@@ -278,6 +278,112 @@ export async function importCatalogShadowRecords(
   return { imported: records.length, ids: records.map((record) => record.id) };
 }
 
+export interface CatalogSyncResult {
+  refreshed: string[];
+  archived: string[];
+  retiredDbOnly: string[];
+  applied: boolean;
+}
+
+/**
+ * Reconcile already-published legacy rows with the current catalog (#350).
+ * The shadow import only writes rows still in the shadow state, so once rows
+ * are published, catalog changes need this explicit, gated step: a content
+ * refresh for ids the catalog still ships, and archive (never delete) for ids
+ * it dropped — archived rows leave the published read set but stay
+ * recoverable. Non-legacy rows are never touched. Dry-run by default; the
+ * operator sequence on a live DB is sync --apply (refresh + archive) →
+ * shadow import (inserts new ids, runs parity) → cutover --apply (promotes).
+ */
+export async function syncCatalogPublishedRecords(
+  db: CatalogShadowQueryable,
+  options: { apply?: boolean; retireDbOnly?: boolean } = {},
+  projects: Project[] = CATALOG,
+): Promise<CatalogSyncResult> {
+  const records = buildCatalogShadowRecords(projects);
+  const catalogIds = new Set(records.map((record) => record.id));
+  const catalogSlugs = new Set(records.map((record) => record.slug));
+
+  const publishedResult = await db.query<{ id: string }>(
+    `SELECT id FROM projects
+     WHERE source = 'legacy_catalog' AND lifecycle_state = 'published'
+     ORDER BY id`,
+  );
+  const publishedRows = Array.isArray(publishedResult) ? publishedResult : publishedResult.rows;
+  const published = new Set(publishedRows.map((row) => row.id));
+
+  const refreshed = records.map((record) => record.id).filter((id) => published.has(id));
+  const archived = [...published].filter((id) => !catalogIds.has(id)).sort();
+
+  // Opt-in only: published rows from other pipelines (e.g. discovery) that
+  // the catalog doesn't ship. Retiring them is a site-visible-set decision,
+  // so it never happens implicitly.
+  const dbOnlyResult = await db.query<{ id: string; slug: string }>(
+    `SELECT id, slug FROM projects
+     WHERE source <> 'legacy_catalog' AND lifecycle_state = 'published'
+     ORDER BY slug`,
+  );
+  const dbOnlyRows = Array.isArray(dbOnlyResult) ? dbOnlyResult : dbOnlyResult.rows;
+  const retiredDbOnly = options.retireDbOnly
+    ? dbOnlyRows
+        .filter((row) => !catalogIds.has(row.id) && !catalogSlugs.has(row.slug))
+        .map((row) => row.id)
+    : [];
+
+  if (!options.apply) return { refreshed, archived, retiredDbOnly, applied: false };
+
+  for (const record of records) {
+    if (!published.has(record.id)) continue;
+    await db.query(
+      `UPDATE projects SET
+         slug = $2, title = $3, tagline = $4, area = $5, year = $6,
+         activity = $7, summary = $8, details = $9::jsonb, metrics = $10::jsonb,
+         links = $11::jsonb, media = $12::jsonb, updated_at = now()
+       WHERE id = $1
+         AND source = 'legacy_catalog'
+         AND lifecycle_state = 'published'`,
+      [
+        record.id,
+        record.slug,
+        record.title,
+        record.tagline,
+        record.area,
+        record.year,
+        record.activity,
+        record.summary,
+        JSON.stringify(record.details),
+        JSON.stringify(record.metrics),
+        JSON.stringify(record.links),
+        JSON.stringify(record.media),
+      ],
+    );
+  }
+
+  for (const id of archived) {
+    await db.query(
+      `UPDATE projects SET
+         lifecycle_state = 'archived', archived_at = now(), updated_at = now()
+       WHERE id = $1
+         AND source = 'legacy_catalog'
+         AND lifecycle_state = 'published'`,
+      [id],
+    );
+  }
+
+  for (const id of retiredDbOnly) {
+    await db.query(
+      `UPDATE projects SET
+         lifecycle_state = 'archived', archived_at = now(), updated_at = now()
+       WHERE id = $1
+         AND source <> 'legacy_catalog'
+         AND lifecycle_state = 'published'`,
+      [id],
+    );
+  }
+
+  return { refreshed, archived, retiredDbOnly, applied: true };
+}
+
 async function assertNoNonLegacyConflicts(
   db: CatalogShadowQueryable,
   records: CatalogShadowRecord[],

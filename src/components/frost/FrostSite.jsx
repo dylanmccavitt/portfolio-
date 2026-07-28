@@ -6,7 +6,7 @@ import { SnapshotFx } from "./SnapshotFx.jsx";
 import { createGlitch } from "./glitch.jsx";
 import DmChat from "./DmChat.jsx";
 import { SUBGREETING } from "@/lib/dm/client";
-import { JOURNEY, PROFILE, PROJECTS } from "./frost-data.js";
+import { JOURNEY, PROFILE } from "./frost-data.js";
 import "./frost.css";
 
 const DESTINATIONS = [
@@ -89,24 +89,28 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
-function GlitchCard({ project, fx }) {
+function GlitchCard({ project, index, fx, isHot }) {
   const teaser = (
     <div className="frost-glitch-teaser">
-      <span className="frost-num">{project.number}</span>
+      <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
       <p className="frost-kicker">{project.eyebrow}</p>
       <strong>{project.title}</strong>
     </div>
   );
 
   return (
-    <li className="frost-glitch-cell">
+    <li
+      className={`frost-glitch-cell${isHot ? " is-hot" : ""}`}
+      data-project-id={project.id}
+      data-project-href={project.href}
+    >
       <a
         className="frost-glitch-open"
-        href={`/projects/${project.id}`}
+        href={project.href}
         aria-label={`Open ${project.title}`}
       />
       <div className="frost-glitch-facts" aria-hidden="true">
-        <p>{project.summary}</p>
+        <p>{project.line}</p>
         {project.proof.length > 0 && (
           <div className="frost-proof">
             {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
@@ -151,8 +155,74 @@ function ContactBlock() {
   );
 }
 
-function SiteLayout({ fx, onDm }) {
+function SiteLayout({ projects, fx, onDm }) {
   const [current, setCurrent] = useState("about");
+  const [hotId, setHotId] = useState(null);
+
+  // Touch has no hover: the first tap on a card plays the reveal, the second
+  // tap navigates, and a tap outside reseals. Everything resolves the card
+  // from the tap COORDINATES (elementFromPoint), never event.target — iOS
+  // retargets taps on the pointer-events-none teaser to nodes outside the
+  // card, so target-based handling silently never fires there.
+  useEffect(() => {
+    // iOS can dispatch a trailing duplicate click for one tap with a
+    // different coordinate basis (~130px off), so resealing is guarded by
+    // both recency and proximity to the revealed card.
+    let lastRevealAt = 0;
+
+    // Resolve the tapped card from the target when Safari gives a usable
+    // one, else probe coordinates — including bases shifted by the
+    // collapsed URL-bar delta, which offsets click coords from the layout
+    // viewport that elementFromPoint uses.
+    const cellFrom = (event) => {
+      const fromTarget =
+        event.target instanceof Element ? event.target.closest(".frost-glitch-cell") : null;
+      if (fromTarget) return fromTarget;
+      const deltas = [0];
+      const vv = window.visualViewport;
+      if (vv) {
+        deltas.push(vv.offsetTop, -vv.offsetTop, window.innerHeight - vv.height, vv.height - window.innerHeight);
+      }
+      for (const dy of deltas) {
+        const el = document.elementFromPoint(event.clientX, event.clientY + dy);
+        const cell = el instanceof Element ? el.closest(".frost-glitch-cell") : null;
+        if (cell) return cell;
+      }
+      return null;
+    };
+
+    const onClick = (event) => {
+      if (!window.matchMedia("(hover: none)").matches) return;
+      const cell = cellFrom(event);
+
+      if (!cell || !cell.dataset.projectId) {
+        const hot = document.querySelector(".frost-glitch-cell.is-hot");
+        if (!hot || Date.now() - lastRevealAt < 450) return;
+        const rect = hot.getBoundingClientRect();
+        const near =
+          event.clientX > rect.left - 40 &&
+          event.clientX < rect.right + 40 &&
+          event.clientY > rect.top - 160 &&
+          event.clientY < rect.bottom + 160;
+        if (!near) setHotId(null);
+        return;
+      }
+
+      if (cell.classList.contains("is-hot")) {
+        if (!(event.target instanceof Element && event.target.closest("a"))) {
+          window.location.assign(cell.dataset.projectHref);
+        }
+        return;
+      }
+
+      event.preventDefault();
+      lastRevealAt = Date.now();
+      setHotId(cell.dataset.projectId);
+    };
+
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
 
   useEffect(() => {
     const sections = DESTINATIONS
@@ -214,10 +284,16 @@ function SiteLayout({ fx, onDm }) {
       <section className="frost-site-section" id="work">
         <FlowIn>
           <h2>Work</h2>
-          <p className="frost-kicker">{PROJECTS.length} projects · shipped and building</p>
+          <p className="frost-kicker">{projects.length} projects · shipped and building</p>
           <ol className="frost-cards">
-            {PROJECTS.map((project) => (
-              <GlitchCard key={project.id} project={project} fx={fx} />
+            {projects.map((project, index) => (
+              <GlitchCard
+                key={project.id}
+                project={project}
+                index={index}
+                fx={fx}
+                isHot={project.id === hotId}
+              />
             ))}
           </ol>
         </FlowIn>
@@ -274,7 +350,11 @@ function DmPanel({ onClose }) {
   );
 }
 
-export default function FrostSite() {
+/**
+ * @param {{ projects?: Array<{ id: string, href: string, title: string,
+ *   eyebrow: string, line: string, proof: string[] }> }} props
+ */
+export default function FrostSite({ projects = [] }) {
   const [dmOpen, setDmOpen] = useState(false);
 
   const effectMode = typeof window !== "undefined"
@@ -285,7 +365,7 @@ export default function FrostSite() {
     <main className="frost" id="main">
       <div className="frost-effect">
         <div className="frost-page">
-          <SiteLayout fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
+          <SiteLayout projects={projects} fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
           <footer className="frost-footer">
             <span>&copy; 2026 Dylan McCavitt</span>
             <span>Hover a project to see what shipped.</span>

@@ -368,8 +368,10 @@ test('resume remains available with an explicit partial status when project cros
   assert.deepEqual(resume.limitations, ['unknown_track_ids_omitted', 'published_project_links_unavailable']);
 });
 
+// Pinned to the project whose copy the search queries below reference
+// ('trading automation'), so catalog reordering can't shift the fixture.
 function publishedProject(): ProjectDetailReadModel {
-  return publishedCatalogProject(CATALOG[0]!.id);
+  return publishedCatalogProject('agentic-trader');
 }
 
 function publishedCatalogProject(id: string): ProjectDetailReadModel {
