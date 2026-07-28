@@ -1,6 +1,7 @@
 /**
- * Legacy project catalog — migration/parity data plus the offline-development
- * and explicit operator-emergency project source.
+ * The project catalog — the site's single content source, build and runtime,
+ * local and deployed (#352 tore down the database that used to sit behind
+ * deployed reads).
  *
  * Decision log (Dylan, 2026-07-27, #350): the published set is cut to 8.
  * Removed as stale or not publishable: exit-manager, hood, tradingview-mcp,
@@ -8,9 +9,6 @@
  * agent-skills (in progress, v1.0 on npm). Every entry's `about` is exactly
  * three paragraphs — [problem, approach, outcome] — which the project page
  * renders under those headings.
- *
- * Deployed database mode never overlays or falls back to this file. Public DB
- * rows are authoritative there and fail closed when unavailable.
  *
  * Link integrity: every link points at a live destination. evalgate and
  * slurmlet repos are public as of July 2026 and are now linked.

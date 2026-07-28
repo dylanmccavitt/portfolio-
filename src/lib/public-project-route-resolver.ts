@@ -1,9 +1,8 @@
-import type { ProjectDetailReadModel } from './db/project-reads';
-import type { PublicProjectSource } from './public-projects';
+import type { ProjectDetailReadModel } from './projects/read-models';
 
 export interface RequiredProjectReferenceOptions {
   route: string;
-  source: PublicProjectSource;
+  source: string;
   label?: string;
 }
 

@@ -4,8 +4,6 @@ import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-mono";
 import { SnapshotFx } from "./SnapshotFx.jsx";
 import { createGlitch } from "./glitch.jsx";
-import DmChat from "./DmChat.jsx";
-import { SUBGREETING } from "@/lib/dm/client";
 import { JOURNEY, PROFILE } from "./frost-data.js";
 import "./frost.css";
 
@@ -339,9 +337,12 @@ function DmPanel({ onClose }) {
           <X size={19} />
         </button>
         <p className="frost-kicker">Public portfolio guide</p>
-        <h2 id="frost-dm-title">Ask DM about Dylan&rsquo;s work.</h2>
-        <p>{SUBGREETING}</p>
-        <DmChat />
+        <h2 id="frost-dm-title">DM is being rebuilt.</h2>
+        <p>
+          The portfolio&rsquo;s chat guide is getting a rework and will be back.
+          In the meantime, the projects above cover the work — and Dylan is one
+          email away.
+        </p>
         <a href={`mailto:${PROFILE.email}`}>
           Contact Dylan directly <ArrowUpRight size={16} />
         </a>

@@ -1,7 +1,22 @@
-import {
-  PublicProfileSourceEntrySchema,
-  type PublicProfileSourceEntry,
-} from '@/lib/dm/public-agent-tools';
+import { z } from 'zod';
+
+/**
+ * Tool-facing adapter shape for approved public profile entries (moved here
+ * from the DM tools in the #352 teardown; the DM rework consumes it next).
+ * A profile source must explicitly mark both publication and public
+ * visibility before an entry can cross this boundary.
+ */
+export const PublicProfileSourceEntrySchema = z.strictObject({
+  id: z.string().trim().min(1).max(200).regex(/^[a-z0-9][a-z0-9_-]*$/i),
+  category: z.string().trim().min(1).max(100),
+  title: z.string().trim().min(1).max(160),
+  summary: z.string().trim().min(1).max(1_000),
+  href: z.string().trim().min(1).max(2_000).optional(),
+  publicationStatus: z.enum(['published', 'draft']),
+  visibility: z.enum(['public', 'private']),
+});
+
+export type PublicProfileSourceEntry = z.infer<typeof PublicProfileSourceEntrySchema>;
 
 // Dylan approved these nine public entries exactly as written on 2026-07-21.
 // Copy, facts, categories, visibility, and membership require renewed owner approval.
