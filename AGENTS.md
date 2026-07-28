@@ -31,8 +31,10 @@ Recruiter-facing portfolio (Astro + Vercel) on the agent-first redesign preview 
 
 Nothing in the repo turns DM on. When the owner deploys the service, all of these must change together, or the card fails in ways that look like bugs:
 
-1. Set `PUBLIC_DM_ENDPOINT` to the service's `https://` origin at build time. Unset (the default) keeps the "being rebuilt" panel and sends nothing anywhere.
-2. Add that origin to `connect-src` in `vercel.json`'s CSP. It is `connect-src 'self'` today, which **blocks** the card's POST to any cross-origin service — the request never leaves the browser and the card reports a transport failure. This is the only `vercel.json` change the service needs; the site serves no corpus, so there is no CORS `headers` rule to add for one.
+The service is deployed at `https://dm-agent-service-psi.vercel.app` (repo `dylanmccavitt/dm-agent-service`, private).
+
+1. Set `PUBLIC_DM_ENDPOINT` to that origin at build time — origin only, no trailing slash and no `/chat`; the client appends the path. Unset (the default) keeps the "being rebuilt" panel and sends nothing anywhere. It is baked into static output, so changing it needs a redeploy, not just a save.
+2. That origin is already in `connect-src` in `vercel.json`'s CSP. Without it the card's POST never leaves the browser and reports a transport failure. Repoint both together if the service ever moves. The site serves no corpus, so there is no CORS `headers` rule to add for one.
 3. Give the service its corpus: `npm run --silent dm:corpus <service-repo>/corpus.json`, commit it there, redeploy it. It is a **snapshot** — content changes here do not reach DM until that is repeated. The service README owns the ritual.
 4. Decide and state what the service does with visitor questions. They leave the site — `docs/agents/product-direction.md` owns that boundary.
 
