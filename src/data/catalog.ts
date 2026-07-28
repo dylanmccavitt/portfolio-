@@ -71,7 +71,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#8b7cf6',
     wip: true,
     money: false,
-    line: 'a skills package that keeps coding agents on course: direction, delivery, and continuity',
+    line: 'a lean, curated workflow kit for coding agents — short skills backed by real command-line tools',
     seek: { from: 'v1.0 on npm', to: 'daily driver', pct: 75 },
     links: [
       { label: 'View repo ↗', href: 'https://github.com/dylanmccavitt/agent-skills' },
@@ -84,14 +84,14 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: '3', label: 'agent harnesses from one install' },
     ],
     about: [
-      'Coding agents forget. A session ends and the plan, the decision, and the half-finished work scatter into stray notes files — or vanish — so every new session starts by re-deriving what the last one already settled.',
-      'agent-skills packages three habits an agent can load — settle a direction with disposable prototypes (compass), hand off bounded work and get one compact receipt back (relay), and leave a durable marker where it belongs instead of littering the repository (cairn) — plus two command-line tools that carry the mechanics: a decision shelf that keeps decision records outside every repo, and a delivery tool that discovers and runs a repository’s own checks and drafts evidence-bound receipts.',
-      'One npm install works across three different agent harnesses. This portfolio’s own redesign was steered with it: the homepage direction lives on the decision shelf as a record that outlived a dozen working sessions. v1.0.0 is live, with 70 tests keeping the installer honest.',
+      'Off-the-shelf agent skills and workflows kept swelling: every session loaded pages of prose the agent mostly didn’t need, bloating the context before the real work began. Dylan wanted a kit of his own — small, curated, and earning its place.',
+      'agent-skills is that workflow kit, built lean on purpose. Three short skills — settle a direction with disposable prototypes (compass), hand off bounded work for one compact receipt (relay), leave a durable marker where it belongs (cairn) — and a running experiment: give the agent a real command-line tool instead of more prose. The mechanics live in two small CLIs (a decision shelf and a delivery tool), so each skill stays a few paragraphs.',
+      'v1.0.0 is live on npm and installs across three agent harnesses from one command, with 70 tests keeping the installer honest. It is an active workbench — Dylan keeps tweaking, testing, and trialling new pieces to see what earns a permanent spot in the kit.',
     ],
     notes: [
-      'Skills stay lean; the mechanics live in the tools, not the prose.',
-      'Install is reversible, cross-harness, and audited by a doctor command.',
-      'Used to steer this portfolio’s own redesign.',
+      'Curated lean on purpose: short skills, no context bloat.',
+      'The experiment: a real CLI for the agent instead of more prose.',
+      'An active workbench — pieces are added and cut as they prove out.',
     ],
     stack: [
       { label: 'Runtime', value: 'node · javascript' },
