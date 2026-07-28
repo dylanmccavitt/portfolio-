@@ -41,6 +41,7 @@ import {
 
 /** Seed questions. These are sent verbatim to the service — nothing is canned. */
 const SUGGESTED = [
+  "Give me the tour.",
   "What has Dylan built with AI agents?",
   "Show me his client work.",
   "How do I reach him?",
