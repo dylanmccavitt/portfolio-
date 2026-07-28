@@ -419,6 +419,47 @@ test('a truncated answer is reported as truncated, not as a finished one', async
   );
 });
 
+test('a stream that closes before its done event is a failure, not an answer', async () => {
+  // A clean EOF mid-answer leaves `reason` at its `end_turn` default, and
+  // returning would pass the fragment off as a whole reply.
+  await withStub([sse('text', { text: 'The first half of ' })], async (endpoint) => {
+    const text: string[] = [];
+    await assert.rejects(
+      askDm({
+        endpoint,
+        manifest: MANIFEST,
+        messages: [{ role: 'user', content: 'hi' }],
+        onText: (delta: string) => text.push(delta),
+      }),
+      (error: Error) => {
+        assert.equal(error.name, 'DmError');
+        assert.match(error.message, /dropped the connection/);
+        return true;
+      },
+    );
+    // The partial answer still reached the caller while it streamed.
+    assert.equal(text.join(''), 'The first half of ');
+  });
+});
+
+test('a stream that outgrows any honest answer fails instead of accumulating', async () => {
+  // The DOM copy is clipped at the display cap, but the signed transcript keeps
+  // every delta verbatim — a runaway service has to end the turn, not fill
+  // memory for as long as the deadline allows.
+  const flood = 'x'.repeat(10_000);
+  const chunks = Array.from({ length: 7 }, () => sse('text', { text: flood }));
+  chunks.push(sse('done', { reason: 'end_turn', token: 'sig' }));
+  await withStub(chunks, async (endpoint) => {
+    await assert.rejects(
+      askDm({ endpoint, manifest: MANIFEST, messages: [{ role: 'user', content: 'hi' }] }),
+      (error: Error) => {
+        assert.equal(error.name, 'DmError');
+        return true;
+      },
+    );
+  });
+});
+
 test('an error event surfaces a sanitized single-line message', async () => {
   await withStub([sse('error', { message: 'upstream\n\ttimed   out' })], async (endpoint) => {
     await assert.rejects(

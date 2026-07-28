@@ -3,10 +3,10 @@
  * DM agent is allowed to know.
  *
  * IT IS NOT PUBLISHED. The site serves no corpus document and the browser never
- * receives one: the approved material was approved as something DM may *use*
- * when answering, not as a document anyone may browse. The only way it leaves
- * this repository is `npm run dm:corpus` (`scripts/dm-corpus.ts`), which writes
- * a snapshot the owner commits into the DM service's own deployment. The
+ * receives one — `docs/agents/product-direction.md` owns that boundary and the
+ * reasoning behind it; this file only implements it. The only way the corpus
+ * leaves this repository is `npm run dm:corpus` (`scripts/dm-corpus.ts`), which
+ * writes a snapshot the owner commits into the DM service's own deployment. The
  * browser gets {@link buildDmPageManifest} instead — anchors and project ids,
  * both already visible in the homepage HTML.
  *

@@ -47,6 +47,15 @@ const PROJECT_ACTIONS = new Set(['lit', 'open']);
     without bound. Roughly ten times the longest sensible reply. */
 const MAX_ANSWER_CHARS = 8000;
 
+/** Hard ceiling on the signed transcript itself. The display cap above clips
+    what reaches the DOM, but the signature is over the whole answer, so every
+    delta is also kept verbatim — and a hostile service kept alive under the
+    deadline could grow that copy without bound, then ride it into React state
+    and the next request body. Well past this the turn is not an answer at all,
+    so it fails instead: far above the service's own output budget, far below
+    anything that hurts. */
+const MAX_STREAM_CHARS = 64_000;
+
 /** Longest error message we will surface, before truncation. */
 const MAX_ERROR_CHARS = 200;
 
@@ -389,6 +398,7 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
   let finished = false;
   let failure = null;
   let written = 0;
+  let received = 0;
   // Every delta, verbatim and in order — the bytes the service signs. Kept
   // apart from what reaches `onText`, which is clipped for the DOM's sake: the
   // signature is over the whole answer, so a clipped copy would not verify.
@@ -400,6 +410,12 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
       case 'text': {
         const data = parseData(record.data);
         if (!data || typeof data.text !== 'string' || !data.text) return;
+        received += data.text.length;
+        if (received > MAX_STREAM_CHARS) {
+          failure = new DmError('DM ran into a problem answering that.');
+          finished = true;
+          return;
+        }
         streamed.push(data.text);
         const room = MAX_ANSWER_CHARS - written;
         if (room <= 0) return;
@@ -461,6 +477,11 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
   }
 
   if (failure) throw failure;
+  // A stream that closed without a terminal event never finished the turn.
+  // `reason` still holds its `end_turn` default here, and returning would
+  // present whatever fraction arrived as a whole, signed answer — so a clean
+  // EOF before `done` is a transport failure, not a completion.
+  if (!finished) throw new DmError("DM's service dropped the connection mid-answer.");
   return { reason, truncated, token, content: streamed.join('') };
 }
 
