@@ -183,7 +183,7 @@ export const RESUME: ResumeAlbum = {
       hue: '#50c878',
       current: true,
       about: [
-        'Currently interviewing for full-time software engineering roles while building practical side projects: assistant-evaluation tooling, local finance automation, infrastructure scheduling, and small consumer apps.',
+        'Focusing on agentic tooling, backed by full-stack experience, while building practical side projects: agent tooling, local finance automation, and small consumer apps.',
         'Looking for teams that value product judgment, reliability habits, and clear communication.',
       ],
       notes: ['US citizen; no sponsorship needed.'],
