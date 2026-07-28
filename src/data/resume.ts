@@ -1,9 +1,8 @@
 /**
- * Resume — the career timeline and single source of truth for resume views and
- * DM resume tools.
+ * Resume — the career timeline and single source of truth for resume views.
  *
  * Copy (about, notes, credits, hues, and chronology metadata) is kept here so
- * static pages and DM tools read the same facts.
+ * every consumer reads the same facts.
  *
  * Era cross-links resolve against the project catalog (`catalog.ts`): each
  * `era` entry is a project id, constrained at compile time to the ids the
@@ -42,14 +41,10 @@ export type ResumeCredit = [label: string, value: string];
 /** A single chronological career entry on the resume timeline. */
 export interface ResumeTrack {
   id: string;
-  /** Short mark retained for data consumers. */
-  sym: string;
   title: string;
   role: string;
   /** Time span, e.g. `'2020 — 2023'`. */
   when: string;
-  /** Legacy duration-style metadata retained for DM data compatibility. */
-  len: string;
   /** Accent color (hex). */
   hue: string;
   /** Marks the current / present track. */
@@ -82,11 +77,9 @@ export const RESUME: ResumeAlbum = {
   tracks: [
     {
       id: 'syracuse',
-      sym: 'su',
       title: 'Syracuse University',
       role: 'B.S. Economics',
       when: '2019',
-      len: '4:00',
       hue: '#ef8354',
       about: [
         'B.S. in Economics from Syracuse University, class of 2019.',
@@ -101,11 +94,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'paulweiss',
-      sym: 'pw',
       title: 'Paul, Weiss',
       role: 'Practice Assistant, Private Funds',
       when: '2020 to 2023',
-      len: '3:00',
       hue: '#5da8e8',
       about: [
         'Practice assistant in the Private Funds group at Paul, Weiss, supporting legal work where the tolerance for detail errors is zero.',
@@ -120,11 +111,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'kroll',
-      sym: 'kr',
       title: 'Kroll, Inc.',
       role: 'Associate, Cyber Strategy & Risk',
       when: '2023 to 2024',
-      len: '1:30',
       hue: '#50c878',
       about: [
         'Associate on Kroll’s Cyber Strategy & Risk team, running security assessments and risk work for client organizations.',
@@ -139,11 +128,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'stevens',
-      sym: 'st',
       title: 'Stevens Institute of Technology',
       role: 'M.S. Computer Science',
       when: '2024 to 2026',
-      len: '2:00',
       hue: '#8b7cf6',
       about: [
         'M.S. in Computer Science at Stevens, the formal foundation under the self-taught stack. Systems, web programming, and mobile systems, with two group projects from coursework in this catalog.',
@@ -158,11 +145,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'boe',
-      sym: 'be',
       title: 'Manhattan Board of Elections',
       role: 'IT Support',
       when: '2025',
-      len: '0:45',
       hue: '#e6b450',
       about: [
         'IT support for the Manhattan Board of Elections, keeping election-season infrastructure running, where downtime isn’t an option.',
@@ -176,11 +161,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'bella-era',
-      sym: 'bb',
       title: "Bella's Beads",
       role: 'Freelance Full-Stack Developer',
       when: '2025',
-      len: '1:15',
       hue: '#d678b6',
       about: [
         'First freelance full-stack contract: a complete ecommerce platform for a handmade-jewelry business, from wireframe to handoff, with Stripe, Shippo, Supabase, and Resend in one order lifecycle.',
@@ -194,11 +177,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'now',
-      sym: 'dm',
       title: 'Open to opportunities',
       role: 'Software engineer · backend, product, AI tools',
       when: '2026 to now',
-      len: 'now',
       hue: '#50c878',
       current: true,
       about: [
