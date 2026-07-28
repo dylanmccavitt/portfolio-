@@ -2,8 +2,8 @@ export const PROFILE = {
   name: "Dylan McCavitt",
   role: "Software engineer",
   focus: "Backend systems · product software · practical AI tools",
-  location: "New York City",
-  status: "Open to opportunities",
+  location: "NYC/NJ area",
+  status: "Focusing on agentic tooling",
   email: "dylanmccavitt@outlook.com",
   summary:
     "Dylan is a New York City–based software engineer whose path runs from economics through legal operations and cyber risk to an M.S. in computer science.",

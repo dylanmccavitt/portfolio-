@@ -122,8 +122,8 @@ export const PUBLIC_PROFILE_IDENTITY = {
   name: 'Dylan McCavitt',
   role: 'Software engineer',
   focus: 'Backend systems · product software · practical AI tools',
-  location: 'New York City',
-  status: 'Open to opportunities',
+  location: 'NYC/NJ area',
+  status: 'Focusing on agentic tooling',
   email: 'dylanmccavitt@outlook.com',
 } as const;
 
