@@ -12,7 +12,7 @@ Recruiter-facing portfolio (Astro + Vercel) on the agent-first redesign preview 
 
 - `/` is Frost (single page: About/Work/Journey/Contact anchors). `/journey`, `/library`, `/contact` are meta-refresh redirects into those anchors.
 - `/resume`, `/projects/[id]`, and `/404` are static Frost-styled pages (`.frost-doc` classes in `src/components/frost/frost.css`, layout `src/layouts/Frost.astro`). Every page prerenders — the whole site is static output.
-- **`src/data/catalog.ts` is the single content source** (8 projects; each `about` is exactly [problem, approach, outcome]). `src/lib/projects/read-models.ts` converts catalog entries to the read models pages consume via `src/lib/public-projects.ts`. `WORK_ORDER` in `src/components/frost/frost-data.js` pins the homepage card order; `PROFILE`/`JOURNEY` live there too.
+- **`src/data/catalog.ts` is the single content source** (6 projects; each `about` is exactly [problem, approach, outcome]). `src/lib/projects/read-models.ts` converts catalog entries to the read models pages consume via `src/lib/public-projects.ts`. `WORK_ORDER` in `src/components/frost/frost-data.js` pins the homepage card order; `PROFILE`/`JOURNEY` live there too.
 - `src/data/profile.ts` holds the owner-approved public profile entries (with their schema) for the DM rework to consume.
 - `prototype-lab/` is an inert frozen reference of the design exploration (own package.json, not part of the Astro build). Don't build features there.
 

@@ -16,10 +16,8 @@ export const PROFILE = {
  */
 export const WORK_ORDER = [
   "agent-skills",
-  "evalgate",
   "bellas-beads",
   "agentic-trader",
-  "slurmlet",
   "nhf",
   "work-orders",
   "epl-ml",

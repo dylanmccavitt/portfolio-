@@ -10,8 +10,11 @@
  * three paragraphs — [problem, approach, outcome] — which the project page
  * renders under those headings.
  *
- * Link integrity: every link points at a live destination. evalgate and
- * slurmlet repos are public as of July 2026 and are now linked.
+ * Decision log (Dylan, 2026-07-28, #358): evalgate and slurmlet dropped —
+ * the set is 6. Metrics rule from the same call: values must carry weight on
+ * their own; effort counters ("commits") don't qualify.
+ *
+ * Link integrity: every link points at a live destination.
  */
 
 import {
@@ -106,47 +109,6 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     ],
   },
   {
-    id: 'evalgate',
-    title: 'evalgate',
-    sym: 'eg',
-    area: 'AI & Developer Tools',
-    status: ['wip', 'Building'],
-    year: 2026,
-    activity: 'in progress',
-    hue: '#8b7cf6',
-    wip: true,
-    money: false,
-    line: 'regression tests for assistant behavior using real recorded sessions',
-    seek: { from: 'scaffold', to: 'v0.1 launch', pct: 25 },
-    links: [{ label: 'View repo ↗', href: 'https://github.com/dylanmccavitt/evalgate' }],
-    metrics: [
-      { value: 'record once', label: 'replay as a repeatable test' },
-      { value: 'every change', label: 'checked before it goes live' },
-      { value: 'actions', label: 'checked, not just words' },
-    ],
-    about: [
-      'Teams can watch an AI assistant behave well in a demo, but nothing breaks the build when a later code change quietly makes it behave differently — or unsafely.',
-      'evalgate records a real assistant session once, then replays it later as a repeatable test. It checks what the assistant did — the actions it took — not just what it said, and fails any change that alters that behavior.',
-      'Building in the open toward a v0.1 release: recorded sessions replay deterministically and gate behavior changes in CI the same way unit tests gate code.',
-    ],
-    notes: [
-      'Records a real session, then replays it the same way every time.',
-      'Checks what the assistant did, not just what it said.',
-      'Built in the open toward a first release.',
-    ],
-    stack: [
-      { label: 'Language', value: 'python' },
-      { label: 'Shape', value: 'assistant regression tests' },
-      { label: 'Runs in', value: 'ci, like unit tests' },
-      { label: 'Status', value: 'building → v0.1' },
-    ],
-    shots: [
-      { kind: 'skeleton', skeletonKind: 'code', caption: 'recorded session, step by step' },
-      { kind: 'skeleton', skeletonKind: 'dash', caption: 'replay run vs the saved baseline' },
-      { kind: 'skeleton', skeletonKind: 'list', caption: 'checks that passed or failed' },
-    ],
-  },
-  {
     id: 'bellas-beads',
     title: "bella's beads",
     sym: 'bb',
@@ -161,9 +123,10 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://bellasbeads.shop' }],
     metrics: [
-      { value: '400+', label: 'commits to handoff' },
-      { value: '4', label: 'integrations: stripe · shippo · supabase · resend' },
-      { value: '2', label: 'checkout flows: guest + account' },
+      { value: 'solo', label: 'wireframe to handoff, one engineer' },
+      { value: '4', label: 'services reconciled into one order lifecycle: stripe · shippo · supabase · resend' },
+      { value: '$0', label: 'platform fees — the owner runs the whole store herself' },
+      { value: 'live', label: 'in production at bellasbeads.shop' },
     ],
     about: [
       'A jewelry maker needed a real store — browsing, payment, shipping, tracking, and day-to-day admin — without platform fees or a site she couldn’t run herself.',
@@ -203,9 +166,10 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'review loop', to: 'live jun 23', pct: 80 },
     links: [{ label: 'View repo ↗', href: 'https://github.com/DylanMcCavitt/agentic-trader' }],
     metrics: [
-      { value: '15:45 ET', label: 'scheduled Claude Code session' },
-      { value: '3', label: 'records per run: entry · fill · gate decision' },
-      { value: '06·23', label: 'go-live date on a dedicated account' },
+      { value: '100%', label: 'of proposed trades journaled before money can move' },
+      { value: '0', label: 'orders skip the deterministic risk gate' },
+      { value: 'hands-free', label: 'weekday session wakes itself at 15:45 ET' },
+      { value: '06·23', label: 'live on a dedicated account' },
     ],
     about: [
       'Trading automation usually means a black box: you find out what it did after the money moved. The interesting engineering problem is the opposite — make an automated workflow fully reviewable before it is allowed to act.',
@@ -230,47 +194,6 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     ],
   },
   {
-    id: 'slurmlet',
-    title: 'slurmlet',
-    sym: 'sl',
-    area: 'AI & Developer Tools',
-    status: ['wip', 'WIP'],
-    year: 2026,
-    activity: 'building',
-    hue: '#5da8e8',
-    wip: true,
-    money: false,
-    line: 'systems-learning scheduler for all-or-nothing GPU jobs, built in Go and Python',
-    seek: { from: 'go port', to: 'python port', pct: 45 },
-    links: [{ label: 'View repo ↗', href: 'https://github.com/dylanmccavitt/slurmlet' }],
-    metrics: [
-      { value: '2', label: 'parallel builds: go and python' },
-      { value: 'all-or-nothing', label: 'a job only starts when every GPU it needs is free' },
-      { value: '$0', label: 'hardware cost — the fleet is simulated' },
-    ],
-    about: [
-      'A big training job should start only when every GPU it asked for is free. Start it on a partial set and expensive hardware sits idle, holding reservations while the job waits for the rest.',
-      'slurmlet holds a job back until its full set of GPUs is available, then reserves them all together. It is built twice against one shared design — Go first, Python second — on a simulated GPU fleet, so the two implementations can be compared directly without renting hardware.',
-      'The Go port schedules, drains, and reschedules the simulated fleet end to end; the Python port is next. A learn-by-building capstone in systems scheduling, not a production claim.',
-    ],
-    notes: [
-      'All-or-nothing start: a job only runs once every GPU it needs is reserved, so none sit idle waiting.',
-      'Built twice, in Go and Python, against one shared design, to compare the two approaches directly.',
-      'Runs on a simulated GPU fleet, so the whole workflow can be tested without real GPU costs.',
-    ],
-    stack: [
-      { label: 'Languages', value: 'go · python' },
-      { label: 'Platform', value: 'kubernetes' },
-      { label: 'Test fleet', value: 'simulated gpus' },
-      { label: 'Status', value: 'go port active, python next' },
-    ],
-    shots: [
-      { kind: 'skeleton', skeletonKind: 'dash', caption: 'jobs waiting on a full set of GPUs' },
-      { kind: 'skeleton', skeletonKind: 'code', caption: 'all-or-nothing scheduling logic' },
-      { kind: 'skeleton', skeletonKind: 'list', caption: 'fleet lifecycle: schedule, drain, reschedule' },
-    ],
-  },
-  {
     id: 'nhf',
     title: 'no hard feelings',
     sym: 'nh',
@@ -285,8 +208,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'build', to: 'live', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://nohardfeelings.app' }],
     metrics: [
-      { value: '0', label: 'databases to maintain' },
-      { value: 'auto', label: 'show dates via google calendar' },
+      { value: '0', label: 'databases, CMS logins, or upkeep' },
+      { value: 'self-updating', label: 'show dates flow from the calendar the band already uses' },
+      { value: '3D', label: 'flippable album-cover hero, tuned across devices' },
       { value: 'live', label: 'nohardfeelings.app' },
     ],
     about: [
@@ -325,9 +249,10 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'request', to: 'invoice', pct: 100 },
     links: [{ label: 'View repo ↗', href: 'https://github.com/apolydore/Work-Order-Management-System' }],
     metrics: [
-      { value: '4', label: 'person team, divided code ownership' },
-      { value: '4', label: 'invoice states: draft · issued · paid · cancelled' },
-      { value: 'NYC', label: 'open-data contract seed' },
+      { value: 'end-to-end', label: 'request → work order → contractor → invoice, shipped on time' },
+      { value: '4', label: 'person team with divided code ownership' },
+      { value: 'every boundary', label: 'hand-written input validation' },
+      { value: 'NYC', label: 'seeded with real open-data construction contracts' },
     ],
     about: [
       'The course brief: model a real construction-maintenance workflow as a four-person team — outside users file requests, admins turn them into work orders, contractors do the work, and invoices get issued at the end.',
@@ -366,9 +291,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'raw data', to: 'xgboost', pct: 100 },
     links: [{ label: 'Notebook ↗', href: 'https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX' }],
     metrics: [
-      { value: '8', label: 'models, one split' },
-      { value: '39', label: 'engineered features' },
       { value: '~99%', label: 'top accuracy on the split (xgboost)' },
+      { value: '8', label: 'model families raced on one fair split' },
+      { value: '39', label: 'engineered features' },
       { value: '20 yrs', label: 'of match data' },
     ],
     about: [

@@ -23,10 +23,8 @@ import { CATALOG } from './catalog';
  */
 const PROJECT_IDS = [
   'agent-skills',
-  'evalgate',
   'bellas-beads',
   'agentic-trader',
-  'slurmlet',
   'nhf',
   'work-orders',
   'epl-ml',
@@ -183,7 +181,7 @@ export const RESUME: ResumeAlbum = {
       hue: '#50c878',
       current: true,
       about: [
-        'Currently interviewing for full-time software engineering roles while building practical side projects: assistant-evaluation tooling, local finance automation, infrastructure scheduling, and small consumer apps.',
+        'Currently interviewing for full-time software engineering roles while building practical side projects: agent tooling, local finance automation, and small consumer apps.',
         'Looking for teams that value product judgment, reliability habits, and clear communication.',
       ],
       notes: ['US citizen; no sponsorship needed.'],
@@ -192,7 +190,7 @@ export const RESUME: ResumeAlbum = {
         ['Location', 'new york city'],
         ['Email', 'dylanmccavitt@outlook.com'],
       ],
-      era: ['agent-skills', 'evalgate', 'bellas-beads', 'slurmlet', 'agentic-trader'],
+      era: ['agent-skills', 'bellas-beads', 'agentic-trader'],
     },
   ],
 };
