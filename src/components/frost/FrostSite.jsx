@@ -1,11 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, X } from "lucide-react";
 import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-mono";
 import { SnapshotFx } from "./SnapshotFx.jsx";
 import { createGlitch } from "./glitch.jsx";
-import { JOURNEY, PROFILE } from "./frost-data.js";
+import { resolveDmEndpoint } from "./dm-client.js";
+import { PROFILE } from "./frost-data.js";
 import "./frost.css";
+
+/** The DM service, if one is configured for this build. Absent (or malformed)
+    keeps the "being rebuilt" panel — the site never ships a half-live agent. */
+const DM_ENDPOINT = resolveDmEndpoint(import.meta.env.PUBLIC_DM_ENDPOINT);
+
+/** The card is a separate chunk, fetched on first open: the landing pays
+    nothing up front for a surface most visitors never ask for, and never
+    fetches the chunk at all when no service is configured. The build still
+    emits it, and `.frost-dmc` is in the one stylesheet either way — what is
+    saved is the request, not the bytes on the CDN. */
+const DmCard = lazy(() => import("./DmCard.jsx"));
 
 const DESTINATIONS = [
   { id: "about", label: "About" },
@@ -129,14 +141,16 @@ function GlitchCard({ project, index, fx, isHot }) {
   );
 }
 
-function JourneyRows() {
+/** Built at build time from the resume's public-track allowlist; see
+    `src/lib/journey.ts`. This component only renders what it is handed. */
+function JourneyRows({ journey }) {
   return (
     <ol className="frost-journey">
-      {JOURNEY.map(([year, place, role]) => (
-        <li key={`${year}-${place}`}>
-          <time>{year}</time>
-          <strong>{place}</strong>
-          <span>{role}</span>
+      {journey.map((row) => (
+        <li key={row.id}>
+          <time>{row.when}</time>
+          <strong>{row.place}</strong>
+          <span>{row.role}</span>
         </li>
       ))}
     </ol>
@@ -153,7 +167,7 @@ function ContactBlock() {
   );
 }
 
-function SiteLayout({ projects, fx, onDm }) {
+function SiteLayout({ projects, journey, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [hotId, setHotId] = useState(null);
 
@@ -301,7 +315,7 @@ function SiteLayout({ projects, fx, onDm }) {
         <FlowIn>
           <h2>Journey</h2>
           <p className="frost-kicker">2019 — now</p>
-          <JourneyRows />
+          <JourneyRows journey={journey} />
         </FlowIn>
       </section>
 
@@ -352,10 +366,19 @@ function DmPanel({ onClose }) {
 }
 
 /**
- * @param {{ projects?: Array<{ id: string, href: string, title: string,
- *   eyebrow: string, line: string, proof: string[] }> }} props
+ * Everything the island renders is handed to it at build time. `dmManifest` is
+ * the only DM-related data the browser receives: section anchors and project
+ * ids, which the corner card's allowlist needs and which are already in this
+ * page's own HTML. No grounding corpus is published or fetched.
+ *
+ * @param {{
+ *   projects?: Array<{ id: string, href: string, title: string, slug?: string,
+ *     eyebrow: string, line: string, proof: string[] }>,
+ *   journey?: Array<{ id: string, when: string, place: string, role: string }>,
+ *   dmManifest?: { anchors: string[], projectIds: string[], actions: string[] } | null,
+ * }} props
  */
-export default function FrostSite({ projects = [] }) {
+export default function FrostSite({ projects = [], journey = [], dmManifest = null }) {
   const [dmOpen, setDmOpen] = useState(false);
 
   const effectMode = typeof window !== "undefined"
@@ -366,7 +389,12 @@ export default function FrostSite({ projects = [] }) {
     <main className="frost" id="main">
       <div className="frost-effect">
         <div className="frost-page">
-          <SiteLayout projects={projects} fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
+          <SiteLayout
+            projects={projects}
+            journey={journey}
+            fx={effectMode !== "off"}
+            onDm={() => setDmOpen(true)}
+          />
           <footer className="frost-footer">
             <span>&copy; 2026 Dylan McCavitt</span>
             <span>Hover a project to see what shipped.</span>
@@ -374,7 +402,19 @@ export default function FrostSite({ projects = [] }) {
         </div>
       </div>
 
-      {dmOpen && <DmPanel onClose={() => setDmOpen(false)} />}
+      {dmOpen &&
+        (DM_ENDPOINT ? (
+          <Suspense fallback={null}>
+            <DmCard
+              endpoint={DM_ENDPOINT}
+              manifest={dmManifest}
+              projects={projects}
+              onClose={() => setDmOpen(false)}
+            />
+          </Suspense>
+        ) : (
+          <DmPanel onClose={() => setDmOpen(false)} />
+        ))}
     </main>
   );
 }
