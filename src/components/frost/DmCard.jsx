@@ -2,6 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { PROFILE } from "./frost-data.js";
 import { askDm, linkifyCitations } from "./dm-client.js";
+import {
+  DM_LIT_CONTACT_MS,
+  DM_LIT_MS,
+  clearDmSession,
+  createTurnQueue,
+  historyWasRejected,
+  readDmSession,
+  stashDmActions,
+  writeDmSession,
+} from "./dm-session.js";
 
 /**
  * DM — the corner card. A small floating conversation surface that never takes
@@ -11,6 +21,12 @@ import { askDm, linkifyCitations } from "./dm-client.js";
  * The conversation is real. `dm-client.js` streams it from the configured
  * service over SSE and enforces the action allowlist; this component only
  * renders text and applies the four vetted page actions.
+ *
+ * The card mounts on the homepage island and on the Paper project pages, and
+ * the conversation follows it: `dm-session.js` keeps the settled turns (and
+ * their signature tokens) in sessionStorage, so the navigation an `open`
+ * action performs does not end the conversation — and actions this page
+ * cannot perform are carried to the homepage rather than dropped.
  *
  * NO GROUNDING CORPUS REACHES THE BROWSER. The corpus is what DM is allowed to
  * *use* when answering, not a document anyone may browse, so the site publishes
@@ -30,8 +46,8 @@ const SUGGESTED = [
   "How do I reach him?",
 ];
 
-const LIT_MS = 3600;
-const LIT_CONTACT_MS = 3200;
+const LIT_MS = DM_LIT_MS;
+const LIT_CONTACT_MS = DM_LIT_CONTACT_MS;
 
 /**
  * A project href is followed only when it is an unambiguous same-origin path:
@@ -91,15 +107,25 @@ function useDrive(projects) {
         (cell) => cell.dataset.projectId === projectId
       ) ?? null;
 
+    // The targeted verbs report whether this page could perform them: the card
+    // also mounts on project pages, where the homepage's sections and Work
+    // cards do not exist, and an unperformable action is carried home rather
+    // than silently dropped.
     return {
       go(anchor) {
-        document.getElementById(anchor)?.scrollIntoView({
+        const node = document.getElementById(anchor);
+        if (!node) return false;
+        node.scrollIntoView({
           behavior: prefersReducedMotion() ? "auto" : "smooth",
           block: "start",
         });
+        return true;
       },
       lit(projectId) {
-        flash(cellFor(projectId), "is-dm-lit", LIT_MS);
+        const cell = cellFor(projectId);
+        if (!cell) return false;
+        flash(cell, "is-dm-lit", LIT_MS);
+        return true;
       },
       open(projectId) {
         const href = projects.find((project) => project.id === projectId)?.href;
@@ -110,7 +136,10 @@ function useDrive(projects) {
         }
       },
       litContact() {
-        flash(document.querySelector(".frost-contact a"), "is-dm-lit-inline", LIT_CONTACT_MS);
+        const node = document.querySelector(".frost-contact a");
+        if (!node) return false;
+        flash(node, "is-dm-lit-inline", LIT_CONTACT_MS);
+        return true;
       },
     };
   }, [projects]);
@@ -174,7 +203,12 @@ function MessageBody({ text, done, projects, onCite }) {
 
 export default function DmCard({ endpoint, manifest = null, projects = [], onClose }) {
   const drive = useDrive(projects);
-  const [messages, setMessages] = useState([]);
+  // The stored conversation survives the page changes DM itself causes. What
+  // comes back has already been shape-checked and capped; only ids are minted
+  // fresh here.
+  const [messages, setMessages] = useState(() =>
+    readDmSession().messages.map((message) => ({ ...message, id: nextId() }))
+  );
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const abortRef = useRef(null);
@@ -198,17 +232,37 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
     endRef.current?.scrollIntoView({ block: "nearest" });
   }, [messages]);
 
+  // Focus belongs to a fresh open; a card restored mid-conversation by a page
+  // load must not grab the keyboard from the page the visitor came to read.
   useEffect(() => {
-    inputRef.current?.focus();
+    if (messages.length === 0) inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
   }, []);
 
   const cite = useCallback(
     (projectId) => {
-      drive.go("work");
-      drive.lit(projectId);
+      // Cited on a page without the Work grid, the chip carries the visitor
+      // home instead of doing nothing; both ids re-clear the allowlist there.
+      const went = drive.go("work");
+      const lit = drive.lit(projectId);
+      if (!went && !lit) {
+        stashDmActions([
+          { type: "go", target: "work" },
+          { type: "lit", target: projectId },
+        ]);
+        window.location.assign("/");
+      }
     },
     [drive]
   );
+
+  // The escape hatch for a transcript the service will no longer verify: wipe
+  // the stored conversation and let the visitor start over in place.
+  const reset = useCallback(() => {
+    clearDmSession();
+    writeDmSession({ open: true, messages: [] });
+    setMessages([]);
+  }, []);
 
   const ask = useCallback(
     async (question) => {
@@ -217,10 +271,11 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
 
       const answerId = nextId();
       const history = signedHistory(messages);
+      const asked = { id: nextId(), role: "user", text, state: "done" };
 
       setMessages((prior) => [
         ...prior,
-        { id: nextId(), role: "user", text, state: "done" },
+        asked,
         { id: answerId, role: "dm", text: "", state: "streaming" },
       ]);
       setBusy(true);
@@ -233,38 +288,73 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
           prior.map((message) => (message.id === answerId ? { ...message, ...changes } : message))
         );
 
+      // Navigation is a settle-time act: an `open` mid-stream would kill the
+      // stream — the tail of the answer lost, the `done` token never issued,
+      // the turn unreplayable. The queue holds it (and any action this page
+      // cannot perform) until the turn is on disk.
+      const queue = createTurnQueue();
+      const applyNow = (action) =>
+        action.type === "go"
+          ? drive.go(action.target)
+          : action.type === "lit"
+            ? drive.lit(action.target)
+            : drive.litContact();
+      // The display text, accumulated locally as well: settle persists the
+      // turn synchronously, before any navigation, without waiting on state.
+      let shown = "";
+
       try {
         const { reason, truncated, token, content } = await askDm({
           endpoint,
           manifest,
           signal: controller.signal,
           messages: [...history, { role: "user", content: text }],
-          onText: (delta) =>
+          onText: (delta) => {
+            shown += delta;
             setMessages((prior) =>
               prior.map((message) =>
                 message.id === answerId ? { ...message, text: message.text + delta } : message
               )
-            ),
-          onAction: (action) => {
-            if (action.type === "go") drive.go(action.target);
-            else if (action.type === "lit") drive.lit(action.target);
-            else if (action.type === "open") drive.open(action.target);
-            else if (action.type === "litContact") drive.litContact();
+            );
           },
+          onAction: (action) => queue.offer(action, applyNow),
         });
         // `token` and `content` are what make the *next* question a follow-up
         // rather than a fresh conversation; `truncated` is what stops a
         // half-finished answer being shown as a whole one.
-        patch({
+        const settled = {
           state: reason === "refusal" ? "refused" : "done",
           truncated,
           token,
           content,
+        };
+        patch(settled);
+        // The whole turn is stored before any navigation can destroy it.
+        writeDmSession({
+          open: true,
+          messages: [...messages, asked, { ...settled, id: answerId, role: "dm", text: shown }],
         });
+        const nav = queue.settle();
+        if (nav?.kind === "open") drive.open(nav.target);
+        else if (nav?.kind === "home") {
+          stashDmActions(nav.actions);
+          window.location.assign("/");
+        }
       } catch (error) {
         if (controller.signal.aborted) return;
-        // No canned pseudo-answer: say what happened and hand over the email.
-        patch({ state: "failed", note: error?.message || "DM could not answer that." });
+        // No canned pseudo-answer: say what happened and hand over the email —
+        // or, when the service rejected the restored transcript itself, a
+        // plain way to start over. An errored stream never navigates.
+        const failed = {
+          state: "failed",
+          note: error?.message || "DM could not answer that.",
+          reset: historyWasRejected(error, history),
+        };
+        patch(failed);
+        writeDmSession({
+          open: true,
+          messages: [...messages, asked, { ...failed, id: answerId, role: "dm", text: shown }],
+        });
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setBusy(false);
@@ -320,11 +410,20 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
                   narrower slice of it and it will fit.
                 </span>
               )}
-              {message.state === "failed" && (
-                <span className="frost-dmc-note">
-                  {message.note} <a href={mailto}>Email Dylan directly</a>.
-                </span>
-              )}
+              {message.state === "failed" &&
+                (message.reset ? (
+                  <span className="frost-dmc-note">
+                    {message.note}{" "}
+                    <button type="button" className="frost-dmc-reset" onClick={reset}>
+                      Start a fresh conversation
+                    </button>
+                    .
+                  </span>
+                ) : (
+                  <span className="frost-dmc-note">
+                    {message.note} <a href={mailto}>Email Dylan directly</a>.
+                  </span>
+                ))}
               {message.state === "refused" && (
                 <span className="frost-dmc-note">
                   That one is outside what this site publishes.{" "}

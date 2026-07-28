@@ -794,6 +794,24 @@
   text-underline-offset: 3px;
 }
 
+/* The fresh-start affordance for a transcript the service no longer
+   verifies: an inline text action in the note's own voice, not a banner. */
+.frost-dmc-reset {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: var(--frost-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.frost-dmc-reset:hover {
+  text-shadow: -1.3px 0 rgba(255, 42, 109, 0.5), 1.3px 0 rgba(0, 174, 255, 0.5);
+}
+
 /* Citation chips: the answer's load-bearing nouns, in the site's mono
    voice, carrying the fringe on hover. Matched deterministically against
    the corpus — never markup from the model. */
@@ -974,6 +992,32 @@
 
 .frost-doc-head nav a:hover {
   color: var(--frost-ink);
+}
+
+/* Ask DM on the Paper pages: the same pill shape as the homepage action,
+   dropped to the doc header's quiet weight — bordered, muted, carrying the
+   fringe only when engaged. The island is client-only, so the no-JS page
+   never shows a button that would do nothing. */
+.frost-doc-head .frost-dm-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 15px;
+  border: 1.5px solid var(--frost-line);
+  border-radius: 999px;
+  color: var(--frost-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  cursor: pointer;
+  transition: color 130ms ease, border-color 130ms ease;
+}
+
+.frost-doc-head .frost-dm-button:hover {
+  color: var(--frost-ink);
+  border-color: var(--frost-ink);
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.3), 1px 0 rgba(0, 174, 255, 0.3);
 }
 
 .frost-doc-title {

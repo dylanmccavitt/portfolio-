@@ -432,6 +432,51 @@ test('an error event surfaces a sanitized single-line message', async () => {
   });
 });
 
+test("a 400 surfaces the service's own message and carries the status", async () => {
+  // The signed-history check answers 400 with a JSON body saying why. That
+  // line reaches the visitor (sanitized), and the status reaches the card so a
+  // rejected restored transcript can offer a fresh start instead of a dead end.
+  await withStub(
+    [JSON.stringify({ message: 'That conversation could not\nbe   verified.' })],
+    async (endpoint) => {
+      await assert.rejects(
+        askDm({
+          endpoint,
+          manifest: MANIFEST,
+          messages: [
+            { role: 'user', content: 'q1' },
+            { role: 'assistant', content: 'a1', token: 'sig-stale' },
+            { role: 'user', content: 'q2' },
+          ],
+        }),
+        (error: Error & { status?: number }) => {
+          assert.equal(error.name, 'DmError');
+          assert.equal(error.message, 'That conversation could not be verified.');
+          assert.equal(error.status, 400);
+          return true;
+        },
+      );
+    },
+    { status: 400 },
+  );
+
+  // A non-JSON error body still fails with the honest status line.
+  await withStub(
+    ['<html>Bad Gateway</html>'],
+    async (endpoint) => {
+      await assert.rejects(
+        askDm({ endpoint, manifest: MANIFEST, messages: [{ role: 'user', content: 'hi' }] }),
+        (error: Error & { status?: number }) => {
+          assert.match(error.message, /error \(400\)/);
+          assert.equal(error.status, 400);
+          return true;
+        },
+      );
+    },
+    { status: 400 },
+  );
+});
+
 test('a non-2xx response fails closed rather than rendering nothing', async () => {
   await withStub(
     [sse('text', { text: 'ignored' })],

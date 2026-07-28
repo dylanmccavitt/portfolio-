@@ -5,6 +5,13 @@ import "@fontsource/ibm-plex-mono";
 import { SnapshotFx } from "./SnapshotFx.jsx";
 import { createGlitch } from "./glitch.jsx";
 import { resolveDmEndpoint } from "./dm-client.js";
+import {
+  DM_LIT_CONTACT_MS,
+  DM_LIT_MS,
+  readDmSession,
+  takeDmActions,
+  writeDmOpen,
+} from "./dm-session.js";
 import { PROFILE } from "./frost-data.js";
 import "./frost.css";
 
@@ -381,6 +388,47 @@ function DmPanel({ onClose }) {
 export default function FrostSite({ projects = [], journey = [], dmManifest = null }) {
   const [dmOpen, setDmOpen] = useState(false);
 
+  // Session pickup, after hydration so the server and client first paints
+  // agree. Only the live-card path touches sessionStorage: with no endpoint
+  // the panel behaves exactly as before. Two things can be waiting — an open
+  // conversation (the card reappears, intact), and page actions a project-page
+  // answer stashed for this page, each re-validated against the manifest at
+  // execution time.
+  useEffect(() => {
+    if (!DM_ENDPOINT) return;
+    if (readDmSession().open) setDmOpen(true);
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const flash = (node, className, ms) => {
+      if (!node) return;
+      node.classList.add(className);
+      window.setTimeout(() => node.classList.remove(className), ms);
+    };
+    for (const action of takeDmActions(dmManifest)) {
+      if (action.type === "go") {
+        document.getElementById(action.target)?.scrollIntoView({
+          behavior: reduced ? "auto" : "smooth",
+          block: "start",
+        });
+      } else if (action.type === "lit") {
+        flash(
+          Array.from(document.querySelectorAll(".frost-glitch-cell")).find(
+            (cell) => cell.dataset.projectId === action.target
+          ),
+          "is-dm-lit",
+          DM_LIT_MS
+        );
+      } else if (action.type === "litContact") {
+        flash(document.querySelector(".frost-contact a"), "is-dm-lit-inline", DM_LIT_CONTACT_MS);
+      }
+    }
+  }, [dmManifest]);
+
+  const toggleDm = (open) => {
+    setDmOpen(open);
+    if (DM_ENDPOINT) writeDmOpen(open);
+  };
+
   const effectMode = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("effect")
     : null;
@@ -393,7 +441,7 @@ export default function FrostSite({ projects = [], journey = [], dmManifest = nu
             projects={projects}
             journey={journey}
             fx={effectMode !== "off"}
-            onDm={() => setDmOpen(true)}
+            onDm={() => toggleDm(true)}
           />
           <footer className="frost-footer">
             <span>&copy; 2026 Dylan McCavitt</span>
@@ -409,7 +457,7 @@ export default function FrostSite({ projects = [], journey = [], dmManifest = nu
               endpoint={DM_ENDPOINT}
               manifest={dmManifest}
               projects={projects}
-              onClose={() => setDmOpen(false)}
+              onClose={() => toggleDm(false)}
             />
           </Suspense>
         ) : (

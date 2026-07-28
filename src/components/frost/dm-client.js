@@ -62,12 +62,16 @@ const MAX_ERROR_CHARS = 200;
 export const DM_DEADLINE_MS = 600_000;
 export const DM_STALL_MS = 20_000;
 
-/** Thrown for anything the user should see a short honest line about. */
+/** Thrown for anything the user should see a short honest line about.
+    `status` is the HTTP status when the service answered with one instead of a
+    stream — the card uses 400 to tell "your restored history failed the
+    signature check" apart from a service that is merely down. */
 export class DmError extends Error {
-  constructor(message, { refusal = false } = {}) {
+  constructor(message, { refusal = false, status = null } = {}) {
     super(message);
     this.name = 'DmError';
     this.refusal = refusal;
+    this.status = status;
   }
 }
 
@@ -359,7 +363,21 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
   }
 
   if (!response.ok || !response.body) {
-    throw new DmError(`DM's service answered with an error (${response.status}).`);
+    // A refused request usually says why — "could not be verified", most
+    // importantly — and that line beats a bare status code. Still untrusted:
+    // parsed defensively, sanitized, and never rendered as anything but text.
+    let detail = null;
+    try {
+      const body = JSON.parse(await response.text());
+      if (body && typeof body === 'object' && typeof body.message === 'string') {
+        detail = sanitizeMessage(body.message, null);
+      }
+    } catch {
+      // Not JSON, or the read itself failed — the status line stands alone.
+    }
+    throw new DmError(detail ?? `DM's service answered with an error (${response.status}).`, {
+      status: response.status,
+    });
   }
 
   const reader = response.body.getReader();
