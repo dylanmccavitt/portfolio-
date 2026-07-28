@@ -80,14 +80,6 @@ const PROFILE_SOURCE = [
     visibility: 'public',
   },
   {
-    id: 'homelab',
-    category: 'interest',
-    title: 'Home infrastructure',
-    summary: 'Dylan runs a three-node home lab and uses it to practice reproducible, self-hosted infrastructure and reliability.',
-    publicationStatus: 'published',
-    visibility: 'public',
-  },
-  {
     id: 'games-as-test-beds',
     category: 'easter-egg',
     title: 'Games as test beds',
