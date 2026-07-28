@@ -186,21 +186,18 @@
    the desktop hover version. */
 @media (hover: none) {
   .frost-glitch-cell.is-hot .frost-glitch-teaser {
-    animation: frost-teaser-glitch 0.65s steps(1, end) forwards;
+    animation: frost-teaser-glitch 0.4s steps(1, end) forwards;
   }
 
   li.frost-glitch-cell.is-hot .frost-glitch-snap .snapfx-out {
-    animation: frost-glitch-out-touch 0.85s steps(1, end) forwards;
+    animation: frost-glitch-out-touch 0.5s steps(1, end) forwards;
   }
 }
 
 @keyframes frost-glitch-out-touch {
   0% { opacity: 1; }
-  18% { opacity: 0; }
-  26% { opacity: 1; }
-  48% { opacity: 1; }
-  56% { opacity: 0; }
-  64% { opacity: 1; }
+  30% { opacity: 0; }
+  40% { opacity: 1; }
   100% { opacity: 0; }
 }
 
@@ -209,43 +206,30 @@
     opacity: 1;
     transform: translateX(0);
   }
-  10% {
+  16% {
     opacity: 1;
     transform: translateX(-8px) skewX(-4deg);
     clip-path: inset(6% 0 52% 0);
     text-shadow: -5px 0 rgba(255, 42, 109, 0.95), 5px 0 rgba(0, 174, 255, 0.95);
   }
-  24% {
+  38% {
     opacity: 1;
     transform: translateX(9px);
     clip-path: inset(48% 0 10% 0);
     filter: invert(0.85);
     text-shadow: 5px 0 rgba(255, 42, 109, 0.95), -5px 0 rgba(0, 174, 255, 0.95);
   }
-  38% {
+  60% {
     opacity: 1;
     transform: translateX(-6px) translateY(3px);
     clip-path: inset(22% 0 30% 0);
     text-shadow: -4px 0 rgba(255, 42, 109, 0.95), 4px 0 rgba(0, 174, 255, 0.95);
   }
-  52% {
-    opacity: 1;
-    transform: translateX(7px) skewX(3deg);
-    clip-path: inset(62% 0 3% 0);
-    filter: invert(0.7);
-    text-shadow: 4px 0 rgba(255, 42, 109, 0.95), -4px 0 rgba(0, 174, 255, 0.95);
-  }
-  66% {
-    opacity: 1;
-    transform: translateX(-5px);
-    clip-path: inset(10% 0 68% 0);
-    text-shadow: -5px 0 rgba(255, 42, 109, 0.95), 5px 0 rgba(0, 174, 255, 0.95);
-  }
   80% {
     opacity: 1;
-    transform: translateX(4px) translateY(-2px);
-    clip-path: inset(38% 0 22% 0);
-    text-shadow: 3px 0 rgba(255, 42, 109, 0.95), -3px 0 rgba(0, 174, 255, 0.95);
+    transform: translateX(5px);
+    clip-path: inset(62% 0 6% 0);
+    text-shadow: 4px 0 rgba(255, 42, 109, 0.95), -4px 0 rgba(0, 174, 255, 0.95);
   }
   100% {
     opacity: 0;
