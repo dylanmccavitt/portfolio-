@@ -759,6 +759,9 @@
   margin: 0;
   font-size: 13.5px;
   line-height: 1.6;
+  /* DM's only layout device is the blank line — the service's behaviour
+     contract promises paragraph breaks render, and this is that promise. */
+  white-space: pre-line;
 }
 
 .frost-dmc-caret {
