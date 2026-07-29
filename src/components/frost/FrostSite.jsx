@@ -35,10 +35,15 @@ const DESTINATIONS = [
 
 const GLITCH_OPTIONS = { interval: 0, intensity: 1, slices: 26, shift: 34, rgbShift: 5, blocks: 0.6, noise: 0.4 };
 
-/** Reveals children once, softly, when they first scroll into view. The
-    hidden state is applied only under `@media (scripting: enabled)`, so
-    the no-JS page stays complete. */
-function FlowIn({ className, children }) {
+/** How long a tapped card corrupts before the project page is asked for.
+    Matches the touch burst in `frost.css` (0.4s teaser, 0.5s canvas flash) —
+    change one and change the other, or navigation lands mid-glitch. */
+const BURST_MS = 520;
+
+/** Latches true the first time the node scrolls into view, and stops
+    observing. Without IntersectionObserver it latches immediately, so the
+    content is never left hidden by a missing API. */
+function useInView(threshold) {
   const ref = useRef(null);
   const [seen, setSeen] = useState(false);
 
@@ -46,7 +51,7 @@ function FlowIn({ className, children }) {
     const node = ref.current;
     if (!node || typeof IntersectionObserver === "undefined") {
       setSeen(true);
-      return;
+      return undefined;
     }
     const io = new IntersectionObserver(
       (entries) => {
@@ -55,11 +60,20 @@ function FlowIn({ className, children }) {
           io.disconnect();
         }
       },
-      { threshold: 0.12 }
+      { threshold }
     );
     io.observe(node);
     return () => io.disconnect();
-  }, []);
+  }, [threshold]);
+
+  return [ref, seen];
+}
+
+/** Reveals children once, softly, when they first scroll into view. The
+    hidden state is applied only under `@media (scripting: enabled)`, so
+    the no-JS page stays complete. */
+function FlowIn({ className, children }) {
+  const [ref, seen] = useInView(0.12);
 
   return (
     <div ref={ref} className={`frost-flow-in${seen ? " is-in" : ""}${className ? ` ${className}` : ""}`}>
@@ -111,7 +125,13 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
-function GlitchCard({ project, index, fx, isHot }) {
+function GlitchCard({ project, index, fx, isBursting }) {
+  // Each card arrives on its own as it reaches the viewport, the way the
+  // Journey block and the other sections do — the section wrapper fades the
+  // heading in, and the cards below the fold wait their turn rather than
+  // being revealed all at once by their parent.
+  const [ref, seen] = useInView(0.16);
+
   const teaser = (
     <div className="frost-glitch-teaser">
       <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
@@ -122,7 +142,10 @@ function GlitchCard({ project, index, fx, isHot }) {
 
   return (
     <li
-      className={`frost-glitch-cell${isHot ? " is-hot" : ""}`}
+      ref={ref}
+      className={`frost-glitch-cell frost-card-in${seen ? " is-in" : ""}${
+        isBursting ? " is-burst" : ""
+      }`}
       data-project-id={project.id}
       data-project-href={project.href}
     >
@@ -181,23 +204,23 @@ function ContactBlock() {
 
 function SiteLayout({ projects, journey, fx, onDm }) {
   const [current, setCurrent] = useState("about");
-  const [hotId, setHotId] = useState(null);
+  const [burstId, setBurstId] = useState(null);
 
-  // Touch has no hover: the first tap on a card plays the reveal, the second
-  // tap navigates, and a tap outside reseals. Everything resolves the card
-  // from the tap COORDINATES (elementFromPoint), never event.target — iOS
-  // retargets taps on the pointer-events-none teaser to nodes outside the
-  // card, so target-based handling silently never fires there.
+  /**
+   * Touch: one tap opens the project. The glitch fires on the way out — the
+   * card corrupts, then the page loads.
+   *
+   * It used to reveal instead: first tap flipped the card to its facts,
+   * second tap navigated. On a phone that made every project two taps and
+   * left the card sitting in a state the visitor had to tap out of, when what
+   * a tap on a project plainly means is "open it". The facts are on the page
+   * being opened anyway, so nothing is lost by going straight there.
+   *
+   * The card is still resolved from the tap COORDINATES (elementFromPoint),
+   * never event.target — iOS retargets taps on the pointer-events-none teaser
+   * to nodes outside the card, so target-based handling silently never fires.
+   */
   useEffect(() => {
-    // iOS can dispatch a trailing duplicate click for one tap with a
-    // different coordinate basis (~130px off), so resealing is guarded by
-    // both recency and proximity to the revealed card.
-    let lastRevealAt = 0;
-
-    // Resolve the tapped card from the target when Safari gives a usable
-    // one, else probe coordinates — including bases shifted by the
-    // collapsed URL-bar delta, which offsets click coords from the layout
-    // viewport that elementFromPoint uses.
     const cellFrom = (event) => {
       const fromTarget =
         event.target instanceof Element ? event.target.closest(".frost-glitch-cell") : null;
@@ -215,37 +238,54 @@ function SiteLayout({ projects, journey, fx, onDm }) {
       return null;
     };
 
+    let timer = 0;
+
     const onClick = (event) => {
       if (!window.matchMedia("(hover: none)").matches) return;
       const cell = cellFrom(event);
+      const href = cell?.dataset.projectHref;
+      if (!cell || !cell.dataset.projectId || !href) return;
 
-      if (!cell || !cell.dataset.projectId) {
-        const hot = document.querySelector(".frost-glitch-cell.is-hot");
-        if (!hot || Date.now() - lastRevealAt < 450) return;
-        const rect = hot.getBoundingClientRect();
-        const near =
-          event.clientX > rect.left - 40 &&
-          event.clientX < rect.right + 40 &&
-          event.clientY > rect.top - 160 &&
-          event.clientY < rect.bottom + 160;
-        if (!near) setHotId(null);
-        return;
-      }
+      // Already on the way out: let the second tap fall through rather than
+      // restarting the burst or stacking a second navigation.
+      if (timer) return;
 
-      if (cell.classList.contains("is-hot")) {
-        if (!(event.target instanceof Element && event.target.closest("a"))) {
-          window.location.assign(cell.dataset.projectHref);
-        }
-        return;
-      }
+      // Reduced motion gets no burst to sit through — the link just works.
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
       event.preventDefault();
-      lastRevealAt = Date.now();
-      setHotId(cell.dataset.projectId);
+      setBurstId(cell.dataset.projectId);
+      timer = window.setTimeout(() => {
+        window.location.assign(href);
+      }, BURST_MS);
+    };
+
+    /**
+     * Coming back from a project page, Safari can restore this page from the
+     * back/forward cache with its JavaScript state intact rather than
+     * reloading it — and this component's state is mid-tap: the burst class is
+     * still on the card whose animation already ended on `forwards`, so it
+     * would render blank, and the pending-navigation guard below is still
+     * latched, so the next tap would skip its glitch. Both are cleared on the
+     * way back in.
+     *
+     * A normal load fires this too, with nothing to undo.
+     */
+    const onPageShow = () => {
+      if (timer) {
+        window.clearTimeout(timer);
+        timer = 0;
+      }
+      setBurstId(null);
     };
 
     document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("pageshow", onPageShow);
+      if (timer) window.clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -320,7 +360,7 @@ function SiteLayout({ projects, journey, fx, onDm }) {
                 project={project}
                 index={index}
                 fx={fx}
-                isHot={project.id === hotId}
+                isBursting={project.id === burstId}
               />
             ))}
           </ol>
