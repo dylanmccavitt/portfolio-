@@ -125,7 +125,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     metrics: [
       { value: 'solo', label: 'wireframe to handoff, one engineer' },
       { value: '4', label: 'services reconciled into one order lifecycle: stripe · shippo · supabase · resend' },
-      { value: '$0', label: 'platform fees — the owner runs the whole store herself' },
+      { value: '$0', label: 'platform fees: the owner runs the whole store herself' },
       { value: 'live', label: 'in production at bellasbeads.shop' },
     ],
     about: [
