@@ -26,14 +26,14 @@ const education = RESUME.tracks.filter((track) =>
 
     <div class="frost-doc-title">
       <h1>Resume</h1>
-      <p class="frost-kicker">Software engineer · NYC/NJ area · focusing on agentic tooling · US citizen — no sponsorship needed</p>
+      <p class="frost-kicker">Software engineer · NYC/NJ area · focusing on agentic tooling · US citizen, no sponsorship needed</p>
     </div>
 
     <section class="frost-doc-section" aria-labelledby="resume-experience">
       <h2 id="resume-experience">Experience</h2>
       {experience.map((entry) => (
         <article class="frost-doc-row">
-          <h3>{entry.title} <span>— {entry.role} — {entry.when}</span></h3>
+          <h3>{entry.title} <span>· {entry.role} · {entry.when}</span></h3>
           <p>{entry.about[0]}</p>
         </article>
       ))}
@@ -43,7 +43,7 @@ const education = RESUME.tracks.filter((track) =>
       <h2 id="resume-education">Education</h2>
       {education.map((entry) => (
         <article class="frost-doc-row">
-          <h3>{entry.role} <span>— {entry.title} — {entry.when}</span></h3>
+          <h3>{entry.role} <span>· {entry.title} · {entry.when}</span></h3>
         </article>
       ))}
     </section>
