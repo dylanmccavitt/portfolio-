@@ -310,29 +310,54 @@ function SiteLayout({ projects, journey, fx, onDm }) {
     if (typeof history !== "undefined") history.replaceState(null, "", `#${id}`);
   };
 
+  const onSectionLink = (event, id) => {
+    event.preventDefault();
+    go(id);
+  };
+
+  const onBrandLink = (event) => {
+    event.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (typeof history !== "undefined") history.replaceState(null, "", "#main");
+  };
+
+  const onDmLink = (event) => {
+    event.preventDefault();
+    onDm();
+  };
+
   return (
     <div className="frost-site">
       <div className="frost-boot-fade">
         <header className="frost-site-head">
-          <button
+          <a
             className="frost-site-brand"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            href="#main"
+            onClick={onBrandLink}
           >
             Dylan McCavitt
-          </button>
+          </a>
           <nav aria-label="Sections">
             {DESTINATIONS.map((destination) => (
-              <button
+              <a
                 key={destination.id}
                 className={destination.id === current ? "is-active" : ""}
-                onClick={() => go(destination.id)}
+                href={`#${destination.id}`}
+                aria-current={destination.id === current ? "location" : undefined}
+                onClick={(event) => onSectionLink(event, destination.id)}
               >
                 {destination.label}
-              </button>
+              </a>
             ))}
           </nav>
           <div className="frost-site-actions">
-            <button className="frost-dm-button" onClick={onDm}>Ask DM</button>
+            <a
+              className="frost-dm-button"
+              href={`mailto:${PROFILE.email}`}
+              onClick={onDmLink}
+            >
+              Ask DM
+            </a>
           </div>
         </header>
       </div>

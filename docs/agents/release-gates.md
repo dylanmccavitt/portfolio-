@@ -98,8 +98,17 @@ PR is reviewed and the stack is merged in order.
 3. Record the Vercel deployment SHA and the smoke evidence.
 4. Rollback is redeploying the previous good deployment from the Vercel
    dashboard; record the restored deployment SHA if used.
-5. Keep the final preview-to-main PR as the manual program-epic gate after the
-   full stack is merged. No agent merges it or mutates production.
+5. Keep the final preview-to-main PR as the one maintainer-opened manual
+   program-epic gate after the full stack is merged. It is the narrow exception
+   to the one-issue-one-implementation-PR rule; it must not carry new
+   implementation work. No agent opens or merges it or mutates production.
+6. Before merging, the owner chooses the history contract. If exact tree
+   equality is the requirement and preserving every preview commit as an
+   ancestor of `main` is not, squash is eligible; verify the resulting
+   `main^{tree}` equals the reviewed `preview/agent-first-redesign^{tree}`.
+   If the preview commits must remain ancestors of `main`, use a merge commit
+   and verify both ancestry and that same tree equality. The checklist records
+   the owner's choice; it does not choose for them.
 
 Any earlier preview proof is historical context only. It is not evidence for a
 later candidate head unless every affected artifact has been refreshed and

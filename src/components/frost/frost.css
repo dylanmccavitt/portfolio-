@@ -428,13 +428,12 @@
 }
 
 .frost-site-brand {
-  border: 0;
   padding: 0;
   color: var(--frost-ink);
-  background: transparent;
   font-size: 16.5px;
   font-weight: 640;
   letter-spacing: -0.02em;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -443,27 +442,28 @@
   gap: 4px;
 }
 
-.frost-site-head nav button {
-  border: 0;
+.frost-site-head nav a {
+  display: inline-flex;
+  align-items: center;
   min-height: 34px;
   padding: 0 13px;
   border-radius: 999px;
   color: var(--frost-muted);
-  background: transparent;
   font-size: 13.5px;
   font-weight: 560;
+  text-decoration: none;
   cursor: pointer;
   transition: color 130ms ease, background 130ms ease;
 }
 
-.frost-site-head nav button:hover {
+.frost-site-head nav a:hover {
   color: var(--frost-ink);
   text-shadow: -1px 0 rgba(255, 42, 109, 0.3), 1px 0 rgba(0, 174, 255, 0.3);
 }
 
 /* Glitch-native accent: no pill — the active item carries a subtle
    chromatic fringe, the RGB split at rest. */
-.frost-site-head nav button.is-active {
+.frost-site-head nav a.is-active {
   color: var(--frost-ink);
   background: transparent;
   text-shadow: -1.3px 0 rgba(255, 42, 109, 0.5), 1.3px 0 rgba(0, 174, 255, 0.5);
@@ -486,6 +486,7 @@
   background: var(--frost-ink);
   font-size: 12.5px;
   font-weight: 560;
+  text-decoration: none;
   cursor: pointer;
 }
 

@@ -34,6 +34,10 @@ const {
   resolveDmEndpoint,
   sanitizeAction,
   DM_ACTION_TYPES,
+  DM_MAX_ACTIONS_PER_TURN,
+  DM_MAX_ERROR_BODY_BYTES,
+  DM_MAX_RESPONSE_BYTES,
+  DM_MAX_SSE_PENDING_CHARS,
 } = await import('../src/components/frost/dm-client.js');
 
 /** Stand-in manifest: the only anchors and project ids that exist. */
@@ -152,6 +156,20 @@ test('the SSE parser survives comments, CRLF, and events split across chunks', (
   assert.deepEqual(parser.flush(), []);
 });
 
+test('an oversized unterminated SSE line fails instead of remaining pending', async () => {
+  const line = `data: ${'x'.repeat(DM_MAX_SSE_PENDING_CHARS + 1)}`;
+  await withStub([line], async (endpoint) => {
+    await assert.rejects(
+      askDm({ endpoint, manifest: MANIFEST, messages: [{ role: 'user', content: 'hi' }] }),
+      (error: Error) => {
+        assert.equal(error.name, 'DmError');
+        assert.match(error.message, /ran into a problem/);
+        return true;
+      },
+    );
+  });
+});
+
 test('THE ALLOWLIST: only known types with manifest-known targets survive', () => {
   // Accepted.
   assert.deepEqual(sanitizeAction({ type: 'go', target: 'work' }, MANIFEST), {
@@ -260,6 +278,53 @@ test('a stream yields text deltas, applies vetted actions, and drops forged ones
     assert.deepEqual(seen.body, {
       messages: [{ role: 'user', content: 'What has Dylan built with AI agents?' }],
     });
+  });
+});
+
+test('an action-only flood stops after the per-turn DOM-effect ceiling', async () => {
+  const chunks = Array.from({ length: DM_MAX_ACTIONS_PER_TURN + 1 }, () =>
+    sse('action', { type: 'lit', target: 'evalgate' }),
+  );
+  chunks.push(sse('done', { reason: 'end_turn' }));
+
+  await withStub(chunks, async (endpoint) => {
+    const actions: unknown[] = [];
+    await assert.rejects(
+      askDm({
+        endpoint,
+        manifest: MANIFEST,
+        messages: [{ role: 'user', content: 'hi' }],
+        onAction: (action: unknown) => actions.push(action),
+      }),
+      (error: Error) => {
+        assert.equal(error.name, 'DmError');
+        return true;
+      },
+    );
+    assert.equal(actions.length, DM_MAX_ACTIONS_PER_TURN);
+  });
+});
+
+test('a comment-only stream cannot exceed the total response-byte ceiling', async () => {
+  const comment = `: ${'x'.repeat(50_000)}\n\n`;
+  const chunks = Array.from(
+    { length: Math.floor(DM_MAX_RESPONSE_BYTES / Buffer.byteLength(comment)) + 1 },
+    () => comment,
+  );
+
+  await withStub(chunks, async (endpoint) => {
+    await assert.rejects(
+      askDm({
+        endpoint,
+        manifest: MANIFEST,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+      (error: Error) => {
+        assert.equal(error.name, 'DmError');
+        assert.match(error.message, /ran into a problem/);
+        return true;
+      },
+    );
   });
 });
 
@@ -509,6 +574,25 @@ test("a 400 surfaces the service's own message and carries the status", async ()
         askDm({ endpoint, manifest: MANIFEST, messages: [{ role: 'user', content: 'hi' }] }),
         (error: Error & { status?: number }) => {
           assert.match(error.message, /error \(400\)/);
+          assert.equal(error.status, 400);
+          return true;
+        },
+      );
+    },
+    { status: 400 },
+  );
+});
+
+test('an oversized non-2xx body is cancelled without buffering or surfacing it', async () => {
+  const oversized = JSON.stringify({ message: 'x'.repeat(DM_MAX_ERROR_BODY_BYTES + 1) });
+  await withStub(
+    [oversized],
+    async (endpoint) => {
+      await assert.rejects(
+        askDm({ endpoint, manifest: MANIFEST, messages: [{ role: 'user', content: 'hi' }] }),
+        (error: Error & { status?: number }) => {
+          assert.equal(error.name, 'DmError');
+          assert.equal(error.message, "DM's service answered with an error (400).");
           assert.equal(error.status, 400);
           return true;
         },

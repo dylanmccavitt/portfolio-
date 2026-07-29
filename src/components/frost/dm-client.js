@@ -56,6 +56,23 @@ const MAX_ANSWER_CHARS = 8000;
     anything that hurts. */
 const MAX_STREAM_CHARS = 64_000;
 
+/** Full successful-response wire ceiling. Text is bounded separately above,
+    but action-only, comment-only, and malformed streams still consume bytes. */
+export const DM_MAX_RESPONSE_BYTES = 256_000;
+
+/** Maximum parser state retained between dispatches. This covers an
+    unterminated line and the event/data fields accumulated before a blank
+    line, so neither shape can park an unbounded string in memory. */
+export const DM_MAX_SSE_PENDING_CHARS = 64_000;
+
+/** Error bodies need only contain one short diagnostic. They are read through
+    a stream up to this ceiling rather than buffered wholesale by Response. */
+export const DM_MAX_ERROR_BODY_BYTES = 16_000;
+
+/** One answer may drive only a small, reviewable sequence of page effects.
+    The fifth action fails the turn before it can create another DOM timer. */
+export const DM_MAX_ACTIONS_PER_TURN = 4;
+
 /** Longest error message we will surface, before truncation. */
 const MAX_ERROR_CHARS = 200;
 
@@ -121,12 +138,24 @@ export function createSseParser() {
   let buffer = '';
   let eventName = '';
   let dataLines = [];
+  let dataChars = 0;
+
+  const overflow = () => {
+    throw new DmError('DM ran into a problem answering that.');
+  };
+
+  const pendingChars = () => buffer.length + eventName.length + dataChars;
+
+  const checkPending = () => {
+    if (pendingChars() > DM_MAX_SSE_PENDING_CHARS) overflow();
+  };
 
   const take = () => {
     if (dataLines.length === 0 && !eventName) return null;
     const event = { event: eventName || 'message', data: dataLines.join('\n') };
     eventName = '';
     dataLines = [];
+    dataChars = 0;
     return event;
   };
 
@@ -142,18 +171,36 @@ export function createSseParser() {
     const field = colon === -1 ? text : text.slice(0, colon);
     let value = colon === -1 ? '' : text.slice(colon + 1);
     if (value.startsWith(' ')) value = value.slice(1);
-    if (field === 'event') eventName = value;
-    else if (field === 'data') dataLines.push(value);
+    if (field === 'event') {
+      eventName = value;
+      checkPending();
+    } else if (field === 'data') {
+      dataLines.push(value);
+      dataChars += value.length + (dataLines.length > 1 ? 1 : 0);
+      checkPending();
+    }
   };
 
   const push = (chunk) => {
-    buffer += chunk;
     const out = [];
-    let index = buffer.indexOf('\n');
+    let offset = 0;
+    let index = chunk.indexOf('\n');
     while (index !== -1) {
-      line(buffer.slice(0, index), out);
-      buffer = buffer.slice(index + 1);
-      index = buffer.indexOf('\n');
+      const tail = chunk.slice(offset, index);
+      if (buffer.length + tail.length + eventName.length + dataChars > DM_MAX_SSE_PENDING_CHARS) {
+        overflow();
+      }
+      line(buffer + tail, out);
+      buffer = '';
+      offset = index + 1;
+      index = chunk.indexOf('\n', offset);
+    }
+    const tail = chunk.slice(offset);
+    if (tail) {
+      if (buffer.length + tail.length + eventName.length + dataChars > DM_MAX_SSE_PENDING_CHARS) {
+        overflow();
+      }
+      buffer += tail;
     }
     return out;
   };
@@ -218,6 +265,35 @@ function parseData(raw) {
   } catch {
     return null;
   }
+}
+
+/** Reads at most the small diagnostic allowance from a non-2xx response.
+    Returns null for malformed or oversized bodies; the caller then uses the
+    status-only message. */
+async function readErrorDetail(response) {
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let received = 0;
+  let raw = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        raw += decoder.decode();
+        break;
+      }
+      received += value.byteLength;
+      if (received > DM_MAX_ERROR_BODY_BYTES) return null;
+      raw += decoder.decode(value, { stream: true });
+    }
+  } catch {
+    return null;
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+  const body = parseData(raw);
+  return typeof body?.message === 'string' ? sanitizeMessage(body.message, null) : null;
 }
 
 /**
@@ -371,20 +447,18 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
     throw new DmError("DM's service could not be reached.");
   }
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     // A refused request usually says why — "could not be verified", most
     // importantly — and that line beats a bare status code. Still untrusted:
-    // parsed defensively, sanitized, and never rendered as anything but text.
-    let detail = null;
-    try {
-      const body = JSON.parse(await response.text());
-      if (body && typeof body === 'object' && typeof body.message === 'string') {
-        detail = sanitizeMessage(body.message, null);
-      }
-    } catch {
-      // Not JSON, or the read itself failed — the status line stands alone.
-    }
+    // read only to a hard ceiling, parsed defensively, sanitized, and never
+    // rendered as anything but text.
+    const detail = await readErrorDetail(response);
     throw new DmError(detail ?? `DM's service answered with an error (${response.status}).`, {
+      status: response.status,
+    });
+  }
+  if (!response.body) {
+    throw new DmError(`DM's service answered with an error (${response.status}).`, {
       status: response.status,
     });
   }
@@ -399,6 +473,8 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
   let failure = null;
   let written = 0;
   let received = 0;
+  let receivedBytes = 0;
+  let actionCount = 0;
   // Every delta, verbatim and in order — the bytes the service signs. Kept
   // apart from what reaches `onText`, which is clipped for the DOM's sake: the
   // signature is over the whole answer, so a clipped copy would not verify.
@@ -426,7 +502,14 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
       }
       case 'action': {
         const action = sanitizeAction(parseData(record.data), manifest);
-        if (action) onAction?.(action);
+        if (!action) return;
+        actionCount += 1;
+        if (actionCount > DM_MAX_ACTIONS_PER_TURN) {
+          failure = new DmError('DM ran into a problem answering that.');
+          finished = true;
+          return;
+        }
+        onAction?.(action);
         return;
       }
       case 'done': {
@@ -462,7 +545,15 @@ async function streamDm({ base, messages, manifest, control, restartStall, expir
       // Every chunk — keepalive comments included — is proof of life.
       restartStall();
       if (done) {
-        parser.flush().forEach(handle);
+        const tail = decoder.decode();
+        if (tail) parser.push(tail).forEach(handle);
+        if (!finished) parser.flush().forEach(handle);
+        break;
+      }
+      receivedBytes += value.byteLength;
+      if (receivedBytes > DM_MAX_RESPONSE_BYTES) {
+        failure = new DmError('DM ran into a problem answering that.');
+        finished = true;
         break;
       }
       parser.push(decoder.decode(value, { stream: true })).forEach(handle);

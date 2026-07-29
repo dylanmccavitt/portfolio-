@@ -43,5 +43,5 @@ The service is deployed at `https://dm-agent-service-psi.vercel.app` (repo `dyla
 - The homepage island must keep a complete semantic-HTML fallback (`?effect=off`, no-JS); all other routes stay complete as semantic HTML without WebGL or JS.
 - Write project copy for non-technical readers — no jargon.
 - No co-author lines on commits.
-- GitHub issues are the tracker when work is tracked: one issue → one branch → one PR, targeting `preview/agent-first-redesign`, never `main`. (The former Gepetto contract workflow is retired; do not look for `gepetto-research` markers.)
+- GitHub issues are the tracker when work is tracked: each implementation issue gets one branch and one implementation PR targeting `preview/agent-first-redesign`, never `main`. The only exception is the one additional maintainer-opened release PR from `preview/agent-first-redesign` to `main` after the full issue stack is merged; it is a manual program-epic gate, not another implementation PR, and no agent opens or merges it. (The former Gepetto contract workflow is retired; do not look for `gepetto-research` markers.)
 - Review guidance: `code_review.md`.
