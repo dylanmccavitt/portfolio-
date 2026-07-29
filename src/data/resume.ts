@@ -198,6 +198,70 @@ export const RESUME: ResumeAlbum = {
 };
 
 /**
+ * THE PUBLIC TRACK ALLOWLIST. `RESUME.tracks` is the full career history; this
+ * is the narrower subset the owner has chosen to show in public, and it is the
+ * only door anything public reads the timeline through — the resume page via
+ * its two section accessors, the DM corpus via {@link publicResumeTracks}. No
+ * consumer keeps its own list, so the page and the corpus cannot drift apart:
+ * an id that is not named here cannot be published by either.
+ *
+ * It fails closed. Adding a track to `RESUME.tracks` publishes it nowhere until
+ * someone names it here on purpose. `boe` is deliberately absent: it is on the
+ * timeline and off the site.
+ *
+ * `now` is on the list because the site already publishes it — the homepage
+ * Journey renders its row and the resume page's kicker restates its facts —
+ * even though the resume page has no section that lists a standing status.
+ */
+const PUBLIC_RESUME_EXPERIENCE_TRACK_IDS = ['paulweiss', 'kroll', 'bella-era'] as const;
+const PUBLIC_RESUME_EDUCATION_TRACK_IDS = ['syracuse', 'stevens'] as const;
+const PUBLIC_RESUME_STANDING_TRACK_IDS = ['now'] as const;
+
+/** Every track id the site publishes, from all three groupings. */
+export const PUBLIC_RESUME_TRACK_IDS: readonly string[] = [
+  ...PUBLIC_RESUME_EXPERIENCE_TRACK_IDS,
+  ...PUBLIC_RESUME_EDUCATION_TRACK_IDS,
+  ...PUBLIC_RESUME_STANDING_TRACK_IDS,
+];
+
+/** Filter the timeline to an allowlisted id set, in chronological source order. */
+function tracksIn(ids: readonly string[]): ResumeTrack[] {
+  const allowed = new Set<string>(ids);
+  return RESUME.tracks.filter((track) => allowed.has(track.id));
+}
+
+/** Every track the site publishes, chronologically. The one public read of the
+    timeline: anything not on the allowlist cannot come out of here. */
+export function publicResumeTracks(): ResumeTrack[] {
+  return tracksIn(PUBLIC_RESUME_TRACK_IDS);
+}
+
+/** The tracks the resume page lists under Experience. */
+export function publicResumeExperienceTracks(): ResumeTrack[] {
+  return tracksIn(PUBLIC_RESUME_EXPERIENCE_TRACK_IDS);
+}
+
+/** The tracks the resume page lists under Education. */
+export function publicResumeEducationTracks(): ResumeTrack[] {
+  return tracksIn(PUBLIC_RESUME_EDUCATION_TRACK_IDS);
+}
+
+/**
+ * Guard the allowlist against the timeline. A typo here fails closed — the
+ * track simply stops being published — which is safe but silent, so a name
+ * that resolves to nothing is a build failure instead.
+ */
+function assertPublicTrackIdsExist(): void {
+  const known = new Set(RESUME.tracks.map((track) => track.id));
+  const unknown = PUBLIC_RESUME_TRACK_IDS.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    throw new Error(`resume.ts: PUBLIC_RESUME_TRACK_IDS names no such track: ${unknown.join(', ')}`);
+  }
+}
+
+assertPublicTrackIdsExist();
+
+/**
  * Guard the {@link PROJECT_IDS} mirror against the real catalog. Throws at
  * module load if the two disagree, so `era`'s literal-union type can never go
  * stale without failing the build.
@@ -218,7 +282,8 @@ function assertCatalogIdsInSync(): void {
 
 assertCatalogIdsInSync();
 
-/** Look up a resume entry by id. */
-export function getResumeTrackById(id: string): ResumeTrack | null {
-  return RESUME.tracks.find((t) => t.id === id) ?? null;
-}
+// There is deliberately no `getResumeTrackById`. It had no callers and read the
+// full unfiltered timeline, so the next consumer to reach for it would have got
+// a withheld track without noticing. Anything public reads the timeline through
+// the allowlisted accessors above; if a by-id lookup is ever needed, add it over
+// `publicResumeTracks()` rather than over `RESUME.tracks`.

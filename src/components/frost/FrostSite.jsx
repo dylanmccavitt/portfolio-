@@ -1,11 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, X } from "lucide-react";
 import "@fontsource-variable/geist";
 import "@fontsource/ibm-plex-mono";
 import { SnapshotFx } from "./SnapshotFx.jsx";
 import { createGlitch } from "./glitch.jsx";
-import { JOURNEY, PROFILE } from "./frost-data.js";
+import { resolveDmEndpoint } from "./dm-client.js";
+import {
+  DM_LIT_CONTACT_MS,
+  DM_LIT_MS,
+  readDmSession,
+  takeDmActions,
+  writeDmOpen,
+} from "./dm-session.js";
+import { PROFILE } from "./frost-data.js";
 import "./frost.css";
+
+/** The DM service, if one is configured for this build. Absent (or malformed)
+    keeps the "being rebuilt" panel — the site never ships a half-live agent. */
+const DM_ENDPOINT = resolveDmEndpoint(import.meta.env.PUBLIC_DM_ENDPOINT);
+
+/** The card is a separate chunk, fetched on first open: the landing pays
+    nothing up front for a surface most visitors never ask for, and never
+    fetches the chunk at all when no service is configured. The build still
+    emits it, and `.frost-dmc` is in the one stylesheet either way — what is
+    saved is the request, not the bytes on the CDN. */
+const DmCard = lazy(() => import("./DmCard.jsx"));
 
 const DESTINATIONS = [
   { id: "about", label: "About" },
@@ -129,14 +148,16 @@ function GlitchCard({ project, index, fx, isHot }) {
   );
 }
 
-function JourneyRows() {
+/** Built at build time from the resume's public-track allowlist; see
+    `src/lib/journey.ts`. This component only renders what it is handed. */
+function JourneyRows({ journey }) {
   return (
     <ol className="frost-journey">
-      {JOURNEY.map(([year, place, role]) => (
-        <li key={`${year}-${place}`}>
-          <time>{year}</time>
-          <strong>{place}</strong>
-          <span>{role}</span>
+      {journey.map((row) => (
+        <li key={row.id}>
+          <time>{row.when}</time>
+          <strong>{row.place}</strong>
+          <span>{row.role}</span>
         </li>
       ))}
     </ol>
@@ -153,7 +174,7 @@ function ContactBlock() {
   );
 }
 
-function SiteLayout({ projects, fx, onDm }) {
+function SiteLayout({ projects, journey, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [hotId, setHotId] = useState(null);
 
@@ -271,7 +292,7 @@ function SiteLayout({ projects, fx, onDm }) {
         </header>
       </div>
 
-      <h1 className="frost-sr-only">{PROFILE.name} — {PROFILE.role}</h1>
+      <h1 className="frost-sr-only">{PROFILE.name}, {PROFILE.role}</h1>
 
       <section className="frost-site-section" id="about">
         <h2>About</h2>
@@ -300,8 +321,8 @@ function SiteLayout({ projects, fx, onDm }) {
       <section className="frost-site-section" id="journey">
         <FlowIn>
           <h2>Journey</h2>
-          <p className="frost-kicker">2019 — now</p>
-          <JourneyRows />
+          <p className="frost-kicker">2019 to now</p>
+          <JourneyRows journey={journey} />
         </FlowIn>
       </section>
 
@@ -340,7 +361,7 @@ function DmPanel({ onClose }) {
         <h2 id="frost-dm-title">DM is being rebuilt.</h2>
         <p>
           The portfolio&rsquo;s chat guide is getting a rework and will be back.
-          In the meantime, the projects above cover the work — and Dylan is one
+          In the meantime, the projects above cover the work, and Dylan is one
           email away.
         </p>
         <a href={`mailto:${PROFILE.email}`}>
@@ -352,11 +373,61 @@ function DmPanel({ onClose }) {
 }
 
 /**
- * @param {{ projects?: Array<{ id: string, href: string, title: string,
- *   eyebrow: string, line: string, proof: string[] }> }} props
+ * Everything the island renders is handed to it at build time. `dmManifest` is
+ * the only DM-related data the browser receives: section anchors and project
+ * ids, which the corner card's allowlist needs and which are already in this
+ * page's own HTML. No grounding corpus is published or fetched.
+ *
+ * @param {{
+ *   projects?: Array<{ id: string, href: string, title: string, slug?: string,
+ *     eyebrow: string, line: string, proof: string[] }>,
+ *   journey?: Array<{ id: string, when: string, place: string, role: string }>,
+ *   dmManifest?: { anchors: string[], projectIds: string[], actions: string[] } | null,
+ * }} props
  */
-export default function FrostSite({ projects = [] }) {
+export default function FrostSite({ projects = [], journey = [], dmManifest = null }) {
   const [dmOpen, setDmOpen] = useState(false);
+
+  // Session pickup, after hydration so the server and client first paints
+  // agree. Only the live-card path touches sessionStorage: with no endpoint
+  // the panel behaves exactly as before. Two things can be waiting — an open
+  // conversation (the card reappears, intact), and page actions a project-page
+  // answer stashed for this page, each re-validated against the manifest at
+  // execution time.
+  useEffect(() => {
+    if (!DM_ENDPOINT) return;
+    if (readDmSession().open) setDmOpen(true);
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const flash = (node, className, ms) => {
+      if (!node) return;
+      node.classList.add(className);
+      window.setTimeout(() => node.classList.remove(className), ms);
+    };
+    for (const action of takeDmActions(dmManifest)) {
+      if (action.type === "go") {
+        document.getElementById(action.target)?.scrollIntoView({
+          behavior: reduced ? "auto" : "smooth",
+          block: "start",
+        });
+      } else if (action.type === "lit") {
+        flash(
+          Array.from(document.querySelectorAll(".frost-glitch-cell")).find(
+            (cell) => cell.dataset.projectId === action.target
+          ),
+          "is-dm-lit",
+          DM_LIT_MS
+        );
+      } else if (action.type === "litContact") {
+        flash(document.querySelector(".frost-contact a"), "is-dm-lit-inline", DM_LIT_CONTACT_MS);
+      }
+    }
+  }, [dmManifest]);
+
+  const toggleDm = (open) => {
+    setDmOpen(open);
+    if (DM_ENDPOINT) writeDmOpen(open);
+  };
 
   const effectMode = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("effect")
@@ -366,7 +437,12 @@ export default function FrostSite({ projects = [] }) {
     <main className="frost" id="main">
       <div className="frost-effect">
         <div className="frost-page">
-          <SiteLayout projects={projects} fx={effectMode !== "off"} onDm={() => setDmOpen(true)} />
+          <SiteLayout
+            projects={projects}
+            journey={journey}
+            fx={effectMode !== "off"}
+            onDm={() => toggleDm(true)}
+          />
           <footer className="frost-footer">
             <span>&copy; 2026 Dylan McCavitt</span>
             <span>Hover a project to see what shipped.</span>
@@ -374,7 +450,19 @@ export default function FrostSite({ projects = [] }) {
         </div>
       </div>
 
-      {dmOpen && <DmPanel onClose={() => setDmOpen(false)} />}
+      {dmOpen &&
+        (DM_ENDPOINT ? (
+          <Suspense fallback={null}>
+            <DmCard
+              endpoint={DM_ENDPOINT}
+              manifest={dmManifest}
+              projects={projects}
+              onClose={() => toggleDm(false)}
+            />
+          </Suspense>
+        ) : (
+          <DmPanel onClose={() => setDmOpen(false)} />
+        ))}
     </main>
   );
 }
