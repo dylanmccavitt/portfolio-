@@ -69,6 +69,23 @@
   overflow: hidden;
 }
 
+/* Each card arrives as it reaches the viewport, like the Journey block and
+   the rest of the page — the section wrapper brings the heading in, and the
+   cards below the fold wait for their own turn instead of being uncovered
+   early by a parent that faded in without them. Same curve and travel as
+   `.frost-flow-in`, and hidden only under `@media (scripting: enabled)` so
+   the no-JS page stays complete. */
+.frost-card-in {
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+@media (scripting: enabled) {
+  .frost-card-in:not(.is-in) {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
 .frost-glitch-open {
   position: absolute;
   inset: 0;
@@ -94,9 +111,9 @@
   transition: opacity 0.4s ease 0.16s, transform 0.4s ease 0.16s;
 }
 
-/* Hover reveals only where hover really exists — touch devices use the
-   tap-driven .is-hot class instead, so iOS's emulated hover can't misfire
-   while scrolling. */
+/* Hover reveals only where hover really exists, so iOS's emulated hover
+   cannot misfire while scrolling. Touch does not reveal at all — a tap opens
+   the project (see the `.is-burst` block below). */
 @media (hover: hover) {
   .frost-glitch-cell:hover .frost-glitch-facts {
     opacity: 1;
@@ -104,8 +121,7 @@
   }
 }
 
-.frost-glitch-cell:focus-within .frost-glitch-facts,
-.frost-glitch-cell.is-hot .frost-glitch-facts {
+.frost-glitch-cell:focus-within .frost-glitch-facts {
   opacity: 1;
   transform: none;
 }
@@ -175,21 +191,22 @@
   }
 }
 
-.frost-glitch-cell:focus-within .frost-glitch-teaser,
-.frost-glitch-cell.is-hot .frost-glitch-teaser {
+.frost-glitch-cell:focus-within .frost-glitch-teaser {
   opacity: 0;
 }
 
-/* On touch the burst has to carry without a hover dwell: the teaser
-   corrupts hard — big slice cuts, displacement, chromatic flicker, one
-   inverted hit — while the canvas flash flickers over it for longer than
-   the desktop hover version. */
+/* On touch a tap opens the project, and the burst is what it leaves behind
+   on the way out — it is not a reveal, so nothing underneath is uncovered.
+   The teaser corrupts hard (big slice cuts, displacement, chromatic flicker,
+   one inverted hit) while the canvas flash flickers over it. Timing is
+   mirrored by BURST_MS in FrostSite.jsx, which waits this out before asking
+   for the page. */
 @media (hover: none) {
-  .frost-glitch-cell.is-hot .frost-glitch-teaser {
+  .frost-glitch-cell.is-burst .frost-glitch-teaser {
     animation: frost-teaser-glitch 0.4s steps(1, end) forwards;
   }
 
-  li.frost-glitch-cell.is-hot .frost-glitch-snap .snapfx-out {
+  li.frost-glitch-cell.is-burst .frost-glitch-snap .snapfx-out {
     animation: frost-glitch-out-touch 0.5s steps(1, end) forwards;
   }
 }
@@ -247,8 +264,7 @@
   }
 }
 
-.frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out,
-.frost-glitch-cell.is-hot .frost-glitch-snap .snapfx-out {
+.frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out {
   animation: frost-glitch-out 0.6s ease forwards;
 }
 
@@ -1262,10 +1278,17 @@
     filter: none;
   }
 
+  .frost-card-in,
+  .frost-card-in:not(.is-in) {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
   .frost-glitch-cell:hover .frost-glitch-snap .snapfx-out,
   .frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out,
-  li.frost-glitch-cell.is-hot .frost-glitch-snap .snapfx-out,
-  li.frost-glitch-cell.is-hot .frost-glitch-teaser,
+  li.frost-glitch-cell.is-burst .frost-glitch-snap .snapfx-out,
+  li.frost-glitch-cell.is-burst .frost-glitch-teaser,
   li.frost-glitch-cell.is-dm-lit .frost-glitch-snap .snapfx-out {
     animation: none;
   }
