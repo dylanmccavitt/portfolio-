@@ -672,6 +672,11 @@
   bottom: 20px;
   z-index: 40;
   width: 344px;
+  /* The grip measures the card with getBoundingClientRect (border-box) and
+     writes the result back as width/height. Under content-box those are two
+     different numbers — padding and border wide — so every fresh drag would
+     start 30px larger than the last one ended, and the card would creep. */
+  box-sizing: border-box;
   max-height: min(560px, calc(100vh - 60px));
   display: flex;
   flex-direction: column;
@@ -710,13 +715,13 @@
   height: auto !important;
 }
 
-/* Desktop chrome: the header drags, the bottom-right corner resizes (native
-   CSS resize; the component freezes the anchor first so growth heads
-   down-right from a fixed top-left). The breakpoint matches the card's own
-   full-width mobile rule below — between the two the card is edge-to-edge
-   and must not also grow chrome. The default 560px height cap stays until
-   the card is actually unpinned (`.is-free`), so an untouched card never
-   balloons to its conversation's length. */
+/* Desktop chrome: the header drags, the drawn grip in the bottom-right corner
+   resizes. The breakpoint matches the card's own full-width mobile rule below —
+   between the two the card is edge-to-edge and must not also grow chrome. The
+   default 560px height cap holds until the visitor has actually sized the card
+   (`.is-sized`), so an untouched card never balloons to its conversation's
+   length; the grip sets a size and the class in one commit, so the cap never
+   fights the drag it is being lifted by. */
 @media (min-width: 901px) {
   .frost-dmc-head {
     cursor: grab;
@@ -725,15 +730,88 @@
   }
 
   .frost-dmc:not(.is-collapsed) {
-    resize: both;
     overflow: hidden;
-    min-width: 300px;
-    min-height: 260px;
+    min-width: 260px;
+    min-height: 240px;
     max-width: min(640px, calc(100vw - 32px));
   }
 
   .frost-dmc.is-sized:not(.is-collapsed) {
     max-height: calc(100vh - 32px);
+  }
+}
+
+/* Two ridges parallel to the corner — the conventional resize mark, drawn so it
+   reads on the card's own surface instead of relying on the UA's near-invisible
+   default. The hit target is deliberately larger than the ink.
+   Hidden below the floating breakpoint by the rule underneath, not turned on by
+   one inside it: same-specificity selectors resolve by source order, and a
+   `display: block` in the media block above would lose to this rule. */
+.frost-dmc-grip {
+  display: block;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 13px 0;
+  background: none;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.frost-dmc-grip span {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 11px;
+  height: 11px;
+  background-image: linear-gradient(
+    135deg,
+    transparent 0 42%,
+    var(--frost-line) 42% 58%,
+    transparent 58% 100%
+  );
+  background-repeat: no-repeat;
+  opacity: 0.85;
+}
+
+.frost-dmc-grip::after {
+  /* The second, shorter ridge, inset from the first. */
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  background-image: linear-gradient(
+    135deg,
+    transparent 0 35%,
+    var(--frost-line) 35% 65%,
+    transparent 65% 100%
+  );
+}
+
+.frost-dmc-grip:hover span,
+.frost-dmc-grip:hover::after,
+.frost-dmc-grip:focus-visible span,
+.frost-dmc-grip:focus-visible::after {
+  opacity: 1;
+  filter: drop-shadow(-1.2px 0 rgba(255, 42, 109, 0.5)) drop-shadow(1.2px 0 rgba(0, 174, 255, 0.5));
+}
+
+.frost-dmc-grip:focus-visible {
+  outline: 2px solid var(--frost-ink);
+  outline-offset: -2px;
+}
+
+/* Below the floating breakpoint the card is edge-to-edge and pinned; there is
+   nothing to resize, and a grip would only be a mis-tap target. */
+@media (max-width: 900px) {
+  .frost-dmc-grip {
+    display: none;
   }
 }
 
@@ -763,9 +841,15 @@
   border-color: var(--frost-ink);
 }
 
+/* `min-height: 0` is what makes the card shrinkable. A flex item's default
+   `min-height: auto` refuses to go below its content, so with a 120px floor
+   here the column could not compress past roughly 370px — and since the card
+   clips its overflow, dragging the grip to the 240px minimum pushed the
+   composer out of sight and left the visitor unable to type. The thread already
+   scrolls; let it absorb the squeeze. */
 .frost-dmc-thread {
-  flex: 1;
-  min-height: 120px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -873,10 +957,17 @@
   border-bottom-color: var(--frost-ink);
 }
 
+/* The chips give up room before the composer does: they scroll under pressure
+   (`flex: 0 1 auto` + `min-height: 0`), while the form and the egress line
+   below never shrink. In a short card the order of sacrifice is thread, then
+   chips — the input is the last thing standing. */
 .frost-dmc-suggested {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .frost-dmc-suggested button {
@@ -904,6 +995,7 @@
 .frost-dmc-form {
   display: flex;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .frost-dmc-form input {
@@ -948,6 +1040,7 @@
    card's own mono voice, not a banner. */
 .frost-dmc-egress {
   margin: 0;
+  flex: 0 0 auto;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   letter-spacing: 0.02em;

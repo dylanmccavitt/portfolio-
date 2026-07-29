@@ -304,51 +304,85 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
     [clampPos, freeze]
   );
 
-  // The native CSS resize handle lives in the bottom-right corner; a press
-  // there freezes the anchor first so the growth direction makes sense, and
-  // marks a resize in progress — the ResizeObserver below records the card's
-  // size ONLY during that window, so layout-driven growth (a long conversation
-  // reflowing) can never masquerade as a size the visitor chose.
-  const sizingRef = useRef(false);
-  const onCardPointerDown = useCallback(
+  /**
+   * Resizing is driven from an explicit grip, not the browser's `resize: both`.
+   * The native corner was invisible against the card's own rounded chrome and
+   * had no keyboard story, and it wrote width/height straight onto the DOM —
+   * so React learned the size second-hand through a ResizeObserver, and the
+   * default `max-height` cap kept fighting the first drag until the observer
+   * had recorded a size and `.is-sized` lifted it. Here the pointer sets state,
+   * state renders the size, and the cap lifts in the same commit as the first
+   * pixel of movement.
+   */
+  const resizeTo = useCallback((base, dx, dy) => {
+    const node = cardRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    // The card may not grow past the viewport it is anchored in, and never
+    // below the size at which its own header and composer stop fitting.
+    const maxW = Math.min(640, window.innerWidth - rect.left - 8);
+    const maxH = window.innerHeight - rect.top - 8;
+    setFrame((current) => ({
+      ...current,
+      size: {
+        w: Math.round(Math.min(Math.max(260, base.w + dx), Math.max(260, maxW))),
+        h: Math.round(Math.min(Math.max(240, base.h + dy), Math.max(240, maxH))),
+      },
+    }));
+  }, []);
+
+  const onGripPointerDown = useCallback(
     (event) => {
       if (!floatable() || collapsed) return;
       const rect = cardRef.current?.getBoundingClientRect();
       if (!rect) return;
-      if (rect.right - event.clientX > 18 || rect.bottom - event.clientY > 18) return;
-      sizingRef.current = true;
       freeze();
-      window.addEventListener(
-        "pointerup",
-        () => {
-          sizingRef.current = false;
-        },
-        { once: true }
-      );
+      const base = { w: rect.width, h: rect.height };
+      const start = { x: event.clientX, y: event.clientY };
+      // Pointer capture on the grip itself: the pointer routinely outruns a
+      // 22px target mid-drag, and without capture the resize would drop the
+      // moment it left the handle — the "finicky" half of the native corner.
+      // The window listeners below are what actually drive the drag, so a
+      // browser that refuses the capture still resizes.
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Not a live pointer (or unsupported): the drag works without it.
+      }
+      const move = (e) => resizeTo(base, e.clientX - start.x, e.clientY - start.y);
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      event.preventDefault();
+      event.stopPropagation();
     },
-    [collapsed, freeze]
+    [collapsed, freeze, resizeTo]
+  );
+
+  /** The grip is a real button, so the card is resizable without a pointer. */
+  const onGripKeyDown = useCallback(
+    (event) => {
+      const step = event.shiftKey ? 48 : 16;
+      const nudge = { ArrowRight: [step, 0], ArrowLeft: [-step, 0], ArrowDown: [0, step], ArrowUp: [0, -step] }[
+        event.key
+      ];
+      if (!nudge) return;
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      freeze();
+      resizeTo({ w: rect.width, h: rect.height }, nudge[0], nudge[1]);
+      event.preventDefault();
+    },
+    [freeze, resizeTo]
   );
 
   // Persist what the visitor chose; remember the resized footprint.
   useEffect(() => {
     writeUi({ collapsed, pos: frame.pos, size: frame.size });
   }, [collapsed, frame]);
-
-  useEffect(() => {
-    const node = cardRef.current;
-    if (!node || typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(() => {
-      // A size is recorded only while the visitor is dragging the corner.
-      if (!sizingRef.current || collapsed || !floatable()) return;
-      setFrame((current) => {
-        const size = { w: node.offsetWidth, h: node.offsetHeight };
-        if (current.size && current.size.w === size.w && current.size.h === size.h) return current;
-        return { ...current, size };
-      });
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [collapsed]);
 
   // A window resize must not leave the card stranded outside the viewport.
   useEffect(() => {
@@ -367,9 +401,12 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
     frameStyle.right = "auto";
     frameStyle.bottom = "auto";
   }
-  if (floatable() && frame.size && !collapsed) {
+  if (floatable() && frame.size) {
+    // The width survives collapsing — folding a card the visitor narrowed used
+    // to snap it back to the default 344px, so the header bar jumped wider than
+    // the card it came from. Only the height folds away (the CSS forces `auto`).
     frameStyle.width = `${frame.size.w}px`;
-    frameStyle.height = `${frame.size.h}px`;
+    if (!collapsed) frameStyle.height = `${frame.size.h}px`;
   }
 
   const mailto = `mailto:${PROFILE.email}`;
@@ -532,7 +569,6 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
       ref={cardRef}
       className={`frost-dmc${collapsed ? " is-collapsed" : ""}${frame.size ? " is-sized" : ""}`}
       style={frameStyle}
-      onPointerDown={onCardPointerDown}
       aria-label="DM, the portfolio agent"
     >
       <header className="frost-dmc-head" onPointerDown={onHeadPointerDown}>
@@ -640,6 +676,19 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
       {/* Said plainly, once: the answers are generated off-site, so the
           question goes off-site too. */}
       <p className="frost-dmc-egress">Questions are sent to DM&rsquo;s service to be answered.</p>
+
+      {/* Drawn, not the browser's own: a visible pair of ridges the visitor can
+          aim at, and a focusable control so the arrow keys resize too. CSS
+          hides it below the card's floating breakpoint. */}
+      <button
+        type="button"
+        className="frost-dmc-grip"
+        aria-label="Resize DM (arrow keys resize, hold shift for larger steps)"
+        onPointerDown={onGripPointerDown}
+        onKeyDown={onGripKeyDown}
+      >
+        <span aria-hidden="true" />
+      </button>
       </>
       )}
     </aside>
