@@ -292,7 +292,7 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </header>
       </div>
 
-      <h1 className="frost-sr-only">{PROFILE.name} — {PROFILE.role}</h1>
+      <h1 className="frost-sr-only">{PROFILE.name}, {PROFILE.role}</h1>
 
       <section className="frost-site-section" id="about">
         <h2>About</h2>
@@ -321,7 +321,7 @@ function SiteLayout({ projects, journey, fx, onDm }) {
       <section className="frost-site-section" id="journey">
         <FlowIn>
           <h2>Journey</h2>
-          <p className="frost-kicker">2019 — now</p>
+          <p className="frost-kicker">2019 to now</p>
           <JourneyRows journey={journey} />
         </FlowIn>
       </section>
@@ -361,7 +361,7 @@ function DmPanel({ onClose }) {
         <h2 id="frost-dm-title">DM is being rebuilt.</h2>
         <p>
           The portfolio&rsquo;s chat guide is getting a rework and will be back.
-          In the meantime, the projects above cover the work — and Dylan is one
+          In the meantime, the projects above cover the work, and Dylan is one
           email away.
         </p>
         <a href={`mailto:${PROFILE.email}`}>

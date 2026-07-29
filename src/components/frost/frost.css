@@ -700,6 +700,33 @@
   gap: 8px;
 }
 
+/* Collapsed: the card folds to its header bar; the conversation stays mounted
+   and the spot on screen is kept. */
+.frost-dmc.is-collapsed {
+  gap: 0;
+  min-height: 0;
+}
+
+/* Desktop chrome: the header drags, the bottom-right corner resizes (native
+   CSS resize; the component freezes the anchor first so growth heads
+   down-right from a fixed top-left). Small screens keep the fixed corner. */
+@media (min-width: 720px) {
+  .frost-dmc-head {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .frost-dmc:not(.is-collapsed) {
+    resize: both;
+    overflow: hidden;
+    min-width: 300px;
+    min-height: 260px;
+    max-width: min(640px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+  }
+}
+
 .frost-dmc-head strong {
   font-size: 15px;
   text-shadow: -1.3px 0 rgba(255, 42, 109, 0.35), 1.3px 0 rgba(0, 174, 255, 0.35);

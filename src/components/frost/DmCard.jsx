@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { ChevronUp, Minus, X } from "lucide-react";
 import { PROFILE } from "./frost-data.js";
 import { askDm, linkifyCitations } from "./dm-client.js";
 import {
@@ -66,6 +66,37 @@ function prefersReducedMotion() {
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
+}
+
+/**
+ * Card chrome state — collapsed / dragged-to / resized-to — kept in its own
+ * sessionStorage key, deliberately outside `dm-session.js`: that module's
+ * strict schema guards conversation integrity, and where the card sits on
+ * screen is not part of the conversation.
+ */
+const UI_KEY = "dm-card-ui";
+
+function readUi() {
+  try {
+    const raw = window.sessionStorage.getItem(UI_KEY);
+    const value = raw ? JSON.parse(raw) : null;
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeUi(ui) {
+  try {
+    window.sessionStorage.setItem(UI_KEY, JSON.stringify(ui));
+  } catch {
+    // Storage full or blocked: the card still works, it just forgets its spot.
+  }
+}
+
+/** Dragging and resizing are desktop affordances; small screens keep the fixed corner. */
+function floatable() {
+  return typeof window !== "undefined" && window.innerWidth >= 720;
 }
 
 /**
@@ -215,6 +246,117 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
   const abortRef = useRef(null);
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const cardRef = useRef(null);
+
+  // Chrome state: collapse to the header bar, drag by the header, resize from
+  // the corner. All of it survives DM's own navigations like the conversation.
+  const [collapsed, setCollapsed] = useState(() => readUi().collapsed === true);
+  const [frame, setFrame] = useState(() => {
+    const ui = readUi();
+    return { pos: ui.pos ?? null, size: ui.size ?? null };
+  });
+
+  const clampPos = useCallback((pos, size) => {
+    const width = size?.w ?? cardRef.current?.offsetWidth ?? 344;
+    const maxX = Math.max(8, window.innerWidth - width - 8);
+    const maxY = Math.max(8, window.innerHeight - 56);
+    return {
+      x: Math.min(Math.max(8, pos.x), maxX),
+      y: Math.min(Math.max(8, pos.y), maxY),
+    };
+  }, []);
+
+  /** Switches the card from its corner anchor to explicit coordinates, so a
+      drag or a corner resize grows from a fixed top-left instead of walking
+      off the bottom-right of the screen. */
+  const freeze = useCallback(() => {
+    if (!cardRef.current) return;
+    setFrame((current) => {
+      if (current.pos) return current;
+      const rect = cardRef.current.getBoundingClientRect();
+      return { ...current, pos: { x: rect.left, y: rect.top } };
+    });
+  }, []);
+
+  const onHeadPointerDown = useCallback(
+    (event) => {
+      if (!floatable() || event.target.closest("button")) return;
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      freeze();
+      const grip = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      const move = (e) =>
+        setFrame((current) => ({
+          ...current,
+          pos: clampPos({ x: e.clientX - grip.dx, y: e.clientY - grip.dy }, current.size),
+        }));
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      event.preventDefault();
+    },
+    [clampPos, freeze]
+  );
+
+  // The native CSS resize handle lives in the bottom-right corner; a press
+  // there freezes the anchor first so the growth direction makes sense.
+  const onCardPointerDown = useCallback(
+    (event) => {
+      if (!floatable() || collapsed) return;
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (rect.right - event.clientX <= 18 && rect.bottom - event.clientY <= 18) freeze();
+    },
+    [collapsed, freeze]
+  );
+
+  // Persist what the visitor chose; remember the resized footprint.
+  useEffect(() => {
+    writeUi({ collapsed, pos: frame.pos, size: frame.size });
+  }, [collapsed, frame]);
+
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      // Only a card already unpinned from its corner records a size — that is
+      // what separates a real corner-drag from the default layout settling.
+      if (collapsed || !floatable()) return;
+      setFrame((current) => {
+        if (!current.pos) return current;
+        const size = { w: node.offsetWidth, h: node.offsetHeight };
+        if (current.size && current.size.w === size.w && current.size.h === size.h) return current;
+        return { ...current, size };
+      });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [collapsed]);
+
+  // A window resize must not leave the card stranded outside the viewport.
+  useEffect(() => {
+    const onResize = () =>
+      setFrame((current) =>
+        current.pos ? { ...current, pos: clampPos(current.pos, current.size) } : current
+      );
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampPos]);
+
+  const frameStyle = {};
+  if (floatable() && frame.pos) {
+    frameStyle.left = `${frame.pos.x}px`;
+    frameStyle.top = `${frame.pos.y}px`;
+    frameStyle.right = "auto";
+    frameStyle.bottom = "auto";
+  }
+  if (floatable() && frame.size && !collapsed) {
+    frameStyle.width = `${frame.size.w}px`;
+    frameStyle.height = `${frame.size.h}px`;
+  }
 
   const mailto = `mailto:${PROFILE.email}`;
 
@@ -372,15 +514,30 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
   };
 
   return (
-    <aside className="frost-dmc" aria-label="DM, the portfolio agent">
-      <header className="frost-dmc-head">
+    <aside
+      ref={cardRef}
+      className={`frost-dmc${collapsed ? " is-collapsed" : ""}`}
+      style={frameStyle}
+      onPointerDown={onCardPointerDown}
+      aria-label="DM, the portfolio agent"
+    >
+      <header className="frost-dmc-head" onPointerDown={onHeadPointerDown}>
         <strong>DM</strong>
         <span className="frost-kicker">Portfolio agent</span>
+        <button
+          className="frost-dmc-close"
+          onClick={() => setCollapsed((current) => !current)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand DM" : "Collapse DM"}
+        >
+          {collapsed ? <ChevronUp size={16} /> : <Minus size={16} />}
+        </button>
         <button className="frost-dmc-close" onClick={onClose} aria-label="Close DM">
           <X size={16} />
         </button>
       </header>
 
+      {!collapsed && (
       <div className="frost-dmc-thread" role="log" aria-live="polite">
         {messages.length === 0 && (
           <p className="frost-dmc-empty">
@@ -407,7 +564,7 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
               )}
               {message.truncated && message.state !== "failed" && (
                 <span className="frost-dmc-note">
-                  That answer stops mid-thought &mdash; it hit DM&rsquo;s length limit. Ask for a
+                  That answer stops mid-thought: it hit DM&rsquo;s length limit. Ask for a
                   narrower slice of it and it will fit.
                 </span>
               )}
@@ -436,7 +593,10 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
         )}
         <div ref={endRef} />
       </div>
+      )}
 
+      {!collapsed && (
+      <>
       <div className="frost-dmc-suggested">
         {SUGGESTED.map((question) => (
           <button
@@ -466,6 +626,8 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
       {/* Said plainly, once: the answers are generated off-site, so the
           question goes off-site too. */}
       <p className="frost-dmc-egress">Questions are sent to DM&rsquo;s service to be answered.</p>
+      </>
+      )}
     </aside>
   );
 }
