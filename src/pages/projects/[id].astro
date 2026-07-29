@@ -1,5 +1,8 @@
 ---
 import Frost from '@/layouts/Frost.astro';
+import DmDock from '@/components/frost/DmDock.jsx';
+import { resolveDmEndpoint } from '@/components/frost/dm-client.js';
+import { buildDmPageManifest } from '@/lib/dm/page-manifest';
 import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
 import { loadPublicProjectDetailBySlug, loadPublicProjectDetails } from '@/lib/public-projects';
 import { projectMeta } from '@/lib/seo';
@@ -28,6 +31,21 @@ const story = hasStory
       ['Outcome', p.about[2]],
     ]
   : [];
+
+// The DM corner card, behind the homepage's exact gate: no configured service,
+// no island — the page ships nothing new. The island gets the same page-action
+// manifest and a lean card model (id/slug/href/title, all already public HTML)
+// for citation chips and `open` resolution; nothing wider reaches the browser.
+const dmEndpoint = resolveDmEndpoint(import.meta.env.PUBLIC_DM_ENDPOINT);
+const dmManifest = dmEndpoint ? await buildDmPageManifest() : null;
+const dmProjects = dmEndpoint
+  ? (await loadPublicProjectDetails()).projects.map((entry) => ({
+      id: entry.id,
+      slug: entry.slug,
+      href: entry.href,
+      title: entry.title,
+    }))
+  : [];
 ---
 
 <Frost title={meta.title} meta={meta}>
@@ -40,6 +58,14 @@ const story = hasStory
         <a href="/#journey">Journey</a>
         <a href="/#contact">Contact</a>
       </nav>
+      {dmEndpoint && (
+        <DmDock
+          client:only="react"
+          endpoint={dmEndpoint}
+          manifest={dmManifest}
+          projects={dmProjects}
+        />
+      )}
     </header>
 
     <div class="look-paper">

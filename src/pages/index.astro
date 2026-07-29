@@ -2,6 +2,8 @@
 import Frost from '@/layouts/Frost.astro';
 import FrostSite from '@/components/frost/FrostSite.jsx';
 import { WORK_ORDER } from '@/components/frost/frost-data.js';
+import { buildDmPageManifest } from '@/lib/dm/page-manifest';
+import { publicJourneyRows } from '@/lib/journey';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
 import { libraryMeta, personJsonLd } from '@/lib/seo';
 
@@ -25,14 +27,24 @@ const workProjects = [...projects]
   .sort((a, b) => rank(a.id) - rank(b.id))
   .map((project) => ({
     id: project.id,
+    slug: project.slug,
     href: project.href,
     title: project.title,
     eyebrow: `${project.area} · ${project.status[1]}`,
     line: project.line,
     proof: project.metrics.slice(0, 3).map((metric) => `${metric.value} ${metric.label}`),
   }));
+
+// The Journey rows, read through the resume's public-track allowlist rather
+// than from a second hardcoded list. See `src/lib/journey.ts`.
+const journey = publicJourneyRows();
+
+// The DM corner card's page-action allowlist. Anchors and project ids only —
+// both already in this page's HTML — passed as a build-time prop so no corpus
+// document is published and the browser fetches nothing.
+const dmManifest = await buildDmPageManifest();
 ---
 
 <Frost title="Dylan McCavitt · Software engineer" meta={meta}>
-  <FrostSite client:load projects={workProjects} />
+  <FrostSite client:load projects={workProjects} journey={journey} dmManifest={dmManifest} />
 </Frost>

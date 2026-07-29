@@ -1,15 +1,13 @@
 ---
 import Frost from '@/layouts/Frost.astro';
-import { RESUME } from '@/data/resume';
+import { publicResumeEducationTracks, publicResumeExperienceTracks } from '@/data/resume';
 import { journeyMeta } from '@/lib/seo';
 
+// The sections come from the public track allowlist in `src/data/resume.ts`,
+// which the DM corpus reads too — this page keeps no list of its own.
 const meta = journeyMeta();
-const experience = RESUME.tracks.filter((track) =>
-  ['bella-era', 'kroll', 'paulweiss'].includes(track.id),
-);
-const education = RESUME.tracks.filter((track) =>
-  ['stevens', 'syracuse'].includes(track.id),
-);
+const experience = publicResumeExperienceTracks();
+const education = publicResumeEducationTracks();
 ---
 
 <Frost title="Resume · Dylan McCavitt" meta={meta}>
