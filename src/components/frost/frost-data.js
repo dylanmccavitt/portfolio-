@@ -43,5 +43,5 @@ export const JOURNEY_LABELS = {
   kroll: { when: "2023–2024", place: "Kroll", role: "Cyber Strategy & Risk" },
   stevens: { when: "2024–2026", place: "Stevens" },
   "bella-era": { role: "Freelance full-stack developer" },
-  now: { when: "Now", role: "Backend, product, and AI tools" },
+  now: { when: "Now", role: "Full-stack experience · backend & AI" },
 };

@@ -175,19 +175,19 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'now',
-      title: 'Open to opportunities',
+      title: 'Focusing on agentic tooling',
       role: 'Software engineer · backend, product, AI tools',
       when: '2026 to now',
       hue: '#50c878',
       current: true,
       about: [
-        'Currently interviewing for full-time software engineering roles while building practical side projects: agent tooling, local finance automation, and small consumer apps.',
+        'Focusing on agentic tooling, backed by full-stack experience, while building practical side projects: agent tooling, local finance automation, and small consumer apps.',
         'Looking for teams that value product judgment, reliability habits, and clear communication.',
       ],
       notes: ['US citizen; no sponsorship needed.'],
       credits: [
-        ['Status', 'open to opportunities'],
-        ['Location', 'new york city'],
+        ['Status', 'focusing on agentic tooling'],
+        ['Location', 'nyc/nj area'],
         ['Email', 'dylanmccavitt@outlook.com'],
       ],
       era: ['agent-skills', 'bellas-beads', 'agentic-trader'],

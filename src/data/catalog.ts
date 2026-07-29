@@ -74,7 +74,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#8b7cf6',
     wip: true,
     money: false,
-    line: 'a skills package that keeps coding agents on course: direction, delivery, and continuity',
+    line: 'a lean, curated workflow kit for coding agents: short skills backed by real command-line tools',
     seek: { from: 'v1.0 on npm', to: 'daily driver', pct: 75 },
     links: [
       { label: 'View repo ↗', href: 'https://github.com/dylanmccavitt/agent-skills' },
@@ -87,14 +87,14 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: '3', label: 'agent harnesses from one install' },
     ],
     about: [
-      'Coding agents forget. A session ends and the plan, the decision, and the half-finished work scatter into stray notes files — or vanish — so every new session starts by re-deriving what the last one already settled.',
-      'agent-skills packages three habits an agent can load — settle a direction with disposable prototypes (compass), hand off bounded work and get one compact receipt back (relay), and leave a durable marker where it belongs instead of littering the repository (cairn) — plus two command-line tools that carry the mechanics: a decision shelf that keeps decision records outside every repo, and a delivery tool that discovers and runs a repository’s own checks and drafts evidence-bound receipts.',
-      'One npm install works across three different agent harnesses. This portfolio’s own redesign was steered with it: the homepage direction lives on the decision shelf as a record that outlived a dozen working sessions. v1.0.0 is live, with 70 tests keeping the installer honest.',
+      'Off-the-shelf agent skills and workflows kept swelling: every session loaded pages of prose the agent mostly didn’t need, bloating the context before the real work began. And as models got better, they needed less upfront steering; the heavy scaffolding started to read as over-engineering. Dylan wanted a kit of his own: small, curated, and built to let the agent use its best native capabilities.',
+      'agent-skills is that workflow kit, built lean on purpose. Three short skills (compass settles a direction with disposable prototypes, relay hands off bounded work for one compact receipt, cairn leaves a durable marker where it belongs) and a running experiment: give the agent a real command-line tool instead of more prose. The mechanics live in two small CLIs, a decision shelf and a delivery tool, so each skill stays a few paragraphs.',
+      'v1.0.0 is live on npm and installs across three agent harnesses from one command, with 70 tests keeping the installer honest. It is an active workbench: Dylan keeps tweaking, testing, and trialling new pieces to see what earns a permanent spot in the kit.',
     ],
     notes: [
-      'Skills stay lean; the mechanics live in the tools, not the prose.',
-      'Install is reversible, cross-harness, and audited by a doctor command.',
-      'Used to steer this portfolio’s own redesign.',
+      'Curated lean on purpose: short skills, no context bloat.',
+      'The experiment: a real CLI for the agent instead of more prose.',
+      'An active workbench: pieces are added and cut as they prove out.',
     ],
     stack: [
       { label: 'Runtime', value: 'node · javascript' },
@@ -129,9 +129,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: 'live', label: 'in production at bellasbeads.shop' },
     ],
     about: [
-      'A jewelry maker needed a real store — browsing, payment, shipping, tracking, and day-to-day admin — without platform fees or a site she couldn’t run herself.',
+      'A jewelry maker needed a real store, with browsing, payment, shipping, tracking, and day-to-day admin, without platform fees or a site she couldn’t run herself.',
       'Built as a complete platform from wireframe to handoff: a React + TypeScript storefront on a Node/Express backend with Postgres via Supabase, plus Stripe for payments, Shippo for shipping labels, and Resend for email. Each service reports back on its own schedule, so their webhooks are reconciled into one order lifecycle with CSRF protection, rate limiting, and hashed tokens throughout.',
-      'In production at bellasbeads.shop with guest and account checkout, order history, shipment tracking, and an admin dashboard the owner operates on her own — 400+ commits from wireframe to handoff.',
+      'In production at bellasbeads.shop with guest and account checkout, order history, shipment tracking, and an admin dashboard the owner operates on her own, taken from wireframe to handoff solo.',
     ],
     notes: [
       'CSRF protection, rate limiting, and HMAC token hashing throughout.',
@@ -172,9 +172,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: '06·23', label: 'live on a dedicated account' },
     ],
     about: [
-      'Trading automation usually means a black box: you find out what it did after the money moved. The interesting engineering problem is the opposite — make an automated workflow fully reviewable before it is allowed to act.',
+      'Trading automation usually means a black box: you find out what it did after the money moved. The interesting engineering problem is the opposite: make an automated workflow fully reviewable before it is allowed to act.',
       'A headless Claude Code session wakes at 15:45 ET on weekdays, checks one simple RSI(2) mean-reversion signal, and routes proposed orders through Robinhood’s Agentic Trading MCP. Every run writes down the proposed entry, the simulated fill, and the deterministic gate decision that allowed or blocked it.',
-      'Each session leaves an inspectable journal instead of a surprise. The loop ran dry for review first and went live on a dedicated account on June 23 — a side project in reviewable automation, not a professional trading identity.',
+      'Each session leaves an inspectable journal instead of a surprise. The loop ran dry for review first and went live on a dedicated account on June 23. A side project in reviewable automation, not a professional trading identity.',
     ],
     notes: [
       'Runs from launchd on weekday afternoons; no manual click required to produce a reviewable proposal.',
@@ -214,9 +214,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: 'live', label: 'nohardfeelings.app' },
     ],
     about: [
-      'A working cover band needed a site that always shows the next show — and nobody in the band was ever going to log into a CMS to update it.',
+      'A working cover band needed a site that always shows the next show, and nobody in the band was ever going to log into a CMS to update it.',
       'Google Calendar is the CMS: the band edits the calendar it already uses, and the site reads show dates straight from it. Astro + React + Tailwind, with a 3D-flippable album-cover hero for the band feel, tuned across devices.',
-      'Live at nohardfeelings.app with zero databases and zero maintenance — show dates update themselves when the band updates its calendar.',
+      'Live at nohardfeelings.app with zero databases and zero maintenance: show dates update themselves when the band updates its calendar.',
     ],
     notes: [
       'Google Calendar acts as the band’s CMS; the site needs zero maintenance.',
@@ -255,9 +255,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: 'NYC', label: 'seeded with real open-data construction contracts' },
     ],
     about: [
-      'The course brief: model a real construction-maintenance workflow as a four-person team — outside users file requests, admins turn them into work orders, contractors do the work, and invoices get issued at the end.',
+      'The course brief: model a real construction-maintenance workflow as a four-person team: outside users file requests, admins turn them into work orders, contractors do the work, and invoices get issued at the end.',
       'Express 5 on raw-driver MongoDB with Handlebars templates and session auth via bcrypt, seeded with NYC open-data records for awarded construction contracts. Input validation is hand-written at every boundary, per the course requirement.',
-      'The full request → work order → contractor → invoice lifecycle shipped, including a four-state invoice flow with charge-code validation, line totals, and tax — delivered on time by a team of four.',
+      'The full request → work order → contractor → invoice lifecycle shipped, including a four-state invoice flow with charge-code validation, line totals, and tax, delivered on time by a team of four.',
     ],
     notes: [
       'Invoice lifecycle: charge-code validation, line totals, tax, and four states.',
@@ -297,9 +297,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: '20 yrs', label: 'of match data' },
     ],
     about: [
-      'Given twenty years of Premier League matches, how much of a result can you actually predict — and what moves the needle more: the model you pick, or the data work behind it?',
+      'Given twenty years of Premier League matches, how much of a result can you actually predict, and what moves the needle more: the model you pick, or the data work behind it?',
       'The team engineered 39 features for goals, streaks, differentials, and form, then trained eight model families on the same train/test split so the comparison stayed fair.',
-      'XGBoost reached the top reported accuracy on that split, with SVM and logistic regression close behind — and the real lesson was that cleaning, imputation, and feature work moved results more than swapping model families. Coursework context, not a claim of predictive edge.',
+      'XGBoost reached the top reported accuracy on that split, with SVM and logistic regression close behind, and the real lesson was that cleaning, imputation, and feature work moved results more than swapping model families. Coursework context, not a claim of predictive edge.',
     ],
     notes: [
       'Same train/test split across all eight models for a fair comparison.',
