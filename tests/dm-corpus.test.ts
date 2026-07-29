@@ -278,9 +278,17 @@ test('the identity block matches what the homepage publishes', async () => {
 
 test('page.anchors matches the sections the Frost island renders', async () => {
   const island = await readFile(new URL('src/components/frost/FrostSite.jsx', root), 'utf8');
-  const rendered = [...island.matchAll(/className="frost-site-section" id="([a-z]+)"/g)].map(
-    ([, id]) => id,
-  );
+  // Any section carrying the class counts, whatever else it carries: a section
+  // may take a second class for its own layout (About is set as marginalia and
+  // has `frost-about`) without leaving DM's anchor list. What this holds down
+  // is the *set and order* of anchored sections, not how they are styled — an
+  // exact-attribute match would have read a styling change as a missing anchor.
+  // The lookahead is load-bearing: `\b` also matches before a hyphen, so a
+  // `frost-site-section-something` class would have counted as an anchored
+  // section. The class must end at a space or the closing quote.
+  const rendered = [
+    ...island.matchAll(/className="(?:[^"]*\s)?frost-site-section(?=[\s"])[^"]*" id="([a-z]+)"/g),
+  ].map(([, id]) => id);
 
   assert.deepEqual(rendered, [...DM_CORPUS_ANCHORS]);
   assert.deepEqual((corpus.page as Record<string, unknown>).anchors, [...DM_CORPUS_ANCHORS]);
