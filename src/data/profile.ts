@@ -95,7 +95,37 @@ const PROFILE_SOURCE = [
   },
 ] satisfies readonly PublicProfileSourceEntry[];
 
-export const PUBLIC_PROFILE_SITE_SUMMARY = PROFILE_SOURCE[0].summary;
+/**
+ * The raw, unfiltered source array — draft and private entries included.
+ * It exists solely so `tests/dm-corpus.test.ts` can prove that unapproved text
+ * never reaches public output. NEVER build public output from it: every path
+ * that publishes profile text goes through `parsePublicProfileEntries()`.
+ */
+export const PROFILE_SOURCE_UNFILTERED_FOR_LEAK_TEST: readonly PublicProfileSourceEntry[] =
+  PROFILE_SOURCE;
+
+/**
+ * The entry whose approved summary stands in as the site-level summary. It is
+ * resolved through the same published+public filter as every other entry, so
+ * revoking either flag removes the text from public output entirely.
+ */
+const SITE_SUMMARY_ENTRY_ID = 'short-bio';
+
+/**
+ * The identity block, verbatim from what the homepage already publishes
+ * (`PROFILE` in `src/components/frost/frost-data.js`). It lives here because
+ * `src/data/` is the approved source boundary consumers outside the island read
+ * from — the island is a component and can't be imported by build-time
+ * libraries. `tests/dm-corpus.test.ts` fails if the two ever disagree.
+ */
+export const PUBLIC_PROFILE_IDENTITY = {
+  name: 'Dylan McCavitt',
+  role: 'Software engineer',
+  focus: 'Backend systems · product software · practical AI tools',
+  location: 'NYC/NJ area',
+  status: 'Focusing on agentic tooling',
+  email: 'dylanmccavitt@outlook.com',
+} as const;
 
 export function parsePublicProfileEntries(input: unknown): PublicProfileSourceEntry[] {
   const entries = PublicProfileSourceEntrySchema.array().parse(input);
@@ -108,6 +138,28 @@ export function parsePublicProfileEntries(input: unknown): PublicProfileSourceEn
   return publicEntries.map((entry) => ({ ...entry }));
 }
 
-export async function loadPublicProfileEntries(): Promise<PublicProfileSourceEntry[]> {
-  return parsePublicProfileEntries(PROFILE_SOURCE);
+/**
+ * The approved entries. `source` defaults to the real module and exists so a
+ * test can drive this filter with entries the approved source does not carry
+ * (an unapproved one, say) — it widens nothing: whatever is passed goes through
+ * `parsePublicProfileEntries()` exactly as the default does.
+ */
+export async function loadPublicProfileEntries(
+  source: unknown = PROFILE_SOURCE,
+): Promise<PublicProfileSourceEntry[]> {
+  return parsePublicProfileEntries(source);
+}
+
+/**
+ * The site-level summary, or `undefined` when no approved entry supplies one.
+ * It reads the filtered set rather than the source array, so there is no path
+ * by which an unapproved summary can be published; a consumer that gets
+ * `undefined` must omit the field rather than substitute anything. `source`
+ * carries the same meaning as in {@link loadPublicProfileEntries}.
+ */
+export async function loadPublicProfileSiteSummary(
+  source: unknown = PROFILE_SOURCE,
+): Promise<string | undefined> {
+  const entries = await loadPublicProfileEntries(source);
+  return entries.find((entry) => entry.id === SITE_SUMMARY_ENTRY_ID)?.summary;
 }

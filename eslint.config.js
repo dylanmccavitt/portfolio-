@@ -19,6 +19,25 @@ export default [
     },
   },
   {
+    // Plain-.js modules under src/components ship to the browser (the Frost
+    // island's helpers), so they get the browser globals they legitimately use.
+    // .jsx files are not matched by any rule config above and stay unlinted.
+    files: ["src/components/**/*.js"],
+    languageOptions: {
+      globals: {
+        AbortController: "readonly",
+        TextDecoder: "readonly",
+        URL: "readonly",
+        clearTimeout: "readonly",
+        console: "readonly",
+        document: "readonly",
+        fetch: "readonly",
+        setTimeout: "readonly",
+        window: "readonly",
+      },
+    },
+  },
+  {
     ignores: [
       "dist/",
       ".astro/",

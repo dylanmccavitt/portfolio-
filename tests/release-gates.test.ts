@@ -6,7 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { serializeJsonLd } from '@/lib/seo';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; upgrade-insecure-requests";
+/**
+ * Pinned so that widening the policy is a deliberate edit here, reviewed on its
+ * own terms. `connect-src` carries the one origin the DM card posts to; every
+ * other directive stays `'self'`. Repoint it and `vercel.json` together.
+ */
+const DM_SERVICE_ORIGIN = 'https://dm-agent-service-psi.vercel.app';
+const CSP = `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ${DM_SERVICE_ORIGIN}; manifest-src 'self'; upgrade-insecure-requests`;
 
 test('shared JSON-LD serializer preserves data without allowing hostile script termination', () => {
   const hostile = {
@@ -46,6 +52,15 @@ test('Vercel applies the exact global CSP without wildcards or unsafe-eval', asy
   assert.equal(value, CSP);
   assert.equal(value?.includes('*'), false);
   assert.equal(value?.includes('unsafe-eval'), false);
+
+  // The allowance is one exact https origin, not a scheme or a host pattern.
+  const connect = value?.match(/connect-src ([^;]+)/)?.[1]?.trim().split(/\s+/) ?? [];
+  assert.deepEqual(connect, ["'self'", DM_SERVICE_ORIGIN]);
+  for (const source of connect) {
+    if (source === "'self'") continue;
+    assert.ok(source.startsWith('https://'), `${source} must be https`);
+    assert.equal(source.includes('*'), false, `${source} must not be a pattern`);
+  }
 });
 
 test('maintainer-only ruleset payload protects both release branches with the existing CI context', async () => {
