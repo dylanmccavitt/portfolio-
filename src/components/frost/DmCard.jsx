@@ -94,9 +94,10 @@ function writeUi(ui) {
   }
 }
 
-/** Dragging and resizing are desktop affordances; small screens keep the fixed corner. */
+/** Dragging and resizing are desktop affordances; below the card's own
+    full-width mobile breakpoint it keeps the fixed corner. */
 function floatable() {
-  return typeof window !== "undefined" && window.innerWidth >= 720;
+  return typeof window !== "undefined" && window.innerWidth >= 901;
 }
 
 /**
@@ -270,12 +271,14 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
       drag or a corner resize grows from a fixed top-left instead of walking
       off the bottom-right of the screen. */
   const freeze = useCallback(() => {
-    if (!cardRef.current) return;
-    setFrame((current) => {
-      if (current.pos) return current;
-      const rect = cardRef.current.getBoundingClientRect();
-      return { ...current, pos: { x: rect.left, y: rect.top } };
-    });
+    const node = cardRef.current;
+    if (!node) return;
+    // Read the rect outside the updater: updaters must stay pure, and React
+    // may run them more than once.
+    const rect = node.getBoundingClientRect();
+    setFrame((current) =>
+      current.pos ? current : { ...current, pos: { x: rect.left, y: rect.top } }
+    );
   }, []);
 
   const onHeadPointerDown = useCallback(
@@ -302,13 +305,26 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
   );
 
   // The native CSS resize handle lives in the bottom-right corner; a press
-  // there freezes the anchor first so the growth direction makes sense.
+  // there freezes the anchor first so the growth direction makes sense, and
+  // marks a resize in progress — the ResizeObserver below records the card's
+  // size ONLY during that window, so layout-driven growth (a long conversation
+  // reflowing) can never masquerade as a size the visitor chose.
+  const sizingRef = useRef(false);
   const onCardPointerDown = useCallback(
     (event) => {
       if (!floatable() || collapsed) return;
       const rect = cardRef.current?.getBoundingClientRect();
       if (!rect) return;
-      if (rect.right - event.clientX <= 18 && rect.bottom - event.clientY <= 18) freeze();
+      if (rect.right - event.clientX > 18 || rect.bottom - event.clientY > 18) return;
+      sizingRef.current = true;
+      freeze();
+      window.addEventListener(
+        "pointerup",
+        () => {
+          sizingRef.current = false;
+        },
+        { once: true }
+      );
     },
     [collapsed, freeze]
   );
@@ -322,11 +338,9 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
     const node = cardRef.current;
     if (!node || typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(() => {
-      // Only a card already unpinned from its corner records a size — that is
-      // what separates a real corner-drag from the default layout settling.
-      if (collapsed || !floatable()) return;
+      // A size is recorded only while the visitor is dragging the corner.
+      if (!sizingRef.current || collapsed || !floatable()) return;
       setFrame((current) => {
-        if (!current.pos) return current;
         const size = { w: node.offsetWidth, h: node.offsetHeight };
         if (current.size && current.size.w === size.w && current.size.h === size.h) return current;
         return { ...current, size };
@@ -516,7 +530,7 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
   return (
     <aside
       ref={cardRef}
-      className={`frost-dmc${collapsed ? " is-collapsed" : ""}`}
+      className={`frost-dmc${collapsed ? " is-collapsed" : ""}${frame.size ? " is-sized" : ""}`}
       style={frameStyle}
       onPointerDown={onCardPointerDown}
       aria-label="DM, the portfolio agent"

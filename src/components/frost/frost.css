@@ -701,16 +701,23 @@
 }
 
 /* Collapsed: the card folds to its header bar; the conversation stays mounted
-   and the spot on screen is kept. */
+   and the spot on screen is kept. `height: auto !important` because a native
+   corner resize writes an inline height, which must not prop the folded card
+   open. */
 .frost-dmc.is-collapsed {
   gap: 0;
   min-height: 0;
+  height: auto !important;
 }
 
 /* Desktop chrome: the header drags, the bottom-right corner resizes (native
    CSS resize; the component freezes the anchor first so growth heads
-   down-right from a fixed top-left). Small screens keep the fixed corner. */
-@media (min-width: 720px) {
+   down-right from a fixed top-left). The breakpoint matches the card's own
+   full-width mobile rule below — between the two the card is edge-to-edge
+   and must not also grow chrome. The default 560px height cap stays until
+   the card is actually unpinned (`.is-free`), so an untouched card never
+   balloons to its conversation's length. */
+@media (min-width: 901px) {
   .frost-dmc-head {
     cursor: grab;
     touch-action: none;
@@ -723,6 +730,9 @@
     min-width: 300px;
     min-height: 260px;
     max-width: min(640px, calc(100vw - 32px));
+  }
+
+  .frost-dmc.is-sized:not(.is-collapsed) {
     max-height: calc(100vh - 32px);
   }
 }
