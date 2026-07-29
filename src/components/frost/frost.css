@@ -325,11 +325,43 @@
 
 /* About condenses in: hidden only when scripting is available, so the
    no-JS page stays complete. */
+/* About is set as marginalia: the section label runs in the left margin and
+   the name carries the section at display size. Composition, not more copy —
+   the section used to be a heading and a kicker stacked over one short line,
+   which read as an empty slot rather than a short section. */
+.frost-about {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+/* The rail is a section title like any other — same face, size, weight and
+   fringe as Work / Journey / Contact. Only its POSITION differs, so this rule
+   carries position and nothing else; everything visual comes from the shared
+   `.frost-site-section h2`. */
+.frost-site-section .frost-about-rail {
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .frost-about {
+    /* Wide enough for "About" at the shared 26px, which the old 92px rail
+       column (sized for a 10px mono label) could not hold. */
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .frost-site-section .frost-about-rail {
+    /* Optical: drops the 26px cap-height onto the first line of 15px prose. */
+    padding-top: 4px;
+  }
+}
+
 .frost-about-condense {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-width: 720px;
+  gap: 13px;
+  max-width: 860px;
 }
 
 .frost-about-condense p {
@@ -337,8 +369,14 @@
   max-width: 640px;
   font-size: 15px;
   line-height: 1.65;
+  /* The About prose carries the fringe too, at a third of the heading's
+     offset: at 15px over three lines a 1.4px split stops being an accent and
+     starts reading as blur, so this is tuned to sit just at the threshold
+     where the colour is visible and the letterforms stay crisp. */
+  text-shadow: -0.5px 0 rgba(255, 42, 109, 0.32), 0.5px 0 rgba(0, 174, 255, 0.32);
   transition: opacity 0.9s ease, transform 0.9s ease, filter 0.9s ease;
 }
+
 
 .frost-about-condense p + p {
   transition-delay: 0.22s;
@@ -451,11 +489,17 @@
   padding-bottom: 64px;
 }
 
+/* Every section title carries the chromatic fringe — the glitch's accent at
+   rest, the same split the active nav item and the revealed card's open cue
+   use. The offset is scaled to the type: 1.4px on the 26px headings, less on
+   the 10px About rail, so the split reads as the same effect at both sizes
+   rather than as two different ones. */
 .frost-site-section h2 {
   margin: 0 0 4px;
   font-size: 26px;
   font-weight: 640;
   letter-spacing: -0.03em;
+  text-shadow: -1.4px 0 rgba(255, 42, 109, 0.4), 1.4px 0 rgba(0, 174, 255, 0.4);
 }
 
 .frost-site-section > .frost-kicker {

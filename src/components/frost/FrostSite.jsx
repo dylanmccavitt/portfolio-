@@ -68,8 +68,8 @@ function FlowIn({ className, children }) {
   );
 }
 
-/** About condenses in: the prose blurs to sharp, staggered, the first
-    time the section scrolls into view. Pure CSS transition. */
+/** About condenses in: the name and the prose blur to sharp, staggered,
+    the first time the section scrolls into view. Pure CSS transition. */
 function CondenseAbout() {
   const ref = useRef(null);
   const [seen, setSeen] = useState(false);
@@ -95,7 +95,12 @@ function CondenseAbout() {
 
   return (
     <div ref={ref} className={`frost-about-condense${seen ? " is-in" : ""}`}>
-      <p>Software Engineer currently focused on Agentic AI.</p>
+      <p>
+        Software engineer focused on agentic tooling, backed by full-stack experience —
+        backend systems, product software, and the practical AI tools in the work below.
+        The path here ran through economics, legal operations, and cyber risk before an
+        M.S. in computer science.
+      </p>
     </div>
   );
 }
@@ -294,9 +299,13 @@ function SiteLayout({ projects, journey, fx, onDm }) {
 
       <h1 className="frost-sr-only">{PROFILE.name}, {PROFILE.role}</h1>
 
-      <section className="frost-site-section" id="about">
-        <h2>About</h2>
-        <p className="frost-kicker">The short version</p>
+      {/* Marginalia: the section label runs in the left margin instead of
+          stacking on top, so the prose starts at the top of the section rather
+          than a heading announcing it. It stays an <h2> — only its placement
+          and voice change, so the page outline is exactly what it was. The
+          name belongs to the sticky header alone. */}
+      <section className="frost-site-section frost-about" id="about">
+        <h2 className="frost-about-rail">About</h2>
         <CondenseAbout />
       </section>
 
