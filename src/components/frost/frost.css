@@ -142,28 +142,42 @@
   opacity: 0.9;
 }
 
-/* Explore: typed-rows reveal — Line / Proof / Open as labeled mono rows. */
+/* Explore: typed-rows reveal — Line / Proof / Open as a tiny dossier. */
 .frost-glitch-facts--rows {
   justify-content: center;
-  gap: 11px;
-  padding: 16px 18px;
+  gap: 0;
+  padding: 14px 16px;
 }
 
 .frost-fact-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
   width: 100%;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(38, 52, 61, 0.14);
+}
+
+.frost-fact-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
 }
 
 .frost-fact-key {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--frost-muted);
+  color: var(--frost-ink);
+  opacity: 0.45;
   padding-top: 2px;
+}
+
+.frost-glitch-facts--rows p {
+  font-size: 13.5px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
 }
 
 .frost-glitch-facts--rows .frost-proof {
@@ -1371,6 +1385,48 @@
   border-bottom: 1px solid var(--frost-line);
 }
 
+/* Explore: match homepage sticky chrome — section cue left, mono Ask DM right. */
+.frost-doc-head--explore {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-wrap: nowrap;
+  margin: 0 calc(-1 * clamp(22px, 4.5vw, 64px));
+  padding: 0 clamp(22px, 4.5vw, 64px);
+  background: var(--frost-surface);
+}
+
+.frost-doc-head--explore .frost-site-here-label {
+  color: inherit;
+  text-decoration: none;
+}
+
+.frost-doc-head--explore .frost-site-here a.frost-site-here-label:hover {
+  color: var(--frost-ink);
+}
+
+.frost-doc--explore .frost-site-actions .frost-dm-button {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--frost-ink);
+  border-radius: 2px;
+  color: var(--frost-ink);
+  background: transparent;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.frost-doc--explore .frost-site-actions .frost-dm-button:hover {
+  color: var(--frost-ink);
+  background: transparent;
+  border-color: var(--frost-ink);
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
+}
+
 .frost-doc-head > a {
   color: var(--frost-ink);
   font-size: 16.5px;
@@ -1574,25 +1630,29 @@
   letter-spacing: -0.01em;
 }
 
-/* Explore: story-rail project page — left labels, prose/chips on the right. */
+/* Explore: story-rail — same marginalia voice as homepage section rails. */
 .look-rail {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
-  margin-top: 36px;
+  gap: 12px;
+  margin-top: 0;
+  padding: 28px 0;
   align-items: start;
+  border-top: 1px solid var(--frost-line);
 }
 
 .look-rail h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 22px;
   font-weight: 640;
-  letter-spacing: -0.01em;
-  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+  letter-spacing: -0.03em;
+  text-shadow: -1.4px 0 rgba(255, 42, 109, 0.4), 1.4px 0 rgba(0, 174, 255, 0.4);
 }
 
 .look-rail .look-copy {
   max-width: 54ch;
+  font-size: 15px;
+  line-height: 1.65;
 }
 
 .look-rail .frost-doc-facts {
@@ -1605,8 +1665,9 @@
 
 @media (min-width: 720px) {
   .look-rail {
-    grid-template-columns: 120px minmax(0, 1fr);
-    gap: 28px;
+    grid-template-columns: 148px minmax(0, 1fr);
+    gap: 36px;
+    padding: 32px 0;
   }
 
   .look-rail h2 {
@@ -1614,8 +1675,14 @@
   }
 }
 
-.frost-doc--rail .look-paper .frost-doc-actions {
-  padding-top: 40px;
+.frost-doc--explore .look-paper .frost-doc-actions {
+  padding-top: 36px;
+  border-top: 1px solid var(--frost-line);
+  margin-top: 8px;
+}
+
+.frost-doc--explore .look-title {
+  padding-bottom: 28px;
 }
 
 .look-copy {

@@ -1,5 +1,6 @@
 ---
 import Frost from '@/layouts/Frost.astro';
+import { PROFILE } from '@/components/frost/frost-data.js';
 import { publicResumeEducationTracks, publicResumeExperienceTracks } from '@/data/resume';
 import { journeyMeta } from '@/lib/seo';
 
@@ -11,15 +12,21 @@ const education = publicResumeEducationTracks();
 ---
 
 <Frost title="Resume · Dylan McCavitt" meta={meta}>
-  <main class="frost frost-doc" id="main">
-    <header class="frost-doc-head">
-      <a href="/">Dylan McCavitt</a>
-      <nav aria-label="Primary">
+  <main class="frost frost-doc frost-doc--explore" id="main">
+    <header class="frost-doc-head frost-doc-head--explore">
+      <a class="frost-sr-only" href="/">{PROFILE.name} — home</a>
+      <p class="frost-site-here">
+        <a class="frost-site-here-label" href="/#journey">Journey</a>
+      </p>
+      <nav aria-label="Primary" class="frost-sr-only">
         <a href="/#about">About</a>
         <a href="/#work">Work</a>
         <a href="/#journey">Journey</a>
         <a href="/#contact">Contact</a>
       </nav>
+      <div class="frost-site-actions">
+        <a class="frost-dm-button" href={`mailto:${PROFILE.email}`}>Ask DM</a>
+      </div>
     </header>
 
     <div class="frost-doc-title">

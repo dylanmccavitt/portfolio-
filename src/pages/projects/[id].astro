@@ -1,6 +1,7 @@
 ---
 import Frost from '@/layouts/Frost.astro';
 import DmDock from '@/components/frost/DmDock.jsx';
+import { PROFILE } from '@/components/frost/frost-data.js';
 import { resolveDmEndpoint } from '@/components/frost/dm-client.js';
 import { buildDmPageManifest } from '@/lib/dm/page-manifest';
 import { publicProjectStaticPaths } from '@/lib/public-project-route-resolver';
@@ -49,23 +50,31 @@ const dmProjects = dmEndpoint
 ---
 
 <Frost title={meta.title} meta={meta}>
-  <main class="frost frost-doc frost-doc--rail" id="main">
-    <header class="frost-doc-head">
-      <a href="/">Dylan McCavitt</a>
-      <nav aria-label="Primary">
+  <main class="frost frost-doc frost-doc--explore" id="main">
+    {/* Same sticky chrome as the homepage explore bar: section cue + Ask DM. */}
+    <header class="frost-doc-head frost-doc-head--explore">
+      <a class="frost-sr-only" href="/">{PROFILE.name} — home</a>
+      <p class="frost-site-here">
+        <a class="frost-site-here-label" href="/#work">Work</a>
+      </p>
+      <nav aria-label="Primary" class="frost-sr-only">
         <a href="/#about">About</a>
         <a href="/#work">Work</a>
         <a href="/#journey">Journey</a>
         <a href="/#contact">Contact</a>
       </nav>
-      {dmEndpoint && (
-        <DmDock
-          client:only="react"
-          endpoint={dmEndpoint}
-          manifest={dmManifest}
-          projects={dmProjects}
-        />
-      )}
+      <div class="frost-site-actions">
+        {dmEndpoint ? (
+          <DmDock
+            client:only="react"
+            endpoint={dmEndpoint}
+            manifest={dmManifest}
+            projects={dmProjects}
+          />
+        ) : (
+          <a class="frost-dm-button" href={`mailto:${PROFILE.email}`}>Ask DM</a>
+        )}
+      </div>
     </header>
 
     <div class="look-paper">
