@@ -666,6 +666,20 @@
   border-bottom: 1px solid var(--frost-line);
 }
 
+/* Explore: proximity snap so a stop near Journey lands with Work off-screen.
+   Proximity (not mandatory) so tall Work still scrolls freely through cards.
+   Honors reduced motion below. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.frost-site--explore) {
+    scroll-snap-type: y proximity;
+  }
+
+  .frost-site--explore .frost-site-section {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+  }
+}
+
 .frost-site-section:last-child {
   border-bottom: 0;
   padding-bottom: 64px;
