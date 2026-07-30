@@ -457,10 +457,25 @@ function DmPanel({ onClose }) {
  *     eyebrow: string, line: string, proof: string[] }>,
  *   journey?: Array<{ id: string, when: string, place: string, role: string }>,
  *   dmManifest?: { anchors: string[], projectIds: string[], actions: string[] } | null,
+ *   initialEffects?: boolean,
  * }} props
  */
-export default function FrostSite({ projects = [], journey = [], dmManifest = null }) {
+export default function FrostSite({
+  projects = [],
+  journey = [],
+  dmManifest = null,
+  initialEffects = false,
+}) {
   const [dmOpen, setDmOpen] = useState(false);
+  const [effectsEnabled, setEffectsEnabled] = useState(initialEffects);
+
+  // This page is static, so its server render cannot vary by query string.
+  // Start both SSR and hydration from the same canvas-free tree, then enable
+  // the default effect after hydration unless the URL explicitly opts out.
+  useEffect(() => {
+    const mode = new URLSearchParams(window.location.search).get("effect");
+    setEffectsEnabled(mode !== "off");
+  }, []);
 
   // Session pickup, after hydration so the server and client first paints
   // agree. Only the live-card path touches sessionStorage: with no endpoint
@@ -503,10 +518,6 @@ export default function FrostSite({ projects = [], journey = [], dmManifest = nu
     if (DM_ENDPOINT) writeDmOpen(open);
   };
 
-  const effectMode = typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search).get("effect")
-    : null;
-
   return (
     <main className="frost" id="main">
       <div className="frost-effect">
@@ -514,7 +525,7 @@ export default function FrostSite({ projects = [], journey = [], dmManifest = nu
           <SiteLayout
             projects={projects}
             journey={journey}
-            fx={effectMode !== "off"}
+            fx={effectsEnabled}
             onDm={() => toggleDm(true)}
           />
           <footer className="frost-footer">

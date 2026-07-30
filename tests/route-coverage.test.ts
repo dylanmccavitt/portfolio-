@@ -231,6 +231,19 @@ test('every Vercel redirect lands on a route, redirect, or Frost anchor', async 
   }
 });
 
+test('the retired homelab route lands on the current Work index', async () => {
+  const config = JSON.parse(await read('vercel.json')) as {
+    redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
+  };
+  const redirect = config.redirects?.find(({ source }) => source === '/homelab/topology');
+
+  assert.deepEqual(redirect, {
+    source: '/homelab/topology',
+    destination: '/#work',
+    permanent: true,
+  });
+});
+
 test('the homepage keeps semantic no-JS navigation and contact fallbacks', async () => {
   const source = await read('src/components/frost/FrostSite.jsx');
   const destinationIds = [
@@ -256,6 +269,33 @@ test('the homepage keeps semantic no-JS navigation and contact fallbacks', async
     [...source.matchAll(/href=\{`mailto:\$\{PROFILE\.email\}`\}/g)].length >= 3,
     'the header, Contact section, and unavailable-DM panel must each retain an email fallback',
   );
+});
+
+test('effect=off keeps SSR and hydration on the same canvas-free first render', async () => {
+  const home = await read('src/pages/index.astro');
+  const island = await read('src/components/frost/FrostSite.jsx');
+
+  assert.match(
+    home,
+    /<FrostSite[\s\S]*initialEffects=\{false\}[\s\S]*\/>/,
+    'the static homepage must serialize a canvas-free initial effect state',
+  );
+  assert.match(
+    island,
+    /initialEffects = false[\s\S]*useState\(initialEffects\)/,
+    'SSR and the first client render must initialize effects from the same prop',
+  );
+  assert.doesNotMatch(
+    island,
+    /typeof window !== "undefined"[\s\S]*new URLSearchParams\(window\.location\.search\)/,
+    'rendering must not derive the initial tree from browser-only query state',
+  );
+  assert.match(
+    island,
+    /useEffect\(\(\) => \{[\s\S]*new URLSearchParams\(window\.location\.search\)[\s\S]*setEffectsEnabled\(mode !== "off"\)[\s\S]*\}, \[\]\)/,
+    'query-dependent effects must be enabled only after hydration',
+  );
+  assert.match(island, /fx=\{effectsEnabled\}/);
 });
 
 test('every served route renders through the Frost shell', async () => {
