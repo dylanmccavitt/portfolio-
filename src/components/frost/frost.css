@@ -1853,16 +1853,6 @@
   scroll-margin-top: 72px;
   padding: 24px 0;
   border-top: 1px solid var(--frost-line);
-  transition: background-color 280ms ease;
-}
-
-.look-index-section:target {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 42, 109, 0.06),
-    rgba(0, 174, 255, 0.04) 42%,
-    transparent 78%
-  );
 }
 
 .look-index-section h2 {
@@ -1906,8 +1896,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .look-index-nav a,
-  .look-index-section {
+  .look-index-nav a {
     transition: none;
   }
 }
