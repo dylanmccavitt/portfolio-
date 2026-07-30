@@ -21,7 +21,7 @@ interface Props {
   layout?: ProjectPageLayout;
 }
 
-const { project: p, layout = 'story-rail' } = Astro.props;
+const { project: p, layout = 'index-strip' } = Astro.props;
 
 const imageShots = p.shots.filter((shot) => shot.kind === 'image');
 const hasStory = p.about.length >= 3;
@@ -76,34 +76,34 @@ const beats = hasStory
         {imageShots.length > 0 && <a href="#project-screens">Screens</a>}
       </nav>
       <div class="look-index-main">
-        <div class="frost-doc-title look-title">
+        <div class="frost-doc-title look-title look-index-title">
           <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
           <h1>{p.title}</h1>
           <p class="look-title-line">{p.line}</p>
         </div>
         {beats.map((beat) => (
-          <section class="look-beat" aria-labelledby={`project-${beat.id}`}>
-            <h2 id={`project-${beat.id}`}>{beat.label}</h2>
+          <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
+            <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
             <p class="look-copy">{beat.copy}</p>
           </section>
         ))}
         {p.stack.length > 0 && (
-          <section class="look-beat" aria-labelledby="project-stack">
-            <h2 id="project-stack">Stack</h2>
+          <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
+            <h2 id="heading-stack">Stack</h2>
             <div class="frost-doc-facts">
               {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
             </div>
           </section>
         )}
-        <section class="look-beat" aria-labelledby="project-metrics">
-          <h2 id="project-metrics">Metrics</h2>
+        <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
+          <h2 id="heading-metrics">Metrics</h2>
           <div class="frost-doc-facts">
             {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
           </div>
         </section>
         {imageShots.length > 0 && (
-          <section class="look-beat" aria-labelledby="project-screens">
-            <h2 id="project-screens">Screens</h2>
+          <section class="look-index-section" id="project-screens" aria-labelledby="heading-screens">
+            <h2 id="heading-screens">Screens</h2>
             <div class="frost-gallery">
               {imageShots.map((shot) => (
                 <figure>

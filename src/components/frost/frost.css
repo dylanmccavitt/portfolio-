@@ -1802,8 +1802,10 @@
 
 .look-index-nav {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--frost-line);
 }
 
 .look-index-nav a {
@@ -1823,20 +1825,54 @@
 .look-index-main {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 0;
   min-width: 0;
+}
+
+.look-index-title {
+  padding-bottom: 8px;
+}
+
+.look-index-section {
+  /* Clear the sticky doc header so TOC jumps land on the heading, not mid-copy. */
+  scroll-margin-top: 72px;
+  padding: 28px 0;
+  border-top: 1px solid var(--frost-line);
+}
+
+.look-index-section h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+}
+
+.look-index-section .look-copy {
+  max-width: 54ch;
+  margin: 0;
+}
+
+.look-index-section .frost-doc-facts,
+.look-index-section .frost-gallery {
+  margin: 0;
 }
 
 @media (min-width: 800px) {
   .look-index {
-    grid-template-columns: 120px minmax(0, 1fr);
-    gap: 40px;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 48px;
     align-items: start;
   }
 
   .look-index-nav {
     position: sticky;
-    top: 78px;
+    top: 72px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 4px 0 0;
+    border-bottom: 0;
   }
 }
 
