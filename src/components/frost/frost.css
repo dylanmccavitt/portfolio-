@@ -1794,27 +1794,42 @@
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.look-index) {
+    scroll-behavior: smooth;
+  }
+}
+
 .look-index {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 28px;
+  gap: 22px;
 }
 
 .look-index-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px 14px;
-  padding-bottom: 4px;
+  padding: 2px 0 12px;
   border-bottom: 1px solid var(--frost-line);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.look-index-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .look-index-nav a {
+  flex: 0 0 auto;
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--frost-muted);
   text-decoration: none;
+  transition: color 160ms ease, text-shadow 160ms ease;
 }
 
 .look-index-nav a:hover {
@@ -1830,14 +1845,24 @@
 }
 
 .look-index-title {
-  padding-bottom: 8px;
+  padding-bottom: 4px;
 }
 
 .look-index-section {
   /* Clear the sticky doc header so TOC jumps land on the heading, not mid-copy. */
   scroll-margin-top: 72px;
-  padding: 28px 0;
+  padding: 24px 0;
   border-top: 1px solid var(--frost-line);
+  transition: background-color 280ms ease;
+}
+
+.look-index-section:target {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 42, 109, 0.06),
+    rgba(0, 174, 255, 0.04) 42%,
+    transparent 78%
+  );
 }
 
 .look-index-section h2 {
@@ -1873,6 +1898,17 @@
     gap: 10px;
     padding: 4px 0 0;
     border-bottom: 0;
+  }
+
+  .look-index-section {
+    padding: 28px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .look-index-nav a,
+  .look-index-section {
+    transition: none;
   }
 }
 
