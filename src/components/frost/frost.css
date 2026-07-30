@@ -453,9 +453,9 @@
   border-bottom: 1px solid var(--frost-line);
 }
 
-/* Explore preview: brand + Ask DM only (canvas: nav=side-marginalia). */
+/* Explore preview: Ask DM only — the name owns the hero, not the sticky bar. */
 .frost-site-head--minimal {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 /* Brand-hero first open (explore). Content-height — not a full viewport —
@@ -484,21 +484,6 @@
   letter-spacing: -0.045em;
   line-height: 0.95;
   text-shadow: -1.8px 0 rgba(255, 42, 109, 0.42), 1.8px 0 rgba(0, 174, 255, 0.42);
-}
-
-.frost-hero-glitch,
-.frost-hero-snap,
-.frost-hero-snap > div {
-  width: fit-content;
-  max-width: 100%;
-}
-
-.frost-hero-snap .snapfx-out {
-  opacity: 0;
-}
-
-.frost-hero-glitch.is-boot .frost-hero-snap .snapfx-out {
-  animation: frost-glitch-out 0.75s ease forwards;
 }
 
 .frost-hero-line {
@@ -1577,8 +1562,7 @@
   .frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out,
   li.frost-glitch-cell.is-burst .frost-glitch-snap .snapfx-out,
   li.frost-glitch-cell.is-burst .frost-glitch-teaser,
-  li.frost-glitch-cell.is-dm-lit .frost-glitch-snap .snapfx-out,
-  .frost-hero-glitch.is-boot .frost-hero-snap .snapfx-out {
+  li.frost-glitch-cell.is-dm-lit .frost-glitch-snap .snapfx-out {
     animation: none;
   }
 

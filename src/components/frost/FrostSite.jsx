@@ -204,39 +204,6 @@ function ContactBlock() {
   );
 }
 
-/** Brand-hero name: SnapshotFx keeps a corrupted frame ready; a one-shot
-    boot class flashes it on load, then settles to clean type. Reduced motion
-    and `?effect=off` skip the burst entirely. */
-function HeroName({ fx }) {
-  const [boot, setBoot] = useState(false);
-
-  useEffect(() => {
-    if (!fx) return undefined;
-    if (typeof window === "undefined") return undefined;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
-
-    // Give SnapshotFx a beat to rasterize before flashing the corrupted frame.
-    const start = window.setTimeout(() => setBoot(true), 220);
-    const end = window.setTimeout(() => setBoot(false), 980);
-    return () => {
-      window.clearTimeout(start);
-      window.clearTimeout(end);
-    };
-  }, [fx]);
-
-  const title = <h1 className="frost-hero-title">{PROFILE.name}</h1>;
-
-  if (!fx) return title;
-
-  return (
-    <div className={`frost-hero-glitch${boot ? " is-boot" : ""}`}>
-      <SnapshotFx create={createGlitch} options={GLITCH_OPTIONS} className="frost-hero-snap">
-        {title}
-      </SnapshotFx>
-    </div>
-  );
-}
-
 function SiteLayout({ projects, journey, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [burstId, setBurstId] = useState(null);
@@ -350,12 +317,6 @@ function SiteLayout({ projects, journey, fx, onDm }) {
     go(id);
   };
 
-  const onBrandLink = (event) => {
-    event.preventDefault();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    if (typeof history !== "undefined") history.replaceState(null, "", "#main");
-  };
-
   const onDmLink = (event) => {
     event.preventDefault();
     onDm();
@@ -365,12 +326,10 @@ function SiteLayout({ projects, journey, fx, onDm }) {
     <div className="frost-site frost-site--explore">
       <div className="frost-boot-fade">
         <header className="frost-site-head frost-site-head--minimal">
-          <a
-            className="frost-site-brand"
-            href="#main"
-            onClick={onBrandLink}
-          >
-            Dylan McCavitt
+          {/* Name lives in the hero only — repeating it in the sticky bar
+              reads redundant. A screen-reader home jump stays for no-JS. */}
+          <a className="frost-sr-only" href="#main">
+            {PROFILE.name} — top of page
           </a>
           {/* Section chips leave the sticky bar; real hash links stay for
               no-JS / screen-reader jumps. Visible labels are the left rails. */}
@@ -399,12 +358,12 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </header>
       </div>
 
-      {/* Brand-hero open: name boot-glitches, About prose is absorbed so the
-          first composition is one beat — not a full viewport then a leftover
-          About section. `#about` stays on this block for redirects / DM go. */}
+      {/* Brand-hero open: chromatic fringe on the name (settle-fringe), About
+          prose absorbed so the first composition is one beat. `#about` stays
+          for redirects / DM go. */}
       <section className="frost-site-section frost-hero" id="about" aria-label="About">
         <p className="frost-kicker">{PROFILE.role}</p>
-        <HeroName fx={fx} />
+        <h1 className="frost-hero-title">{PROFILE.name}</h1>
         <p className="frost-hero-line">{PROFILE.focus}</p>
         <CondenseAbout />
         <div className="frost-hero-actions">
