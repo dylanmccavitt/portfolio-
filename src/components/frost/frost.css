@@ -622,6 +622,27 @@
   background: #1b262e;
 }
 
+/* Explore: mono chip — tool-like, quieter than the solid pill. */
+.frost-site--explore .frost-site-actions .frost-dm-button {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--frost-ink);
+  border-radius: 2px;
+  color: var(--frost-ink);
+  background: transparent;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.frost-site--explore .frost-site-actions .frost-dm-button:hover {
+  color: var(--frost-ink);
+  background: transparent;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
+}
+
 .frost-site-section {
   padding: 44px 0 30px;
   scroll-margin-top: 70px;

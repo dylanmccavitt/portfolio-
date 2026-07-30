@@ -360,24 +360,13 @@ function SiteLayout({ projects, journey, fx, onDm }) {
 
       {/* Brand-hero open: chromatic fringe on the name (settle-fringe), About
           prose absorbed so the first composition is one beat. `#about` stays
-          for redirects / DM go. */}
+          for redirects / DM go. Ask DM lives only in the sticky bar
+          (canvas: sticky-only + mono-chip); no See work — Work is next. */}
       <section className="frost-site-section frost-hero" id="about" aria-label="About">
         <p className="frost-kicker">{PROFILE.role}</p>
         <h1 className="frost-hero-title">{PROFILE.name}</h1>
         <p className="frost-hero-line">{PROFILE.focus}</p>
         <CondenseAbout />
-        <div className="frost-hero-actions">
-          <a className="frost-hero-work" href="#work" onClick={(event) => onSectionLink(event, "work")}>
-            See work
-          </a>
-          <a
-            className="frost-dm-button"
-            href={`mailto:${PROFILE.email}`}
-            onClick={onDmLink}
-          >
-            Ask DM
-          </a>
-        </div>
       </section>
 
       <section className="frost-site-section frost-marginalia" id="work">
