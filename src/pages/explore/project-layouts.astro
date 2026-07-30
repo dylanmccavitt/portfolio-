@@ -1,0 +1,70 @@
+---
+/**
+ * Explore-only layout lab. Not in the sitemap — branch preview surface so
+ * every project-page composition can be compared with real catalog content.
+ */
+import Frost from '@/layouts/Frost.astro';
+import ProjectBody from '@/components/frost/ProjectBody.astro';
+import type { ProjectPageLayout } from '@/components/frost/ProjectBody.astro';
+import { PROFILE } from '@/components/frost/frost-data.js';
+import { loadPublicProjectDetailBySlug } from '@/lib/public-projects';
+
+const LAYOUTS: { id: ProjectPageLayout; label: string; blurb: string }[] = [
+  { id: 'story-rail', label: 'Story rail', blurb: 'Current keeper — left labels, prose right.' },
+  { id: 'numbered-beats', label: 'Numbered beats', blurb: '01 / 02 / 03 with short paragraphs.' },
+  { id: 'outcome-first', label: 'Outcome first', blurb: 'Result owns the open; problem/approach follow.' },
+  { id: 'two-column', label: 'Two-column', blurb: 'Title + meta left, story scrolls right.' },
+  { id: 'index-strip', label: 'Index strip', blurb: 'Mono TOC left, full sections right.' },
+  { id: 'triptych', label: 'Triptych', blurb: 'Three equal Problem / Approach / Outcome panels.' },
+  { id: 'tight-dossier', label: 'Tight dossier', blurb: 'Title, lede, three compact rows.' },
+  { id: 'hero-proof', label: 'Hero + proof', blurb: 'Metrics strip under the title, then story.' },
+];
+
+const { project } = await loadPublicProjectDetailBySlug('agent-skills');
+if (!project) throw new Error('explore lab needs the agent-skills project in the catalog');
+---
+
+<Frost title="Project layout lab · explore">
+  <main class="frost frost-doc frost-doc--explore explore-lab" id="main">
+    <header class="frost-doc-head frost-doc-head--explore">
+      <a class="frost-sr-only" href="/">{PROFILE.name} — home</a>
+      <p class="frost-site-here">
+        <span class="frost-site-here-label">Layouts</span>
+      </p>
+      <nav aria-label="Primary" class="frost-sr-only">
+        <a href="/#work">Work</a>
+      </nav>
+      <div class="frost-site-actions">
+        <a class="frost-dm-button" href={`mailto:${PROFILE.email}`}>Ask DM</a>
+      </div>
+    </header>
+
+    <div class="explore-lab-intro">
+      <p class="frost-kicker">Explore · Agent Skills as the sample</p>
+      <h1>Project page layouts</h1>
+      <p class="look-title-line">
+        Same project, eight compositions. Jump to a layout, or open a full-page preview.
+      </p>
+      <nav class="explore-lab-toc" aria-label="Layouts">
+        {LAYOUTS.map((entry) => (
+          <a href={`#layout-${entry.id}`}>{entry.label}</a>
+        ))}
+      </nav>
+    </div>
+
+    {LAYOUTS.map((entry) => (
+      <section class="explore-lab-block" id={`layout-${entry.id}`} aria-labelledby={`heading-${entry.id}`}>
+        <header class="explore-lab-banner">
+          <div>
+            <h2 id={`heading-${entry.id}`}>{entry.label}</h2>
+            <p>{entry.blurb}</p>
+          </div>
+          <a class="explore-lab-open" href={`/explore/project-layouts/${entry.id}`}>Open full page →</a>
+        </header>
+        <div class="explore-lab-frame">
+          <ProjectBody project={project} layout={entry.id} />
+        </div>
+      </section>
+    ))}
+  </main>
+</Frost>

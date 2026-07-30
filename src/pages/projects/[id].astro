@@ -1,6 +1,7 @@
 ---
 import Frost from '@/layouts/Frost.astro';
 import DmDock from '@/components/frost/DmDock.jsx';
+import ProjectBody from '@/components/frost/ProjectBody.astro';
 import { PROFILE } from '@/components/frost/frost-data.js';
 import { resolveDmEndpoint } from '@/components/frost/dm-client.js';
 import { buildDmPageManifest } from '@/lib/dm/page-manifest';
@@ -19,24 +20,7 @@ if (!project) return new Response(null, { status: 404, statusText: 'Not Found' }
 
 const p = project;
 const meta = projectMeta(p);
-const imageShots = p.shots.filter((shot) => shot.kind === 'image');
 
-// Catalog convention (#350): `about` is exactly [problem, approach, outcome].
-// Rows published before that convention may carry fewer paragraphs — fail
-// soft to a single About section rather than mislabeling prose.
-const hasStory = p.about.length >= 3;
-const story = hasStory
-  ? [
-      ['Problem', p.about[0]],
-      ['Approach', p.about[1]],
-      ['Outcome', p.about[2]],
-    ]
-  : [];
-
-// The DM corner card, behind the homepage's exact gate: no configured service,
-// no island — the page ships nothing new. The island gets the same page-action
-// manifest and a lean card model (id/slug/href/title, all already public HTML)
-// for citation chips and `open` resolution; nothing wider reaches the browser.
 const dmEndpoint = resolveDmEndpoint(import.meta.env.PUBLIC_DM_ENDPOINT);
 const dmManifest = dmEndpoint ? await buildDmPageManifest() : null;
 const dmProjects = dmEndpoint
@@ -51,7 +35,6 @@ const dmProjects = dmEndpoint
 
 <Frost title={meta.title} meta={meta}>
   <main class="frost frost-doc frost-doc--explore" id="main">
-    {/* Same sticky chrome as the homepage explore bar: section cue + Ask DM. */}
     <header class="frost-doc-head frost-doc-head--explore">
       <a class="frost-sr-only" href="/">{PROFILE.name} — home</a>
       <p class="frost-site-here">
@@ -77,97 +60,6 @@ const dmProjects = dmEndpoint
       </div>
     </header>
 
-    <div class="look-paper">
-    <div class="frost-flow-in">
-      <div class="frost-doc-title look-title">
-        <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
-        <h1>{p.title}</h1>
-        <p class="look-title-line">{p.line}</p>
-      </div>
-    </div>
-
-    {hasStory ? (
-      story.map(([heading, paragraph]) => (
-        <div class="frost-flow-in">
-          <section class="look-rail" aria-labelledby={`project-${heading.toLowerCase()}`}>
-            <h2 id={`project-${heading.toLowerCase()}`}>{heading}</h2>
-            <p class="look-copy">{paragraph}</p>
-          </section>
-        </div>
-      ))
-    ) : (
-      <div class="frost-flow-in">
-        <section class="look-rail" aria-labelledby="project-about">
-          <h2 id="project-about">About</h2>
-          <div>
-            {p.about.map((paragraph) => <p class="look-copy" style="margin-bottom:12px;">{paragraph}</p>)}
-          </div>
-        </section>
-      </div>
-    )}
-
-    {p.stack.length > 0 && (
-      <div class="frost-flow-in">
-        <section class="look-rail" aria-labelledby="project-stack">
-          <h2 id="project-stack">Stack</h2>
-          <div class="frost-doc-facts">
-            {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
-          </div>
-        </section>
-      </div>
-    )}
-
-    <div class="frost-flow-in">
-      <section class="look-rail" aria-labelledby="project-metrics">
-        <h2 id="project-metrics">Metrics</h2>
-        <div class="frost-doc-facts">
-          {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
-        </div>
-      </section>
-    </div>
-
-    {imageShots.length > 0 && (
-      <div class="frost-flow-in">
-        <section class="look-rail" aria-labelledby="project-screens">
-          <h2 id="project-screens">Screens</h2>
-          <div class="frost-gallery">
-            {imageShots.map((shot) => (
-              <figure>
-                <img src={shot.src} alt={shot.caption} loading="lazy" />
-                <figcaption>{shot.caption}</figcaption>
-              </figure>
-            ))}
-          </div>
-        </section>
-      </div>
-    )}
-
-    <nav class="frost-doc-actions" aria-label="Project actions">
-      {p.links.map((link, index) => (
-        <a class:list={[{ 'is-fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label}</a>
-      ))}
-      <a class="is-quiet" href="/#work">← All work</a>
-    </nav>
-    </div>
+    <ProjectBody project={p} layout="story-rail" />
   </main>
-
-  <script>
-    const blocks = document.querySelectorAll('.frost-flow-in');
-    if ('IntersectionObserver' in window) {
-      const io = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('is-in');
-              io.unobserve(entry.target);
-            }
-          }
-        },
-        { threshold: 0.12 },
-      );
-      blocks.forEach((block) => io.observe(block));
-    } else {
-      blocks.forEach((block) => block.classList.add('is-in'));
-    }
-  </script>
 </Frost>

@@ -1,0 +1,77 @@
+---
+import Frost from '@/layouts/Frost.astro';
+import ProjectBody from '@/components/frost/ProjectBody.astro';
+import type { ProjectPageLayout } from '@/components/frost/ProjectBody.astro';
+import { PROFILE } from '@/components/frost/frost-data.js';
+import { loadPublicProjectDetailBySlug } from '@/lib/public-projects';
+
+const LAYOUTS = [
+  'story-rail',
+  'numbered-beats',
+  'outcome-first',
+  'two-column',
+  'index-strip',
+  'triptych',
+  'tight-dossier',
+  'hero-proof',
+] as const satisfies readonly ProjectPageLayout[];
+
+export function getStaticPaths() {
+  const layouts: ProjectPageLayout[] = [
+    'story-rail',
+    'numbered-beats',
+    'outcome-first',
+    'two-column',
+    'index-strip',
+    'triptych',
+    'tight-dossier',
+    'hero-proof',
+  ];
+  return layouts.map((layout) => ({ params: { layout } }));
+}
+
+const layout = Astro.params.layout as ProjectPageLayout;
+if (!(LAYOUTS as readonly string[]).includes(layout)) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const { project } = await loadPublicProjectDetailBySlug('agent-skills');
+if (!project) throw new Error('explore lab needs the agent-skills project in the catalog');
+
+const labels: Record<ProjectPageLayout, string> = {
+  'story-rail': 'Story rail',
+  'numbered-beats': 'Numbered beats',
+  'outcome-first': 'Outcome first',
+  'two-column': 'Two-column',
+  'index-strip': 'Index strip',
+  triptych: 'Triptych',
+  'tight-dossier': 'Tight dossier',
+  'hero-proof': 'Hero + proof',
+};
+---
+
+<Frost title={`${labels[layout]} · project layout lab`}>
+  <main class="frost frost-doc frost-doc--explore" id="main">
+    <header class="frost-doc-head frost-doc-head--explore">
+      <a class="frost-sr-only" href="/">{PROFILE.name} — home</a>
+      <p class="frost-site-here">
+        <a class="frost-site-here-label" href="/explore/project-layouts">Layouts</a>
+      </p>
+      <nav class="explore-layout-switch" aria-label="Layout variants">
+        {LAYOUTS.map((id) => (
+          <a href={`/explore/project-layouts/${id}`} class:list={[{ 'is-active': id === layout }]}>{labels[id]}</a>
+        ))}
+      </nav>
+      <div class="frost-site-actions">
+        <a class="frost-dm-button" href={`mailto:${PROFILE.email}`}>Ask DM</a>
+      </div>
+    </header>
+
+    <p class="explore-layout-kicker frost-kicker">
+      Full-page preview · {labels[layout]} · sample: Agent Skills ·
+      <a href="/explore/project-layouts">See all</a>
+    </p>
+
+    <ProjectBody project={project} layout={layout} />
+  </main>
+</Frost>
