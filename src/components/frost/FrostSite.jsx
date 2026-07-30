@@ -180,12 +180,14 @@ function GlitchCard({ project, index, fx, isBursting }) {
     `src/lib/journey.ts`. This component only renders what it is handed. */
 function JourneyRows({ journey }) {
   return (
-    <ol className="frost-journey">
+    <ol className="frost-journey frost-journey-rail">
       {journey.map((row) => (
         <li key={row.id}>
           <time>{row.when}</time>
-          <strong>{row.place}</strong>
-          <span>{row.role}</span>
+          <div className="frost-journey-copy">
+            <strong>{row.place}</strong>
+            <span>{row.role}</span>
+          </div>
         </li>
       ))}
     </ol>
@@ -327,9 +329,9 @@ function SiteLayout({ projects, journey, fx, onDm }) {
   };
 
   return (
-    <div className="frost-site">
+    <div className="frost-site frost-site--explore">
       <div className="frost-boot-fade">
-        <header className="frost-site-head">
+        <header className="frost-site-head frost-site-head--minimal">
           <a
             className="frost-site-brand"
             href="#main"
@@ -337,7 +339,9 @@ function SiteLayout({ projects, journey, fx, onDm }) {
           >
             Dylan McCavitt
           </a>
-          <nav aria-label="Sections">
+          {/* Section chips leave the sticky bar; real hash links stay for
+              no-JS / screen-reader jumps. Visible labels are the left rails. */}
+          <nav aria-label="Sections" className="frost-sr-only">
             {DESTINATIONS.map((destination) => (
               <a
                 key={destination.id}
@@ -362,21 +366,36 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </header>
       </div>
 
-      <h1 className="frost-sr-only">{PROFILE.name}, {PROFILE.role}</h1>
+      {/* Brand-hero first viewport — name owns the open; sticky chrome keeps
+          a quieter repeat of the brand + Ask DM. */}
+      <section className="frost-hero" aria-label="Introduction">
+        <p className="frost-kicker">{PROFILE.role}</p>
+        <h1>{PROFILE.name}</h1>
+        <p className="frost-hero-line">{PROFILE.focus}</p>
+        <div className="frost-hero-actions">
+          <a className="frost-hero-work" href="#work" onClick={(event) => onSectionLink(event, "work")}>
+            See work
+          </a>
+          <a
+            className="frost-dm-button"
+            href={`mailto:${PROFILE.email}`}
+            onClick={onDmLink}
+          >
+            Ask DM
+          </a>
+        </div>
+      </section>
 
-      {/* Marginalia: the section label runs in the left margin instead of
-          stacking on top, so the prose starts at the top of the section rather
-          than a heading announcing it. It stays an <h2> — only its placement
-          and voice change, so the page outline is exactly what it was. The
-          name belongs to the sticky header alone. */}
-      <section className="frost-site-section frost-about" id="about">
-        <h2 className="frost-about-rail">About</h2>
+      {/* Marginalia: section labels run in the left margin (About-style)
+          across Work / Journey / Contact as well. */}
+      <section className="frost-site-section frost-about frost-marginalia" id="about">
+        <h2 className="frost-section-rail">About</h2>
         <CondenseAbout />
       </section>
 
-      <section className="frost-site-section" id="work">
+      <section className="frost-site-section frost-marginalia" id="work">
+        <h2 className="frost-section-rail">Work</h2>
         <FlowIn>
-          <h2>Work</h2>
           <p className="frost-kicker">{projects.length} projects · shipped and building</p>
           <ol className="frost-cards">
             {projects.map((project, index) => (
@@ -392,17 +411,17 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </FlowIn>
       </section>
 
-      <section className="frost-site-section" id="journey">
+      <section className="frost-site-section frost-marginalia" id="journey">
+        <h2 className="frost-section-rail">Journey</h2>
         <FlowIn>
-          <h2>Journey</h2>
           <p className="frost-kicker">2019 to now</p>
           <JourneyRows journey={journey} />
         </FlowIn>
       </section>
 
-      <section className="frost-site-section" id="contact">
+      <section className="frost-site-section frost-marginalia" id="contact">
+        <h2 className="frost-section-rail">Contact</h2>
         <FlowIn>
-          <h2>Contact</h2>
           <ContactBlock />
         </FlowIn>
       </section>

@@ -327,6 +327,33 @@
   color: var(--frost-muted);
 }
 
+/* Explore preview: year rail + stacked place/role (canvas: journey=rail). */
+.frost-journey-rail {
+  max-width: 640px;
+}
+
+.frost-journey-rail li {
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 20px;
+  padding: 16px 2px;
+}
+
+.frost-journey-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.frost-journey-rail .frost-journey-copy strong {
+  font-size: 16px;
+}
+
+.frost-journey-rail .frost-journey-copy span {
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
 .frost-contact a {
   display: inline-flex;
   align-items: center;
@@ -341,34 +368,33 @@
 
 /* About condenses in: hidden only when scripting is available, so the
    no-JS page stays complete. */
-/* About is set as marginalia: the section label runs in the left margin and
-   the name carries the section at display size. Composition, not more copy —
-   the section used to be a heading and a kicker stacked over one short line,
-   which read as an empty slot rather than a short section. */
-.frost-about {
+/* Marginalia: section label in the left margin; content starts at the top
+   of the section. Explore preview extends About-style rails to every section. */
+.frost-about,
+.frost-marginalia {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
 }
 
 /* The rail is a section title like any other — same face, size, weight and
-   fringe as Work / Journey / Contact. Only its POSITION differs, so this rule
-   carries position and nothing else; everything visual comes from the shared
-   `.frost-site-section h2`. */
-.frost-site-section .frost-about-rail {
+   fringe. Only its POSITION differs; visuals come from `.frost-site-section h2`. */
+.frost-site-section .frost-about-rail,
+.frost-site-section .frost-section-rail {
   margin: 0;
 }
 
 @media (min-width: 720px) {
-  .frost-about {
-    /* Wide enough for "About" at the shared 26px, which the old 92px rail
-       column (sized for a 10px mono label) could not hold. */
+  .frost-about,
+  .frost-marginalia {
+    /* Wide enough for "About" / "Journey" at the shared 26px. */
     grid-template-columns: 132px minmax(0, 1fr);
     gap: 28px;
   }
 
-  .frost-site-section .frost-about-rail {
-    /* Optical: drops the 26px cap-height onto the first line of 15px prose. */
+  .frost-site-section .frost-about-rail,
+  .frost-site-section .frost-section-rail {
+    /* Optical: drops the 26px cap-height onto the first line of prose. */
     padding-top: 4px;
   }
 }
@@ -425,6 +451,93 @@
   padding: 0 clamp(22px, 4.5vw, 64px);
   background: var(--frost-surface);
   border-bottom: 1px solid var(--frost-line);
+}
+
+/* Explore preview: brand + Ask DM only (canvas: nav=side-marginalia). */
+.frost-site-head--minimal {
+  justify-content: space-between;
+}
+
+/* Brand-hero first viewport (canvas: hero=brand-hero). */
+.frost-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  min-height: calc(100svh - 58px);
+  padding: 48px 0 56px;
+  border-bottom: 1px solid var(--frost-line);
+  scroll-margin-top: 70px;
+}
+
+.frost-hero h1 {
+  margin: 0;
+  max-width: 14ch;
+  font-size: clamp(44px, 9vw, 76px);
+  font-weight: 640;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  text-shadow: -1.8px 0 rgba(255, 42, 109, 0.42), 1.8px 0 rgba(0, 174, 255, 0.42);
+}
+
+.frost-hero-line {
+  margin: 0;
+  max-width: 34ch;
+  font-size: clamp(16px, 2.2vw, 19px);
+  line-height: 1.45;
+  letter-spacing: -0.02em;
+  color: var(--frost-muted);
+}
+
+.frost-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.frost-hero-work {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 15px;
+  border: 1.5px solid var(--frost-ink);
+  border-radius: 999px;
+  color: var(--frost-ink);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-decoration: none;
+}
+
+.frost-hero-work:hover {
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+}
+
+.frost-hero .frost-dm-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 15px;
+  border: 1.5px solid var(--frost-ink);
+  border-radius: 999px;
+  color: var(--frost-surface);
+  background: var(--frost-ink);
+  font-size: 12.5px;
+  font-weight: 560;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.frost-hero .frost-dm-button:hover {
+  color: #fff;
+  background: #1b262e;
+}
+
+.frost-marginalia > .frost-kicker,
+.frost-marginalia > .frost-flow-in > .frost-kicker {
+  margin-bottom: 20px;
 }
 
 .frost-site-brand {
@@ -1136,6 +1249,15 @@
 
   .frost-journey li span {
     grid-column: 2;
+  }
+
+  .frost-journey-rail li {
+    grid-template-columns: 72px 1fr;
+  }
+
+  .frost-hero {
+    min-height: auto;
+    padding: 36px 0 44px;
   }
 }
 
