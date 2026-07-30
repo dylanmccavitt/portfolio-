@@ -46,5 +46,11 @@ const dmManifest = await buildDmPageManifest();
 ---
 
 <Frost title="Dylan McCavitt · Software engineer" meta={meta}>
-  <FrostSite client:load projects={workProjects} journey={journey} dmManifest={dmManifest} />
+  <FrostSite
+    client:load
+    projects={workProjects}
+    journey={journey}
+    dmManifest={dmManifest}
+    initialEffects={false}
+  />
 </Frost>
