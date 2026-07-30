@@ -458,19 +458,25 @@
   justify-content: space-between;
 }
 
-/* Brand-hero first viewport (canvas: hero=brand-hero). */
-.frost-hero {
+/* Brand-hero first open (explore). Content-height — not a full viewport —
+   so About prose can sit in the same composition without a leftover gap.
+   Still a `.frost-site-section` so DM page.anchors / redirects keep `#about`. */
+.frost-site-section.frost-hero {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  min-height: calc(100svh - 58px);
-  padding: 48px 0 56px;
-  border-bottom: 1px solid var(--frost-line);
+  justify-content: flex-start;
+  gap: 16px;
+  min-height: 0;
+  padding: 36px 0 40px;
   scroll-margin-top: 70px;
+  border-bottom: 1px solid var(--frost-line);
 }
 
-.frost-hero h1 {
+.frost-hero .frost-kicker {
+  margin: 0;
+}
+
+.frost-hero-title {
   margin: 0;
   max-width: 14ch;
   font-size: clamp(44px, 9vw, 76px);
@@ -478,6 +484,21 @@
   letter-spacing: -0.045em;
   line-height: 0.95;
   text-shadow: -1.8px 0 rgba(255, 42, 109, 0.42), 1.8px 0 rgba(0, 174, 255, 0.42);
+}
+
+.frost-hero-glitch,
+.frost-hero-snap,
+.frost-hero-snap > div {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.frost-hero-snap .snapfx-out {
+  opacity: 0;
+}
+
+.frost-hero-glitch.is-boot .frost-hero-snap .snapfx-out {
+  animation: frost-glitch-out 0.75s ease forwards;
 }
 
 .frost-hero-line {
@@ -489,12 +510,20 @@
   color: var(--frost-muted);
 }
 
+.frost-hero .frost-about-condense {
+  max-width: 640px;
+}
+
+.frost-hero .frost-about-condense p {
+  max-width: 54ch;
+}
+
 .frost-hero-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .frost-hero-work {
@@ -1255,9 +1284,8 @@
     grid-template-columns: 72px 1fr;
   }
 
-  .frost-hero {
-    min-height: auto;
-    padding: 36px 0 44px;
+  .frost-site-section.frost-hero {
+    padding: 28px 0 32px;
   }
 }
 
@@ -1549,7 +1577,8 @@
   .frost-glitch-cell:focus-within .frost-glitch-snap .snapfx-out,
   li.frost-glitch-cell.is-burst .frost-glitch-snap .snapfx-out,
   li.frost-glitch-cell.is-burst .frost-glitch-teaser,
-  li.frost-glitch-cell.is-dm-lit .frost-glitch-snap .snapfx-out {
+  li.frost-glitch-cell.is-dm-lit .frost-glitch-snap .snapfx-out,
+  .frost-hero-glitch.is-boot .frost-hero-snap .snapfx-out {
     animation: none;
   }
 

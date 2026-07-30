@@ -204,6 +204,39 @@ function ContactBlock() {
   );
 }
 
+/** Brand-hero name: SnapshotFx keeps a corrupted frame ready; a one-shot
+    boot class flashes it on load, then settles to clean type. Reduced motion
+    and `?effect=off` skip the burst entirely. */
+function HeroName({ fx }) {
+  const [boot, setBoot] = useState(false);
+
+  useEffect(() => {
+    if (!fx) return undefined;
+    if (typeof window === "undefined") return undefined;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+
+    // Give SnapshotFx a beat to rasterize before flashing the corrupted frame.
+    const start = window.setTimeout(() => setBoot(true), 220);
+    const end = window.setTimeout(() => setBoot(false), 980);
+    return () => {
+      window.clearTimeout(start);
+      window.clearTimeout(end);
+    };
+  }, [fx]);
+
+  const title = <h1 className="frost-hero-title">{PROFILE.name}</h1>;
+
+  if (!fx) return title;
+
+  return (
+    <div className={`frost-hero-glitch${boot ? " is-boot" : ""}`}>
+      <SnapshotFx create={createGlitch} options={GLITCH_OPTIONS} className="frost-hero-snap">
+        {title}
+      </SnapshotFx>
+    </div>
+  );
+}
+
 function SiteLayout({ projects, journey, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [burstId, setBurstId] = useState(null);
@@ -366,12 +399,14 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </header>
       </div>
 
-      {/* Brand-hero first viewport — name owns the open; sticky chrome keeps
-          a quieter repeat of the brand + Ask DM. */}
-      <section className="frost-hero" aria-label="Introduction">
+      {/* Brand-hero open: name boot-glitches, About prose is absorbed so the
+          first composition is one beat — not a full viewport then a leftover
+          About section. `#about` stays on this block for redirects / DM go. */}
+      <section className="frost-site-section frost-hero" id="about" aria-label="About">
         <p className="frost-kicker">{PROFILE.role}</p>
-        <h1>{PROFILE.name}</h1>
+        <HeroName fx={fx} />
         <p className="frost-hero-line">{PROFILE.focus}</p>
+        <CondenseAbout />
         <div className="frost-hero-actions">
           <a className="frost-hero-work" href="#work" onClick={(event) => onSectionLink(event, "work")}>
             See work
@@ -384,13 +419,6 @@ function SiteLayout({ projects, journey, fx, onDm }) {
             Ask DM
           </a>
         </div>
-      </section>
-
-      {/* Marginalia: section labels run in the left margin (About-style)
-          across Work / Journey / Contact as well. */}
-      <section className="frost-site-section frost-about frost-marginalia" id="about">
-        <h2 className="frost-section-rail">About</h2>
-        <CondenseAbout />
       </section>
 
       <section className="frost-site-section frost-marginalia" id="work">
