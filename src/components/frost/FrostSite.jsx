@@ -294,29 +294,17 @@ function SiteLayout({ projects, journey, fx, onDm }) {
     const sections = DESTINATIONS
       .map((d) => document.getElementById(d.id))
       .filter(Boolean);
-    if (sections.length === 0) return undefined;
-
-    // Spy the line just under the sticky bar: the active section is the last
-    // one whose top has crossed that line. Mid-viewport observers flip the
-    // label to Journey while Work cards still fill the top — this keeps the
-    // label honest with what owns the open.
-    const sync = () => {
-      const head = document.querySelector(".frost-site-head");
-      const line = (head?.getBoundingClientRect().bottom ?? 58) + 4;
-      let active = sections[0].id;
-      for (const section of sections) {
-        if (section.getBoundingClientRect().top <= line) active = section.id;
-      }
-      setCurrent(active);
-    };
-
-    sync();
-    window.addEventListener("scroll", sync, { passive: true });
-    window.addEventListener("resize", sync);
-    return () => {
-      window.removeEventListener("scroll", sync);
-      window.removeEventListener("resize", sync);
-    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) setCurrent(visible.target.id);
+      },
+      { rootMargin: "-20% 0px -55% 0px", threshold: [0, 0.25, 0.5] }
+    );
+    sections.forEach((section) => io.observe(section));
+    return () => io.disconnect();
   }, []);
 
   const go = (id) => {
