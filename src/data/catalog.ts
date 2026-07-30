@@ -6,7 +6,7 @@
  * Decision log (Dylan, 2026-07-27, #350): the published set is cut to 8.
  * Removed as stale or not publishable: exit-manager, hood, tradingview-mcp,
  * dog-log, chore-ladder, homeserver, condor-study, harness-arena. Added:
- * agent-skills (in progress, v1.0 on npm). Every entry's `about` is exactly
+ * agent-skills (in progress, v1.1 on npm). Every entry's `about` is exactly
  * three paragraphs — [problem, approach, outcome] — which the project page
  * renders under those headings.
  *
@@ -68,28 +68,28 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     title: 'agent-skills',
     sym: 'as',
     area: 'AI & Developer Tools',
-    status: ['live', 'v1.0 on npm'],
+    status: ['live', 'v1.1 on npm'],
     year: 2026,
     activity: 'in progress',
     hue: '#8b7cf6',
     wip: true,
     money: false,
     line: 'a lean, curated workflow kit for coding agents: short skills backed by real command-line tools',
-    seek: { from: 'v1.0 on npm', to: 'daily driver', pct: 75 },
+    seek: { from: 'v1.1 on npm', to: 'daily driver', pct: 75 },
     links: [
       { label: 'View repo ↗', href: 'https://github.com/dylanmccavitt/agent-skills' },
       { label: 'npm ↗', href: 'https://www.npmjs.com/package/@dylanmccavitt/agent-skills' },
     ],
     metrics: [
-      { value: 'v1.0.0', label: 'published on npm' },
+      { value: 'v1.1.0', label: 'published on npm' },
       { value: '3 + 2', label: 'skills + command-line tools' },
-      { value: '70/70', label: 'tests passing' },
+      { value: '80/80', label: 'tests passing' },
       { value: '3', label: 'agent harnesses from one install' },
     ],
     about: [
       'Off-the-shelf agent skills and workflows kept swelling: every session loaded pages of prose the agent mostly didn’t need, bloating the context before the real work began. And as models got better, they needed less upfront steering; the heavy scaffolding started to read as over-engineering. Dylan wanted a kit of his own: small, curated, and built to let the agent use its best native capabilities.',
       'agent-skills is that workflow kit, built lean on purpose. Three short skills (compass settles a direction with disposable prototypes, relay hands off bounded work for one compact receipt, cairn leaves a durable marker where it belongs) and a running experiment: give the agent a real command-line tool instead of more prose. The mechanics live in two small CLIs, a decision shelf and a delivery tool, so each skill stays a few paragraphs.',
-      'v1.0.0 is live on npm and installs across three agent harnesses from one command, with 70 tests keeping the installer honest. It is an active workbench: Dylan keeps tweaking, testing, and trialling new pieces to see what earns a permanent spot in the kit.',
+      'v1.1.0 is live on npm and installs across three agent harnesses from one command, with 80 tests keeping the installer honest. It is an active workbench: Dylan keeps tweaking, testing, and trialling new pieces to see what earns a permanent spot in the kit.',
     ],
     notes: [
       'Curated lean on purpose: short skills, no context bloat.',
@@ -100,7 +100,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { label: 'Runtime', value: 'node · javascript' },
       { label: 'Shape', value: '3 skills · 2 clis' },
       { label: 'Install', value: 'one npm command, three harnesses' },
-      { label: 'Status', value: 'v1.0 · in progress' },
+      { label: 'Status', value: 'v1.1 · in progress' },
     ],
     shots: [
       { kind: 'image', src: `${SHOTS}/agent-skills/decision-shelf.webp`, caption: 'the decision shelf: records that outlive sessions' },

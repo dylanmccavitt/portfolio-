@@ -84,7 +84,7 @@ export function libraryMeta(name: string, description: string): PageMeta {
 export function projectMeta(p: ProjectMetaInput): PageMeta {
   const slug = p.slug ?? p.id;
   const description = clampDescription(p.about[0] ?? p.line);
-  const url = `${ORIGIN}/projects/${slug}/`;
+  const url = `${ORIGIN}/projects/${slug}`;
   const repo = p.links.find((link) => /repo|github/i.test(link.label))?.href;
   const live = p.links.find((link) => /live|site/i.test(link.label))?.href;
   const jsonLd: Record<string, unknown> = {
@@ -98,7 +98,7 @@ export function projectMeta(p: ProjectMetaInput): PageMeta {
     dateModified: String(p.year),
   };
   if (repo) jsonLd.codeRepository = repo;
-  if (live) jsonLd.url = live;
+  if (live) jsonLd.sameAs = live;
   return {
     title: titleFor(p.title),
     description,
@@ -131,7 +131,7 @@ export function journeyTrackMeta(t: ResumeTrack): PageMeta {
       '@type': 'CreativeWork',
       name: `${t.title} · ${t.role}`,
       description,
-      url: `${ORIGIN}/journey/${t.id}/`,
+      url: `${ORIGIN}/journey/${t.id}`,
       image: `${ORIGIN}/og/journey/${t.id}.png`,
       author: { '@type': 'Person', name: OWNER, url: ORIGIN },
     },

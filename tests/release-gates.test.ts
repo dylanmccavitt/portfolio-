@@ -102,6 +102,24 @@ test('maintainer-only ruleset payload protects both release branches with the ex
   });
 });
 
+test('the final release PR stays a narrow maintainer gate with an explicit history choice', async () => {
+  const instructions = await readFile(resolve(ROOT, 'AGENTS.md'), 'utf8');
+  const releaseGate = await readFile(resolve(ROOT, 'docs', 'agents', 'release-gates.md'), 'utf8');
+
+  assert.match(
+    instructions,
+    /each implementation issue gets one branch and one implementation PR targeting `preview\/agent-first-redesign`, never `main`/,
+  );
+  assert.match(
+    instructions,
+    /one additional maintainer-opened release PR from `preview\/agent-first-redesign` to `main`/,
+  );
+  assert.match(releaseGate, /must not carry new\s+implementation work/);
+  assert.match(releaseGate, /If exact tree\s+equality is the requirement[\s\S]*squash is eligible/);
+  assert.match(releaseGate, /If the preview commits must remain ancestors of `main`, use a merge commit/);
+  assert.match(releaseGate, /checklist records[\s\S]*owner's choice; it does not choose for them/);
+});
+
 /**
  * `test:visual` existed for weeks without ever running in CI, because the CI
  * test step hand-maintained its own `&&` chain of `test:*` scripts (#323). The

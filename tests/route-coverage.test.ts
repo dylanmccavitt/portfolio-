@@ -23,11 +23,13 @@ import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
 
 const { loadPublicProjectDetails } = await import('@/lib/public-projects');
+const { projectMeta } = await import('@/lib/seo');
 const { GET: sitemapGet } = await import('@/pages/sitemap.xml.ts');
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
 const SITE = new URL('https://dylanmccavitt.xyz');
+const FROST_ANCHORS = new Set(['about', 'work', 'journey', 'contact']);
 
 /**
  * Page files under `src/pages` that do not serve an HTML route in the sitemap
@@ -121,6 +123,12 @@ const sitemapPaths = await (async () => {
   );
 })();
 
+const sitemapUrls = await (async () => {
+  const response = await sitemapGet({ site: SITE } as never);
+  const body = await (response as Response).text();
+  return [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map(([, loc]) => new URL(loc));
+})();
+
 test('route discovery found the expected route families', () => {
   assert.ok(routes.length >= 6, `expected the full route set, found ${routes.length}`);
   for (const expected of ['/', '/library', '/journey', '/resume', '/contact']) {
@@ -168,6 +176,88 @@ test('the sitemap emits no route the site does not serve', () => {
   }
 });
 
+test('canonical, sitemap, and project JSON-LD URLs share the no-trailing-slash policy', async () => {
+  for (const url of sitemapUrls) {
+    assert.equal(
+      url.pathname === '/' || !url.pathname.endsWith('/'),
+      true,
+      `sitemap URL must omit its trailing slash: ${url.href}`,
+    );
+  }
+
+  const frostLayout = await read('src/layouts/Frost.astro');
+  assert.match(
+    frostLayout,
+    /Astro\.url\.pathname\.replace\(\/\\\/\$\/,\s*''\)/,
+    'Frost.astro must remove trailing slashes from canonical and og:url values',
+  );
+
+  const { projects } = await loadPublicProjectDetails();
+  for (const project of projects) {
+    const meta = projectMeta(project);
+    const jsonLdUrl = meta.jsonLd?.url;
+    assert.equal(typeof jsonLdUrl, 'string', `${project.id} JSON-LD must carry a URL`);
+    assert.equal(
+      jsonLdUrl,
+      new URL(normalize(project.seo.sitemapPath), SITE).href,
+      `${project.id} JSON-LD URL must equal its canonical sitemap URL`,
+    );
+  }
+});
+
+test('every Vercel redirect lands on a route, redirect, or Frost anchor', async () => {
+  const config = JSON.parse(await read('vercel.json')) as {
+    redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
+  };
+  const redirects = config.redirects ?? [];
+  const generatedRoutes = new Set(routes.map((route) => route.path));
+  const redirectSources = new Set(redirects.map((redirect) => normalize(redirect.source)));
+
+  assert.ok(redirects.length > 0, 'vercel.json must retain the legacy redirect map');
+  for (const redirect of redirects) {
+    assert.equal(redirect.permanent, true, `${redirect.source} must remain a permanent redirect`);
+    const destination = new URL(redirect.destination, SITE);
+    const path = normalize(destination.pathname);
+    const validAnchor =
+      path === '/' &&
+      destination.hash.length > 1 &&
+      FROST_ANCHORS.has(destination.hash.slice(1));
+    const validRoute = destination.hash === '' && generatedRoutes.has(path);
+    const redirectChain = destination.hash === '' && redirectSources.has(path);
+    assert.ok(
+      validRoute || redirectChain || validAnchor,
+      `${redirect.source} points to missing destination ${redirect.destination}`,
+    );
+  }
+});
+
+test('the homepage keeps semantic no-JS navigation and contact fallbacks', async () => {
+  const source = await read('src/components/frost/FrostSite.jsx');
+  const destinationIds = [
+    ...source.matchAll(/\{\s*id:\s*"([^"]+)",\s*label:\s*"[^"]+"\s*\}/g),
+  ].map(([, id]) => id);
+
+  assert.deepEqual(destinationIds, [...FROST_ANCHORS], 'primary nav must cover every Frost section');
+  assert.match(
+    source,
+    /<a[\s\S]*?href=\{`#\$\{destination\.id\}`\}[\s\S]*?>[\s\S]*?\{destination\.label\}[\s\S]*?<\/a>/,
+    'section navigation must use real hash links before React hydrates',
+  );
+  for (const id of FROST_ANCHORS) {
+    assert.match(source, new RegExp(`<section[^>]+id="${id}"`), `#${id} must exist in homepage HTML`);
+  }
+
+  assert.match(
+    source,
+    /<a[\s\S]*?className="frost-dm-button"[\s\S]*?href=\{`mailto:\$\{PROFILE\.email\}`\}[\s\S]*?>[\s\S]*?Ask DM[\s\S]*?<\/a>/,
+    'Ask DM must remain a usable email link without JavaScript',
+  );
+  assert.ok(
+    [...source.matchAll(/href=\{`mailto:\$\{PROFILE\.email\}`\}/g)].length >= 3,
+    'the header, Contact section, and unavailable-DM panel must each retain an email fallback',
+  );
+});
+
 test('every served route renders through the Frost shell', async () => {
   for (const { path, file } of routes) {
     if (path in REDIRECT_STUBS) continue;
@@ -186,4 +276,3 @@ test('every served route renders through the Frost shell', async () => {
   assert.match(home, /client:load/);
   assert.match(home, /@\/layouts\/Frost\.astro/);
 });
-
