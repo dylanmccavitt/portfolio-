@@ -322,17 +322,22 @@ function SiteLayout({ projects, journey, fx, onDm }) {
     onDm();
   };
 
+  const currentLabel =
+    DESTINATIONS.find((destination) => destination.id === current)?.label ?? "About";
+
   return (
     <div className="frost-site frost-site--explore">
       <div className="frost-boot-fade">
         <header className="frost-site-head frost-site-head--minimal">
-          {/* Name lives in the hero only — repeating it in the sticky bar
-              reads redundant. A screen-reader home jump stays for no-JS. */}
+          {/* Name lives in the hero only. The sticky bar tracks the active
+              section in mono — orientation without bringing back full nav. */}
           <a className="frost-sr-only" href="#main">
             {PROFILE.name} — top of page
           </a>
-          {/* Section chips leave the sticky bar; real hash links stay for
-              no-JS / screen-reader jumps. Visible labels are the left rails. */}
+          <p className="frost-site-here" aria-live="polite">
+            <span className="frost-site-here-label">{currentLabel}</span>
+          </p>
+          {/* Real hash links stay for no-JS / screen-reader jumps. */}
           <nav aria-label="Sections" className="frost-sr-only">
             {DESTINATIONS.map((destination) => (
               <a

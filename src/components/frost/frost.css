@@ -453,9 +453,26 @@
   border-bottom: 1px solid var(--frost-line);
 }
 
-/* Explore preview: Ask DM only — the name owns the hero, not the sticky bar. */
+/* Explore: scroll section (left) + mono Ask DM (right). */
 .frost-site-head--minimal {
-  justify-content: flex-end;
+  justify-content: space-between;
+}
+
+.frost-site-here {
+  margin: 0;
+  min-width: 0;
+}
+
+.frost-site-here-label {
+  display: inline-block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+  text-shadow: -0.8px 0 rgba(255, 42, 109, 0.28), 0.8px 0 rgba(0, 174, 255, 0.28);
+  transition: color 160ms ease, text-shadow 160ms ease;
 }
 
 /* Brand-hero first open (explore). Content-height — not a full viewport —
