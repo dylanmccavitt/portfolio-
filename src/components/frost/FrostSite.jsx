@@ -154,14 +154,23 @@ function GlitchCard({ project, index, fx, isBursting }) {
         href={project.href}
         aria-label={`Open ${project.title}`}
       />
-      <div className="frost-glitch-facts" aria-hidden="true">
-        <p>{project.line}</p>
+      <div className="frost-glitch-facts frost-glitch-facts--rows" aria-hidden="true">
+        <div className="frost-fact-row">
+          <span className="frost-fact-key">Line</span>
+          <p>{project.line}</p>
+        </div>
         {project.proof.length > 0 && (
-          <div className="frost-proof">
-            {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+          <div className="frost-fact-row">
+            <span className="frost-fact-key">Proof</span>
+            <div className="frost-proof">
+              {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+            </div>
           </div>
         )}
-        <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+        <div className="frost-fact-row">
+          <span className="frost-fact-key">Open</span>
+          <span className="frost-card-open">Project <ArrowUpRight size={12} /></span>
+        </div>
       </div>
       <div className="frost-glitch-top" aria-hidden="true">
         {fx ? (

@@ -49,7 +49,7 @@ const dmProjects = dmEndpoint
 ---
 
 <Frost title={meta.title} meta={meta}>
-  <main class="frost frost-doc" id="main">
+  <main class="frost frost-doc frost-doc--rail" id="main">
     <header class="frost-doc-head">
       <a href="/">Dylan McCavitt</a>
       <nav aria-label="Primary">
@@ -80,7 +80,7 @@ const dmProjects = dmEndpoint
     {hasStory ? (
       story.map(([heading, paragraph]) => (
         <div class="frost-flow-in">
-          <section class="look-block" aria-labelledby={`project-${heading.toLowerCase()}`}>
+          <section class="look-rail" aria-labelledby={`project-${heading.toLowerCase()}`}>
             <h2 id={`project-${heading.toLowerCase()}`}>{heading}</h2>
             <p class="look-copy">{paragraph}</p>
           </section>
@@ -88,16 +88,18 @@ const dmProjects = dmEndpoint
       ))
     ) : (
       <div class="frost-flow-in">
-        <section class="look-block" aria-labelledby="project-about">
+        <section class="look-rail" aria-labelledby="project-about">
           <h2 id="project-about">About</h2>
-          {p.about.map((paragraph) => <p class="look-copy" style="margin-bottom:12px;">{paragraph}</p>)}
+          <div>
+            {p.about.map((paragraph) => <p class="look-copy" style="margin-bottom:12px;">{paragraph}</p>)}
+          </div>
         </section>
       </div>
     )}
 
     {p.stack.length > 0 && (
       <div class="frost-flow-in">
-        <section class="look-block" aria-labelledby="project-stack">
+        <section class="look-rail" aria-labelledby="project-stack">
           <h2 id="project-stack">Stack</h2>
           <div class="frost-doc-facts">
             {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
@@ -107,19 +109,17 @@ const dmProjects = dmEndpoint
     )}
 
     <div class="frost-flow-in">
-      <section class="look-block" aria-labelledby="project-metrics">
+      <section class="look-rail" aria-labelledby="project-metrics">
         <h2 id="project-metrics">Metrics</h2>
-        <div class="look-paper-pane">
-          <div class="frost-doc-facts">
-            {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
-          </div>
+        <div class="frost-doc-facts">
+          {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
         </div>
       </section>
     </div>
 
     {imageShots.length > 0 && (
       <div class="frost-flow-in">
-        <section class="look-block" aria-labelledby="project-screens">
+        <section class="look-rail" aria-labelledby="project-screens">
           <h2 id="project-screens">Screens</h2>
           <div class="frost-gallery">
             {imageShots.map((shot) => (

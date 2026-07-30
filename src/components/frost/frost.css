@@ -142,6 +142,46 @@
   opacity: 0.9;
 }
 
+/* Explore: typed-rows reveal — Line / Proof / Open as labeled mono rows. */
+.frost-glitch-facts--rows {
+  justify-content: center;
+  gap: 11px;
+  padding: 16px 18px;
+}
+
+.frost-fact-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+}
+
+.frost-fact-key {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+  padding-top: 2px;
+}
+
+.frost-glitch-facts--rows .frost-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+
+.frost-glitch-facts--rows .frost-proof span {
+  padding: 4px 8px;
+  font-size: 9.5px;
+}
+
+.frost-glitch-facts--rows .frost-card-open {
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
+}
+
 /* In flow so the teaser's min-height sizes the cell (facts are absolute
    beneath it); raised above the facts layer. */
 .frost-glitch-top {
@@ -1532,6 +1572,50 @@
   font-size: 15px;
   font-weight: 640;
   letter-spacing: -0.01em;
+}
+
+/* Explore: story-rail project page — left labels, prose/chips on the right. */
+.look-rail {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 36px;
+  align-items: start;
+}
+
+.look-rail h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+}
+
+.look-rail .look-copy {
+  max-width: 54ch;
+}
+
+.look-rail .frost-doc-facts {
+  margin: 0;
+}
+
+.look-rail .frost-gallery {
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .look-rail {
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .look-rail h2 {
+    padding-top: 2px;
+  }
+}
+
+.frost-doc--rail .look-paper .frost-doc-actions {
+  padding-top: 40px;
 }
 
 .look-copy {
