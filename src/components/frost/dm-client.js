@@ -190,8 +190,9 @@ export function createSseParser() {
       if (buffer.length + tail.length + eventName.length + dataChars > DM_MAX_SSE_PENDING_CHARS) {
         overflow();
       }
-      line(buffer + tail, out);
+      const completedLine = buffer + tail;
       buffer = '';
+      line(completedLine, out);
       offset = index + 1;
       index = chunk.indexOf('\n', offset);
     }

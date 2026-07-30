@@ -156,6 +156,20 @@ test('the SSE parser survives comments, CRLF, and events split across chunks', (
   assert.deepEqual(parser.flush(), []);
 });
 
+test('near-limit SSE lines parse identically when split across network chunks', () => {
+  const data = 'x'.repeat(DM_MAX_SSE_PENDING_CHARS - 64);
+  const event = `event: text\ndata: ${data}\n\n`;
+  const expected = [{ event: 'text', data }];
+
+  const whole = createSseParser();
+  assert.deepEqual(whole.push(event), expected);
+
+  const split = createSseParser();
+  const splitAt = 30_000;
+  assert.deepEqual(split.push(event.slice(0, splitAt)), []);
+  assert.deepEqual(split.push(event.slice(splitAt)), expected);
+});
+
 test('an oversized unterminated SSE line fails instead of remaining pending', async () => {
   const line = `data: ${'x'.repeat(DM_MAX_SSE_PENDING_CHARS + 1)}`;
   await withStub([line], async (endpoint) => {
