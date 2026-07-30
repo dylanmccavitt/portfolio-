@@ -1,9 +1,9 @@
 {
-  "name": "visible-visual",
+  "name": "dylan-portfolio",
   "type": "module",
   "version": "0.0.1",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "astro dev",
@@ -11,23 +11,44 @@
     "preview": "astro preview",
     "astro": "astro",
     "lint": "eslint .",
+    "test": "npm run test:release && npm run test:routes && npm run test:journey && npm run test:dm && npm run test:dm-client && npm run test:dm-session",
+    "test:release": "node --import tsx --test tests/release-gates.test.ts",
+    "test:routes": "node --import tsx --test tests/route-coverage.test.ts",
+    "test:journey": "node --import tsx --test tests/journey.test.ts",
+    "test:dm": "node --import tsx --test tests/dm-corpus.test.ts",
+    "test:dm-client": "node --import tsx --test tests/dm-client.test.ts",
+    "test:dm-session": "node --import tsx --test tests/dm-session.test.ts",
+    "dm:corpus": "node --import tsx scripts/dm-corpus.ts",
     "typecheck": "astro check",
-    "test": "npm run build && node --test tests/*.test.mjs",
-    "verify": "npm run lint && npm run typecheck && npm test"
+    "verify": "npm run lint && npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.8",
-    "astro": "^6.1.2",
-    "typescript": "^5.9.3"
+    "@astrojs/check": "^0.9.9",
+    "@astrojs/react": "^6.0.2",
+    "@astrojs/vercel": "^11.0.4",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/inter": "^5.2.8",
+    "@resvg/resvg-js": "^2.6.2",
+    "astro": "^7.1.6",
+    "lucide-react": "^1.27.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "satori": "^0.26.0",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@fontsource/inter": "^5.2.8",
-    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^25.6.0",
     "eslint": "^10.1.0",
     "eslint-plugin-astro": "^1.6.0",
-    "satori": "^0.26.0",
+    "sharp": "^0.35.3",
+    "tsx": "^4.22.4",
     "typescript-eslint": "^8.58.0"
+  },
+  "overrides": {
+    "path-to-regexp": "6.3.0",
+    "yaml": "^2.8.3"
   }
 }

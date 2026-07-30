@@ -2,9 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - preview/**
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - preview/**
+      - codex/**
+      - claude/**
+      - glm/**
+      - cursor/**
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -12,14 +20,16 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck, test
+    name: Lint, typecheck, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -29,6 +39,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Build
+        run: npm run build
 
       - name: Test
         run: npm test

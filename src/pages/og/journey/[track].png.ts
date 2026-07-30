@@ -1,20 +1,21 @@
 /**
- * Per-track OG image endpoint (#29). One static `/og/journey/<track>.png` per
- * resume track, pre-rendered at build (static output — no runtime endpoint).
+ * Per-entry resume OG image endpoint. One static `/og/journey/<track>.png` per
+ * *published* resume entry, pre-rendered at build. The card carries the entry's
+ * title, role, and dates as pixels, so it reads the public track allowlist like
+ * every other public consumer — a withheld entry gets no image.
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
-import { RESUME, getResumeTrackById } from '../../../data/resume';
-import { renderOgImage } from '../../../lib/og';
+import { publicResumeTracks } from '@/data/resume';
+import { renderOgImage } from '@/lib/og';
 
 export const getStaticPaths = (() =>
-  RESUME.tracks.map((t) => ({ params: { track: t.id } }))) satisfies GetStaticPaths;
+  publicResumeTracks().map((t) => ({ params: { track: t.id } }))) satisfies GetStaticPaths;
 
 export const GET: APIRoute = async ({ params }) => {
-  const t = getResumeTrackById(params.track as string);
+  const t = publicResumeTracks().find((track) => track.id === params.track);
   if (!t) return new Response('Not found', { status: 404 });
   const png = await renderOgImage({
     title: t.title,
-    sym: t.sym,
     hue: t.hue,
     kind: `Resume · ${t.when}`,
     tagline: t.role,

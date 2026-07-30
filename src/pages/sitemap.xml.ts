@@ -1,49 +1,41 @@
 /**
  * Sitemap (#25) — emitted as a static `/sitemap.xml` at build time.
  *
- * Built directly from the catalog + resume data and the canonical filter-slug
- * map (project + track + playlist slugs) rather than from every page Astro
- * happens to build, so it stays *exactly* the canonical redesign route set and
- * updates automatically when a project, track, or playlist is added. Retired
- * Sera-era URLs are handled by `vercel.json` 301s and never appear here.
+ * Built from canonical static routes, filter slugs, resume tracks, and the
+ * selected public project source (`loadPublicProjectDetails()`).
  *
- * Canonical set (32 URLs):
- *   /                        — the concierge landing (#60)
- *   /hiring                  — the hiring-manager guided tour (#62)
- *   /library                 — all-work library (relocated from `/` in #60)
- *   /library/<slug>          — 8 filtered playlists (wip, 7 areas)
- *   /projects/<id>           — 13 project detail pages
- *   /journey                 — the resume timeline
- *   /journey/<track>         — 7 resume track pages
+ * Route families included:
+ *   /                       — single-page Frost site (About/Work/Journey/Contact anchors)
+ *   /projects/<id-or-slug>  — project detail pages from the active source
+ *   /resume                 — concise recruiter résumé
  *
- * `/projects` (the index) is intentionally absent — it now 301s to `/library`.
+ * /library, /journey, and /contact are now client redirects into the
+ * single-page anchors and are deliberately absent.
+ *
+ * Only live routes appear here. Redirected and retired URLs — including
+ * `/projects` (301s to `/library`) and every other `vercel.json` redirect
+ * source — are deliberately absent.
  */
 import type { APIRoute } from 'astro';
-import { CATALOG, PLAYLIST_SLUGS } from '../data/catalog';
-import { RESUME } from '../data/resume';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
 
 /**
- * Canonical path list, in sitemap order. Nested routes carry a trailing slash
- * to match the directory pages Astro emits and the `<link rel="canonical">` the
- * layouts render (built from `Astro.url.pathname`), so sitemap and canonical
- * agree exactly. Root stays `/`.
+ * Canonical path list, in sitemap order. Public URLs omit trailing slashes to
+ * match the `<link rel="canonical">` and JSON-LD URLs. Root stays `/`.
  */
-function canonicalPaths(): string[] {
+function canonicalPaths(projectPaths: string[]): string[] {
   return [
     '/',
-    '/hiring/',
-    '/library/',
-    ...Object.values(PLAYLIST_SLUGS).map((slug) => `/library/${slug}/`),
-    ...CATALOG.map((p) => `/projects/${p.id}/`),
-    '/journey/',
-    ...RESUME.tracks.map((t) => `/journey/${t.id}/`),
+    ...projectPaths.map((path) => path.replace(/\/+$/, '')),
+    '/resume',
   ];
 }
 
-export const GET: APIRoute = ({ site }) => {
+export const GET: APIRoute = async ({ site }) => {
   // `site` is guaranteed by the `site` option in astro.config.mjs.
   const origin = site ?? new URL('https://dylanmccavitt.xyz');
-  const urls = canonicalPaths()
+  const { projects } = await loadPublicProjectDetails();
+  const urls = canonicalPaths(projects.map((project) => project.seo.sitemapPath))
     .map((path) => `  <url><loc>${new URL(path, origin).href}</loc></url>`)
     .join('\n');
 

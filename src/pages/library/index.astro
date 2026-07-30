@@ -1,29 +1,16 @@
 ---
-/**
- * All-work library, relocated from `/` in #60. The home route became the
- * concierge ("What brings you here?"), so the full player-style "now playing"
- * library now lives here at `/library`. Old `/`, `/projects`, and `/player`
- * links resolve here via the vercel.json 301s.
- *
- * This does NOT collide with `/library/[filter]`: `PLAYLIST_SLUGS` excludes
- * `all`, so no filter route ever emits `/library`.
- */
-import PlayerLayout from '../../layouts/Player.astro';
-import LibraryView from '../../components/player/LibraryView.astro';
-import { CATALOG } from '../../data/catalog';
-import { libraryMeta } from '../../lib/seo';
-
-const now = CATALOG[0];
-const title = 'Dylan McCavitt · All work';
-const meta = {
-  ...libraryMeta(
-    'All work',
-    `All work, ${CATALOG.length} projects: ${CATALOG.map((p) => p.title).join(', ')}.`,
-  ),
-  title,
-};
+// The work library now lives on the single-page Frost site.
 ---
 
-<PlayerLayout title={title} meta={meta} active="all" now={now}>
-  <LibraryView filter="all" now={now} />
-</PlayerLayout>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=/#work" />
+    <link rel="canonical" href="https://dylanmccavitt.xyz/" />
+    <title>Dylan McCavitt</title>
+  </head>
+  <body>
+    <p><a href="/#work">Continue to dylanmccavitt.xyz/#work</a></p>
+  </body>
+</html>

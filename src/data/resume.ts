@@ -1,10 +1,8 @@
 /**
- * Resume — the career timeline. Ported verbatim from the player redesign
- * prototype (`15-player-v4.html`, the `RESUME` object). This is the single
- * source of truth for the resume views (a separate issue).
+ * Resume — the career timeline and single source of truth for resume views.
  *
- * Field names mirror the prototype so porting the renderers stays mechanical.
- * Copy (about, notes, credits, hues, lengths) is carried over as-is.
+ * Copy (about, notes, credits, hues, and chronology metadata) is kept here so
+ * every consumer reads the same facts.
  *
  * Era cross-links resolve against the project catalog (`catalog.ts`): each
  * `era` entry is a project id, constrained at compile time to the ids the
@@ -24,21 +22,12 @@ import { CATALOG } from './catalog';
  * project surfaces as a build failure, not a silent dead `era` link.
  */
 const PROJECT_IDS = [
-  'agentic-trader',
-  'exit-manager',
-  'hood',
-  'tradingview-mcp',
-  'evalgate',
-  'dog-log',
-  'chore-ladder',
-  'homeserver',
-  'slurmlet',
+  'agent-skills',
   'bellas-beads',
+  'agentic-trader',
   'nhf',
   'work-orders',
   'epl-ml',
-  'condor-study',
-  'harness-arena',
 ] as const;
 
 /** A catalog project id, constrained to the ids the catalog ships. */
@@ -47,17 +36,13 @@ export type ProjectId = (typeof PROJECT_IDS)[number];
 /** `[label, value]` credit tuple, e.g. `['Degree', 'b.s. economics']`. */
 export type ResumeCredit = [label: string, value: string];
 
-/** A single chronological career track on the resume timeline. */
+/** A single chronological career entry on the resume timeline. */
 export interface ResumeTrack {
   id: string;
-  /** Two-letter symbol shown on the album tile. */
-  sym: string;
   title: string;
   role: string;
   /** Time span, e.g. `'2020 — 2023'`. */
   when: string;
-  /** Track "length", e.g. `'3:00'` (or `'—'` for the current track). */
-  len: string;
   /** Accent color (hex). */
   hue: string;
   /** Marks the current / present track. */
@@ -72,7 +57,7 @@ export interface ResumeTrack {
   era: ProjectId[];
 }
 
-/** The resume: metadata plus the chronological career tracks. */
+/** The resume: metadata plus chronological career entries. */
 export interface ResumeAlbum {
   title: string;
   /** One-line tagline. */
@@ -86,21 +71,19 @@ export const RESUME: ResumeAlbum = {
   title: 'Resume',
   line: 'economics → legal ops → cyber risk → engineering',
   about:
-    'Career history in chronological order, from an economics degree to building trading systems, agents, and iOS apps in NYC.',
+    'Career history in chronological order, from an economics degree through legal operations, cyber risk, graduate CS, client software, and practical side projects.',
   tracks: [
     {
       id: 'syracuse',
-      sym: 'su',
       title: 'Syracuse University',
       role: 'B.S. Economics',
       when: '2019',
-      len: '4:00',
       hue: '#ef8354',
       about: [
         'B.S. in Economics from Syracuse University, class of 2019.',
         'Markets, incentives, and working from data, before writing production code.',
       ],
-      notes: ['Economics intuition still anchors the trading-systems work.'],
+      notes: ['Economics intuition still helps Dylan reason from data and incentives.'],
       credits: [
         ['Degree', 'b.s. economics'],
         ['Class', '2019'],
@@ -109,11 +92,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'paulweiss',
-      sym: 'pw',
       title: 'Paul, Weiss',
       role: 'Practice Assistant, Private Funds',
       when: '2020 to 2023',
-      len: '3:00',
       hue: '#5da8e8',
       about: [
         'Practice assistant in the Private Funds group at Paul, Weiss, supporting legal work where the tolerance for detail errors is zero.',
@@ -128,15 +109,13 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'kroll',
-      sym: 'kr',
       title: 'Kroll, Inc.',
       role: 'Associate, Cyber Strategy & Risk',
       when: '2023 to 2024',
-      len: '1:30',
       hue: '#50c878',
       about: [
         'Associate on Kroll’s Cyber Strategy & Risk team, running security assessments and risk work for client organizations.',
-        'The security habits carried forward: risk gates on trading systems, paper-first scaffolds, secrets hygiene, read-only defaults.',
+        'The security habits carried forward: explicit risk gates, paper-first scaffolds, secrets hygiene, and read-only defaults.',
       ],
       notes: ['The pivot into technical work.'],
       credits: [
@@ -147,11 +126,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'stevens',
-      sym: 'st',
       title: 'Stevens Institute of Technology',
       role: 'M.S. Computer Science',
       when: '2024 to 2026',
-      len: '2:00',
       hue: '#8b7cf6',
       about: [
         'M.S. in Computer Science at Stevens, the formal foundation under the self-taught stack. Systems, web programming, and mobile systems, with two group projects from coursework in this catalog.',
@@ -166,11 +143,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'boe',
-      sym: 'be',
       title: 'Manhattan Board of Elections',
       role: 'IT Support',
       when: '2025',
-      len: '0:45',
       hue: '#e6b450',
       about: [
         'IT support for the Manhattan Board of Elections, keeping election-season infrastructure running, where downtime isn’t an option.',
@@ -184,11 +159,9 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'bella-era',
-      sym: 'bb',
       title: "Bella's Beads",
       role: 'Freelance Full-Stack Developer',
       when: '2025',
-      len: '1:15',
       hue: '#d678b6',
       about: [
         'First freelance full-stack contract: a complete ecommerce platform for a handmade-jewelry business, from wireframe to handoff, with Stripe, Shippo, Supabase, and Resend in one order lifecycle.',
@@ -202,27 +175,89 @@ export const RESUME: ResumeAlbum = {
     },
     {
       id: 'now',
-      sym: 'dm',
-      title: 'Open to opportunities',
-      role: 'Software engineer · agents, trading infra, iOS',
+      title: 'Focusing on agentic tooling',
+      role: 'Software engineer · backend, product, AI tools',
       when: '2026 to now',
-      len: 'now',
       hue: '#50c878',
       current: true,
       about: [
-        'Currently building agentic systems and trading infrastructure in NYC: one system live against real money, an autonomous trader scheduled to go live June 23, and two iOS apps heading to the App Store.',
-        'Interviewing for full-time roles.',
+        'Focusing on agentic tooling, backed by full-stack experience, while building practical side projects: agent tooling, local finance automation, and small consumer apps.',
+        'Looking for teams that value product judgment, reliability habits, and clear communication.',
       ],
       notes: ['US citizen; no sponsorship needed.'],
       credits: [
-        ['Status', 'open to opportunities'],
-        ['Location', 'new york city'],
+        ['Status', 'focusing on agentic tooling'],
+        ['Location', 'nyc/nj area'],
         ['Email', 'dylanmccavitt@outlook.com'],
       ],
-      era: ['agentic-trader', 'exit-manager', 'hood'],
+      era: ['agent-skills', 'bellas-beads', 'agentic-trader'],
     },
   ],
 };
+
+/**
+ * THE PUBLIC TRACK ALLOWLIST. `RESUME.tracks` is the full career history; this
+ * is the narrower subset the owner has chosen to show in public, and it is the
+ * only door anything public reads the timeline through — the resume page via
+ * its two section accessors, the DM corpus via {@link publicResumeTracks}. No
+ * consumer keeps its own list, so the page and the corpus cannot drift apart:
+ * an id that is not named here cannot be published by either.
+ *
+ * It fails closed. Adding a track to `RESUME.tracks` publishes it nowhere until
+ * someone names it here on purpose. `boe` is deliberately absent: it is on the
+ * timeline and off the site.
+ *
+ * `now` is on the list because the site already publishes it — the homepage
+ * Journey renders its row and the resume page's kicker restates its facts —
+ * even though the resume page has no section that lists a standing status.
+ */
+const PUBLIC_RESUME_EXPERIENCE_TRACK_IDS = ['paulweiss', 'kroll', 'bella-era'] as const;
+const PUBLIC_RESUME_EDUCATION_TRACK_IDS = ['syracuse', 'stevens'] as const;
+const PUBLIC_RESUME_STANDING_TRACK_IDS = ['now'] as const;
+
+/** Every track id the site publishes, from all three groupings. */
+export const PUBLIC_RESUME_TRACK_IDS: readonly string[] = [
+  ...PUBLIC_RESUME_EXPERIENCE_TRACK_IDS,
+  ...PUBLIC_RESUME_EDUCATION_TRACK_IDS,
+  ...PUBLIC_RESUME_STANDING_TRACK_IDS,
+];
+
+/** Filter the timeline to an allowlisted id set, in chronological source order. */
+function tracksIn(ids: readonly string[]): ResumeTrack[] {
+  const allowed = new Set<string>(ids);
+  return RESUME.tracks.filter((track) => allowed.has(track.id));
+}
+
+/** Every track the site publishes, chronologically. The one public read of the
+    timeline: anything not on the allowlist cannot come out of here. */
+export function publicResumeTracks(): ResumeTrack[] {
+  return tracksIn(PUBLIC_RESUME_TRACK_IDS);
+}
+
+/** The tracks the resume page lists under Experience. */
+export function publicResumeExperienceTracks(): ResumeTrack[] {
+  return tracksIn(PUBLIC_RESUME_EXPERIENCE_TRACK_IDS);
+}
+
+/** The tracks the resume page lists under Education. */
+export function publicResumeEducationTracks(): ResumeTrack[] {
+  return tracksIn(PUBLIC_RESUME_EDUCATION_TRACK_IDS);
+}
+
+/**
+ * Guard the allowlist against the timeline. A typo here fails closed — the
+ * track simply stops being published — which is safe but silent, so a name
+ * that resolves to nothing is a build failure instead.
+ */
+function assertPublicTrackIdsExist(): void {
+  const known = new Set(RESUME.tracks.map((track) => track.id));
+  const unknown = PUBLIC_RESUME_TRACK_IDS.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    throw new Error(`resume.ts: PUBLIC_RESUME_TRACK_IDS names no such track: ${unknown.join(', ')}`);
+  }
+}
+
+assertPublicTrackIdsExist();
 
 /**
  * Guard the {@link PROJECT_IDS} mirror against the real catalog. Throws at
@@ -245,18 +280,8 @@ function assertCatalogIdsInSync(): void {
 
 assertCatalogIdsInSync();
 
-/**
- * Seek position for the player bar's 2019 → now timeline. Maps a track index
- * (0-based) to a percentage, evenly spaced so track 1 → ~14% and the last
- * track → 100%.
- */
-export function trackSeekPct(index: number, total: number = RESUME.tracks.length): number {
-  if (total <= 0) return 0;
-  const clamped = Math.min(Math.max(index, 0), total - 1);
-  return Math.round(((clamped + 1) / total) * 100);
-}
-
-/** Look up a resume track by id. */
-export function getResumeTrackById(id: string): ResumeTrack | null {
-  return RESUME.tracks.find((t) => t.id === id) ?? null;
-}
+// There is deliberately no `getResumeTrackById`. It had no callers and read the
+// full unfiltered timeline, so the next consumer to reach for it would have got
+// a withheld track without noticing. Anything public reads the timeline through
+// the allowlisted accessors above; if a by-id lookup is ever needed, add it over
+// `publicResumeTracks()` rather than over `RESUME.tracks`.

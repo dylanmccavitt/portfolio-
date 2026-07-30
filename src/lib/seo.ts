@@ -1,17 +1,17 @@
 /**
  * Per-page SEO/meta derivation (#29).
  *
- * Pages pass *data* (a project, a track, or nothing); this module derives the
- * tags — title, description, OG image path, `og:type`, and JSON-LD — so the
- * head implementation stays in one component (`layouts/Player.astro`) and pages
- * never hand-write meta. Descriptions are trimmed here to ≤160 chars.
+ * Pages pass data (a project, a resume entry, or nothing); this module derives the
+ * tags — title, description, OG image path, `og:type`, and JSON-LD — so layout
+ * components can share one metadata contract. Descriptions are trimmed here to
+ * ≤160 chars.
  *
  * OG image paths point at the static `/og/**.png` endpoints rendered at build
- * (see `src/pages/og/`). The library/playlist routes share one fallback image.
+ * (see `src/pages/og/`). Shared routes use one fallback image.
  */
-import type { Project } from '../data/catalog';
-import type { ResumeTrack } from '../data/resume';
-import { RESUME } from '../data/resume';
+import type { ProjectLink } from '@/data/catalog';
+import type { ResumeTrack } from '@/data/resume';
+import { RESUME } from '@/data/resume';
 
 /** Site owner — reused in titles and JSON-LD. */
 const OWNER = 'Dylan McCavitt';
@@ -19,8 +19,21 @@ const OWNER = 'Dylan McCavitt';
 /** Canonical origin (mirrors `site` in astro.config.mjs). */
 const ORIGIN = 'https://dylanmccavitt.xyz';
 
-/** Fallback OG image for the home + library/playlist routes. */
+/** Fallback OG image for home, library, resume, and journey routes. */
 export const OG_FALLBACK = '/og/default.png';
+
+/**
+ * Serialize JSON-LD for an inline script element without allowing data to
+ * terminate that element. This remains valid JSON after escaping.
+ */
+export function serializeJsonLd(value: unknown): string {
+  const serialized = JSON.stringify(value) ?? 'null';
+  return serialized
+    .replace(/<\/script/gi, (match) => `<\\/${match.slice(2)}`)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
 
 /** The resolved meta a page hands to the layout head. */
 export interface PageMeta {
@@ -32,6 +45,16 @@ export interface PageMeta {
   /** Optional JSON-LD object, serialized into a `<script type=ld+json>`. */
   jsonLd?: Record<string, unknown>;
 }
+
+type ProjectMetaInput = {
+  id: string;
+  slug?: string;
+  title: string;
+  line: string;
+  about: string[];
+  links: ProjectLink[];
+  year: number;
+};
 
 /** Trim to ≤160 chars on a word boundary, with an ellipsis when cut. */
 function clampDescription(text: string, max = 160): string {
@@ -47,7 +70,7 @@ function titleFor(name: string): string {
   return `${name} · ${OWNER}`;
 }
 
-/** Home / library / playlist meta — shared fallback OG image. */
+/** Home / library / filtered index meta — shared fallback OG image. */
 export function libraryMeta(name: string, description: string): PageMeta {
   return {
     title: titleFor(name),
@@ -58,33 +81,34 @@ export function libraryMeta(name: string, description: string): PageMeta {
 }
 
 /** Project detail meta — per-project OG image + SoftwareSourceCode JSON-LD. */
-export function projectMeta(p: Project): PageMeta {
+export function projectMeta(p: ProjectMetaInput): PageMeta {
+  const slug = p.slug ?? p.id;
   const description = clampDescription(p.about[0] ?? p.line);
-  const url = `${ORIGIN}/projects/${p.id}/`;
-  const repo = p.links.find(([label]) => /repo|github/i.test(label))?.[1];
-  const live = p.links.find(([label]) => /live|site/i.test(label))?.[1];
+  const url = `${ORIGIN}/projects/${slug}`;
+  const repo = p.links.find((link) => /repo|github/i.test(link.label))?.href;
+  const live = p.links.find((link) => /live|site/i.test(link.label))?.href;
   const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareSourceCode',
     name: p.title,
     description,
     url,
-    image: `${ORIGIN}/og/projects/${p.id}.png`,
+    image: `${ORIGIN}/og/projects/${slug}.png`,
     author: { '@type': 'Person', name: OWNER, url: ORIGIN },
     dateModified: String(p.year),
   };
   if (repo) jsonLd.codeRepository = repo;
-  if (live) jsonLd.url = live;
+  if (live) jsonLd.sameAs = live;
   return {
     title: titleFor(p.title),
     description,
-    ogImage: `/og/projects/${p.id}.png`,
+    ogImage: `/og/projects/${slug}.png`,
     ogType: 'article',
     jsonLd,
   };
 }
 
-/** Journey album meta — uses the fallback OG image, profile type. */
+/** Resume index meta — uses the fallback OG image, profile type. */
 export function journeyMeta(): PageMeta {
   return {
     title: titleFor(RESUME.title),
@@ -94,11 +118,11 @@ export function journeyMeta(): PageMeta {
   };
 }
 
-/** Journey track meta — per-track OG image + CreativeWork JSON-LD. */
+/** Resume entry meta — per-entry OG image + CreativeWork JSON-LD. */
 export function journeyTrackMeta(t: ResumeTrack): PageMeta {
   const description = clampDescription(t.about[0] ?? t.role);
   return {
-    title: `${t.title} · ${RESUME.title} · ${OWNER}`,
+    title: `${t.title} · Resume · ${OWNER}`,
     description,
     ogImage: `/og/journey/${t.id}.png`,
     ogType: 'article',
@@ -107,7 +131,7 @@ export function journeyTrackMeta(t: ResumeTrack): PageMeta {
       '@type': 'CreativeWork',
       name: `${t.title} · ${t.role}`,
       description,
-      url: `${ORIGIN}/journey/${t.id}/`,
+      url: `${ORIGIN}/journey/${t.id}`,
       image: `${ORIGIN}/og/journey/${t.id}.png`,
       author: { '@type': 'Person', name: OWNER, url: ORIGIN },
     },
@@ -123,7 +147,7 @@ export function personJsonLd(): Record<string, unknown> {
     url: ORIGIN,
     jobTitle: 'Software Engineer',
     description:
-      'Software engineer building agentic systems, trading infrastructure, and iOS apps in NYC.',
+      'Software engineer in NYC building practical tools, client software, and AI-assisted workflows.',
     image: `${ORIGIN}${OG_FALLBACK}`,
     sameAs: [
       'https://github.com/DylanMcCavitt',
