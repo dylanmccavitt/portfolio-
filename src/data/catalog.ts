@@ -87,7 +87,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { value: '3 harnesses', label: 'share one install and the same workflow' },
     ],
     about: [
-      'Months of installing one-off skills and skill packs that seemed useful left each session carrying more context than the work needed. As coding models improved, that extra instruction began to hurt my outputs instead of helping them. I decided to delete most of the old setup and build a lean system of my own: deterministic layers that point the model in the right direction while preserving the native strengths of the model and whichever coding harness I am using.',
+      'Months of installing one-off skills and skill packs that seemed useful left my harness configurations carrying more context than the work needed. As coding models improved, that extra instruction began to hurt my outputs instead of helping them. I decided to delete most of the old setup and build a lean system of my own: deterministic layers that point the model in the right direction while preserving the native strengths of the model and whichever coding harness I am using.',
       'The skills are intentionally minimal. I built a CLI around them so repeatable mechanics live in deterministic tools instead of prose. For example, Relay scopes a handoff and returns one compact receipt, while the CLI handles the state and delivery rules behind it. I also keep temporary plans, stale decisions, and unnecessary documentation out of project repositories. As projects and abstractions grew, those leftovers were causing models to follow decisions I had already moved away from.',
       'The current result is a v1.1.0 npm package that installs the same workflow across three coding harnesses. I actively track and test how it performs, then adjust the skills and tools as I find better ways to keep context lean, reduce rereading, and improve my own workflow.',
     ],
@@ -106,6 +106,11 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { kind: 'image', src: `${SHOTS}/agent-skills/decision-shelf.webp`, caption: 'the decision shelf: records that outlive sessions' },
       { kind: 'image', src: `${SHOTS}/agent-skills/delivery.webp`, caption: 'delivery: checks and an evidence-bound receipt' },
       { kind: 'image', src: `${SHOTS}/agent-skills/system.webp`, caption: 'how the skills and tools fit together' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/skill-compass.png`, caption: 'compass: turns an open direction into a decision' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/skill-relay.png`, caption: 'relay: bounded delivery with one reviewable receipt' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/skill-cairn.png`, caption: 'cairn: durable context without repo clutter' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/cli-commands.png`, caption: 'the command surface: install, decisions, checks, and receipts' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/storage-locations.png`, caption: 'where decisions and receipts live' },
     ],
   },
   {
