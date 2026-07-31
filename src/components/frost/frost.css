@@ -142,7 +142,7 @@
   opacity: 0.9;
 }
 
-/* Explore: typed-rows reveal — Line / Proof / Open as a tiny dossier. */
+/* Reveal only the project line and its direct open action. */
 .frost-glitch-facts--rows {
   justify-content: center;
   gap: 0;
@@ -942,8 +942,9 @@ a.frost-sr-only:focus {
 }
 
 .frost-image-lightbox {
-  width: min(1120px, calc(100vw - 32px), calc(144vh - 115.2px));
-  aspect-ratio: 36 / 25;
+  width: fit-content;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 80px);
   margin: auto;
   padding: 0;
   border: 0;
@@ -1002,10 +1003,11 @@ a.frost-sr-only:focus {
 
 .frost-image-lightbox-image {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 80px);
   margin: 0 auto;
-  object-fit: contain;
 }
 
 .frost-gallery figcaption {
