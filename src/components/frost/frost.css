@@ -938,14 +938,15 @@ a.frost-sr-only:focus {
 }
 
 .frost-image-lightbox {
-  width: min(1120px, calc(100vw - 32px));
+  width: fit-content;
+  max-width: calc(100vw - 32px);
   max-height: calc(100vh - 32px);
   margin: auto;
-  padding: 14px;
-  border: 1.5px solid var(--frost-ink);
-  border-radius: 8px;
-  background: var(--frost-surface);
-  color: var(--frost-ink);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  overflow: visible;
 }
 
 .frost-image-lightbox::backdrop {
@@ -953,41 +954,52 @@ a.frost-sr-only:focus {
 }
 
 .frost-image-lightbox-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  color: #fff;
+  mix-blend-mode: difference;
+  pointer-events: none;
 }
 
 .frost-image-lightbox-caption {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
   margin: 0;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .frost-image-lightbox-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
   flex: 0 0 auto;
   min-height: 28px;
-  padding: 0 11px;
-  border: 1px solid var(--frost-ink);
-  border-radius: 2px;
+  padding: 0;
+  border: 0;
   color: inherit;
   background: transparent;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.08em;
+  text-decoration: underline;
+  text-underline-offset: 4px;
   text-transform: uppercase;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .frost-image-lightbox-image {
   display: block;
-  max-width: 100%;
-  max-height: calc(100vh - 112px);
+  width: auto;
+  max-width: min(1120px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
   margin: 0 auto;
 }
 
