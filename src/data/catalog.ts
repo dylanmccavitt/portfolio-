@@ -123,26 +123,26 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://bellasbeads.shop' }],
     metrics: [
+      { value: '~80%', label: 'smaller css payload: ~300 kb → 61 kb' },
       { value: '23%', label: 'smaller initial javascript bundle: 590 kb → 456 kb' },
       { value: '33%', label: 'fewer sequential database trips on cart updates: 6 → 4' },
-      { value: '15', label: 'page routes lazy-loaded instead of shipped up front' },
-      { value: '1 yr', label: 'immutable caching for versioned assets' },
+      { value: '15 min', label: 'checkout inventory held to prevent overselling' },
     ],
     about: [
       'A jewelry maker needed a real store, with browsing, payment, shipping, tracking, and day-to-day admin, without platform fees or a site she couldn’t run herself.',
-      'Built as a complete platform from wireframe to handoff: a React + TypeScript storefront on a Node/Express backend with Postgres via Supabase, plus Stripe for payments, Shippo for shipping labels, and Resend for email. Each service reports back on its own schedule, so their webhooks are reconciled into one order lifecycle with CSRF protection, rate limiting, and hashed tokens throughout.',
+      'Built as a complete platform from wireframe to handoff: a React + TypeScript storefront on a Node/Express backend with Postgres via Supabase, plus Stripe for payments and Resend for email. Each service reports back on its own schedule, so their events are reconciled into one order lifecycle with CSRF protection, rate limiting, and hashed tokens throughout.',
       'In production at bellasbeads.shop with guest and account checkout, order history, shipment tracking, and an admin dashboard the owner operates on her own, taken from wireframe to handoff solo.',
     ],
     notes: [
       'CSRF protection, rate limiting, and HMAC token hashing throughout.',
-      'Webhook-driven order state across four third-party services.',
+      'Event-driven order state across payments, data, and email.',
       'In production at bellasbeads.shop.',
     ],
     stack: [
       { label: 'Frontend', value: 'react · typescript' },
       { label: 'Backend', value: 'node · express' },
       { label: 'Data', value: 'postgres / supabase' },
-      { label: 'Payments', value: 'stripe · shippo' },
+      { label: 'Payments', value: 'stripe' },
     ],
     shots: [
       { kind: 'image', src: `${SHOTS}/bella/landing.webp`, caption: 'storefront landing' },
