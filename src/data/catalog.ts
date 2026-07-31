@@ -105,7 +105,6 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     shots: [
       { kind: 'image', src: `${SHOTS}/agent-skills/decision-shelf.webp`, caption: 'the decision shelf: records that outlive sessions' },
       { kind: 'image', src: `${SHOTS}/agent-skills/delivery.webp`, caption: 'delivery: checks and an evidence-bound receipt' },
-      { kind: 'image', src: `${SHOTS}/agent-skills/system.webp`, caption: 'how the skills and tools fit together' },
       { kind: 'image', src: `${SHOTS}/agent-skills/skill-compass.png`, caption: 'compass: turns an open direction into a decision' },
       { kind: 'image', src: `${SHOTS}/agent-skills/skill-relay.png`, caption: 'relay: bounded delivery with one reviewable receipt' },
       { kind: 'image', src: `${SHOTS}/agent-skills/skill-cairn.png`, caption: 'cairn: durable context without repo clutter' },
