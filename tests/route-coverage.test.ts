@@ -39,7 +39,6 @@ const NON_ROUTE_ENTRIES: Record<string, string> = {
   og: 'generated Open Graph images, not indexable pages',
   'sitemap.xml.ts': 'the sitemap itself',
   '404.astro': 'error page; deliberately absent from the sitemap (#25)',
-  explore: 'branch-only layout comparison lab, not a public sitemap route',
 };
 
 /**
