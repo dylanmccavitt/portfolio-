@@ -1879,11 +1879,11 @@ html:has(#project-screens:target) .look-index-nav a[href="#project-screens"] {
 }
 
 .frost-detail-rail--metrics dt {
-  order: 1;
+  order: 2;
 }
 
 .frost-detail-rail--metrics dd {
-  order: 2;
+  order: 1;
   padding-bottom: 1px;
   border-bottom: 1px solid currentColor;
   font-weight: 650;

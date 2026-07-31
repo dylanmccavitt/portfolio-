@@ -123,10 +123,10 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://bellasbeads.shop' }],
     metrics: [
-      { value: 'solo', label: 'wireframe to handoff, one engineer' },
-      { value: '4', label: 'services reconciled into one order lifecycle: stripe · shippo · supabase · resend' },
-      { value: '$0', label: 'platform fees: the owner runs the whole store herself' },
-      { value: 'live', label: 'in production at bellasbeads.shop' },
+      { value: '23%', label: 'smaller initial javascript bundle: 590 kb → 456 kb' },
+      { value: '33%', label: 'fewer sequential database trips on cart updates: 6 → 4' },
+      { value: '15', label: 'page routes lazy-loaded instead of shipped up front' },
+      { value: '1 yr', label: 'immutable caching for versioned assets' },
     ],
     about: [
       'A jewelry maker needed a real store, with browsing, payment, shipping, tracking, and day-to-day admin, without platform fees or a site she couldn’t run herself.',
