@@ -51,16 +51,26 @@ const beats = hasStory
       {p.stack.length > 0 && (
         <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
           <h2 id="heading-stack">Stack</h2>
-          <div class="frost-doc-facts">
-            {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
-          </div>
+          <dl class="frost-detail-rail frost-detail-rail--stack">
+            {p.stack.map((entry) => (
+              <div class="frost-detail-rail-row">
+                <dt>{entry.label}:</dt>
+                <dd>{entry.value}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
       )}
       <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
         <h2 id="heading-metrics">Metrics</h2>
-        <div class="frost-doc-facts">
-          {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
-        </div>
+        <dl class="frost-detail-rail frost-detail-rail--metrics">
+          {p.metrics.map((metric) => (
+            <div class="frost-detail-rail-row">
+              <dt>{metric.label}</dt>
+              <dd>{metric.value}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
       {imageShots.length > 0 && (
         <section class="look-index-section" id="project-screens" aria-labelledby="heading-screens">
@@ -68,7 +78,9 @@ const beats = hasStory
           <div class="frost-gallery">
             {imageShots.map((shot) => (
               <figure>
-                <img src={shot.src} alt={shot.caption} loading="lazy" />
+                <a href={shot.src} data-frost-gallery-image data-frost-gallery-caption={shot.caption} aria-label={`Open ${shot.caption} full size`}>
+                  <img src={shot.src} alt={shot.caption} loading="lazy" />
+                </a>
                 <figcaption>{shot.caption}</figcaption>
               </figure>
             ))}
@@ -79,9 +91,47 @@ const beats = hasStory
   </div>
 
   <nav class="frost-doc-actions" aria-label="Project actions">
-    {p.links.map((link, index) => (
-      <a class:list={[{ 'is-fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label}</a>
+    {p.links.map((link) => (
+      <a href={link.href} target="_blank" rel="noopener">{link.label.replace(/\s*↗$/, '')}</a>
     ))}
     <a class="is-quiet" href="/#work">← All work</a>
   </nav>
 </div>
+
+<dialog class="frost-image-lightbox" aria-label="Screenshot preview">
+  <div class="frost-image-lightbox-bar">
+    <p class="frost-image-lightbox-caption"></p>
+    <button class="frost-image-lightbox-close" type="button">Close</button>
+  </div>
+  <img class="frost-image-lightbox-image" alt="" />
+</dialog>
+
+<script>
+  const gallery = document.querySelector('.frost-gallery');
+  const lightbox = document.querySelector('.frost-image-lightbox');
+
+  if (gallery instanceof HTMLElement && lightbox instanceof HTMLDialogElement) {
+    const image = lightbox.querySelector<HTMLImageElement>('.frost-image-lightbox-image');
+    const caption = lightbox.querySelector<HTMLElement>('.frost-image-lightbox-caption');
+    const close = lightbox.querySelector<HTMLButtonElement>('.frost-image-lightbox-close');
+
+    gallery.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const link = target.closest('a[data-frost-gallery-image]');
+      if (!(link instanceof HTMLAnchorElement) || !image || !caption) return;
+
+      event.preventDefault();
+      image.src = link.href;
+      image.alt = link.dataset.frostGalleryCaption ?? '';
+      caption.textContent = link.dataset.frostGalleryCaption ?? '';
+      lightbox.showModal();
+    });
+
+    close?.addEventListener('click', () => lightbox.close());
+    lightbox.addEventListener('click', (event) => {
+      if (event.target === lightbox) lightbox.close();
+    });
+  }
+</script>

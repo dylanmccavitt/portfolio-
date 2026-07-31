@@ -159,14 +159,6 @@ function GlitchCard({ project, index, fx, isBursting }) {
           <span className="frost-fact-key">Line</span>
           <p>{project.line}</p>
         </div>
-        {project.proof.length > 0 && (
-          <div className="frost-fact-row">
-            <span className="frost-fact-key">Proof</span>
-            <div className="frost-proof">
-              {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
-            </div>
-          </div>
-        )}
         <div className="frost-fact-row">
           <span className="frost-fact-key">Open</span>
           <span className="frost-card-open">Project <ArrowUpRight size={12} /></span>

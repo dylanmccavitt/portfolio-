@@ -81,15 +81,15 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { label: 'npm ↗', href: 'https://www.npmjs.com/package/@dylanmccavitt/agent-skills' },
     ],
     metrics: [
-      { value: 'v1.1.0', label: 'published on npm' },
-      { value: '3 + 2', label: 'skills + command-line tools' },
-      { value: '80/80', label: 'tests passing' },
-      { value: '3', label: 'agent harnesses from one install' },
+      { value: '3 short skills', label: 'keep the default context surface intentionally small' },
+      { value: '1 compact receipt', label: 'replaces replaying an entire delegated session' },
+      { value: '0 handoff files', label: 'session state stays outside the project codebase' },
+      { value: '3 harnesses', label: 'share one install and the same workflow' },
     ],
     about: [
-      'Off-the-shelf agent skills and workflows kept swelling: every session loaded pages of prose the agent mostly didn’t need, bloating the context before the real work began. And as models got better, they needed less upfront steering; the heavy scaffolding started to read as over-engineering. Dylan wanted a kit of his own: small, curated, and built to let the agent use its best native capabilities.',
-      'agent-skills is that workflow kit, built lean on purpose. Three short skills (compass settles a direction with disposable prototypes, relay hands off bounded work for one compact receipt, cairn leaves a durable marker where it belongs) and a running experiment: give the agent a real command-line tool instead of more prose. The mechanics live in two small CLIs, a decision shelf and a delivery tool, so each skill stays a few paragraphs.',
-      'v1.1.0 is live on npm and installs across three agent harnesses from one command, with 80 tests keeping the installer honest. It is an active workbench: Dylan keeps tweaking, testing, and trialling new pieces to see what earns a permanent spot in the kit.',
+      'Months of installing one-off skills and skill packs that seemed useful left my harness configurations carrying more context than the work needed. As coding models improved, that extra instruction began to hurt my outputs instead of helping them. I decided to delete most of the old setup and build a lean system of my own: deterministic layers that point the model in the right direction while preserving the native strengths of the model and whichever coding harness I am using.',
+      'The skills are intentionally minimal. I built a CLI around them so repeatable mechanics live in deterministic tools instead of prose. For example, Relay scopes a handoff and returns one compact receipt, while the CLI handles the state and delivery rules behind it. I also keep temporary plans, stale decisions, and unnecessary documentation out of project repositories. As projects and abstractions grew, those leftovers were causing models to follow decisions I had already moved away from.',
+      'The current result is a v1.1.0 npm package that installs the same workflow across three coding harnesses. I actively track and test how it performs, then adjust the skills and tools as I find better ways to keep context lean, reduce rereading, and improve my own workflow.',
     ],
     notes: [
       'Curated lean on purpose: short skills, no context bloat.',
@@ -105,7 +105,9 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     shots: [
       { kind: 'image', src: `${SHOTS}/agent-skills/decision-shelf.webp`, caption: 'the decision shelf: records that outlive sessions' },
       { kind: 'image', src: `${SHOTS}/agent-skills/delivery.webp`, caption: 'delivery: checks and an evidence-bound receipt' },
-      { kind: 'image', src: `${SHOTS}/agent-skills/system.webp`, caption: 'how the skills and tools fit together' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/skills-overview.png`, caption: 'compass · relay · cairn' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/cli-commands.png`, caption: 'decision-shelf help: commands grouped by purpose' },
+      { kind: 'image', src: `${SHOTS}/agent-skills/storage-locations.png`, caption: 'decision-shelf path: durable state outside the repo' },
     ],
   },
   {
@@ -123,26 +125,26 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://bellasbeads.shop' }],
     metrics: [
-      { value: 'solo', label: 'wireframe to handoff, one engineer' },
-      { value: '4', label: 'services reconciled into one order lifecycle: stripe · shippo · supabase · resend' },
-      { value: '$0', label: 'platform fees: the owner runs the whole store herself' },
-      { value: 'live', label: 'in production at bellasbeads.shop' },
+      { value: '~80%', label: 'smaller css payload: ~300 kb → 61 kb' },
+      { value: '23%', label: 'smaller initial javascript bundle: 590 kb → 456 kb' },
+      { value: '33%', label: 'fewer sequential database trips on cart updates: 6 → 4' },
+      { value: '15 min', label: 'checkout inventory held to prevent overselling' },
     ],
     about: [
       'A jewelry maker needed a real store, with browsing, payment, shipping, tracking, and day-to-day admin, without platform fees or a site she couldn’t run herself.',
-      'Built as a complete platform from wireframe to handoff: a React + TypeScript storefront on a Node/Express backend with Postgres via Supabase, plus Stripe for payments, Shippo for shipping labels, and Resend for email. Each service reports back on its own schedule, so their webhooks are reconciled into one order lifecycle with CSRF protection, rate limiting, and hashed tokens throughout.',
+      'Built as a complete platform from wireframe to handoff: a React + TypeScript storefront on a Node/Express backend with Postgres via Supabase, plus Stripe for payments and Resend for email. Each service reports back on its own schedule, so their events are reconciled into one order lifecycle with CSRF protection, rate limiting, and hashed tokens throughout.',
       'In production at bellasbeads.shop with guest and account checkout, order history, shipment tracking, and an admin dashboard the owner operates on her own, taken from wireframe to handoff solo.',
     ],
     notes: [
       'CSRF protection, rate limiting, and HMAC token hashing throughout.',
-      'Webhook-driven order state across four third-party services.',
+      'Event-driven order state across payments, data, and email.',
       'In production at bellasbeads.shop.',
     ],
     stack: [
       { label: 'Frontend', value: 'react · typescript' },
       { label: 'Backend', value: 'node · express' },
       { label: 'Data', value: 'postgres / supabase' },
-      { label: 'Payments', value: 'stripe · shippo' },
+      { label: 'Payments', value: 'stripe' },
     ],
     shots: [
       { kind: 'image', src: `${SHOTS}/bella/landing.webp`, caption: 'storefront landing' },
