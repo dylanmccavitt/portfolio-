@@ -164,7 +164,7 @@ export const RESUME: ResumeAlbum = {
       when: '2025',
       hue: '#d678b6',
       about: [
-        'First freelance full-stack contract: a complete ecommerce platform for a handmade-jewelry business, from wireframe to handoff, with Stripe, Shippo, Supabase, and Resend in one order lifecycle.',
+        'First freelance full-stack contract: a complete ecommerce platform for a handmade-jewelry business, from wireframe to handoff, with Stripe, Supabase, and Resend in one order lifecycle.',
       ],
       notes: ['Scoped, built, shipped, and handed off solo.', 'Real payments, real shipping, real client.'],
       credits: [
@@ -181,7 +181,7 @@ export const RESUME: ResumeAlbum = {
       hue: '#50c878',
       current: true,
       about: [
-        'Focusing on agentic tooling, backed by full-stack experience, while building practical side projects: agent tooling, local finance automation, and small consumer apps.',
+        'Focusing on agentic tooling, backed by full-stack experience, while building practical side projects across agent workflows, automation, and client software.',
         'Looking for teams that value product judgment, reliability habits, and clear communication.',
       ],
       notes: ['US citizen; no sponsorship needed.'],

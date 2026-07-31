@@ -13,8 +13,8 @@
  * Three approved modules feed it and nothing else: `src/data/catalog.ts` (via
  * the read-model path; the catalog carries no draft state, so every entry in it
  * is owner-approved and ships unconditionally), `src/data/profile.ts` (whose
- * entries — and the site summary — reach here only through the published+public
- * filter, and are omitted when they do not), and `src/data/resume.ts` (whose
+ * entries first clear the published+public filter, then a narrower durable
+ * recruiter-context allowlist), and `src/data/resume.ts` (whose
  * timeline reaches here only through the public track allowlist, so the corpus
  * publishes exactly the history the site does and never more). Presentation-only
  * and internal fields — hues, `seek`, `wip`/`money`, `source`, SEO metadata —
@@ -62,6 +62,24 @@ export const DM_CORPUS_ACTIONS = DM_PAGE_ACTIONS;
     kept: the corpus is built from this site's own published content, not from
     anything a reader can't already see. */
 const DM_CORPUS_SOURCE = 'dylanmccavitt.xyz — published project catalog, public profile, and resume';
+
+/**
+ * DM is project-first. These are the durable profile facts that help a visitor
+ * interpret the work or contact Dylan; topical experiments, hobbies, site
+ * implementation notes, and duplicate project summaries stay out.
+ */
+export const DM_PROFILE_ENTRY_IDS = [
+  'short-bio',
+  'career-change',
+  'working-style',
+  'recruiter-faq',
+  'tools-and-stack',
+  'what-dylan-is-looking-for',
+  'agentic-workflow',
+  'before-engineering',
+  'graduate-school',
+  'where-to-find-dylan',
+] as const;
 
 export interface DmCorpusSite {
   origin: string;
@@ -178,11 +196,19 @@ export interface DmCorpusInput {
 }
 
 export async function buildDmCorpus({ profileSource }: DmCorpusInput = {}): Promise<DmCorpus> {
-  const [{ projects: details }, entries, summary] = await Promise.all([
+  const [{ projects: details }, approvedEntries, summary] = await Promise.all([
     loadPublicProjectDetails(),
     loadPublicProfileEntries(profileSource),
     loadPublicProfileSiteSummary(profileSource),
   ]);
+  const approvedById = new Map(approvedEntries.map((entry) => [entry.id, entry]));
+  const entries = DM_PROFILE_ENTRY_IDS.map((id) => {
+    const entry = approvedById.get(id);
+    if (entry === undefined) {
+      throw new Error(`DM profile allowlist names no approved public entry: ${id}`);
+    }
+    return entry;
+  });
 
   const projects: DmCorpusProject[] = details.map((project) => ({
     id: project.id,
