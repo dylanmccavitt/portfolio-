@@ -91,8 +91,8 @@ const beats = hasStory
   </div>
 
   <nav class="frost-doc-actions" aria-label="Project actions">
-    {p.links.map((link, index) => (
-      <a class:list={[{ 'is-fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label.replace(/\s*↗$/, '')}</a>
+    {p.links.map((link) => (
+      <a href={link.href} target="_blank" rel="noopener">{link.label.replace(/\s*↗$/, '')}</a>
     ))}
     <a class="is-quiet" href="/#work">← All work</a>
   </nav>
