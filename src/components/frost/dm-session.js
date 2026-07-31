@@ -283,10 +283,14 @@ export function takeDmActions(manifest, storage = defaultStorage()) {
  * navigating would kill the stream, losing the tail of the answer and the
  * `done` token with it — so it is held until the turn settles. Other actions
  * apply immediately when the current page can perform them (`applyNow` returns
- * true) and are queued for the homepage when it cannot.
+ * true). An action the current page cannot perform is dropped: answering a
+ * question must never move the visitor to another page as a side effect.
+ *
+ * `open` is honored only when the visitor's own question expressed navigation
+ * intent. The model may suggest an action, but it cannot turn an ordinary
+ * comparison question into a page change.
  */
-export function createTurnQueue() {
-  const away = [];
+export function createTurnQueue({ allowNavigation = true } = {}) {
   let openTarget = null;
   return {
     /**
@@ -295,22 +299,34 @@ export function createTurnQueue() {
      */
     offer(action, applyNow) {
       if (action.type === 'open') {
-        openTarget = action.target ?? null;
+        if (allowNavigation) openTarget = action.target ?? null;
         return;
       }
-      if (!applyNow(action) && away.length < DM_MAX_PENDING) away.push(action);
+      applyNow(action);
     },
     /**
-     * What navigation, if any, the settled turn earned. An `open` supersedes
-     * carried actions — they target a page the visitor is leaving for good.
-     * Only called after `done`; an errored stream never navigates.
+     * What explicit project navigation, if any, the settled turn earned. Only
+     * called after `done`; an errored stream never navigates.
      */
     settle() {
       if (openTarget) return { kind: 'open', target: openTarget };
-      if (away.length > 0) return { kind: 'home', actions: away };
       return null;
     },
   };
+}
+
+/**
+ * Navigation is an opt-in user intent, not something inferred from asking
+ * about a project. Keep the vocabulary narrow and deterministic.
+ * @param {unknown} question
+ */
+export function hasDmNavigationIntent(question) {
+  return (
+    typeof question === 'string' &&
+    (/\b(?:take|bring)\s+me\s+to\b/i.test(question) ||
+      /\b(?:go|navigate)\s+to\b/i.test(question) ||
+      /\bopen\b/i.test(question))
+  );
 }
 
 /**

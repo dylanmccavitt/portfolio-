@@ -29,7 +29,8 @@ const { PUBLIC_PROFILE_IDENTITY, PROFILE_SOURCE_UNFILTERED_FOR_LEAK_TEST } = awa
   '@/data/profile'
 );
 const { RESUME, PUBLIC_RESUME_TRACK_IDS } = await import('@/data/resume');
-const { DM_CORPUS_ANCHORS, DM_CORPUS_VERSION, buildDmCorpus } = await import('@/lib/dm/corpus');
+const { DM_CORPUS_ANCHORS, DM_CORPUS_VERSION, DM_PROFILE_ENTRY_IDS, buildDmCorpus } =
+  await import('@/lib/dm/corpus');
 const { buildDmPageManifest } = await import('@/lib/dm/page-manifest');
 
 const root = new URL('../', import.meta.url);
@@ -142,12 +143,12 @@ const approved = PROFILE_SOURCE_UNFILTERED_FOR_LEAK_TEST.filter(
  * — the real source array is never mutated, and the override goes through the
  * very same published+public filter the default input does.
  *
- * One of them clears both flags. It is the positive control: if it fails to
- * appear, the injection never reached the builder and the whole scan would be
- * vacuous again for a different reason.
+ * The approved canary replaces an allowlisted entry. It is the positive
+ * control: if it fails to appear, the injection never reached the builder and
+ * the whole scan would be vacuous again for a different reason.
  */
 const CANARY_APPROVED = {
-  id: 'canary-approved',
+  id: 'short-bio',
   category: 'canary',
   title: 'Canary approved KESTRELMARK',
   summary: 'Canary approved summary KESTRELMARK, which clears both flags and must reach the corpus.',
@@ -176,7 +177,11 @@ const CANARY_UNAPPROVED = [
 ] as const;
 
 const seeded = await buildDmCorpus({
-  profileSource: [...PROFILE_SOURCE_UNFILTERED_FOR_LEAK_TEST, CANARY_APPROVED, ...CANARY_UNAPPROVED],
+  profileSource: [
+    ...PROFILE_SOURCE_UNFILTERED_FOR_LEAK_TEST.filter((entry) => entry.id !== CANARY_APPROVED.id),
+    CANARY_APPROVED,
+    ...CANARY_UNAPPROVED,
+  ],
 });
 const seededBody = JSON.stringify(seeded);
 
@@ -242,15 +247,19 @@ test('no resume track outside the public allowlist contributes text to the corpu
   );
 });
 
-test('the corpus profile is exactly the approved set, summary included', () => {
+test('the corpus profile is the project-relevant approved subset, summary included', () => {
   const profile = corpus.profile as Record<string, unknown>;
   const entries = profile.entries as Array<Record<string, unknown>>;
 
   assert.ok(entries.length > 0, 'the corpus must carry at least one profile entry');
   assert.deepEqual(
     entries.map((entry) => entry.id),
-    approved.map((entry) => entry.id),
-    'the corpus profile entries must be exactly the approved public set',
+    [...DM_PROFILE_ENTRY_IDS],
+    'the corpus profile entries must stay on the durable project-relevant allowlist',
+  );
+  assert.ok(
+    entries.every((entry) => approved.some((candidate) => candidate.id === entry.id)),
+    'every selected corpus profile entry must still clear the public approval boundary',
   );
 
   // The site summary is published today, and it is verbatim from an approved
@@ -261,6 +270,19 @@ test('the corpus profile is exactly the approved set, summary included', () => {
     approved.some((entry) => entry.summary === profile.summary),
     'profile.summary must be the summary of an entry that cleared both approval flags',
   );
+});
+
+test('stale peripheral profile language stays out of the project-first corpus', () => {
+  for (const stale of [
+    'options-exit tooling',
+    'browser games as repeatable test beds',
+    'dozens of disposable design prototypes',
+    'with pi in the mix',
+    'small consumer apps',
+    'Shippo',
+  ]) {
+    assert.ok(!body.includes(stale), `stale corpus language survived: ${stale}`);
+  }
 });
 
 test('the identity block matches what the homepage publishes', async () => {

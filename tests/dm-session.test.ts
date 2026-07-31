@@ -28,6 +28,7 @@ const {
   DM_SESSION_KEY,
   clearDmSession,
   createTurnQueue,
+  hasDmNavigationIntent,
   historyWasRejected,
   readDmSession,
   stashDmActions,
@@ -316,27 +317,40 @@ test('the turn queue defers open until settle and applies what it can now', () =
   assert.deepEqual(queue.settle(), { kind: 'open', target: 'evalgate' });
 });
 
-test('actions this page cannot perform are queued for the homepage', () => {
+test('actions this page cannot perform never route an answer away', () => {
   const queue = createTurnQueue();
   const cannot = () => false;
   queue.offer({ type: 'go', target: 'work' }, cannot);
   queue.offer({ type: 'litContact', target: undefined }, cannot);
-  assert.deepEqual(queue.settle(), {
-    kind: 'home',
-    actions: [
-      { type: 'go', target: 'work' },
-      { type: 'litContact', target: undefined },
-    ],
-  });
-
-  // An `open` supersedes them: the visitor is leaving for a project page.
-  const superseded = createTurnQueue();
-  superseded.offer({ type: 'go', target: 'work' }, cannot);
-  superseded.offer({ type: 'open', target: 'bellas-beads' }, cannot);
-  assert.deepEqual(superseded.settle(), { kind: 'open', target: 'bellas-beads' });
+  assert.equal(queue.settle(), null);
 
   // A turn with nothing pending earns no navigation.
   assert.equal(createTurnQueue().settle(), null);
+});
+
+test('project navigation requires explicit intent in the visitor question', () => {
+  for (const question of [
+    'Which project best fits a backend role?',
+    'What has Dylan built with AI agents?',
+    'Tell me about bella’s beads.',
+  ]) {
+    assert.equal(hasDmNavigationIntent(question), false, question);
+    const queue = createTurnQueue({ allowNavigation: hasDmNavigationIntent(question) });
+    queue.offer({ type: 'open', target: 'bellas-beads' }, () => false);
+    assert.equal(queue.settle(), null, question);
+  }
+
+  for (const question of [
+    'Take me to bella’s beads.',
+    'Go to the agent-skills project.',
+    'Navigate to work orders.',
+    'Open the bella’s beads page.',
+  ]) {
+    assert.equal(hasDmNavigationIntent(question), true, question);
+    const queue = createTurnQueue({ allowNavigation: hasDmNavigationIntent(question) });
+    queue.offer({ type: 'open', target: 'bellas-beads' }, () => false);
+    assert.deepEqual(queue.settle(), { kind: 'open', target: 'bellas-beads' }, question);
+  }
 });
 
 test('historyWasRejected fires only for a 400 against a signed transcript', () => {

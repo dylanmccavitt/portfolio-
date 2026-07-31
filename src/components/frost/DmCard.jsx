@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronUp, Minus, X } from "lucide-react";
 import { PROFILE } from "./frost-data.js";
 import { askDm, linkifyCitations } from "./dm-client.js";
+import { chooseDmFrame, visibleDmObstacles } from "./dm-layout.js";
 import {
   DM_LIT_CONTACT_MS,
   DM_LIT_MS,
   clearDmSession,
   createTurnQueue,
+  hasDmNavigationIntent,
   historyWasRejected,
   readDmSession,
-  stashDmActions,
   writeDmSession,
 } from "./dm-session.js";
 
@@ -24,9 +25,8 @@ import {
  *
  * The card mounts on the homepage island and on the Paper project pages, and
  * the conversation follows it: `dm-session.js` keeps the settled turns (and
- * their signature tokens) in sessionStorage, so the navigation an `open`
- * action performs does not end the conversation — and actions this page
- * cannot perform are carried to the homepage rather than dropped.
+ * their signature tokens) in sessionStorage, so an explicitly requested
+ * project navigation does not end the conversation.
  *
  * NO GROUNDING CORPUS REACHES THE BROWSER. The corpus is what DM is allowed to
  * *use* when answering, not a document anyone may browse, so the site publishes
@@ -41,9 +41,9 @@ import {
 
 /** Seed questions. These are sent verbatim to the service — nothing is canned. */
 const SUGGESTED = [
-  "Give me the tour.",
+  "Which project best fits a backend role?",
   "What has Dylan built with AI agents?",
-  "Show me his client work.",
+  "Show me his strongest client work.",
   "How do I reach him?",
 ];
 
@@ -69,10 +69,8 @@ function prefersReducedMotion() {
 }
 
 /**
- * Card chrome state — collapsed / dragged-to / resized-to — kept in its own
- * sessionStorage key, deliberately outside `dm-session.js`: that module's
- * strict schema guards conversation integrity, and where the card sits on
- * screen is not part of the conversation.
+ * The collapsed state and visitor-selected size survive DM's own navigation.
+ * Placement is recalculated from the page currently visible behind the card.
  */
 const UI_KEY = "dm-card-ui";
 
@@ -90,14 +88,41 @@ function writeUi(ui) {
   try {
     window.sessionStorage.setItem(UI_KEY, JSON.stringify(ui));
   } catch {
-    // Storage full or blocked: the card still works, it just forgets its spot.
+    // Storage full or blocked: the card still works, it just forgets its chrome.
   }
 }
 
-/** Dragging and resizing are desktop affordances; below the card's own
-    full-width mobile breakpoint it keeps the fixed corner. */
 function floatable() {
   return typeof window !== "undefined" && window.innerWidth >= 901;
+}
+
+function storedSize(value) {
+  const size = value?.size;
+  return size &&
+    Number.isFinite(size.w) &&
+    Number.isFinite(size.h) &&
+    size.w >= 300 &&
+    size.h >= 260
+    ? { w: size.w, h: size.h }
+    : null;
+}
+
+function desiredCardHeight(node, collapsed) {
+  const style = window.getComputedStyle(node);
+  const border =
+    Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+  const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+  const children = Array.from(node.children).filter(
+    (child) => window.getComputedStyle(child).display !== "none",
+  );
+  const visible = collapsed ? children.slice(0, 1) : children;
+  const gaps = Math.max(0, visible.length - 1) * (Number.parseFloat(style.rowGap) || 0);
+  return Math.ceil(
+    border +
+      padding +
+      gaps +
+      visible.reduce((height, child) => height + Math.max(child.scrollHeight, child.offsetHeight), 0),
+  );
 }
 
 /**
@@ -249,165 +274,129 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
   const inputRef = useRef(null);
   const cardRef = useRef(null);
 
-  // Chrome state: collapse to the header bar, drag by the header, resize from
-  // the corner. All of it survives DM's own navigations like the conversation.
   const [collapsed, setCollapsed] = useState(() => readUi().collapsed === true);
-  const [frame, setFrame] = useState(() => {
-    const ui = readUi();
-    return { pos: ui.pos ?? null, size: ui.size ?? null };
-  });
+  const [userSize, setUserSize] = useState(() => storedSize(readUi()));
+  const [frame, setFrame] = useState(null);
+  const [resizeFrame, setResizeFrame] = useState(null);
+  const placementRef = useRef(null);
 
-  const clampPos = useCallback((pos, size) => {
-    const width = size?.w ?? cardRef.current?.offsetWidth ?? 344;
-    const maxX = Math.max(8, window.innerWidth - width - 8);
-    const maxY = Math.max(8, window.innerHeight - 56);
-    return {
-      x: Math.min(Math.max(8, pos.x), maxX),
-      y: Math.min(Math.max(8, pos.y), maxY),
-    };
-  }, []);
+  useEffect(() => writeUi({ collapsed, size: userSize }), [collapsed, userSize]);
 
-  /** Switches the card from its corner anchor to explicit coordinates, so a
-      drag or a corner resize grows from a fixed top-left instead of walking
-      off the bottom-right of the screen. */
-  const freeze = useCallback(() => {
-    const node = cardRef.current;
-    if (!node) return;
-    // Read the rect outside the updater: updaters must stay pure, and React
-    // may run them more than once.
-    const rect = node.getBoundingClientRect();
-    setFrame((current) =>
-      current.pos ? current : { ...current, pos: { x: rect.left, y: rect.top } }
-    );
-  }, []);
-
-  const onHeadPointerDown = useCallback(
-    (event) => {
-      if (!floatable() || event.target.closest("button")) return;
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      freeze();
-      const grip = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
-      const move = (e) =>
-        setFrame((current) => ({
-          ...current,
-          pos: clampPos({ x: e.clientX - grip.dx, y: e.clientY - grip.dy }, current.size),
-        }));
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
-      event.preventDefault();
-    },
-    [clampPos, freeze]
-  );
-
-  /**
-   * Resizing is driven from an explicit grip, not the browser's `resize: both`.
-   * The native corner was invisible against the card's own rounded chrome and
-   * had no keyboard story, and it wrote width/height straight onto the DOM —
-   * so React learned the size second-hand through a ResizeObserver, and the
-   * default `max-height` cap kept fighting the first drag until the observer
-   * had recorded a size and `.is-sized` lifted it. Here the pointer sets state,
-   * state renders the size, and the cap lifts in the same commit as the first
-   * pixel of movement.
-   */
-  const resizeTo = useCallback((base, dx, dy) => {
-    const node = cardRef.current;
-    if (!node) return;
-    const rect = node.getBoundingClientRect();
-    // The card may not grow past the viewport it is anchored in, and never
-    // below the size at which its own header and composer stop fitting.
-    const maxW = Math.min(640, window.innerWidth - rect.left - 8);
-    const maxH = window.innerHeight - rect.top - 8;
-    setFrame((current) => ({
-      ...current,
-      size: {
-        w: Math.round(Math.min(Math.max(260, base.w + dx), Math.max(260, maxW))),
-        h: Math.round(Math.min(Math.max(240, base.h + dy), Math.max(240, maxH))),
-      },
-    }));
-  }, []);
-
-  const onGripPointerDown = useCallback(
-    (event) => {
-      if (!floatable() || collapsed) return;
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      freeze();
-      const base = { w: rect.width, h: rect.height };
-      const start = { x: event.clientX, y: event.clientY };
-      // Pointer capture on the grip itself: the pointer routinely outruns a
-      // 22px target mid-drag, and without capture the resize would drop the
-      // moment it left the handle — the "finicky" half of the native corner.
-      // The window listeners below are what actually drive the drag, so a
-      // browser that refuses the capture still resizes.
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
-        // Not a live pointer (or unsupported): the drag works without it.
-      }
-      const move = (e) => resizeTo(base, e.clientX - start.x, e.clientY - start.y);
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [collapsed, freeze, resizeTo]
-  );
-
-  /** The grip is a real button, so the card is resizable without a pointer. */
-  const onGripKeyDown = useCallback(
-    (event) => {
-      const step = event.shiftKey ? 48 : 16;
-      const nudge = { ArrowRight: [step, 0], ArrowLeft: [-step, 0], ArrowDown: [0, step], ArrowUp: [0, -step] }[
-        event.key
-      ];
-      if (!nudge) return;
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      freeze();
-      resizeTo({ w: rect.width, h: rect.height }, nudge[0], nudge[1]);
-      event.preventDefault();
-    },
-    [freeze, resizeTo]
-  );
-
-  // Persist what the visitor chose; remember the resized footprint.
   useEffect(() => {
-    writeUi({ collapsed, pos: frame.pos, size: frame.size });
+    const card = cardRef.current;
+    if (!card) return undefined;
+    let animationFrame = 0;
+
+    const place = () => {
+      animationFrame = 0;
+      if (!floatable() || collapsed) {
+        placementRef.current = null;
+        setFrame(null);
+        return;
+      }
+      const width = userSize?.w ?? Math.min(400, Math.max(320, window.innerWidth * 0.3));
+      const next = chooseDmFrame({
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        desired: {
+          width,
+          height: userSize?.h ?? desiredCardHeight(card, collapsed),
+        },
+        obstacles: visibleDmObstacles(document.querySelector("main"), card),
+        previousPlacement: placementRef.current,
+      });
+      placementRef.current = next.placement;
+      setFrame((current) =>
+        current &&
+        current.x === next.x &&
+        current.y === next.y &&
+        current.w === next.w &&
+        current.h === next.h
+          ? current
+          : next
+      );
+    };
+    const schedule = () => {
+      if (!animationFrame) animationFrame = window.requestAnimationFrame(place);
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(card, { childList: true, subtree: true, characterData: true });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, { passive: true });
+    schedule();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule);
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+    };
+  }, [collapsed, userSize]);
+
+  const visibleFrame = resizeFrame ?? frame;
+  const frameStyle =
+    visibleFrame && floatable()
+      ? {
+          left: `${visibleFrame.x}px`,
+          top: `${visibleFrame.y}px`,
+          right: "auto",
+          bottom: "auto",
+          width: `${visibleFrame.w}px`,
+          ...(collapsed ? {} : { height: `${visibleFrame.h}px` }),
+        }
+      : {};
+
+  const onGripPointerDown = useCallback((event) => {
+    if (!floatable() || collapsed) return;
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const placement = frame?.placement ?? "bottom-right";
+    const rightAnchored = placement.endsWith("right");
+    const bottomAnchored = placement.startsWith("bottom");
+    const start = { x: event.clientX, y: event.clientY };
+    let latest = { w: rect.width, h: rect.height };
+    const move = (nextEvent) => {
+      const dx = nextEvent.clientX - start.x;
+      const dy = nextEvent.clientY - start.y;
+      latest = {
+        w: Math.round(Math.min(Math.max(300, rect.width + (rightAnchored ? -dx : dx)), 560)),
+        h: Math.round(Math.min(Math.max(260, rect.height + (bottomAnchored ? -dy : dy)), 620)),
+      };
+      setResizeFrame({
+        x: rightAnchored ? rect.right - latest.w : rect.left,
+        y: bottomAnchored ? rect.bottom - latest.h : rect.top,
+        w: latest.w,
+        h: latest.h,
+        placement,
+      });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setUserSize(latest);
+      setResizeFrame(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    event.preventDefault();
   }, [collapsed, frame]);
 
-  // A window resize must not leave the card stranded outside the viewport.
-  useEffect(() => {
-    const onResize = () =>
-      setFrame((current) =>
-        current.pos ? { ...current, pos: clampPos(current.pos, current.size) } : current
-      );
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [clampPos]);
-
-  const frameStyle = {};
-  if (floatable() && frame.pos) {
-    frameStyle.left = `${frame.pos.x}px`;
-    frameStyle.top = `${frame.pos.y}px`;
-    frameStyle.right = "auto";
-    frameStyle.bottom = "auto";
-  }
-  if (floatable() && frame.size) {
-    // The width survives collapsing — folding a card the visitor narrowed used
-    // to snap it back to the default 344px, so the header bar jumped wider than
-    // the card it came from. Only the height folds away (the CSS forces `auto`).
-    frameStyle.width = `${frame.size.w}px`;
-    if (!collapsed) frameStyle.height = `${frame.size.h}px`;
-  }
+  const onGripKeyDown = useCallback((event) => {
+    const step = event.shiftKey ? 48 : 16;
+    const delta = {
+      ArrowRight: [step, 0],
+      ArrowLeft: [-step, 0],
+      ArrowDown: [0, step],
+      ArrowUp: [0, -step],
+    }[event.key];
+    if (!delta) return;
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setUserSize({
+      w: Math.min(Math.max(300, rect.width + delta[0]), 560),
+      h: Math.min(Math.max(260, rect.height + delta[1]), 620),
+    });
+    event.preventDefault();
+  }, []);
 
   const mailto = `mailto:${PROFILE.email}`;
 
@@ -435,17 +424,9 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
 
   const cite = useCallback(
     (projectId) => {
-      // Cited on a page without the Work grid, the chip carries the visitor
-      // home instead of doing nothing; both ids re-clear the allowlist there.
-      const went = drive.go("work");
-      const lit = drive.lit(projectId);
-      if (!went && !lit) {
-        stashDmActions([
-          { type: "go", target: "work" },
-          { type: "lit", target: projectId },
-        ]);
-        window.location.assign("/");
-      }
+      // A citation chip names one known project and behaves like its direct
+      // link. It never detours through the homepage Work grid.
+      drive.open(projectId);
     },
     [drive]
   );
@@ -486,7 +467,7 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
       // stream — the tail of the answer lost, the `done` token never issued,
       // the turn unreplayable. The queue holds it (and any action this page
       // cannot perform) until the turn is on disk.
-      const queue = createTurnQueue();
+      const queue = createTurnQueue({ allowNavigation: hasDmNavigationIntent(text) });
       const applyNow = (action) =>
         action.type === "go"
           ? drive.go(action.target)
@@ -530,10 +511,6 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
         });
         const nav = queue.settle();
         if (nav?.kind === "open") drive.open(nav.target);
-        else if (nav?.kind === "home") {
-          stashDmActions(nav.actions);
-          window.location.assign("/");
-        }
       } catch (error) {
         if (controller.signal.aborted) return;
         // No canned pseudo-answer: say what happened and hand over the email —
@@ -567,11 +544,12 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
   return (
     <aside
       ref={cardRef}
-      className={`frost-dmc${collapsed ? " is-collapsed" : ""}${frame.size ? " is-sized" : ""}`}
+      className={`frost-dmc${collapsed ? " is-collapsed" : ""}${resizeFrame ? " is-resizing" : ""}`}
       style={frameStyle}
+      data-placement={frame?.placement}
       aria-label="DM, the portfolio agent"
     >
-      <header className="frost-dmc-head" onPointerDown={onHeadPointerDown}>
+      <header className="frost-dmc-head">
         <strong>DM</strong>
         <span className="frost-kicker">Portfolio agent</span>
         <button
@@ -591,8 +569,8 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
       <div className="frost-dmc-thread" role="log" aria-live="polite">
         {messages.length === 0 && (
           <p className="frost-dmc-empty">
-            DM answers from this site&rsquo;s own published facts and drives the site while it
-            talks. Cited project names are clickable.
+            Ask about the projects, tradeoffs, and proof behind the work. Known project names are
+            clickable.
           </p>
         )}
 
@@ -677,13 +655,10 @@ export default function DmCard({ endpoint, manifest = null, projects = [], onClo
           question goes off-site too. */}
       <p className="frost-dmc-egress">Questions are sent to DM&rsquo;s service to be answered.</p>
 
-      {/* Drawn, not the browser's own: a visible pair of ridges the visitor can
-          aim at, and a focusable control so the arrow keys resize too. CSS
-          hides it below the card's floating breakpoint. */}
       <button
         type="button"
         className="frost-dmc-grip"
-        aria-label="Resize DM (arrow keys resize, hold shift for larger steps)"
+        aria-label="Resize DM (arrow keys resize; hold shift for larger steps)"
         onPointerDown={onGripPointerDown}
         onKeyDown={onGripKeyDown}
       >

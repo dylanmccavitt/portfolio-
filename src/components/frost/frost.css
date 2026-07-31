@@ -1085,6 +1085,7 @@ a.frost-sr-only:focus {
   color: var(--frost-ink);
   font-family: inherit;
   animation: frost-dmc-rise 0.3s ease;
+  transition: left 180ms ease, top 180ms ease, width 180ms ease, height 180ms ease;
 }
 
 @keyframes frost-dmc-rise {
@@ -1100,101 +1101,97 @@ a.frost-sr-only:focus {
   gap: 8px;
 }
 
-/* Collapsed: the card folds to its header bar; the conversation stays mounted
-   and the spot on screen is kept. `height: auto !important` because a native
-   corner resize writes an inline height, which must not prop the folded card
-   open. */
+/* Collapsed: the card folds to its header bar; the conversation stays mounted. */
 .frost-dmc.is-collapsed {
   gap: 0;
   min-height: 0;
   height: auto !important;
 }
 
-/* Desktop chrome: the header drags, the drawn grip in the bottom-right corner
-   resizes. The breakpoint matches the card's own full-width mobile rule below —
-   between the two the card is edge-to-edge and must not also grow chrome. The
-   default 560px height cap holds until the visitor has actually sized the card
-   (`.is-sized`), so an untouched card never balloons to its conversation's
-   length; the grip sets a size and the class in one commit, so the cap never
-   fights the drag it is being lifted by. */
+/* On desktop the layout engine sizes and places the card around the visible
+   page. The thread absorbs any remaining pressure without hiding the composer. */
 @media (min-width: 901px) {
-  .frost-dmc-head {
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-  }
-
   .frost-dmc:not(.is-collapsed) {
     overflow: hidden;
-    min-width: 260px;
-    min-height: 240px;
-    max-width: min(640px, calc(100vw - 32px));
-  }
-
-  .frost-dmc.is-sized:not(.is-collapsed) {
+    min-width: 300px;
+    min-height: 260px;
+    max-width: min(560px, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
   }
 }
 
-/* Two ridges parallel to the corner — the conventional resize mark, drawn so it
-   reads on the card's own surface instead of relying on the UA's near-invisible
-   default. The hit target is deliberately larger than the ink.
-   Hidden below the floating breakpoint by the rule underneath, not turned on by
-   one inside it: same-specificity selectors resolve by source order, and a
-   `display: block` in the media block above would lose to this rule. */
 .frost-dmc-grip {
-  display: block;
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 0 0 13px 0;
-  background: none;
+  background: transparent;
   cursor: nwse-resize;
   touch-action: none;
 }
 
-.frost-dmc-grip span {
+.frost-dmc[data-placement="top-left"] .frost-dmc-grip {
+  right: 0;
+  bottom: 0;
+}
+
+.frost-dmc[data-placement="top-right"] .frost-dmc-grip {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.frost-dmc[data-placement="bottom-left"] .frost-dmc-grip {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.frost-dmc[data-placement="bottom-right"] .frost-dmc-grip {
+  left: 0;
+  top: 0;
+}
+
+.frost-dmc-grip span,
+.frost-dmc-grip::after {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
+  right: 5px;
+  bottom: 5px;
   width: 11px;
   height: 11px;
-  background-image: linear-gradient(
+  content: "";
+  background: linear-gradient(
     135deg,
     transparent 0 42%,
     var(--frost-line) 42% 58%,
     transparent 58% 100%
   );
-  background-repeat: no-repeat;
-  opacity: 0.85;
+}
+
+.frost-dmc[data-placement="top-right"] .frost-dmc-grip span,
+.frost-dmc[data-placement="top-right"] .frost-dmc-grip::after,
+.frost-dmc[data-placement="bottom-right"] .frost-dmc-grip span,
+.frost-dmc[data-placement="bottom-right"] .frost-dmc-grip::after {
+  right: auto;
+  left: 5px;
+  transform: scaleX(-1);
+}
+
+.frost-dmc[data-placement^="bottom"] .frost-dmc-grip span,
+.frost-dmc[data-placement^="bottom"] .frost-dmc-grip::after {
+  bottom: auto;
+  top: 5px;
 }
 
 .frost-dmc-grip::after {
-  /* The second, shorter ridge, inset from the first. */
-  content: "";
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
   width: 6px;
   height: 6px;
-  background-image: linear-gradient(
-    135deg,
-    transparent 0 35%,
-    var(--frost-line) 35% 65%,
-    transparent 65% 100%
-  );
 }
 
-.frost-dmc-grip:hover span,
-.frost-dmc-grip:hover::after,
-.frost-dmc-grip:focus-visible span,
-.frost-dmc-grip:focus-visible::after {
-  opacity: 1;
-  filter: drop-shadow(-1.2px 0 rgba(255, 42, 109, 0.5)) drop-shadow(1.2px 0 rgba(0, 174, 255, 0.5));
+.frost-dmc.is-resizing {
+  transition: none;
 }
 
 .frost-dmc-grip:focus-visible {
@@ -1202,8 +1199,6 @@ a.frost-sr-only:focus {
   outline-offset: -2px;
 }
 
-/* Below the floating breakpoint the card is edge-to-edge and pinned; there is
-   nothing to resize, and a grip would only be a mis-tap target. */
 @media (max-width: 900px) {
   .frost-dmc-grip {
     display: none;
@@ -2057,6 +2052,7 @@ html:has(#project-screens:target) .look-index-nav a[href="#project-screens"] {
      that is state, not decoration, exactly as with hover. */
   .frost-dmc {
     animation: none;
+    transition: none;
   }
 
   .frost-dmc-caret {
