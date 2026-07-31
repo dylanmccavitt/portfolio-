@@ -137,6 +137,9 @@ function GlitchCard({ project, index, fx, isBursting }) {
       <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
       <p className="frost-kicker">{project.eyebrow}</p>
       <strong>{project.title}</strong>
+      {project.proof.length > 0 && (
+        <span className="frost-teaser-proof">{project.proof[0]}</span>
+      )}
     </div>
   );
 
@@ -159,6 +162,16 @@ function GlitchCard({ project, index, fx, isBursting }) {
           <span className="frost-fact-key">Line</span>
           <p>{project.line}</p>
         </div>
+        {project.proof.length > 0 && (
+          <div className="frost-fact-row">
+            <span className="frost-fact-key">Proof</span>
+            <div className="frost-proof-lines">
+              {project.proof.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="frost-fact-row">
           <span className="frost-fact-key">Open</span>
           <span className="frost-card-open">Project <ArrowUpRight size={12} /></span>
@@ -198,9 +211,22 @@ function JourneyRows({ journey }) {
 function ContactBlock() {
   return (
     <div className="frost-contact">
+      {/* Email stays the first anchor: the DM contact flash targets
+          `.frost-contact a` and must keep hitting it. */}
       <a href={`mailto:${PROFILE.email}`}>
         {PROFILE.email} <ArrowUpRight size={16} strokeWidth={1.6} />
       </a>
+      <div className="frost-contact-links">
+        {PROFILE.links.map((link) => (
+          <a
+            key={link.label}
+            href={link.href}
+            {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
+          >
+            {link.label} <ArrowUpRight size={11} strokeWidth={1.8} />
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,21 @@ const rank = (id: string) => {
   const index = WORK_ORDER.indexOf(id);
   return index === -1 ? WORK_ORDER.length : index;
 };
+// "Shipped & client work · Shipped" says it once: the status is dropped
+// when the area label already contains that word.
+const cardEyebrow = (area: string, status: string) =>
+  area.toLowerCase().includes(status.toLowerCase()) ? area : `${area} · ${status}`;
+
+// Card-sized specimen lines from the detail metrics: value + label reads as
+// one phrase ("~80% smaller css payload"), any "· n → m" style qualifier
+// after a colon is dropped, and lines that still don't fit a card in one
+// breath are skipped rather than truncated mid-thought.
+const proofLines = (metrics: { value: string; label: string }[]) =>
+  metrics
+    .map((metric) => `${metric.value} ${metric.label.split(':')[0]}`)
+    .filter((line) => line.length <= 60)
+    .slice(0, 2);
+
 const workProjects = [...projects]
   .sort((a, b) => rank(a.id) - rank(b.id))
   .map((project) => ({
@@ -30,9 +45,9 @@ const workProjects = [...projects]
     slug: project.slug,
     href: project.href,
     title: project.title,
-    eyebrow: `${project.area} · ${project.status[1]}`,
+    eyebrow: cardEyebrow(project.area, project.status[1]),
     line: project.line,
-    proof: project.metrics.slice(0, 3).map((metric) => `${metric.value} ${metric.label}`),
+    proof: proofLines(project.metrics),
   }));
 
 // The Journey rows, read through the resume's public-track allowlist rather

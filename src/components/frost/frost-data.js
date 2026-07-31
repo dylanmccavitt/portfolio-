@@ -5,6 +5,13 @@ export const PROFILE = {
   location: "NYC/NJ area",
   status: "Focusing on agentic tooling",
   email: "dylanmccavitt@outlook.com",
+  /** Contact-section links. Canonical profile URLs match `sameAs` in
+      `src/lib/seo.ts` — change them together. */
+  links: [
+    { label: "GitHub", href: "https://github.com/DylanMcCavitt", external: true },
+    { label: "LinkedIn", href: "https://www.linkedin.com/in/dylan-mccavitt", external: true },
+    { label: "Resume", href: "/resume" },
+  ],
   summary:
     "Dylan is a New York City–based software engineer whose path runs from economics through legal operations and cyber risk to an M.S. in computer science.",
 };
