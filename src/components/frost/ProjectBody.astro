@@ -42,45 +42,44 @@ const beats = hasStory
         <h1>{p.title}</h1>
         <p class="look-title-line">{p.line}</p>
       </div>
-      {/* Wide screens split this into prose (left) and a sticky Stack /
-          Metrics rail (right); below the breakpoint it flows in the same
-          order it always has. See `.look-index-grid` in frost.css. */}
-      <div class="look-index-grid">
-        <div class="look-index-copy-col">
-          {beats.map((beat) => (
-            <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
-              <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
-              <p class="look-copy">{beat.copy}</p>
-            </section>
-          ))}
-        </div>
-        <aside class="look-index-side">
-          {p.stack.length > 0 && (
-            <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
-              <h2 id="heading-stack">Stack</h2>
-              <dl class="frost-detail-rail frost-detail-rail--stack">
-                {p.stack.map((entry) => (
-                  <div class="frost-detail-rail-row">
-                    <dt>{entry.label}:</dt>
-                    <dd>{entry.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          )}
-          <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
-            <h2 id="heading-metrics">Metrics</h2>
-            <dl class="frost-detail-rail frost-detail-rail--metrics">
-              {p.metrics.map((metric) => (
+      {/* Wide screens place the prose and Screens in the left column and
+          this Stack / Metrics rail in a right column that spans BOTH rows,
+          so the sticky rail travels the full read like the left nav does.
+          Below the breakpoint everything flows in this source order. */}
+      <div class="look-index-copy-col">
+        {beats.map((beat) => (
+          <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
+            <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
+            <p class="look-copy">{beat.copy}</p>
+          </section>
+        ))}
+      </div>
+      <aside class="look-index-side">
+        {p.stack.length > 0 && (
+          <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
+            <h2 id="heading-stack">Stack</h2>
+            <dl class="frost-detail-rail frost-detail-rail--stack">
+              {p.stack.map((entry) => (
                 <div class="frost-detail-rail-row">
-                  <dt>{metric.label}</dt>
-                  <dd>{metric.value}</dd>
+                  <dt>{entry.label}:</dt>
+                  <dd>{entry.value}</dd>
                 </div>
               ))}
             </dl>
           </section>
-        </aside>
-      </div>
+        )}
+        <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
+          <h2 id="heading-metrics">Metrics</h2>
+          <dl class="frost-detail-rail frost-detail-rail--metrics">
+            {p.metrics.map((metric) => (
+              <div class="frost-detail-rail-row">
+                <dt>{metric.label}</dt>
+                <dd>{metric.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </aside>
       {imageShots.length > 0 && (
         <section class="look-index-section look-index-section--screens" id="project-screens" aria-labelledby="heading-screens">
           <h2 id="heading-screens">Screens</h2>

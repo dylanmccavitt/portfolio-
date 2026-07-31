@@ -1898,23 +1898,40 @@ a.frost-sr-only:focus {
   max-width: 760px;
 }
 
-/* Wide desktops: the index-strip page opens up and the copy/side grid
-   below fills the right half that used to sit empty. */
+/* Wide desktops: the index-strip page opens up. The main column becomes a
+   grid — title, prose, and Screens stack on the left; the Stack / Metrics
+   rail takes a right column that spans the prose AND Screens rows, so its
+   sticky pin travels the whole read (the same trick the left nav uses)
+   instead of releasing after a few pixels. */
 @media (min-width: 1100px) {
   .look-layout--index-strip {
-    max-width: 1160px;
+    max-width: 1340px;
   }
 
-  .look-index-grid {
+  .look-layout--index-strip .look-index-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
     column-gap: 56px;
     align-items: start;
   }
 
-  .look-index-side {
+  .look-layout--index-strip .look-index-main > * {
+    grid-column: 1;
+  }
+
+  .look-layout--index-strip .look-index-main > .look-index-side {
+    grid-column: 2;
+    grid-row: 2 / span 2;
     position: sticky;
     top: calc(var(--look-index-sticky-top, 72px) + 12px);
+  }
+
+  /* Inside the grid the strip fills its own column instead of the
+     viewport-based breakout used at mid widths. (Doubled selector so it
+     outranks the 800px breakout rule that appears later in the file.) */
+  .look-index-main .look-index-section--screens {
+    width: auto;
+    min-width: 0;
   }
 }
 
