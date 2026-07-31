@@ -51,16 +51,26 @@ const beats = hasStory
       {p.stack.length > 0 && (
         <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
           <h2 id="heading-stack">Stack</h2>
-          <div class="frost-doc-facts">
-            {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
-          </div>
+          <dl class="frost-detail-rail frost-detail-rail--stack">
+            {p.stack.map((entry) => (
+              <div class="frost-detail-rail-row">
+                <dt>{entry.label}:</dt>
+                <dd>{entry.value}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
       )}
       <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
         <h2 id="heading-metrics">Metrics</h2>
-        <div class="frost-doc-facts">
-          {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
-        </div>
+        <dl class="frost-detail-rail frost-detail-rail--metrics">
+          {p.metrics.map((metric) => (
+            <div class="frost-detail-rail-row">
+              <dt>{metric.label}</dt>
+              <dd>{metric.value}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
       {imageShots.length > 0 && (
         <section class="look-index-section" id="project-screens" aria-labelledby="heading-screens">

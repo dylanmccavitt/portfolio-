@@ -1848,6 +1848,48 @@ html:has(#project-screens:target) .look-index-nav a[href="#project-screens"] {
   margin: 0;
 }
 
+.frost-detail-rail {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 4px 0 4px 20px;
+  border-left: 1px solid var(--frost-line);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  line-height: 1.55;
+  text-transform: uppercase;
+}
+
+.frost-detail-rail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65ch;
+}
+
+.frost-detail-rail dt,
+.frost-detail-rail dd {
+  margin: 0;
+}
+
+.frost-detail-rail--stack dt {
+  color: var(--frost-muted);
+}
+
+.frost-detail-rail--metrics dt {
+  order: 1;
+}
+
+.frost-detail-rail--metrics dd {
+  order: 2;
+  padding-bottom: 1px;
+  border-bottom: 1px solid currentColor;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+}
+
 @media (min-width: 800px) {
   .look-index {
     --look-index-sticky-top: 72px;
@@ -1888,6 +1930,12 @@ html:has(#project-screens:target) .look-index-nav a[href="#project-screens"] {
   .look-index-section {
     scroll-margin-top: calc(var(--look-index-sticky-top) + 12px);
     padding: 28px 0;
+  }
+
+  .frost-detail-rail {
+    gap: 16px;
+    padding-left: 24px;
+    font-size: 11px;
   }
 }
 
