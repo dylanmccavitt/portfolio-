@@ -942,9 +942,8 @@ a.frost-sr-only:focus {
 }
 
 .frost-image-lightbox {
-  width: fit-content;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 80px);
+  width: min(1120px, calc(100vw - 32px), calc(144vh - 115.2px));
+  aspect-ratio: 36 / 25;
   margin: auto;
   padding: 0;
   border: 0;
@@ -1003,10 +1002,10 @@ a.frost-sr-only:focus {
 
 .frost-image-lightbox-image {
   display: block;
-  width: auto;
-  max-width: min(1120px, calc(100vw - 32px));
-  max-height: calc(100vh - 80px);
+  width: 100%;
+  height: 100%;
   margin: 0 auto;
+  object-fit: contain;
 }
 
 .frost-gallery figcaption {
