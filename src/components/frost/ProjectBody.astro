@@ -42,36 +42,45 @@ const beats = hasStory
         <h1>{p.title}</h1>
         <p class="look-title-line">{p.line}</p>
       </div>
-      {beats.map((beat) => (
-        <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
-          <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
-          <p class="look-copy">{beat.copy}</p>
-        </section>
-      ))}
-      {p.stack.length > 0 && (
-        <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
-          <h2 id="heading-stack">Stack</h2>
-          <dl class="frost-detail-rail frost-detail-rail--stack">
-            {p.stack.map((entry) => (
-              <div class="frost-detail-rail-row">
-                <dt>{entry.label}:</dt>
-                <dd>{entry.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
-      <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
-        <h2 id="heading-metrics">Metrics</h2>
-        <dl class="frost-detail-rail frost-detail-rail--metrics">
-          {p.metrics.map((metric) => (
-            <div class="frost-detail-rail-row">
-              <dt>{metric.label}</dt>
-              <dd>{metric.value}</dd>
-            </div>
+      {/* Wide screens split this into prose (left) and a sticky Stack /
+          Metrics rail (right); below the breakpoint it flows in the same
+          order it always has. See `.look-index-grid` in frost.css. */}
+      <div class="look-index-grid">
+        <div class="look-index-copy-col">
+          {beats.map((beat) => (
+            <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
+              <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
+              <p class="look-copy">{beat.copy}</p>
+            </section>
           ))}
-        </dl>
-      </section>
+        </div>
+        <aside class="look-index-side">
+          {p.stack.length > 0 && (
+            <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
+              <h2 id="heading-stack">Stack</h2>
+              <dl class="frost-detail-rail frost-detail-rail--stack">
+                {p.stack.map((entry) => (
+                  <div class="frost-detail-rail-row">
+                    <dt>{entry.label}:</dt>
+                    <dd>{entry.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
+          <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
+            <h2 id="heading-metrics">Metrics</h2>
+            <dl class="frost-detail-rail frost-detail-rail--metrics">
+              {p.metrics.map((metric) => (
+                <div class="frost-detail-rail-row">
+                  <dt>{metric.label}</dt>
+                  <dd>{metric.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        </aside>
+      </div>
       {imageShots.length > 0 && (
         <section class="look-index-section look-index-section--screens" id="project-screens" aria-labelledby="heading-screens">
           <h2 id="heading-screens">Screens</h2>
@@ -183,7 +192,7 @@ const beats = hasStory
     const fit = () => {
       for (const figure of strip.querySelectorAll('figure')) {
         const img = figure.querySelector('img');
-        if (img instanceof HTMLImageElement && img.clientWidth > 0) {
+        if (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0 && img.clientWidth > 0) {
           figure.style.flexBasis = `${img.clientWidth}px`;
         }
       }

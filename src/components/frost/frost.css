@@ -1037,6 +1037,10 @@ a.frost-sr-only:focus {
   width: fit-content;
   max-width: 100%;
   height: auto;
+  /* Placeholder box while a lazy still is loading — without it the figure
+     collapses to a sliver until the load-triggered measure runs. */
+  min-width: min(260px, 60vw);
+  min-height: min(340px, 52vw);
 }
 
 .frost-gallery--strip img {
@@ -1892,6 +1896,26 @@ a.frost-sr-only:focus {
 
 .look-paper {
   max-width: 760px;
+}
+
+/* Wide desktops: the index-strip page opens up and the copy/side grid
+   below fills the right half that used to sit empty. */
+@media (min-width: 1100px) {
+  .look-layout--index-strip {
+    max-width: 1160px;
+  }
+
+  .look-index-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    column-gap: 56px;
+    align-items: start;
+  }
+
+  .look-index-side {
+    position: sticky;
+    top: calc(var(--look-index-sticky-top, 72px) + 12px);
+  }
 }
 
 .look-title h1 {
