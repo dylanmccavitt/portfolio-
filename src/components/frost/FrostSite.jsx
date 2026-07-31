@@ -154,14 +154,23 @@ function GlitchCard({ project, index, fx, isBursting }) {
         href={project.href}
         aria-label={`Open ${project.title}`}
       />
-      <div className="frost-glitch-facts" aria-hidden="true">
-        <p>{project.line}</p>
+      <div className="frost-glitch-facts frost-glitch-facts--rows" aria-hidden="true">
+        <div className="frost-fact-row">
+          <span className="frost-fact-key">Line</span>
+          <p>{project.line}</p>
+        </div>
         {project.proof.length > 0 && (
-          <div className="frost-proof">
-            {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+          <div className="frost-fact-row">
+            <span className="frost-fact-key">Proof</span>
+            <div className="frost-proof">
+              {project.proof.slice(0, 3).map((proof) => <span key={proof}>{proof}</span>)}
+            </div>
           </div>
         )}
-        <span className="frost-card-open">Open project <ArrowUpRight size={12} /></span>
+        <div className="frost-fact-row">
+          <span className="frost-fact-key">Open</span>
+          <span className="frost-card-open">Project <ArrowUpRight size={12} /></span>
+        </div>
       </div>
       <div className="frost-glitch-top" aria-hidden="true">
         {fx ? (
@@ -180,12 +189,14 @@ function GlitchCard({ project, index, fx, isBursting }) {
     `src/lib/journey.ts`. This component only renders what it is handed. */
 function JourneyRows({ journey }) {
   return (
-    <ol className="frost-journey">
+    <ol className="frost-journey frost-journey-rail">
       {journey.map((row) => (
         <li key={row.id}>
           <time>{row.when}</time>
-          <strong>{row.place}</strong>
-          <span>{row.role}</span>
+          <div className="frost-journey-copy">
+            <strong>{row.place}</strong>
+            <span>{row.role}</span>
+          </div>
         </li>
       ))}
     </ol>
@@ -315,29 +326,28 @@ function SiteLayout({ projects, journey, fx, onDm }) {
     go(id);
   };
 
-  const onBrandLink = (event) => {
-    event.preventDefault();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    if (typeof history !== "undefined") history.replaceState(null, "", "#main");
-  };
-
   const onDmLink = (event) => {
     event.preventDefault();
     onDm();
   };
 
+  const currentLabel =
+    DESTINATIONS.find((destination) => destination.id === current)?.label ?? "About";
+
   return (
-    <div className="frost-site">
+    <div className="frost-site frost-site--explore">
       <div className="frost-boot-fade">
-        <header className="frost-site-head">
-          <a
-            className="frost-site-brand"
-            href="#main"
-            onClick={onBrandLink}
-          >
-            Dylan McCavitt
+        <header className="frost-site-head frost-site-head--minimal">
+          {/* Name lives in the hero only. The sticky bar tracks the active
+              section in mono — orientation without bringing back full nav. */}
+          <a className="frost-sr-only" href="#main">
+            {PROFILE.name} — top of page
           </a>
-          <nav aria-label="Sections">
+          <p className="frost-site-here" aria-live="polite">
+            <span className="frost-site-here-label">{currentLabel}</span>
+          </p>
+          {/* Real hash links stay for no-JS / screen-reader jumps. */}
+          <nav aria-label="Sections" className="frost-sr-only">
             {DESTINATIONS.map((destination) => (
               <a
                 key={destination.id}
@@ -362,21 +372,20 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </header>
       </div>
 
-      <h1 className="frost-sr-only">{PROFILE.name}, {PROFILE.role}</h1>
-
-      {/* Marginalia: the section label runs in the left margin instead of
-          stacking on top, so the prose starts at the top of the section rather
-          than a heading announcing it. It stays an <h2> — only its placement
-          and voice change, so the page outline is exactly what it was. The
-          name belongs to the sticky header alone. */}
-      <section className="frost-site-section frost-about" id="about">
-        <h2 className="frost-about-rail">About</h2>
+      {/* Brand-hero open: chromatic fringe on the name (settle-fringe), About
+          prose absorbed so the first composition is one beat. `#about` stays
+          for redirects / DM go. Ask DM lives only in the sticky bar
+          (canvas: sticky-only + mono-chip); no See work — Work is next. */}
+      <section className="frost-site-section frost-hero" id="about" aria-label="About">
+        <p className="frost-kicker">{PROFILE.role}</p>
+        <h1 className="frost-hero-title">{PROFILE.name}</h1>
+        <p className="frost-hero-line">{PROFILE.focus}</p>
         <CondenseAbout />
       </section>
 
-      <section className="frost-site-section" id="work">
+      <section className="frost-site-section frost-marginalia" id="work">
+        <h2 className="frost-section-rail">Work</h2>
         <FlowIn>
-          <h2>Work</h2>
           <p className="frost-kicker">{projects.length} projects · shipped and building</p>
           <ol className="frost-cards">
             {projects.map((project, index) => (
@@ -392,17 +401,17 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         </FlowIn>
       </section>
 
-      <section className="frost-site-section" id="journey">
+      <section className="frost-site-section frost-marginalia" id="journey">
+        <h2 className="frost-section-rail">Journey</h2>
         <FlowIn>
-          <h2>Journey</h2>
           <p className="frost-kicker">2019 to now</p>
           <JourneyRows journey={journey} />
         </FlowIn>
       </section>
 
-      <section className="frost-site-section" id="contact">
+      <section className="frost-site-section frost-marginalia" id="contact">
+        <h2 className="frost-section-rail">Contact</h2>
         <FlowIn>
-          <h2>Contact</h2>
           <ContactBlock />
         </FlowIn>
       </section>

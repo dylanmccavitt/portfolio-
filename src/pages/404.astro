@@ -1,5 +1,6 @@
 ---
 import Frost from '@/layouts/Frost.astro';
+import { PROFILE } from '@/components/frost/frost-data.js';
 import { libraryMeta } from '@/lib/seo';
 
 const meta = libraryMeta(
@@ -9,15 +10,21 @@ const meta = libraryMeta(
 ---
 
 <Frost title="Page not found · Dylan McCavitt" meta={meta}>
-  <main class="frost frost-doc" id="main">
-    <header class="frost-doc-head">
-      <a href="/">Dylan McCavitt</a>
-      <nav aria-label="Primary">
+  <main class="frost frost-doc frost-doc--explore" id="main">
+    <header class="frost-doc-head frost-doc-head--explore">
+      <a class="frost-sr-only" href="/">{PROFILE.name} — home</a>
+      <p class="frost-site-here">
+        <span class="frost-site-here-label">404</span>
+      </p>
+      <nav aria-label="Primary" class="frost-sr-only">
         <a href="/#about">About</a>
         <a href="/#work">Work</a>
         <a href="/#journey">Journey</a>
         <a href="/#contact">Contact</a>
       </nav>
+      <div class="frost-site-actions">
+        <a class="frost-dm-button" href={`mailto:${PROFILE.email}`}>Ask DM</a>
+      </div>
     </header>
 
     <div class="frost-doc-title">

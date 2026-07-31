@@ -142,6 +142,60 @@
   opacity: 0.9;
 }
 
+/* Explore: typed-rows reveal — Line / Proof / Open as a tiny dossier. */
+.frost-glitch-facts--rows {
+  justify-content: center;
+  gap: 0;
+  padding: 14px 16px;
+}
+
+.frost-fact-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(38, 52, 61, 0.14);
+}
+
+.frost-fact-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.frost-fact-key {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--frost-ink);
+  opacity: 0.45;
+  padding-top: 2px;
+}
+
+.frost-glitch-facts--rows p {
+  font-size: 13.5px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.frost-glitch-facts--rows .frost-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+
+.frost-glitch-facts--rows .frost-proof span {
+  padding: 4px 8px;
+  font-size: 9.5px;
+}
+
+.frost-glitch-facts--rows .frost-card-open {
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
+}
+
 /* In flow so the teaser's min-height sizes the cell (facts are absolute
    beneath it); raised above the facts layer. */
 .frost-glitch-top {
@@ -327,6 +381,33 @@
   color: var(--frost-muted);
 }
 
+/* Explore preview: year rail + stacked place/role (canvas: journey=rail). */
+.frost-journey-rail {
+  max-width: 640px;
+}
+
+.frost-journey-rail li {
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 20px;
+  padding: 16px 2px;
+}
+
+.frost-journey-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.frost-journey-rail .frost-journey-copy strong {
+  font-size: 16px;
+}
+
+.frost-journey-rail .frost-journey-copy span {
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
 .frost-contact a {
   display: inline-flex;
   align-items: center;
@@ -341,34 +422,33 @@
 
 /* About condenses in: hidden only when scripting is available, so the
    no-JS page stays complete. */
-/* About is set as marginalia: the section label runs in the left margin and
-   the name carries the section at display size. Composition, not more copy —
-   the section used to be a heading and a kicker stacked over one short line,
-   which read as an empty slot rather than a short section. */
-.frost-about {
+/* Marginalia: section label in the left margin; content starts at the top
+   of the section. Explore preview extends About-style rails to every section. */
+.frost-about,
+.frost-marginalia {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
 }
 
 /* The rail is a section title like any other — same face, size, weight and
-   fringe as Work / Journey / Contact. Only its POSITION differs, so this rule
-   carries position and nothing else; everything visual comes from the shared
-   `.frost-site-section h2`. */
-.frost-site-section .frost-about-rail {
+   fringe. Only its POSITION differs; visuals come from `.frost-site-section h2`. */
+.frost-site-section .frost-about-rail,
+.frost-site-section .frost-section-rail {
   margin: 0;
 }
 
 @media (min-width: 720px) {
-  .frost-about {
-    /* Wide enough for "About" at the shared 26px, which the old 92px rail
-       column (sized for a 10px mono label) could not hold. */
+  .frost-about,
+  .frost-marginalia {
+    /* Wide enough for "About" / "Journey" at the shared 26px. */
     grid-template-columns: 132px minmax(0, 1fr);
     gap: 28px;
   }
 
-  .frost-site-section .frost-about-rail {
-    /* Optical: drops the 26px cap-height onto the first line of 15px prose. */
+  .frost-site-section .frost-about-rail,
+  .frost-site-section .frost-section-rail {
+    /* Optical: drops the 26px cap-height onto the first line of prose. */
     padding-top: 4px;
   }
 }
@@ -425,6 +505,124 @@
   padding: 0 clamp(22px, 4.5vw, 64px);
   background: var(--frost-surface);
   border-bottom: 1px solid var(--frost-line);
+}
+
+/* Explore: scroll section (left) + mono Ask DM (right). */
+.frost-site-head--minimal {
+  justify-content: space-between;
+}
+
+.frost-site-here {
+  margin: 0;
+  min-width: 0;
+}
+
+.frost-site-here-label {
+  display: inline-block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+  text-shadow: -0.8px 0 rgba(255, 42, 109, 0.28), 0.8px 0 rgba(0, 174, 255, 0.28);
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+/* Brand-hero first open (explore). Content-height — not a full viewport —
+   so About prose can sit in the same composition without a leftover gap.
+   Still a `.frost-site-section` so DM page.anchors / redirects keep `#about`. */
+.frost-site-section.frost-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 16px;
+  min-height: 0;
+  padding: 36px 0 40px;
+  scroll-margin-top: 70px;
+  border-bottom: 1px solid var(--frost-line);
+}
+
+.frost-hero .frost-kicker {
+  margin: 0;
+}
+
+.frost-hero-title {
+  margin: 0;
+  max-width: 14ch;
+  font-size: clamp(44px, 9vw, 76px);
+  font-weight: 640;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  text-shadow: -1.8px 0 rgba(255, 42, 109, 0.42), 1.8px 0 rgba(0, 174, 255, 0.42);
+}
+
+.frost-hero-line {
+  margin: 0;
+  max-width: 34ch;
+  font-size: clamp(16px, 2.2vw, 19px);
+  line-height: 1.45;
+  letter-spacing: -0.02em;
+  color: var(--frost-muted);
+}
+
+.frost-hero .frost-about-condense {
+  max-width: 640px;
+}
+
+.frost-hero .frost-about-condense p {
+  max-width: 54ch;
+}
+
+.frost-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.frost-hero-work {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 15px;
+  border: 1.5px solid var(--frost-ink);
+  border-radius: 999px;
+  color: var(--frost-ink);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-decoration: none;
+}
+
+.frost-hero-work:hover {
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+}
+
+.frost-hero .frost-dm-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 15px;
+  border: 1.5px solid var(--frost-ink);
+  border-radius: 999px;
+  color: var(--frost-surface);
+  background: var(--frost-ink);
+  font-size: 12.5px;
+  font-weight: 560;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.frost-hero .frost-dm-button:hover {
+  color: #fff;
+  background: #1b262e;
+}
+
+.frost-marginalia > .frost-kicker,
+.frost-marginalia > .frost-flow-in > .frost-kicker {
+  margin-bottom: 20px;
 }
 
 .frost-site-brand {
@@ -495,6 +693,27 @@
   background: #1b262e;
 }
 
+/* Explore: mono chip — tool-like, quieter than the solid pill. */
+.frost-site--explore .frost-site-actions .frost-dm-button {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--frost-ink);
+  border-radius: 2px;
+  color: var(--frost-ink);
+  background: transparent;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.frost-site--explore .frost-site-actions .frost-dm-button:hover {
+  color: var(--frost-ink);
+  background: transparent;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
+}
+
 .frost-site-section {
   padding: 44px 0 30px;
   scroll-margin-top: 70px;
@@ -523,8 +742,8 @@
   margin-bottom: 20px;
 }
 
-/* The name lives in the header only; a hidden h1 keeps the page's
-   heading semantics. */
+/* Visually hidden until focused — skip / section links stay in the tab
+   order without living in the sticky chrome. */
 .frost-sr-only {
   position: absolute;
   width: 1px;
@@ -535,6 +754,36 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+.frost-sr-only:focus,
+.frost-sr-only:focus-within {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  width: auto;
+  height: auto;
+  max-width: min(92vw, 420px);
+  margin: 0;
+  padding: 10px 14px;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  color: var(--frost-ink);
+  background: var(--frost-surface);
+  border: 1px solid var(--frost-ink);
+  box-shadow: 0 8px 24px rgba(38, 52, 61, 0.12);
+}
+
+.frost-sr-only:focus-within a,
+a.frost-sr-only:focus {
+  color: var(--frost-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Smooth landing: the header fades in and the About condenses — no
@@ -1137,6 +1386,14 @@
   .frost-journey li span {
     grid-column: 2;
   }
+
+  .frost-journey-rail li {
+    grid-template-columns: 72px 1fr;
+  }
+
+  .frost-site-section.frost-hero {
+    padding: 28px 0 32px;
+  }
 }
 
 /* Static Frost subpages (/resume, /projects, /404) */
@@ -1156,6 +1413,48 @@
   gap: 10px 18px;
   min-height: 58px;
   border-bottom: 1px solid var(--frost-line);
+}
+
+/* Explore: match homepage sticky chrome — section cue left, mono Ask DM right. */
+.frost-doc-head--explore {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-wrap: nowrap;
+  margin: 0 calc(-1 * clamp(22px, 4.5vw, 64px));
+  padding: 0 clamp(22px, 4.5vw, 64px);
+  background: var(--frost-surface);
+}
+
+.frost-doc-head--explore .frost-site-here-label {
+  color: inherit;
+  text-decoration: none;
+}
+
+.frost-doc-head--explore .frost-site-here a.frost-site-here-label:hover {
+  color: var(--frost-ink);
+}
+
+.frost-doc--explore .frost-site-actions .frost-dm-button {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--frost-ink);
+  border-radius: 2px;
+  color: var(--frost-ink);
+  background: transparent;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.frost-doc--explore .frost-site-actions .frost-dm-button:hover {
+  color: var(--frost-ink);
+  background: transparent;
+  border-color: var(--frost-ink);
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.4), 1px 0 rgba(0, 174, 255, 0.4);
 }
 
 .frost-doc-head > a {
@@ -1350,15 +1649,180 @@
   line-height: 1.6;
 }
 
-.look-block {
-  margin-top: 44px;
+.frost-doc--explore .look-paper .frost-doc-actions {
+  padding-top: 36px;
+  border-top: 1px solid var(--frost-line);
+  margin-top: 8px;
 }
 
-.look-block h2 {
-  margin: 0 0 12px;
+.frost-doc--explore .look-title {
+  padding-bottom: 28px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.look-index) {
+    scroll-behavior: smooth;
+  }
+}
+
+.look-index {
+  --look-index-sticky-top: 58px;
+  --look-index-bar-h: 44px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+}
+
+/* Mobile: full-bleed sticky strip under WORK / ASK DM. */
+.look-index-nav {
+  position: sticky;
+  top: var(--look-index-sticky-top);
+  z-index: 9;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  min-height: var(--look-index-bar-h);
+  margin: 0 calc(-1 * clamp(22px, 4.5vw, 64px));
+  padding: 0 clamp(22px, 4.5vw, 64px);
+  border-bottom: 1px solid var(--frost-line);
+  background: var(--frost-surface);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 36px), transparent);
+}
+
+.look-index-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.look-index-nav a {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--look-index-bar-h);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+  text-decoration: none;
+  transition: color 160ms ease;
+}
+
+.look-index-nav a:not(:last-child)::after {
+  content: "·";
+  color: var(--frost-line);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.look-index-nav a:last-child {
+  padding-right: 28px;
+}
+
+.look-index-nav a:hover,
+.look-index-nav a:focus-visible {
+  color: var(--frost-ink);
+}
+
+html:has(#project-problem:target) .look-index-nav a[href="#project-problem"],
+html:has(#project-approach:target) .look-index-nav a[href="#project-approach"],
+html:has(#project-outcome:target) .look-index-nav a[href="#project-outcome"],
+html:has(#project-about:target) .look-index-nav a[href="#project-about"],
+html:has(#project-stack:target) .look-index-nav a[href="#project-stack"],
+html:has(#project-metrics:target) .look-index-nav a[href="#project-metrics"],
+html:has(#project-screens:target) .look-index-nav a[href="#project-screens"] {
+  color: var(--frost-ink);
+  text-shadow: -0.8px 0 rgba(255, 42, 109, 0.35), 0.8px 0 rgba(0, 174, 255, 0.35);
+}
+
+.look-index-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.look-index-title {
+  padding-bottom: 4px;
+}
+
+.look-index-section {
+  /* Header + sticky index strip. */
+  scroll-margin-top: calc(var(--look-index-sticky-top) + var(--look-index-bar-h) + 8px);
+  padding: 24px 0;
+  border-top: 1px solid var(--frost-line);
+}
+
+.look-index-section h2 {
+  margin: 0 0 10px;
   font-size: 15px;
   font-weight: 640;
   letter-spacing: -0.01em;
+  text-shadow: -1px 0 rgba(255, 42, 109, 0.35), 1px 0 rgba(0, 174, 255, 0.35);
+}
+
+.look-index-section .look-copy {
+  max-width: 54ch;
+  margin: 0;
+}
+
+.look-index-section .frost-doc-facts,
+.look-index-section .frost-gallery {
+  margin: 0;
+}
+
+@media (min-width: 800px) {
+  .look-index {
+    --look-index-sticky-top: 72px;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 48px;
+    align-items: start;
+  }
+
+  .look-index-nav {
+    top: var(--look-index-sticky-top);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 0;
+    margin: 0;
+    padding: 4px 0 0;
+    border-bottom: 0;
+    background: transparent;
+    overflow: visible;
+    mask-image: none;
+  }
+
+  .look-index-nav a {
+    min-height: 0;
+    gap: 0;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+
+  .look-index-nav a:not(:last-child)::after {
+    content: none;
+  }
+
+  .look-index-nav a:last-child {
+    padding-right: 0;
+  }
+
+  .look-index-section {
+    scroll-margin-top: calc(var(--look-index-sticky-top) + 12px);
+    padding: 28px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .look-index-nav a {
+    transition: none;
+  }
 }
 
 .look-copy {

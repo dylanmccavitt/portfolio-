@@ -1,0 +1,87 @@
+---
+/**
+ * Project detail body — index-strip layout. Catalog `about` stays
+ * [problem, approach, outcome]; this is presentation only.
+ */
+import type { ProjectDetailReadModel } from '@/lib/projects/read-models';
+
+interface Props {
+  project: ProjectDetailReadModel;
+}
+
+const { project: p } = Astro.props;
+
+const imageShots = p.shots.filter((shot) => shot.kind === 'image');
+const hasStory = p.about.length >= 3;
+const problem = hasStory ? p.about[0] : p.about[0] ?? '';
+const approach = hasStory ? p.about[1] : p.about[1] ?? '';
+const outcome = hasStory ? p.about[2] : p.about[2] ?? '';
+
+const beats = hasStory
+  ? [
+      { id: 'problem', n: '01', label: 'Problem', copy: problem },
+      { id: 'approach', n: '02', label: 'Approach', copy: approach },
+      { id: 'outcome', n: '03', label: 'Outcome', copy: outcome },
+    ]
+  : [{ id: 'about', n: '01', label: 'About', copy: p.about.join(' ') }];
+---
+
+<div class="look-paper look-layout look-layout--index-strip">
+  <div class="look-index">
+    <nav class="look-index-nav" aria-label="On this page">
+      {beats.map((beat) => (
+        <a href={`#project-${beat.id}`}>{beat.label}</a>
+      ))}
+      {p.stack.length > 0 && <a href="#project-stack">Stack</a>}
+      <a href="#project-metrics">Metrics</a>
+      {imageShots.length > 0 && <a href="#project-screens">Screens</a>}
+    </nav>
+    <div class="look-index-main">
+      <div class="frost-doc-title look-title look-index-title">
+        <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
+        <h1>{p.title}</h1>
+        <p class="look-title-line">{p.line}</p>
+      </div>
+      {beats.map((beat) => (
+        <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
+          <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
+          <p class="look-copy">{beat.copy}</p>
+        </section>
+      ))}
+      {p.stack.length > 0 && (
+        <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
+          <h2 id="heading-stack">Stack</h2>
+          <div class="frost-doc-facts">
+            {p.stack.map((entry) => <span>{entry.label}: {entry.value}</span>)}
+          </div>
+        </section>
+      )}
+      <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
+        <h2 id="heading-metrics">Metrics</h2>
+        <div class="frost-doc-facts">
+          {p.metrics.map((metric) => <span>{metric.value} · {metric.label}</span>)}
+        </div>
+      </section>
+      {imageShots.length > 0 && (
+        <section class="look-index-section" id="project-screens" aria-labelledby="heading-screens">
+          <h2 id="heading-screens">Screens</h2>
+          <div class="frost-gallery">
+            {imageShots.map((shot) => (
+              <figure>
+                <img src={shot.src} alt={shot.caption} loading="lazy" />
+                <figcaption>{shot.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  </div>
+
+  <nav class="frost-doc-actions" aria-label="Project actions">
+    {p.links.map((link, index) => (
+      <a class:list={[{ 'is-fill': index === 0 }]} href={link.href} target="_blank" rel="noopener">{link.label}</a>
+    ))}
+    <a class="is-quiet" href="/#work">← All work</a>
+  </nav>
+</div>
