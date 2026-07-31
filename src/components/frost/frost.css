@@ -940,7 +940,7 @@ a.frost-sr-only:focus {
 .frost-image-lightbox {
   width: fit-content;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 80px);
   margin: auto;
   padding: 0;
   border: 0;
@@ -955,17 +955,19 @@ a.frost-sr-only:focus {
 
 .frost-image-lightbox-bar {
   position: absolute;
-  inset: 0;
+  top: -40px;
+  right: 0;
+  left: 0;
+  height: 28px;
   z-index: 1;
   color: #fff;
-  mix-blend-mode: difference;
   pointer-events: none;
 }
 
 .frost-image-lightbox-caption {
   position: absolute;
-  bottom: 14px;
-  left: 14px;
+  top: 7px;
+  left: 0;
   margin: 0;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
@@ -976,8 +978,8 @@ a.frost-sr-only:focus {
 
 .frost-image-lightbox-close {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: 0;
+  right: 0;
   flex: 0 0 auto;
   min-height: 28px;
   padding: 0;
@@ -999,7 +1001,7 @@ a.frost-sr-only:focus {
   display: block;
   width: auto;
   max-width: min(1120px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 80px);
   margin: 0 auto;
 }
 
