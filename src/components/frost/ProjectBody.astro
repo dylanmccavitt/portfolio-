@@ -4,12 +4,21 @@
  * [problem, approach, outcome]; this is presentation only.
  */
 import type { ProjectDetailReadModel } from '@/lib/projects/read-models';
+import { densityForStatus, ditherOrbSvg, ditherSwatchSvg, hueForArea } from '@/lib/dither';
 
 interface Props {
   project: ProjectDetailReadModel;
 }
 
 const { project: p } = Astro.props;
+
+// Dither marks, rasterised during the build. Hue is the project's area, so a
+// page's accents all agree; the status swatch's density says how far along
+// the work is. Both sit beside ink labels, never in place of them.
+const hue = hueForArea(p.area);
+const areaSwatch = ditherSwatchSvg({ level: 0.85, color: hue });
+const statusSwatch = ditherSwatchSvg({ level: densityForStatus(p.status[0]), color: hue });
+const navOrb = ditherOrbSvg({ color: hue, size: 11 });
 
 const imageShots = p.shots.filter((shot) => shot.kind === 'image');
 const hasStory = p.about.length >= 3;
@@ -30,15 +39,23 @@ const beats = hasStory
   <div class="look-index">
     <nav class="look-index-nav" aria-label="On this page">
       {beats.map((beat) => (
-        <a href={`#project-${beat.id}`}>{beat.label}</a>
+        <a href={`#project-${beat.id}`}><span class="look-nav-orb" set:html={navOrb} />{beat.label}</a>
       ))}
-      {p.stack.length > 0 && <a href="#project-stack">Stack</a>}
-      <a href="#project-metrics">Metrics</a>
-      {imageShots.length > 0 && <a href="#project-screens">Screens</a>}
+      {p.stack.length > 0 && (
+        <a href="#project-stack"><span class="look-nav-orb" set:html={navOrb} />Stack</a>
+      )}
+      <a href="#project-metrics"><span class="look-nav-orb" set:html={navOrb} />Metrics</a>
+      {imageShots.length > 0 && (
+        <a href="#project-screens"><span class="look-nav-orb" set:html={navOrb} />Screens</a>
+      )}
     </nav>
     <div class="look-index-main">
       <div class="frost-doc-title look-title look-index-title">
-        <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
+        <p class="look-chip-row">
+          <span class="look-chip"><span class="look-chip-swatch" set:html={areaSwatch} />{p.area}</span>
+          <span class="look-chip"><span class="look-chip-swatch" set:html={statusSwatch} />{p.status[1]}</span>
+          <span class="look-chip look-chip--bare">{p.year}</span>
+        </p>
         <h1>{p.title}</h1>
         <p class="look-title-line">{p.line}</p>
       </div>
