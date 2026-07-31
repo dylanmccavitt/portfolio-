@@ -81,15 +81,15 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
       { label: 'npm ↗', href: 'https://www.npmjs.com/package/@dylanmccavitt/agent-skills' },
     ],
     metrics: [
-      { value: 'v1.1.0', label: 'published on npm' },
-      { value: '3 + 2', label: 'skills + command-line tools' },
-      { value: '80/80', label: 'tests passing' },
-      { value: '3', label: 'agent harnesses from one install' },
+      { value: '3 short skills', label: 'keep the default context surface intentionally small' },
+      { value: '1 compact receipt', label: 'replaces replaying an entire delegated session' },
+      { value: '0 handoff files', label: 'session state stays outside the project codebase' },
+      { value: '3 harnesses', label: 'share one install and the same workflow' },
     ],
     about: [
-      'Off-the-shelf agent skills and workflows kept swelling: every session loaded pages of prose the agent mostly didn’t need, bloating the context before the real work began. And as models got better, they needed less upfront steering; the heavy scaffolding started to read as over-engineering. Dylan wanted a kit of his own: small, curated, and built to let the agent use its best native capabilities.',
-      'agent-skills is that workflow kit, built lean on purpose. Three short skills (compass settles a direction with disposable prototypes, relay hands off bounded work for one compact receipt, cairn leaves a durable marker where it belongs) and a running experiment: give the agent a real command-line tool instead of more prose. The mechanics live in two small CLIs, a decision shelf and a delivery tool, so each skill stays a few paragraphs.',
-      'v1.1.0 is live on npm and installs across three agent harnesses from one command, with 80 tests keeping the installer honest. It is an active workbench: Dylan keeps tweaking, testing, and trialling new pieces to see what earns a permanent spot in the kit.',
+      'Months of installing one-off skills and skill packs that seemed useful left each session carrying more context than the work needed. As coding models improved, that extra instruction began to hurt my outputs instead of helping them. I decided to delete most of the old setup and build a lean system of my own: deterministic layers that point the model in the right direction while preserving the native strengths of the model and whichever coding harness I am using.',
+      'The skills are intentionally minimal. I built a CLI around them so repeatable mechanics live in deterministic tools instead of prose. For example, Relay scopes a handoff and returns one compact receipt, while the CLI handles the state and delivery rules behind it. I also keep temporary plans, stale decisions, and unnecessary documentation out of project repositories. As projects and abstractions grew, those leftovers were causing models to follow decisions I had already moved away from.',
+      'The current result is a v1.1.0 npm package that installs the same workflow across three coding harnesses. I actively track and test how it performs, then adjust the skills and tools as I find better ways to keep context lean, reduce rereading, and improve my own workflow.',
     ],
     notes: [
       'Curated lean on purpose: short skills, no context bloat.',
