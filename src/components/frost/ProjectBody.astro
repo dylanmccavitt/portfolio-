@@ -42,40 +42,48 @@ const beats = hasStory
         <h1>{p.title}</h1>
         <p class="look-title-line">{p.line}</p>
       </div>
-      {beats.map((beat) => (
-        <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
-          <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
-          <p class="look-copy">{beat.copy}</p>
-        </section>
-      ))}
-      {p.stack.length > 0 && (
-        <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
-          <h2 id="heading-stack">Stack</h2>
-          <dl class="frost-detail-rail frost-detail-rail--stack">
-            {p.stack.map((entry) => (
+      {/* Wide screens place the prose and Screens in the left column and
+          this Stack / Metrics rail in a right column that spans BOTH rows,
+          so the sticky rail travels the full read like the left nav does.
+          Below the breakpoint everything flows in this source order. */}
+      <div class="look-index-copy-col">
+        {beats.map((beat) => (
+          <section class="look-index-section" id={`project-${beat.id}`} aria-labelledby={`heading-${beat.id}`}>
+            <h2 id={`heading-${beat.id}`}>{beat.label}</h2>
+            <p class="look-copy">{beat.copy}</p>
+          </section>
+        ))}
+      </div>
+      <aside class="look-index-side">
+        {p.stack.length > 0 && (
+          <section class="look-index-section" id="project-stack" aria-labelledby="heading-stack">
+            <h2 id="heading-stack">Stack</h2>
+            <dl class="frost-detail-rail frost-detail-rail--stack">
+              {p.stack.map((entry) => (
+                <div class="frost-detail-rail-row">
+                  <dt>{entry.label}:</dt>
+                  <dd>{entry.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
+        <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
+          <h2 id="heading-metrics">Metrics</h2>
+          <dl class="frost-detail-rail frost-detail-rail--metrics">
+            {p.metrics.map((metric) => (
               <div class="frost-detail-rail-row">
-                <dt>{entry.label}:</dt>
-                <dd>{entry.value}</dd>
+                <dt>{metric.label}</dt>
+                <dd>{metric.value}</dd>
               </div>
             ))}
           </dl>
         </section>
-      )}
-      <section class="look-index-section" id="project-metrics" aria-labelledby="heading-metrics">
-        <h2 id="heading-metrics">Metrics</h2>
-        <dl class="frost-detail-rail frost-detail-rail--metrics">
-          {p.metrics.map((metric) => (
-            <div class="frost-detail-rail-row">
-              <dt>{metric.label}</dt>
-              <dd>{metric.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      </aside>
       {imageShots.length > 0 && (
-        <section class="look-index-section" id="project-screens" aria-labelledby="heading-screens">
+        <section class="look-index-section look-index-section--screens" id="project-screens" aria-labelledby="heading-screens">
           <h2 id="heading-screens">Screens</h2>
-          <div class="frost-gallery">
+          <div class="frost-gallery frost-gallery--strip">
             {imageShots.map((shot) => (
               <figure>
                 <a href={shot.src} data-frost-gallery-image data-frost-gallery-caption={shot.caption} aria-label={`Open ${shot.caption} full size`}>
@@ -104,6 +112,13 @@ const beats = hasStory
     <button class="frost-image-lightbox-close" type="button">Close</button>
   </div>
   <img class="frost-image-lightbox-image" alt="" />
+  {imageShots.length > 1 && (
+    <div class="frost-image-lightbox-nav">
+      <button class="frost-image-lightbox-prev" type="button" aria-label="Previous screen">←</button>
+      <p class="frost-image-lightbox-count"></p>
+      <button class="frost-image-lightbox-next" type="button" aria-label="Next screen">→</button>
+    </div>
+  )}
 </dialog>
 
 <script>
@@ -114,24 +129,95 @@ const beats = hasStory
     const image = lightbox.querySelector<HTMLImageElement>('.frost-image-lightbox-image');
     const caption = lightbox.querySelector<HTMLElement>('.frost-image-lightbox-caption');
     const close = lightbox.querySelector<HTMLButtonElement>('.frost-image-lightbox-close');
+    const prev = lightbox.querySelector<HTMLButtonElement>('.frost-image-lightbox-prev');
+    const next = lightbox.querySelector<HTMLButtonElement>('.frost-image-lightbox-next');
+    const count = lightbox.querySelector<HTMLElement>('.frost-image-lightbox-count');
+    const links = Array.from(gallery.querySelectorAll<HTMLAnchorElement>('a[data-frost-gallery-image]'));
+    const pad = (n: number) => String(n).padStart(2, '0');
+    let current = 0;
+
+    const show = (index: number) => {
+      const link = links[index];
+      if (!link || !image || !caption) return;
+      current = index;
+      image.src = link.href;
+      image.alt = link.dataset.frostGalleryCaption ?? '';
+      caption.textContent = link.dataset.frostGalleryCaption ?? '';
+      if (count) count.textContent = `${pad(index + 1)} / ${pad(links.length)}`;
+      if (prev) prev.disabled = index === 0;
+      if (next) next.disabled = index === links.length - 1;
+    };
 
     gallery.addEventListener('click', (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
 
       const link = target.closest('a[data-frost-gallery-image]');
-      if (!(link instanceof HTMLAnchorElement) || !image || !caption) return;
+      if (!(link instanceof HTMLAnchorElement)) return;
 
       event.preventDefault();
-      image.src = link.href;
-      image.alt = link.dataset.frostGalleryCaption ?? '';
-      caption.textContent = link.dataset.frostGalleryCaption ?? '';
+      show(links.indexOf(link));
       lightbox.showModal();
+    });
+
+    prev?.addEventListener('click', () => show(current - 1));
+    next?.addEventListener('click', () => show(current + 1));
+    lightbox.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' && current < links.length - 1) show(current + 1);
+      else if (event.key === 'ArrowLeft' && current > 0) show(current - 1);
     });
 
     close?.addEventListener('click', () => lightbox.close());
     lightbox.addEventListener('click', (event) => {
       if (event.target === lightbox) lightbox.close();
     });
+  }
+
+  // Filmstrip edge state: the fades only make sense while there is more
+  // strip in that direction, so the ends drop their side of the mask.
+  const strip = document.querySelector('.frost-gallery--strip');
+  if (strip instanceof HTMLElement) {
+    const sync = () => {
+      const max = strip.scrollWidth - strip.clientWidth;
+      strip.classList.toggle('is-at-start', strip.scrollLeft <= 2);
+      strip.classList.toggle('is-at-end', strip.scrollLeft >= max - 2);
+    };
+
+    // Shrink-wrap each figure to its still's rendered width. Flex sizes the
+    // figures from the images' NATURAL widths, which overshoots once the
+    // height cap scales a still down; measuring after load (and again on
+    // resize, when the cap changes) closes that gap. Without JS the figures
+    // just stay wide — the strip still works.
+    const fit = () => {
+      const figures = Array.from(strip.querySelectorAll('figure'));
+
+      // Reset first. The still is capped by `max-width: 100%` of its
+      // figure, so a basis left over from a narrower viewport would cap
+      // clientWidth too and measure that same narrow value straight back
+      // in — the strip would never grow again without a reload.
+      for (const figure of figures) figure.style.flexBasis = '';
+
+      // Measure every still against the cleared layout before writing any
+      // basis back, so no figure is sized against a half-applied pass.
+      const widths = figures.map((figure) => {
+        const img = figure.querySelector('img');
+        return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
+          ? img.clientWidth
+          : 0;
+      });
+
+      figures.forEach((figure, index) => {
+        if (widths[index] > 0) figure.style.flexBasis = `${widths[index]}px`;
+      });
+      sync();
+    };
+    for (const img of strip.querySelectorAll('img')) {
+      if (img instanceof HTMLImageElement && !img.complete) {
+        img.addEventListener('load', fit, { once: true });
+      }
+    }
+    strip.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', fit);
+    fit();
   }
 </script>
