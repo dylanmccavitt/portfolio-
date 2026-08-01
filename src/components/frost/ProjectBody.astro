@@ -189,12 +189,26 @@ const beats = hasStory
     // resize, when the cap changes) closes that gap. Without JS the figures
     // just stay wide — the strip still works.
     const fit = () => {
-      for (const figure of strip.querySelectorAll('figure')) {
+      const figures = Array.from(strip.querySelectorAll('figure'));
+
+      // Reset first. The still is capped by `max-width: 100%` of its
+      // figure, so a basis left over from a narrower viewport would cap
+      // clientWidth too and measure that same narrow value straight back
+      // in — the strip would never grow again without a reload.
+      for (const figure of figures) figure.style.flexBasis = '';
+
+      // Measure every still against the cleared layout before writing any
+      // basis back, so no figure is sized against a half-applied pass.
+      const widths = figures.map((figure) => {
         const img = figure.querySelector('img');
-        if (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0 && img.clientWidth > 0) {
-          figure.style.flexBasis = `${img.clientWidth}px`;
-        }
-      }
+        return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
+          ? img.clientWidth
+          : 0;
+      });
+
+      figures.forEach((figure, index) => {
+        if (widths[index] > 0) figure.style.flexBasis = `${widths[index]}px`;
+      });
       sync();
     };
     for (const img of strip.querySelectorAll('img')) {
