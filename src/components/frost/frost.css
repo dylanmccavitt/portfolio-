@@ -1009,12 +1009,23 @@ a.frost-sr-only:focus {
    mobile index nav uses), and each edge only fades while more strip remains
    on that side; the `is-at-*` classes come from ProjectBody's sync script. */
 .frost-gallery--strip {
+  /* Fade width. It was a flat 56px, which on a 375px phone ate 15% of the
+     strip at each edge and visibly chewed the stills and their captions.
+     Scaling with the viewport keeps the hint legible without taking the
+     content with it. */
+  --strip-fade: clamp(12px, 3vw, 28px);
   display: flex;
   gap: 18px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  mask-image: linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 var(--strip-fade),
+    #000 calc(100% - var(--strip-fade)),
+    transparent
+  );
 }
 
 .frost-gallery--strip::-webkit-scrollbar {
@@ -1049,11 +1060,16 @@ a.frost-sr-only:focus {
 }
 
 .frost-gallery--strip.is-at-start {
-  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(
+    90deg,
+    #000 0,
+    #000 calc(100% - var(--strip-fade)),
+    transparent
+  );
 }
 
 .frost-gallery--strip.is-at-end {
-  mask-image: linear-gradient(90deg, transparent, #000 56px, #000 100%);
+  mask-image: linear-gradient(90deg, transparent, #000 var(--strip-fade), #000 100%);
 }
 
 /* The whole strip fits: nothing to hint at. */
