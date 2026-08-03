@@ -237,9 +237,57 @@ function ContactBlock() {
   );
 }
 
+/* Temporary: card-dither styles being compared. `?cards=` wins, then the
+   sticky choice, then `corner`. Remove with the switcher once one is
+   chosen — see `.frost-cards[data-dither=...]` in frost.css. */
+const CARD_DITHERS = ["corner", "rail", "band", "diagonal", "wash", "off"];
+
+function useCardDither() {
+  const [style, setStyle] = useState("corner");
+
+  useEffect(() => {
+    let first = null;
+    try {
+      first =
+        new URLSearchParams(window.location.search).get("cards") ||
+        window.localStorage.getItem("frost-card-dither");
+    } catch {}
+    if (first && CARD_DITHERS.includes(first)) setStyle(first);
+  }, []);
+
+  const pick = (next) => {
+    setStyle(next);
+    try {
+      window.localStorage.setItem("frost-card-dither", next);
+    } catch {}
+  };
+
+  return [style, pick];
+}
+
+function DitherSwitch({ style, onPick }) {
+  return (
+    <div className="frost-dither-switch" role="group" aria-label="Card dither style">
+      <span className="frost-dither-switch-label">cards</span>
+      {CARD_DITHERS.map((name) => (
+        <button
+          key={name}
+          type="button"
+          className={name === style ? "is-active" : ""}
+          aria-pressed={name === style}
+          onClick={() => onPick(name)}
+        >
+          {name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SiteLayout({ projects, journey, journeyOrb, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [burstId, setBurstId] = useState(null);
+  const [cardDither, pickCardDither] = useCardDither();
 
   /**
    * Touch: one tap opens the project. The glitch fires on the way out — the
@@ -411,7 +459,7 @@ function SiteLayout({ projects, journey, journeyOrb, fx, onDm }) {
         <h2 className="frost-section-rail">Work</h2>
         <FlowIn>
           <p className="frost-kicker">{projects.length} projects · shipped and building</p>
-          <ol className="frost-cards">
+          <ol className="frost-cards" data-dither={cardDither}>
             {projects.map((project, index) => (
               <GlitchCard
                 key={project.id}
@@ -439,6 +487,8 @@ function SiteLayout({ projects, journey, journeyOrb, fx, onDm }) {
           <ContactBlock />
         </FlowIn>
       </section>
+
+      <DitherSwitch style={cardDither} onPick={pickCardDither} />
     </div>
   );
 }

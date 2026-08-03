@@ -77,13 +77,11 @@
    The number sits top-right and the copy is centred, so the top-left corner
    is the one part of the card that is always empty. */
 @supports (mask-image: radial-gradient(#000, transparent)) {
+  /* Shared: the dot field itself. Only the geometry and the mask change
+     between styles, so every variant is the same material. */
   .frost-cards li::after {
     content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 48%;
-    height: 54%;
     /* Above the teaser (z-index 3), like the edge ring. */
     z-index: 4;
     pointer-events: none;
@@ -92,18 +90,72 @@
       radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px);
     background-size: 4px 4px, 4px 4px;
     background-position: 0 0, 2px 2px;
-    /* Hard stops, not a smooth fade: a continuous gradient blurs the dots
-       into a wash and the dither stops reading. Stepping the mask into four
-       flat bands keeps every dot crisp and drops density in visible levels,
-       the way an ordered dither ramp actually behaves. */
-    -webkit-mask-image: radial-gradient(farthest-side at top left,
-      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%,
-      rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
-    mask-image: radial-gradient(farthest-side at top left,
-      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%,
-      rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
     opacity: 0.8;
     transition: opacity 0.3s ease;
+  }
+
+  /* Masks step in hard bands rather than fading smoothly: a continuous
+     gradient blurs the dots into a wash and the dither stops reading as
+     dither. Flat steps keep every dot crisp and drop density in visible
+     levels, the way an ordered dither ramp actually behaves. */
+
+  /* corner — radial bloom out of the top-left, the corner the layout always
+     leaves empty (number top-right, copy centred). */
+  .frost-cards[data-dither="corner"] li::after {
+    top: 0;
+    left: 0;
+    width: 48%;
+    height: 54%;
+    -webkit-mask-image: radial-gradient(farthest-side at top left,
+      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%, rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
+    mask-image: radial-gradient(farthest-side at top left,
+      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%, rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
+  }
+
+  /* rail — a full-height spine down the left edge, like a tabbed folder. */
+  .frost-cards[data-dither="rail"] li::after {
+    top: 0;
+    left: 0;
+    width: 30%;
+    height: 100%;
+    -webkit-mask-image: linear-gradient(to right,
+      #000 0 24%, rgba(0, 0, 0, 0.6) 24% 48%, rgba(0, 0, 0, 0.28) 48% 74%, transparent 74%);
+    mask-image: linear-gradient(to right,
+      #000 0 24%, rgba(0, 0, 0, 0.6) 24% 48%, rgba(0, 0, 0, 0.28) 48% 74%, transparent 74%);
+  }
+
+  /* band — a horizontal shelf across the top edge, dissolving downward. It
+     hangs off the top rather than the bottom: the proof line sits on the
+     bottom edge and a band there lands straight on the type. */
+  .frost-cards[data-dither="band"] li::after {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 38%;
+    -webkit-mask-image: linear-gradient(to bottom,
+      #000 0 22%, rgba(0, 0, 0, 0.6) 22% 46%, rgba(0, 0, 0, 0.28) 46% 72%, transparent 72%);
+    mask-image: linear-gradient(to bottom,
+      #000 0 22%, rgba(0, 0, 0, 0.6) 22% 46%, rgba(0, 0, 0, 0.28) 46% 72%, transparent 72%);
+  }
+
+  /* diagonal — a corner-to-corner sweep across the whole card. */
+  .frost-cards[data-dither="diagonal"] li::after {
+    inset: 0;
+    -webkit-mask-image: linear-gradient(135deg,
+      #000 0 18%, rgba(0, 0, 0, 0.55) 18% 38%, rgba(0, 0, 0, 0.25) 38% 58%, transparent 58%);
+    mask-image: linear-gradient(135deg,
+      #000 0 18%, rgba(0, 0, 0, 0.55) 18% 38%, rgba(0, 0, 0, 0.25) 38% 58%, transparent 58%);
+  }
+
+  /* wash — flat low density over the whole card, like tinted paper. No mask
+     at all, so the dot field is even edge to edge. */
+  .frost-cards[data-dither="wash"] li::after {
+    inset: 0;
+    opacity: 0.28;
+  }
+
+  .frost-cards[data-dither="off"] li::after {
+    display: none;
   }
 
   /* Recedes on hover so the revealed facts pane reads cleanly under it. */
@@ -112,6 +164,48 @@
       opacity: 0.16;
     }
   }
+}
+
+/* Temporary: the card-dither comparison switcher. Remove with the losing
+   variants once a style is chosen. */
+.frost-dither-switch {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--frost-line);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+.frost-dither-switch-label {
+  margin-right: 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+}
+
+.frost-dither-switch button {
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  color: var(--frost-ink);
+  cursor: pointer;
+}
+
+.frost-dither-switch button:hover {
+  border-color: var(--frost-line);
+}
+
+.frost-dither-switch button.is-active {
+  border-color: var(--frost-ink);
+  background: var(--frost-crack);
 }
 
 /* Subtle dither edge on the work cards: two offset dot grids make a 2x2
