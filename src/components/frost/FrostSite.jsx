@@ -125,6 +125,9 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
+/* `--frost-card-hue` tints the card's dither accent (see frost.css). The
+   pattern itself is CSS, so the hue is the only per-card value the island
+   carries for it. */
 function GlitchCard({ project, index, fx, isBursting }) {
   // Each card arrives on its own as it reaches the viewport, the way the
   // Journey block and the other sections do — the section wrapper fades the
@@ -149,6 +152,7 @@ function GlitchCard({ project, index, fx, isBursting }) {
       className={`frost-glitch-cell frost-card-in${seen ? " is-in" : ""}${
         isBursting ? " is-burst" : ""
       }`}
+      style={{ "--frost-card-hue": project.hue }}
       data-project-id={project.id}
       data-project-href={project.href}
     >
@@ -493,7 +497,7 @@ function DmPanel({ onClose }) {
  *
  * @param {{
  *   projects?: Array<{ id: string, href: string, title: string, slug?: string,
- *     eyebrow: string, line: string, proof: string[] }>,
+ *     eyebrow: string, hue?: string, line: string, proof: string[] }>,
  *   journey?: Array<{ id: string, when: string, place: string, role: string }>,
  *   journeyOrb?: string,
  *   dmManifest?: { anchors: string[], projectIds: string[], actions: string[] } | null,

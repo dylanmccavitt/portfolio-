@@ -69,6 +69,51 @@
   overflow: hidden;
 }
 
+/* Area-hued dither accent in each card's empty corner — the same two offset
+   dot grids as the edge below, tinted by `--frost-card-hue` (set per card in
+   FrostSite.jsx) and faded out with a corner mask. The Work grid colour-codes
+   by area at a glance, and each card agrees with the project page it opens,
+   without putting anything into the card's content column.
+   The number sits top-right and the copy is centred, so the top-left corner
+   is the one part of the card that is always empty. */
+@supports (mask-image: radial-gradient(#000, transparent)) {
+  .frost-cards li::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 48%;
+    height: 54%;
+    /* Above the teaser (z-index 3), like the edge ring. */
+    z-index: 4;
+    pointer-events: none;
+    background-image:
+      radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px),
+      radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px);
+    background-size: 4px 4px, 4px 4px;
+    background-position: 0 0, 2px 2px;
+    /* Hard stops, not a smooth fade: a continuous gradient blurs the dots
+       into a wash and the dither stops reading. Stepping the mask into four
+       flat bands keeps every dot crisp and drops density in visible levels,
+       the way an ordered dither ramp actually behaves. */
+    -webkit-mask-image: radial-gradient(farthest-side at top left,
+      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%,
+      rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
+    mask-image: radial-gradient(farthest-side at top left,
+      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%,
+      rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+  }
+
+  /* Recedes on hover so the revealed facts pane reads cleanly under it. */
+  @media (hover: hover) {
+    .frost-glitch-cell:hover::after {
+      opacity: 0.16;
+    }
+  }
+}
+
 /* Subtle dither edge on the work cards: two offset dot grids make a 2x2
    ordered-dither ring, in the page's own frost blues rather than an accent
    colour. It replaces the flat hairline — the card still has a defined edge,
@@ -2093,38 +2138,6 @@ a.frost-sr-only:focus {
 .look-index-nav a:hover .look-nav-orb,
 .look-index-nav a:focus-visible .look-nav-orb {
   opacity: 1;
-}
-
-.look-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-}
-
-.look-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 9px 4px 6px;
-  border: 1px solid var(--frost-line);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--frost-muted);
-}
-
-/* The year carries no dither mark, so it is set apart by its rule instead. */
-.look-chip--bare {
-  padding-inline: 9px;
-  border-style: dashed;
-}
-
-.look-chip-swatch {
-  display: inline-flex;
-  flex: none;
 }
 
 .look-index-nav a:not(:last-child)::after {

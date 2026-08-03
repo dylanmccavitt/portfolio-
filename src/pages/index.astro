@@ -2,7 +2,7 @@
 import Frost from '@/layouts/Frost.astro';
 import FrostSite from '@/components/frost/FrostSite.jsx';
 import { WORK_ORDER } from '@/components/frost/frost-data.js';
-import { TIMELINE_HUE, ditherOrbSvg } from '@/lib/dither';
+import { TIMELINE_HUE, ditherOrbSvg, hueForArea } from '@/lib/dither';
 import { buildDmPageManifest } from '@/lib/dm/page-manifest';
 import { publicJourneyRows } from '@/lib/journey';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
@@ -47,6 +47,10 @@ const workProjects = [...projects]
     href: project.href,
     title: project.title,
     eyebrow: cardEyebrow(project.area, project.status[1]),
+    // The card's dither accent tint. Same hue the project's own page uses,
+    // so the Work grid colour-codes by area and each card agrees with the
+    // page it opens.
+    hue: hueForArea(project.area),
     line: project.line,
     proof: proofLines(project.metrics),
   }));
