@@ -69,6 +69,40 @@
   overflow: hidden;
 }
 
+/* Subtle dither edge on the work cards: two offset dot grids make a 2x2
+   ordered-dither ring, in the page's own frost blues rather than an accent
+   colour. It replaces the flat hairline — the card still has a defined edge,
+   it just reads as printed instead of drawn.
+   Gated on mask-composite: without it the ring would fill the whole card, so
+   unsupported browsers keep the plain border and no pseudo-element. */
+@supports (mask-composite: exclude) or (-webkit-mask-composite: xor) {
+  .frost-cards li {
+    border-color: transparent;
+  }
+
+  .frost-cards li::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* Above the teaser (z-index 3) so the edge is never covered. */
+    z-index: 4;
+    pointer-events: none;
+    padding: 3px;
+    /* The two colours the card edge already used: the hairline's ink and the
+       page's frost blue. Offsetting the grids by half a tile interleaves them
+       into a 2x2 ordered-dither pattern. */
+    background-image:
+      radial-gradient(var(--frost-line) 0.6px, transparent 0.6px),
+      radial-gradient(var(--frost-blue) 0.6px, transparent 0.6px);
+    background-size: 3px 3px, 3px 3px;
+    background-position: 0 0, 1.5px 1.5px;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+}
+
 /* Each card arrives as it reaches the viewport, like the Journey block and
    the rest of the page — the section wrapper brings the heading in, and the
    cards below the fold wait for their own turn instead of being uncovered
@@ -2032,6 +2066,53 @@ a.frost-sr-only:focus {
   color: var(--frost-muted);
   text-decoration: none;
   transition: color 160ms ease;
+}
+
+/* Dither marks on the project page. Hue is the project's area; a swatch sits
+   beside its label, never behind it — a 2px dither cell and 9.5px mono type
+   share a spatial frequency and destroy each other. */
+.look-nav-orb {
+  display: inline-flex;
+  margin-right: 7px;
+  opacity: 0.55;
+  transition: opacity 160ms ease;
+}
+
+.look-index-nav a:hover .look-nav-orb,
+.look-index-nav a:focus-visible .look-nav-orb {
+  opacity: 1;
+}
+
+.look-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.look-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 6px;
+  border: 1px solid var(--frost-line);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--frost-muted);
+}
+
+/* The year carries no dither mark, so it is set apart by its rule instead. */
+.look-chip--bare {
+  padding-inline: 9px;
+  border-style: dashed;
+}
+
+.look-chip-swatch {
+  display: inline-flex;
+  flex: none;
 }
 
 .look-index-nav a:not(:last-child)::after {
