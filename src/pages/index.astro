@@ -29,16 +29,6 @@ const rank = (id: string) => {
 const cardEyebrow = (area: string, status: string) =>
   area.toLowerCase().includes(status.toLowerCase()) ? area : `${area} · ${status}`;
 
-// Card-sized specimen lines from the detail metrics: value + label reads as
-// one phrase ("~80% smaller css payload"), any "· n → m" style qualifier
-// after a colon is dropped, and lines that still don't fit a card in one
-// breath are skipped rather than truncated mid-thought.
-const proofLines = (metrics: { value: string; label: string }[]) =>
-  metrics
-    .map((metric) => `${metric.value} ${metric.label.split(':')[0]}`)
-    .filter((line) => line.length <= 60)
-    .slice(0, 2);
-
 const workProjects = [...projects]
   .sort((a, b) => rank(a.id) - rank(b.id))
   .map((project) => ({
@@ -52,7 +42,6 @@ const workProjects = [...projects]
     // page it opens.
     hue: hueForArea(project.area),
     line: project.line,
-    proof: proofLines(project.metrics),
   }));
 
 // The Journey rows, read through the resume's public-track allowlist rather

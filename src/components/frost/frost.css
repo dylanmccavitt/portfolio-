@@ -69,143 +69,34 @@
   overflow: hidden;
 }
 
-/* Area-hued dither accent in each card's empty corner — the same two offset
-   dot grids as the edge below, tinted by `--frost-card-hue` (set per card in
-   FrostSite.jsx) and faded out with a corner mask. The Work grid colour-codes
-   by area at a glance, and each card agrees with the project page it opens,
-   without putting anything into the card's content column.
-   The number sits top-right and the copy is centred, so the top-left corner
-   is the one part of the card that is always empty. */
-@supports (mask-image: radial-gradient(#000, transparent)) {
-  /* Shared: the dot field itself. Only the geometry and the mask change
-     between styles, so every variant is the same material. */
-  .frost-cards li::after {
-    content: "";
-    position: absolute;
-    /* Above the teaser (z-index 3), like the edge ring. */
-    z-index: 4;
-    pointer-events: none;
-    background-image:
-      radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px),
-      radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px);
-    background-size: 4px 4px, 4px 4px;
-    background-position: 0 0, 2px 2px;
-    opacity: 0.8;
-    transition: opacity 0.3s ease;
-  }
-
-  /* Masks step in hard bands rather than fading smoothly: a continuous
-     gradient blurs the dots into a wash and the dither stops reading as
-     dither. Flat steps keep every dot crisp and drop density in visible
-     levels, the way an ordered dither ramp actually behaves. */
-
-  /* corner — radial bloom out of the top-left, the corner the layout always
-     leaves empty (number top-right, copy centred). */
-  .frost-cards[data-dither="corner"] li::after {
-    top: 0;
-    left: 0;
-    width: 48%;
-    height: 54%;
-    -webkit-mask-image: radial-gradient(farthest-side at top left,
-      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%, rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
-    mask-image: radial-gradient(farthest-side at top left,
-      #000 0 30%, rgba(0, 0, 0, 0.6) 30% 52%, rgba(0, 0, 0, 0.3) 52% 74%, transparent 74%);
-  }
-
-  /* rail — a full-height spine down the left edge, like a tabbed folder. */
-  .frost-cards[data-dither="rail"] li::after {
-    top: 0;
-    left: 0;
-    width: 30%;
-    height: 100%;
-    -webkit-mask-image: linear-gradient(to right,
-      #000 0 24%, rgba(0, 0, 0, 0.6) 24% 48%, rgba(0, 0, 0, 0.28) 48% 74%, transparent 74%);
-    mask-image: linear-gradient(to right,
-      #000 0 24%, rgba(0, 0, 0, 0.6) 24% 48%, rgba(0, 0, 0, 0.28) 48% 74%, transparent 74%);
-  }
-
-  /* band — a horizontal shelf across the top edge, dissolving downward. It
-     hangs off the top rather than the bottom: the proof line sits on the
-     bottom edge and a band there lands straight on the type. */
-  .frost-cards[data-dither="band"] li::after {
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 38%;
-    -webkit-mask-image: linear-gradient(to bottom,
-      #000 0 22%, rgba(0, 0, 0, 0.6) 22% 46%, rgba(0, 0, 0, 0.28) 46% 72%, transparent 72%);
-    mask-image: linear-gradient(to bottom,
-      #000 0 22%, rgba(0, 0, 0, 0.6) 22% 46%, rgba(0, 0, 0, 0.28) 46% 72%, transparent 72%);
-  }
-
-  /* diagonal — a corner-to-corner sweep across the whole card. */
-  .frost-cards[data-dither="diagonal"] li::after {
-    inset: 0;
-    -webkit-mask-image: linear-gradient(135deg,
-      #000 0 18%, rgba(0, 0, 0, 0.55) 18% 38%, rgba(0, 0, 0, 0.25) 38% 58%, transparent 58%);
-    mask-image: linear-gradient(135deg,
-      #000 0 18%, rgba(0, 0, 0, 0.55) 18% 38%, rgba(0, 0, 0, 0.25) 38% 58%, transparent 58%);
-  }
-
-  /* wash — flat low density over the whole card, like tinted paper. No mask
-     at all, so the dot field is even edge to edge. */
-  .frost-cards[data-dither="wash"] li::after {
-    inset: 0;
-    opacity: 0.28;
-  }
-
-  .frost-cards[data-dither="off"] li::after {
-    display: none;
-  }
-
-  /* Recedes on hover so the revealed facts pane reads cleanly under it. */
-  @media (hover: hover) {
-    .frost-glitch-cell:hover::after {
-      opacity: 0.16;
-    }
-  }
+/* Area-hued dither wash across each card — the same two offset dot grids as
+   the edge below, tinted by `--frost-card-hue` (set per card in
+   FrostSite.jsx). Flat, even density edge to edge with no mask, so the card
+   reads as printed on tinted stock rather than as a shape laid on top of it.
+   The Work grid colour-codes by area at a glance and each card agrees with
+   the project page it opens, without putting anything into the card's
+   content column. */
+.frost-cards li::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Above the teaser (z-index 3), like the edge ring. */
+  z-index: 4;
+  pointer-events: none;
+  background-image:
+    radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px),
+    radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px);
+  background-size: 4px 4px, 4px 4px;
+  background-position: 0 0, 2px 2px;
+  opacity: 0.28;
+  transition: opacity 0.3s ease;
 }
 
-/* Temporary: the card-dither comparison switcher. Remove with the losing
-   variants once a style is chosen. */
-.frost-dither-switch {
-  position: fixed;
-  left: 14px;
-  bottom: 14px;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--frost-line);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-}
-
-.frost-dither-switch-label {
-  margin-right: 4px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--frost-muted);
-}
-
-.frost-dither-switch button {
-  padding: 3px 7px;
-  border: 1px solid transparent;
-  background: none;
-  font: inherit;
-  color: var(--frost-ink);
-  cursor: pointer;
-}
-
-.frost-dither-switch button:hover {
-  border-color: var(--frost-line);
-}
-
-.frost-dither-switch button.is-active {
-  border-color: var(--frost-ink);
-  background: var(--frost-crack);
+/* Recedes on hover so the revealed facts pane reads cleanly under it. */
+@media (hover: hover) {
+  .frost-glitch-cell:hover::after {
+    opacity: 0.1;
+  }
 }
 
 /* Subtle dither edge on the work cards: two offset dot grids make a 2x2
@@ -305,16 +196,6 @@
   line-height: 1.45;
 }
 
-.frost-glitch-facts .frost-proof {
-  margin: 0;
-}
-
-.frost-glitch-facts .frost-proof span {
-  border-radius: 0;
-  border-color: #b3cbdc;
-  opacity: 0.9;
-}
-
 /* Reveal only the project line and its direct open action. */
 .frost-glitch-facts--rows {
   justify-content: center;
@@ -351,18 +232,6 @@
   font-size: 13.5px;
   line-height: 1.4;
   letter-spacing: -0.01em;
-}
-
-.frost-glitch-facts--rows .frost-proof {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 0;
-}
-
-.frost-glitch-facts--rows .frost-proof span {
-  padding: 4px 8px;
-  font-size: 9.5px;
 }
 
 .frost-glitch-facts--rows .frost-card-open {
@@ -410,24 +279,6 @@
   position: absolute;
   top: 14px;
   right: 16px;
-}
-
-/* Specimen label along the card's bottom edge: the project's top metrics
-   in mono, filling the resting card with substance instead of blank frost.
-   Inside the teaser, so it fades with it on hover and rides the glitch
-   snapshot like the rest of the resting face. Anchored to the card
-   (`.frost-glitch-top` is the positioned ancestor), not the flex flow. */
-.frost-glitch-teaser .frost-teaser-proof {
-  position: absolute;
-  right: 16px;
-  bottom: 13px;
-  left: 16px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
-  color: var(--frost-muted);
 }
 
 @media (hover: hover) {
@@ -1124,23 +975,6 @@ a.frost-sr-only:focus {
   color: inherit;
   background: transparent;
   cursor: pointer;
-}
-
-.frost-proof {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 14px 0 18px;
-}
-
-.frost-proof span {
-  padding: 6px 12px;
-  border: 1px solid var(--frost-line);
-  border-radius: 999px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .frost-gallery {
