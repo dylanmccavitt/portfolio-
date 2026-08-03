@@ -192,11 +192,23 @@ function GlitchCard({ project, index, fx, isBursting }) {
 
 /** Built at build time from the resume's public-track allowlist; see
     `src/lib/journey.ts`. This component only renders what it is handed. */
-function JourneyRows({ journey }) {
+function JourneyRows({ journey, orb }) {
   return (
     <ol className="frost-journey frost-journey-rail">
       {journey.map((row) => (
         <li key={row.id}>
+          {/* Build-time SVG from `src/lib/dither.ts`, handed down as one
+              string and stamped per row — the marker is identical on every
+              row, so nothing is computed in the browser. */}
+          {/* A div, not a span: `.frost-journey li span` is the role text's
+              rule and would place this marker in the wrong grid column. */}
+          {orb && (
+            <div
+              className="frost-journey-orb"
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: orb }}
+            />
+          )}
           <time>{row.when}</time>
           <div className="frost-journey-copy">
             <strong>{row.place}</strong>
@@ -231,7 +243,7 @@ function ContactBlock() {
   );
 }
 
-function SiteLayout({ projects, journey, fx, onDm }) {
+function SiteLayout({ projects, journey, journeyOrb, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [burstId, setBurstId] = useState(null);
 
@@ -423,7 +435,7 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         <h2 className="frost-section-rail">Journey</h2>
         <FlowIn>
           <p className="frost-kicker">2019 to now</p>
-          <JourneyRows journey={journey} />
+          <JourneyRows journey={journey} orb={journeyOrb} />
         </FlowIn>
       </section>
 
@@ -483,6 +495,7 @@ function DmPanel({ onClose }) {
  *   projects?: Array<{ id: string, href: string, title: string, slug?: string,
  *     eyebrow: string, line: string, proof: string[] }>,
  *   journey?: Array<{ id: string, when: string, place: string, role: string }>,
+ *   journeyOrb?: string,
  *   dmManifest?: { anchors: string[], projectIds: string[], actions: string[] } | null,
  *   initialEffects?: boolean,
  * }} props
@@ -490,6 +503,7 @@ function DmPanel({ onClose }) {
 export default function FrostSite({
   projects = [],
   journey = [],
+  journeyOrb = "",
   dmManifest = null,
   initialEffects = false,
 }) {
@@ -552,6 +566,7 @@ export default function FrostSite({
           <SiteLayout
             projects={projects}
             journey={journey}
+            journeyOrb={journeyOrb}
             fx={effectsEnabled}
             onDm={() => toggleDm(true)}
           />

@@ -2,6 +2,7 @@
 import Frost from '@/layouts/Frost.astro';
 import FrostSite from '@/components/frost/FrostSite.jsx';
 import { WORK_ORDER } from '@/components/frost/frost-data.js';
+import { TIMELINE_HUE, ditherOrbSvg } from '@/lib/dither';
 import { buildDmPageManifest } from '@/lib/dm/page-manifest';
 import { publicJourneyRows } from '@/lib/journey';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
@@ -54,6 +55,11 @@ const workProjects = [...projects]
 // than from a second hardcoded list. See `src/lib/journey.ts`.
 const journey = publicJourneyRows();
 
+// The Journey row marker, rasterised here at build time rather than drawn on
+// a canvas in the island: every row shows the same orb, so it is one string
+// computed once and handed to the component to stamp per row.
+const journeyOrb = ditherOrbSvg({ color: TIMELINE_HUE, size: 11 });
+
 // The DM corner card's page-action allowlist. Anchors and project ids only —
 // both already in this page's HTML — passed as a build-time prop so no corpus
 // document is published and the browser fetches nothing.
@@ -65,6 +71,7 @@ const dmManifest = await buildDmPageManifest();
     client:load
     projects={workProjects}
     journey={journey}
+    journeyOrb={journeyOrb}
     dmManifest={dmManifest}
     initialEffects={false}
   />

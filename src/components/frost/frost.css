@@ -457,10 +457,20 @@
   max-width: 640px;
 }
 
+/* Marker column ahead of the year rail. */
 .frost-journey-rail li {
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 11px 88px minmax(0, 1fr);
   gap: 20px;
   padding: 16px 2px;
+}
+
+/* Dither orb row marker: build-time SVG, one hue for the whole timeline
+   (see TIMELINE_HUE in src/lib/dither.ts). Nudged onto the year's baseline,
+   which the row's `align-items: baseline` cannot do for a replaced element. */
+.frost-journey-orb {
+  grid-column: 1;
+  display: inline-flex;
+  transform: translateY(1px);
 }
 
 .frost-journey-copy {
@@ -1677,8 +1687,10 @@ a.frost-sr-only:focus {
     grid-column: 2;
   }
 
+  /* Keeps the marker column, on a tighter gap so the copy still gets room. */
   .frost-journey-rail li {
-    grid-template-columns: 72px 1fr;
+    grid-template-columns: 11px 72px 1fr;
+    gap: 12px;
   }
 
   .frost-site-section.frost-hero {
