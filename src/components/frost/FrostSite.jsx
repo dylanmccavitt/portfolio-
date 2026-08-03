@@ -110,7 +110,7 @@ function CondenseAbout() {
   return (
     <div ref={ref} className={`frost-about-condense${seen ? " is-in" : ""}`}>
       <p>
-        Software engineer focused on agentic tooling, backed by full-stack experience —
+        Software engineer focused on agentic tooling, backed by full-stack experience:
         backend systems, product software, and the practical AI tools in the work below.
         The path here ran through economics, legal operations, and cyber risk before an
         M.S. in computer science.
@@ -362,7 +362,7 @@ function SiteLayout({ projects, journey, journeyOrb, fx, onDm }) {
           {/* Name lives in the hero only. The sticky bar tracks the active
               section in mono — orientation without bringing back full nav. */}
           <a className="frost-sr-only" href="#main">
-            {PROFILE.name} — top of page
+            {PROFILE.name}: top of page
           </a>
           <p className="frost-site-here" aria-live="polite">
             <span className="frost-site-here-label">{currentLabel}</span>
