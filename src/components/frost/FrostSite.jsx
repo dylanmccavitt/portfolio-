@@ -110,7 +110,7 @@ function CondenseAbout() {
   return (
     <div ref={ref} className={`frost-about-condense${seen ? " is-in" : ""}`}>
       <p>
-        Software engineer focused on agentic tooling, backed by full-stack experience —
+        Software engineer focused on agentic tooling, backed by full-stack experience:
         backend systems, product software, and the practical AI tools in the work below.
         The path here ran through economics, legal operations, and cyber risk before an
         M.S. in computer science.
@@ -125,6 +125,9 @@ function CondenseAbout() {
     engine just keeps the corrupted frame ready. The card is a real
     anchor to its project page, so the no-JS/`?effect=off` path is a
     plain link. */
+/* `--frost-card-hue` tints the card's dither accent (see frost.css). The
+   pattern itself is CSS, so the hue is the only per-card value the island
+   carries for it. */
 function GlitchCard({ project, index, fx, isBursting }) {
   // Each card arrives on its own as it reaches the viewport, the way the
   // Journey block and the other sections do — the section wrapper fades the
@@ -137,9 +140,6 @@ function GlitchCard({ project, index, fx, isBursting }) {
       <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
       <p className="frost-kicker">{project.eyebrow}</p>
       <strong>{project.title}</strong>
-      {project.proof.length > 0 && (
-        <span className="frost-teaser-proof">{project.proof[0]}</span>
-      )}
     </div>
   );
 
@@ -149,6 +149,7 @@ function GlitchCard({ project, index, fx, isBursting }) {
       className={`frost-glitch-cell frost-card-in${seen ? " is-in" : ""}${
         isBursting ? " is-burst" : ""
       }`}
+      style={{ "--frost-card-hue": project.hue }}
       data-project-id={project.id}
       data-project-href={project.href}
     >
@@ -162,16 +163,6 @@ function GlitchCard({ project, index, fx, isBursting }) {
           <span className="frost-fact-key">Line</span>
           <p>{project.line}</p>
         </div>
-        {project.proof.length > 0 && (
-          <div className="frost-fact-row">
-            <span className="frost-fact-key">Proof</span>
-            <div className="frost-proof-lines">
-              {project.proof.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
-          </div>
-        )}
         <div className="frost-fact-row">
           <span className="frost-fact-key">Open</span>
           <span className="frost-card-open">Project <ArrowUpRight size={12} /></span>
@@ -192,11 +183,23 @@ function GlitchCard({ project, index, fx, isBursting }) {
 
 /** Built at build time from the resume's public-track allowlist; see
     `src/lib/journey.ts`. This component only renders what it is handed. */
-function JourneyRows({ journey }) {
+function JourneyRows({ journey, orb }) {
   return (
     <ol className="frost-journey frost-journey-rail">
       {journey.map((row) => (
         <li key={row.id}>
+          {/* Build-time SVG from `src/lib/dither.ts`, handed down as one
+              string and stamped per row — the marker is identical on every
+              row, so nothing is computed in the browser. */}
+          {/* A div, not a span: `.frost-journey li span` is the role text's
+              rule and would place this marker in the wrong grid column. */}
+          {orb && (
+            <div
+              className="frost-journey-orb"
+              aria-hidden="true"
+              dangerouslySetInnerHTML={{ __html: orb }}
+            />
+          )}
           <time>{row.when}</time>
           <div className="frost-journey-copy">
             <strong>{row.place}</strong>
@@ -231,7 +234,7 @@ function ContactBlock() {
   );
 }
 
-function SiteLayout({ projects, journey, fx, onDm }) {
+function SiteLayout({ projects, journey, journeyOrb, fx, onDm }) {
   const [current, setCurrent] = useState("about");
   const [burstId, setBurstId] = useState(null);
 
@@ -359,7 +362,7 @@ function SiteLayout({ projects, journey, fx, onDm }) {
           {/* Name lives in the hero only. The sticky bar tracks the active
               section in mono — orientation without bringing back full nav. */}
           <a className="frost-sr-only" href="#main">
-            {PROFILE.name} — top of page
+            {PROFILE.name}: top of page
           </a>
           <p className="frost-site-here" aria-live="polite">
             <span className="frost-site-here-label">{currentLabel}</span>
@@ -423,7 +426,7 @@ function SiteLayout({ projects, journey, fx, onDm }) {
         <h2 className="frost-section-rail">Journey</h2>
         <FlowIn>
           <p className="frost-kicker">2019 to now</p>
-          <JourneyRows journey={journey} />
+          <JourneyRows journey={journey} orb={journeyOrb} />
         </FlowIn>
       </section>
 
@@ -481,8 +484,9 @@ function DmPanel({ onClose }) {
  *
  * @param {{
  *   projects?: Array<{ id: string, href: string, title: string, slug?: string,
- *     eyebrow: string, line: string, proof: string[] }>,
+ *     eyebrow: string, hue?: string, line: string }>,
  *   journey?: Array<{ id: string, when: string, place: string, role: string }>,
+ *   journeyOrb?: string,
  *   dmManifest?: { anchors: string[], projectIds: string[], actions: string[] } | null,
  *   initialEffects?: boolean,
  * }} props
@@ -490,6 +494,7 @@ function DmPanel({ onClose }) {
 export default function FrostSite({
   projects = [],
   journey = [],
+  journeyOrb = "",
   dmManifest = null,
   initialEffects = false,
 }) {
@@ -552,6 +557,7 @@ export default function FrostSite({
           <SiteLayout
             projects={projects}
             journey={journey}
+            journeyOrb={journeyOrb}
             fx={effectsEnabled}
             onDm={() => toggleDm(true)}
           />

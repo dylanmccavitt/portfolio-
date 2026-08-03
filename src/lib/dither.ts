@@ -38,6 +38,13 @@ export const AREA_HUE: Record<string, string> = {
 /** `--frost-ink`, for an area the map has not been taught yet. */
 const FALLBACK_HUE = '#26343d';
 
+/**
+ * The Journey timeline's single accent hue. One hue for the whole list on
+ * purpose: the rows carry no category, so colouring them per-row would
+ * invent a distinction the data does not make.
+ */
+export const TIMELINE_HUE = '#2563EB';
+
 export function hueForArea(area: string): string {
   return AREA_HUE[area] ?? FALLBACK_HUE;
 }

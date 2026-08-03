@@ -4,7 +4,7 @@
  * [problem, approach, outcome]; this is presentation only.
  */
 import type { ProjectDetailReadModel } from '@/lib/projects/read-models';
-import { densityForStatus, ditherOrbSvg, ditherSwatchSvg, hueForArea } from '@/lib/dither';
+import { ditherOrbSvg, hueForArea } from '@/lib/dither';
 
 interface Props {
   project: ProjectDetailReadModel;
@@ -12,13 +12,10 @@ interface Props {
 
 const { project: p } = Astro.props;
 
-// Dither marks, rasterised during the build. Hue is the project's area, so a
-// page's accents all agree; the status swatch's density says how far along
-// the work is. Both sit beside ink labels, never in place of them.
-const hue = hueForArea(p.area);
-const areaSwatch = ditherSwatchSvg({ level: 0.85, color: hue });
-const statusSwatch = ditherSwatchSvg({ level: densityForStatus(p.status[0]), color: hue });
-const navOrb = ditherOrbSvg({ color: hue, size: 11 });
+// The section-nav marker, rasterised during the build. Hue is the project's
+// area, so the page's marks agree with its card on the homepage. The title
+// keeps its plain kicker — no dither above the fold.
+const navOrb = ditherOrbSvg({ color: hueForArea(p.area), size: 11 });
 
 const imageShots = p.shots.filter((shot) => shot.kind === 'image');
 const hasStory = p.about.length >= 3;
@@ -51,11 +48,7 @@ const beats = hasStory
     </nav>
     <div class="look-index-main">
       <div class="frost-doc-title look-title look-index-title">
-        <p class="look-chip-row">
-          <span class="look-chip"><span class="look-chip-swatch" set:html={areaSwatch} />{p.area}</span>
-          <span class="look-chip"><span class="look-chip-swatch" set:html={statusSwatch} />{p.status[1]}</span>
-          <span class="look-chip look-chip--bare">{p.year}</span>
-        </p>
+        <p class="frost-kicker">{p.area} · {p.status[1]} · {p.year}</p>
         <h1>{p.title}</h1>
         <p class="look-title-line">{p.line}</p>
       </div>

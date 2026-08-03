@@ -74,7 +74,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#8b7cf6',
     wip: true,
     money: false,
-    line: 'a lean, curated workflow kit for coding agents: short skills backed by real command-line tools',
+    line: 'workflow kit for coding agents, backed by CLI tools',
     seek: { from: 'v1.1 on npm', to: 'daily driver', pct: 75 },
     links: [
       { label: 'View repo ↗', href: 'https://github.com/dylanmccavitt/agent-skills' },
@@ -121,7 +121,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#d678b6',
     wip: false,
     money: false,
-    line: 'client ecommerce site: browse, pay, ship, track, and hand off',
+    line: 'client ecommerce site with payments, shipping, and admin',
     seek: { from: 'wireframe', to: 'handoff', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://bellasbeads.shop' }],
     metrics: [
@@ -158,13 +158,13 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     title: 'agentic-trader',
     sym: 'at',
     area: 'Side Projects & Experiments',
-    status: ['dry', 'Dry-run'],
+    status: ['live', 'Live'],
     year: 2026,
     activity: 'live 06·23',
     hue: '#8b7cf6',
     wip: true,
     money: false,
-    line: 'side-project trading automation: Claude Code reviews a simple RSI(2) setup and journals each proposed move',
+    line: 'RSI(2) trading automation with a risk gate and decision journal',
     seek: { from: 'review loop', to: 'live jun 23', pct: 80 },
     links: [{ label: 'View repo ↗', href: 'https://github.com/DylanMcCavitt/agentic-trader' }],
     metrics: [
@@ -206,7 +206,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#ef8354',
     wip: false,
     money: false,
-    line: 'low-maintenance band site with Google Calendar as CMS',
+    line: 'band site with Google Calendar as CMS',
     seek: { from: 'build', to: 'live', pct: 100 },
     links: [{ label: 'Live site ↗', href: 'https://nohardfeelings.app' }],
     metrics: [
@@ -247,7 +247,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#5da8e8',
     wip: false,
     money: false,
-    line: 'team coursework app for request → work order → contractor → invoice',
+    line: 'work order app: request, contractor, invoice',
     seek: { from: 'request', to: 'invoice', pct: 100 },
     links: [{ label: 'View repo ↗', href: 'https://github.com/apolydore/Work-Order-Management-System' }],
     metrics: [
@@ -289,7 +289,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     hue: '#50c878',
     wip: false,
     money: false,
-    line: 'ML coursework comparing eight models on one Premier League split',
+    line: 'eight ML models compared on one Premier League split',
     seek: { from: 'raw data', to: 'xgboost', pct: 100 },
     links: [{ label: 'Notebook ↗', href: 'https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX' }],
     metrics: [

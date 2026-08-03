@@ -69,6 +69,36 @@
   overflow: hidden;
 }
 
+/* Area-hued dither wash across each card — the same two offset dot grids as
+   the edge below, tinted by `--frost-card-hue` (set per card in
+   FrostSite.jsx). Flat, even density edge to edge with no mask, so the card
+   reads as printed on tinted stock rather than as a shape laid on top of it.
+   The Work grid colour-codes by area at a glance and each card agrees with
+   the project page it opens, without putting anything into the card's
+   content column. */
+.frost-cards li::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Above the teaser (z-index 3), like the edge ring. */
+  z-index: 4;
+  pointer-events: none;
+  background-image:
+    radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px),
+    radial-gradient(var(--frost-card-hue, var(--frost-blue)) 0.9px, transparent 0.9px);
+  background-size: 4px 4px, 4px 4px;
+  background-position: 0 0, 2px 2px;
+  opacity: 0.28;
+  transition: opacity 0.3s ease;
+}
+
+/* Recedes on hover so the revealed facts pane reads cleanly under it. */
+@media (hover: hover) {
+  .frost-glitch-cell:hover::after {
+    opacity: 0.1;
+  }
+}
+
 /* Subtle dither edge on the work cards: two offset dot grids make a 2x2
    ordered-dither ring, in the page's own frost blues rather than an accent
    colour. It replaces the flat hairline — the card still has a defined edge,
@@ -166,16 +196,6 @@
   line-height: 1.45;
 }
 
-.frost-glitch-facts .frost-proof {
-  margin: 0;
-}
-
-.frost-glitch-facts .frost-proof span {
-  border-radius: 0;
-  border-color: #b3cbdc;
-  opacity: 0.9;
-}
-
 /* Reveal only the project line and its direct open action. */
 .frost-glitch-facts--rows {
   justify-content: center;
@@ -212,37 +232,6 @@
   font-size: 13.5px;
   line-height: 1.4;
   letter-spacing: -0.01em;
-}
-
-.frost-glitch-facts--rows .frost-proof {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: 0;
-}
-
-/* Proof reads as stacked specimen lines, same voice as the resting card's
-   bottom label — mono, quiet, one metric per line. */
-.frost-glitch-facts--rows .frost-proof-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding-top: 2px;
-}
-
-.frost-glitch-facts--rows .frost-proof-lines span {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1.5;
-  color: var(--frost-ink);
-  opacity: 0.75;
-}
-
-.frost-glitch-facts--rows .frost-proof span {
-  padding: 4px 8px;
-  font-size: 9.5px;
 }
 
 .frost-glitch-facts--rows .frost-card-open {
@@ -290,24 +279,6 @@
   position: absolute;
   top: 14px;
   right: 16px;
-}
-
-/* Specimen label along the card's bottom edge: the project's top metrics
-   in mono, filling the resting card with substance instead of blank frost.
-   Inside the teaser, so it fades with it on hover and rides the glitch
-   snapshot like the rest of the resting face. Anchored to the card
-   (`.frost-glitch-top` is the positioned ancestor), not the flex flow. */
-.frost-glitch-teaser .frost-teaser-proof {
-  position: absolute;
-  right: 16px;
-  bottom: 13px;
-  left: 16px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
-  color: var(--frost-muted);
 }
 
 @media (hover: hover) {
@@ -457,10 +428,20 @@
   max-width: 640px;
 }
 
+/* Marker column ahead of the year rail. */
 .frost-journey-rail li {
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 11px 88px minmax(0, 1fr);
   gap: 20px;
   padding: 16px 2px;
+}
+
+/* Dither orb row marker: build-time SVG, one hue for the whole timeline
+   (see TIMELINE_HUE in src/lib/dither.ts). Nudged onto the year's baseline,
+   which the row's `align-items: baseline` cannot do for a replaced element. */
+.frost-journey-orb {
+  grid-column: 1;
+  display: inline-flex;
+  transform: translateY(1px);
 }
 
 .frost-journey-copy {
@@ -994,23 +975,6 @@ a.frost-sr-only:focus {
   color: inherit;
   background: transparent;
   cursor: pointer;
-}
-
-.frost-proof {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 14px 0 18px;
-}
-
-.frost-proof span {
-  padding: 6px 12px;
-  border: 1px solid var(--frost-line);
-  border-radius: 999px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .frost-gallery {
@@ -1677,8 +1641,10 @@ a.frost-sr-only:focus {
     grid-column: 2;
   }
 
+  /* Keeps the marker column, on a tighter gap so the copy still gets room. */
   .frost-journey-rail li {
-    grid-template-columns: 72px 1fr;
+    grid-template-columns: 11px 72px 1fr;
+    gap: 12px;
   }
 
   .frost-site-section.frost-hero {
@@ -2081,38 +2047,6 @@ a.frost-sr-only:focus {
 .look-index-nav a:hover .look-nav-orb,
 .look-index-nav a:focus-visible .look-nav-orb {
   opacity: 1;
-}
-
-.look-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-}
-
-.look-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 9px 4px 6px;
-  border: 1px solid var(--frost-line);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--frost-muted);
-}
-
-/* The year carries no dither mark, so it is set apart by its rule instead. */
-.look-chip--bare {
-  padding-inline: 9px;
-  border-style: dashed;
-}
-
-.look-chip-swatch {
-  display: inline-flex;
-  flex: none;
 }
 
 .look-index-nav a:not(:last-child)::after {

@@ -2,6 +2,7 @@
 import Frost from '@/layouts/Frost.astro';
 import FrostSite from '@/components/frost/FrostSite.jsx';
 import { WORK_ORDER } from '@/components/frost/frost-data.js';
+import { TIMELINE_HUE, ditherOrbSvg, hueForArea } from '@/lib/dither';
 import { buildDmPageManifest } from '@/lib/dm/page-manifest';
 import { publicJourneyRows } from '@/lib/journey';
 import { loadPublicProjectDetails } from '@/lib/public-projects';
@@ -28,16 +29,6 @@ const rank = (id: string) => {
 const cardEyebrow = (area: string, status: string) =>
   area.toLowerCase().includes(status.toLowerCase()) ? area : `${area} · ${status}`;
 
-// Card-sized specimen lines from the detail metrics: value + label reads as
-// one phrase ("~80% smaller css payload"), any "· n → m" style qualifier
-// after a colon is dropped, and lines that still don't fit a card in one
-// breath are skipped rather than truncated mid-thought.
-const proofLines = (metrics: { value: string; label: string }[]) =>
-  metrics
-    .map((metric) => `${metric.value} ${metric.label.split(':')[0]}`)
-    .filter((line) => line.length <= 60)
-    .slice(0, 2);
-
 const workProjects = [...projects]
   .sort((a, b) => rank(a.id) - rank(b.id))
   .map((project) => ({
@@ -46,13 +37,21 @@ const workProjects = [...projects]
     href: project.href,
     title: project.title,
     eyebrow: cardEyebrow(project.area, project.status[1]),
+    // The card's dither accent tint. Same hue the project's own page uses,
+    // so the Work grid colour-codes by area and each card agrees with the
+    // page it opens.
+    hue: hueForArea(project.area),
     line: project.line,
-    proof: proofLines(project.metrics),
   }));
 
 // The Journey rows, read through the resume's public-track allowlist rather
 // than from a second hardcoded list. See `src/lib/journey.ts`.
 const journey = publicJourneyRows();
+
+// The Journey row marker, rasterised here at build time rather than drawn on
+// a canvas in the island: every row shows the same orb, so it is one string
+// computed once and handed to the component to stamp per row.
+const journeyOrb = ditherOrbSvg({ color: TIMELINE_HUE, size: 11 });
 
 // The DM corner card's page-action allowlist. Anchors and project ids only —
 // both already in this page's HTML — passed as a build-time prop so no corpus
@@ -65,6 +64,7 @@ const dmManifest = await buildDmPageManifest();
     client:load
     projects={workProjects}
     journey={journey}
+    journeyOrb={journeyOrb}
     dmManifest={dmManifest}
     initialEffects={false}
   />
