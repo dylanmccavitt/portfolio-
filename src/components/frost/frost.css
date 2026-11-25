@@ -275,6 +275,25 @@
   letter-spacing: -0.02em;
 }
 
+/* The project line on the teaser is for touch screens only: they have no
+   hover, so without it a phone visitor sees a title and nothing else.
+   Hover-capable screens keep the reveal as the one place the line shows. */
+.frost-glitch-teaser .frost-glitch-line {
+  display: none;
+  max-width: 32ch;
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--frost-muted);
+}
+
+@media (hover: none) {
+  .frost-glitch-teaser .frost-glitch-line {
+    display: block;
+  }
+}
+
 .frost-glitch-teaser .frost-num {
   position: absolute;
   top: 14px;
@@ -1821,6 +1840,19 @@ a.frost-sr-only:focus {
   font-size: 15.5px;
   font-weight: 620;
   letter-spacing: -0.02em;
+}
+
+/* Resume project titles link to their pages: ink, not browser blue,
+   with the underline as the only cue. */
+.frost-doc-row h3 a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.frost-doc-row h3 a:hover {
+  text-decoration-color: var(--frost-muted);
 }
 
 .frost-doc-row h3 span {

@@ -9,7 +9,9 @@ export default defineConfig({
   integrations: [react()],
   // Canonical origin — drives `Astro.site`, the `<link rel="canonical">` in the
   // layouts, and the absolute URLs in `src/pages/sitemap.xml.ts` (#25).
-  site: 'https://dylanmccavitt.xyz',
+  // www is the host Vercel serves (the bare domain redirects to it), so the
+  // canonical matches the page a visitor actually lands on.
+  site: 'https://www.dylanmccavitt.xyz',
   // Suppress the dev-only toolbar pill — it overlaps the bottom player bar in
   // mobile dev screenshots/audits. Dev-only; `astro build` never ships it.
   devToolbar: { enabled: false },

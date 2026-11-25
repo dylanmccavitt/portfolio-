@@ -17,7 +17,7 @@ import { RESUME } from '@/data/resume';
 const OWNER = 'Dylan McCavitt';
 
 /** Canonical origin (mirrors `site` in astro.config.mjs). */
-const ORIGIN = 'https://dylanmccavitt.xyz';
+const ORIGIN = 'https://www.dylanmccavitt.xyz';
 
 /** Fallback OG image for home, library, resume, and journey routes. */
 export const OG_FALLBACK = '/og/default.png';

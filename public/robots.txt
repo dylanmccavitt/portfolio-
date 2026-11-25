@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dylanmccavitt.xyz/sitemap.xml
+Sitemap: https://www.dylanmccavitt.xyz/sitemap.xml
