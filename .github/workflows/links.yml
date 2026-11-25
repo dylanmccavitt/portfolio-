@@ -1,0 +1,60 @@
+name: Link check
+
+# Builds the site every Monday and checks every link on every page:
+# project links, GitHub repos, the resume PDF and internal routes.
+# A broken link fails the run, and GitHub emails you about the failure.
+# The run's summary lists exactly which links broke.
+on:
+  schedule:
+    # 13:00 UTC is 8 AM New York time in winter (9 AM in summer).
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+  # Also runs on a PR that changes this file, so edits to the check get
+  # tested before they merge.
+  pull_request:
+    paths:
+      - .github/workflows/links.yml
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: Check links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Root-relative links like /projects/nhf are checked against the
+          # built files. 429 (rate limited) and 999 (LinkedIn's answer to
+          # bots) mean the page exists, so they don't count as broken.
+          # Mail links are skipped by default.
+          #
+          # npm's website turns automated checkers away with 403, so package
+          # links are checked against the npm registry instead, which answers
+          # 404 if the package is gone. The 404 page's own canonical link
+          # returns 404 on purpose, so it is skipped.
+          args: >-
+            --remap 'https://www.npmjs.com/package/(.+) https://registry.npmjs.org/$1'
+            --exclude '^https://dylanmccavitt\.xyz/404$'
+            --root-dir ${{ github.workspace }}/.vercel/output/static
+            --no-progress
+            --max-retries 3
+            --timeout 20
+            --accept 200,206,429,999
+            '.vercel/output/static/**/*.html'
+          fail: true
