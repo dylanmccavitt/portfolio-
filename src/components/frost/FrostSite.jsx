@@ -140,6 +140,9 @@ function GlitchCard({ project, index, fx, isBursting }) {
       <span className="frost-num">{String(index + 1).padStart(2, "0")}</span>
       <p className="frost-kicker">{project.eyebrow}</p>
       <strong>{project.title}</strong>
+      {/* Touch screens never get the hover reveal, so the one-line
+          description rides on the teaser there instead (see frost.css). */}
+      <p className="frost-glitch-line">{project.line}</p>
     </div>
   );
 

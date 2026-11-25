@@ -293,7 +293,7 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     seek: { from: 'raw data', to: 'xgboost', pct: 100 },
     links: [{ label: 'Notebook ↗', href: 'https://colab.research.google.com/drive/1H1BQdfM5U6SsSEviFrj3zUG60k2ZLCgX' }],
     metrics: [
-      { value: '~99%', label: 'top accuracy on the split (xgboost)' },
+      { value: '6 of 8', label: 'models scored within two points of each other' },
       { value: '8', label: 'model families raced on one fair split' },
       { value: '39', label: 'engineered features' },
       { value: '20 yrs', label: 'of match data' },
@@ -301,17 +301,17 @@ export const CATALOG: Project[] = CatalogProjectSchema.array().parse([
     about: [
       'Given twenty years of Premier League matches, how much of a result can you actually predict, and what moves the needle more: the model you pick, or the data work behind it?',
       'The team engineered 39 features for goals, streaks, differentials, and form, then trained eight model families on the same train/test split so the comparison stayed fair.',
-      'XGBoost reached the top reported accuracy on that split, with SVM and logistic regression close behind, and the real lesson was that cleaning, imputation, and feature work moved results more than swapping model families. Coursework context, not a claim of predictive edge.',
+      'Six of the eight models scored almost the same, and near-perfect for a sport this unpredictable. That is a warning sign, not a win: scores that high usually mean some inputs already carry the final result, so the next step is rebuilding them from pre-match data only. The lasting lesson was that cleaning and feature work moved results far more than swapping models. Coursework, not a claim of predictive edge.',
     ],
     notes: [
       'Same train/test split across all eight models for a fair comparison.',
       'Cleaning, imputation, and feature work drove most of the gains.',
-      'Coursework context, not a claim of predictive edge.',
+      'Near-perfect scores are treated as a leak to rule out, not a result.',
     ],
     stack: [
       { label: 'Language', value: 'python' },
       { label: 'Models', value: '8-way comparison' },
-      { label: 'Result', value: 'xgboost top on split' },
+      { label: 'Result', value: 'top models tied · leak check next' },
       { label: 'Data', value: 'kaggle · 20 yrs epl' },
     ],
     shots: [

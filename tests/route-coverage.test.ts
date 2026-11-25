@@ -28,7 +28,7 @@ const { GET: sitemapGet } = await import('@/pages/sitemap.xml.ts');
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
-const SITE = new URL('https://dylanmccavitt.xyz');
+const SITE = new URL('https://www.dylanmccavitt.xyz');
 const FROST_ANCHORS = new Set(['about', 'work', 'journey', 'contact']);
 
 /**

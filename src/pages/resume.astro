@@ -1,7 +1,8 @@
 ---
 import Frost from '@/layouts/Frost.astro';
-import { PROFILE } from '@/components/frost/frost-data.js';
+import { PROFILE, WORK_ORDER } from '@/components/frost/frost-data.js';
 import { publicResumeEducationTracks, publicResumeExperienceTracks } from '@/data/resume';
+import { loadPublicProjectDetails } from '@/lib/public-projects';
 import { journeyMeta } from '@/lib/seo';
 
 // The sections come from the public track allowlist in `src/data/resume.ts`,
@@ -9,6 +10,24 @@ import { journeyMeta } from '@/lib/seo';
 const meta = journeyMeta();
 const experience = publicResumeExperienceTracks();
 const education = publicResumeEducationTracks();
+
+// Projects come from the same catalog read models as the homepage Work grid,
+// in the same pinned order, so this page keeps no project list of its own.
+const { projects: catalogProjects } = await loadPublicProjectDetails();
+const rank = (id: string) => {
+  const index = WORK_ORDER.indexOf(id);
+  return index === -1 ? WORK_ORDER.length : index;
+};
+const projects = [...catalogProjects].sort((a, b) => rank(a.id) - rank(b.id));
+
+// Every skill here is one the project pages show in use.
+const skills: Array<[group: string, items: string[]]> = [
+  ['Languages', ['TypeScript', 'JavaScript', 'Python']],
+  ['Frontend', ['React', 'Astro', 'Tailwind', 'Handlebars']],
+  ['Backend', ['Node', 'Express', 'Postgres / Supabase', 'MongoDB']],
+  ['Services', ['Stripe', 'Resend', 'Google Calendar', 'Vercel']],
+  ['AI and agents', ['Claude Code', 'MCP', 'XGBoost']],
+];
 ---
 
 <Frost title="Resume · Dylan McCavitt" meta={meta}>
@@ -44,6 +63,26 @@ const education = publicResumeEducationTracks();
       ))}
     </section>
 
+    <section class="frost-doc-section" aria-labelledby="resume-projects">
+      <h2 id="resume-projects">Projects</h2>
+      {projects.map((project) => (
+        <article class="frost-doc-row">
+          <h3><a href={project.href}>{project.title}</a> <span>· {project.area} · {project.year}</span></h3>
+          <p>{project.line}</p>
+        </article>
+      ))}
+    </section>
+
+    <section class="frost-doc-section" aria-labelledby="resume-skills">
+      <h2 id="resume-skills">Skills</h2>
+      {skills.map(([group, items]) => (
+        <article class="frost-doc-row">
+          <h3>{group}</h3>
+          <p>{items.join(' · ')}</p>
+        </article>
+      ))}
+    </section>
+
     <section class="frost-doc-section" aria-labelledby="resume-education">
       <h2 id="resume-education">Education</h2>
       {education.map((entry) => (
@@ -63,7 +102,7 @@ const education = publicResumeEducationTracks();
     </section>
 
     <nav class="frost-doc-actions" aria-label="Resume actions">
-      <a class="is-fill" href="https://dylanmccavitt.xyz/resume.pdf">Download PDF</a>
+      <a class="is-fill" href="/resume.pdf">Download PDF</a>
       <a href="mailto:dylanmccavitt@outlook.com">Email Dylan</a>
       <a class="is-quiet" href="/#journey">View journey →</a>
     </nav>

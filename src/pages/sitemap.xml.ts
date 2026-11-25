@@ -33,7 +33,7 @@ function canonicalPaths(projectPaths: string[]): string[] {
 
 export const GET: APIRoute = async ({ site }) => {
   // `site` is guaranteed by the `site` option in astro.config.mjs.
-  const origin = site ?? new URL('https://dylanmccavitt.xyz');
+  const origin = site ?? new URL('https://www.dylanmccavitt.xyz');
   const { projects } = await loadPublicProjectDetails();
   const urls = canonicalPaths(projects.map((project) => project.seo.sitemapPath))
     .map((path) => `  <url><loc>${new URL(path, origin).href}</loc></url>`)
