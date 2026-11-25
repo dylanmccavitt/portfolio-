@@ -43,7 +43,14 @@ jobs:
           # built files. 429 (rate limited) and 999 (LinkedIn's answer to
           # bots) mean the page exists, so they don't count as broken.
           # Mail links are skipped by default.
+          #
+          # npm's website turns automated checkers away with 403, so package
+          # links are checked against the npm registry instead, which answers
+          # 404 if the package is gone. The 404 page's own canonical link
+          # returns 404 on purpose, so it is skipped.
           args: >-
+            --remap 'https://www.npmjs.com/package/(.+) https://registry.npmjs.org/$1'
+            --exclude '^https://dylanmccavitt\.xyz/404$'
             --root-dir ${{ github.workspace }}/.vercel/output/static
             --no-progress
             --max-retries 3
