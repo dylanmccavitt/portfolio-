@@ -42,10 +42,10 @@ jobs:
           # Root-relative links like /projects/nhf are checked against the
           # built files. 429 (rate limited) and 999 (LinkedIn's answer to
           # bots) mean the page exists, so they don't count as broken.
+          # Mail links are skipped by default.
           args: >-
             --root-dir ${{ github.workspace }}/.vercel/output/static
             --no-progress
-            --exclude-mail
             --max-retries 3
             --timeout 20
             --accept 200,206,429,999
